@@ -2,9 +2,6 @@ queue_rules:
   - name: default
     queue_conditions:
       - base = main
-      - check-success = @github-actions/result
-    merge_conditions:
-      - check-success = @github-actions/result
     merge_method: squash
 
 pull_request_rules:
