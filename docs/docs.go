@@ -50,9 +50,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "data 为 dto.ImportCsvResult 结构化结果",
                         "schema": {
-                            "$ref": "#/definitions/dto.ImportCsvResult"
+                            "$ref": "#/definitions/dto.APIResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "invalid channel id / no_file / bad_header / invalid_csv_row / too_many_rows / bad_encoding / channel_not_found",
+                        "schema": {
+                            "$ref": "#/definitions/dto.APIResponse"
+                        }
+                    },
+                    "413": {
+                        "description": "file_too_large",
+                        "schema": {
+                            "$ref": "#/definitions/dto.APIResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/dto.APIResponse"
                         }
                     }
                 }
@@ -857,6 +875,17 @@ const docTemplate = `{
                     "用户-自身"
                 ],
                 "summary": "更新当前用户资料",
+                "parameters": [
+                    {
+                        "description": "用户资料更新字段(sidebar_modules / language)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1032,6 +1061,17 @@ const docTemplate = `{
                     "用户-充值"
                 ],
                 "summary": "兑换码充值",
+                "parameters": [
+                    {
+                        "description": "兑换码",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.topUpRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -1242,6 +1282,14 @@ const docTemplate = `{
                 }
             }
         },
+        "controller.topUpRequest": {
+            "type": "object",
+            "properties": {
+                "key": {
+                    "type": "string"
+                }
+            }
+        },
         "dto.APIResponse": {
             "type": "object",
             "properties": {
@@ -1251,96 +1299,6 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
-                }
-            }
-        },
-        "dto.ImportCsvResult": {
-            "type": "object",
-            "properties": {
-                "channel_id": {
-                    "type": "integer"
-                },
-                "channel_update_failed": {
-                    "type": "boolean"
-                },
-                "completion_ratio_skipped": {
-                    "type": "integer"
-                },
-                "errors": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.ImportError"
-                    }
-                },
-                "intro_updated": {
-                    "type": "integer"
-                },
-                "models_failed": {
-                    "type": "integer"
-                },
-                "models_imported": {
-                    "type": "integer"
-                },
-                "models_in_csv": {
-                    "type": "integer"
-                },
-                "models_recognized": {
-                    "type": "integer"
-                },
-                "models_skipped": {
-                    "type": "integer"
-                },
-                "models_skipped_no_input": {
-                    "type": "integer"
-                },
-                "models_skipped_non_token": {
-                    "type": "integer"
-                },
-                "persisted_ratio_models": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "price_skipped": {
-                    "type": "integer"
-                },
-                "price_updated": {
-                    "type": "integer"
-                },
-                "ratio_persisted": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "warnings": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.ImportWarning"
-                    }
-                }
-            }
-        },
-        "dto.ImportError": {
-            "type": "object",
-            "properties": {
-                "model": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
-                }
-            }
-        },
-        "dto.ImportWarning": {
-            "type": "object",
-            "properties": {
-                "model": {
-                    "type": "string"
-                },
-                "reason": {
-                    "type": "string"
                 }
             }
         },

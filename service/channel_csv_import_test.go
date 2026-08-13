@@ -340,7 +340,8 @@ func TestBuildDescription(t *testing.T) {
 // TestPrechecks 验证 spec §6.1 三类预检:ModelPrice bypass、裸名硬编码 CompletionRatio、
 // vendor 前缀名不跳过。具体命中以 defaultModelPrice / getHardcodedCompletionModelRatio 源码为准。
 func TestPrechecks(t *testing.T) {
-	t.Parallel()
+	// 注意:不能 t.Parallel() —— InitRatioSettings 会写全局 ratio map,
+	// 与其他并行测试并发会观察到半装载状态。
 
 	// GetModelPrice 走运行时 modelPriceMap(应用启动时由 InitRatioSettings 从
 	// defaultModelPrice 装载)。单测无启动流程 → 显式初始化,镜像生产状态。
@@ -543,6 +544,18 @@ func TestParseCSV_HappyPath(t *testing.T) {
 	require.Equal(t, "Million", rows[0].Unit)
 	require.Equal(t, "2", rows[0].PriceUSD)
 	require.Equal(t, "logo1", rows[0].Logo)
+}
+
+// TestParseCSV_TrimsModelID 覆盖 model_id 两侧空白归一化:ratio map key / models 行 /
+// 渠道模型列表必须同名,否则运行时价格查找 miss。
+func TestParseCSV_TrimsModelID(t *testing.T) {
+	t.Parallel()
+	in := "model_id,billing_unit,description,price_usd,unit,description_zh,description_en,logo\n" +
+		"  gpt-4o  ,Million,Input -,2,Million,zh,en,logo1\n"
+	rows, err := parseCSV(strings.NewReader(in))
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, "gpt-4o", rows[0].ModelID)
 }
 
 // TestParseCSV_BadHeader 覆盖 spec §4 的 bad_header:首行列数 ≠ 8。

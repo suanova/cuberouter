@@ -487,7 +487,10 @@ func parseCSV(r io.Reader) ([]csvRow, error) {
 	rows := make([]csvRow, 0, len(dataRows))
 	for _, rec := range dataRows {
 		rows = append(rows, csvRow{
-			ModelID:     rec[0],
+			// ModelID 统一 TrimSpace:下游 ratio map key / models 行 / 渠道模型列表
+			// 必须同名,否则渠道列表存 "gpt-4o" 而 ratio key 存 " gpt-4o",
+			// 运行时价格查找会 miss(FormatMatchingModelName 不做 trim)。
+			ModelID:     strings.TrimSpace(rec[0]),
 			BillingUnit: rec[1],
 			Description: rec[2],
 			PriceUSD:    rec[3],
@@ -637,6 +640,8 @@ func ImportChannelModelsCSV(channelID int, r io.Reader) (*dto.ImportCsvResult, e
 		ChannelID:            channelID,
 		RatioPersisted:       []string{},
 		PersistedRatioModels: []string{},
+		Errors:               []dto.ImportError{},
+		Warnings:             []dto.ImportWarning{},
 	}
 
 	// Step 1: Load channel(spec §5 step1)。

@@ -900,6 +900,7 @@ func AdminClearUserBinding(c *gin.Context) {
 // @Tags     用户-自身
 // @Security ApiKeyAuth
 // @Produce  json
+// @Param    body body object true "用户资料更新字段(sidebar_modules / language)"
 // @Success  200 {object} dto.APIResponse
 // @Router   /user/self [put]
 func UpdateSelf(c *gin.Context) {
@@ -1534,6 +1535,7 @@ func getTopUpLock(userID int) *topUpTryLock {
 // @Tags     用户-充值
 // @Security ApiKeyAuth
 // @Produce  json
+// @Param    body body topUpRequest true "兑换码"
 // @Success  200 {object} dto.APIResponse
 // @Router   /user/topup [post]
 func TopUp(c *gin.Context) {

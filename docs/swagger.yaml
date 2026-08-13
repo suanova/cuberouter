@@ -102,6 +102,11 @@ definitions:
     required:
     - code
     type: object
+  controller.topUpRequest:
+    properties:
+      key:
+        type: string
+    type: object
   dto.APIResponse:
     properties:
       data: {}
@@ -109,65 +114,6 @@ definitions:
         type: string
       success:
         type: boolean
-    type: object
-  dto.ImportCsvResult:
-    properties:
-      channel_id:
-        type: integer
-      channel_update_failed:
-        type: boolean
-      completion_ratio_skipped:
-        type: integer
-      errors:
-        items:
-          $ref: '#/definitions/dto.ImportError'
-        type: array
-      intro_updated:
-        type: integer
-      models_failed:
-        type: integer
-      models_imported:
-        type: integer
-      models_in_csv:
-        type: integer
-      models_recognized:
-        type: integer
-      models_skipped:
-        type: integer
-      models_skipped_no_input:
-        type: integer
-      models_skipped_non_token:
-        type: integer
-      persisted_ratio_models:
-        items:
-          type: string
-        type: array
-      price_skipped:
-        type: integer
-      price_updated:
-        type: integer
-      ratio_persisted:
-        items:
-          type: string
-        type: array
-      warnings:
-        items:
-          $ref: '#/definitions/dto.ImportWarning'
-        type: array
-    type: object
-  dto.ImportError:
-    properties:
-      model:
-        type: string
-      reason:
-        type: string
-    type: object
-  dto.ImportWarning:
-    properties:
-      model:
-        type: string
-      reason:
-        type: string
     type: object
   gorm.DeletedAt:
     properties:
@@ -289,9 +235,22 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: data 为 dto.ImportCsvResult 结构化结果
           schema:
-            $ref: '#/definitions/dto.ImportCsvResult'
+            $ref: '#/definitions/dto.APIResponse'
+        "400":
+          description: invalid channel id / no_file / bad_header / invalid_csv_row
+            / too_many_rows / bad_encoding / channel_not_found
+          schema:
+            $ref: '#/definitions/dto.APIResponse'
+        "413":
+          description: file_too_large
+          schema:
+            $ref: '#/definitions/dto.APIResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/dto.APIResponse'
       security:
       - ApiKeyAuth: []
       summary: CSV 批量导入渠道模型/价格/介绍
@@ -784,6 +743,13 @@ paths:
       tags:
       - 用户-自身
     put:
+      parameters:
+      - description: 用户资料更新字段(sidebar_modules / language)
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
       produces:
       - application/json
       responses:
@@ -875,6 +841,13 @@ paths:
       - 用户-自身
   /user/topup:
     post:
+      parameters:
+      - description: 兑换码
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.topUpRequest'
       produces:
       - application/json
       responses:
