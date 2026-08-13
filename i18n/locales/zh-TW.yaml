@@ -106,6 +106,11 @@ user.telegram_id_empty: "Telegram id 為空！"
 user.telegram_not_bound: "該 Telegram 帳號未綁定"
 user.linux_do_id_empty: "Linux DO id 為空！"
 user.quota_change_zero: "額度變更量不能為0"
+user.group_modify_forbidden_has_invitees: "該使用者已邀請其他使用者，無法修改分組"
+user.password_strength_invalid: "密碼強度不足，需包含大寫字母、小寫字母和數字，長度 8-20 位"
+user.username_too_long: "使用者名稱長度不能超過 50 個字元"
+user.display_name_too_long: "顯示名稱長度不能超過 20 個字元"
+user.email_too_long: "電子郵件長度不能超過 50 個字元"
 
 # Ops (运营角色) related messages
 ops.campaign_not_accessible: "無權查看該活動"

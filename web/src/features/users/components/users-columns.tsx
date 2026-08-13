@@ -21,7 +21,6 @@ import { useTranslation } from 'react-i18next'
 
 import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
-import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -40,6 +39,7 @@ import {
 } from '../constants'
 import type { User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
+import UsernameCell from './username-cell'
 import { UserQuotaCell } from './user-quota-cell'
 
 export function useUsersColumns(): ColumnDef<User>[] {
@@ -85,38 +85,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
     {
       accessorKey: 'username',
       header: t('Username'),
-      cell: ({ row }) => {
-        const username = row.getValue('username') as string
-        const displayName = row.original.display_name
-        const remark = row.original.remark
-
-        return (
-          <div className='flex min-w-[160px] flex-col gap-1'>
-            <div className='flex items-center gap-2'>
-              <LongText className='max-w-[140px] font-medium'>
-                {username}
-              </LongText>
-              {remark && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={<StatusBadge variant='success' copyable={false} />}
-                  >
-                    <LongText className='max-w-[80px]'>{remark}</LongText>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className='text-xs'>{remark}</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-            {displayName && displayName !== username && (
-              <LongText className='text-muted-foreground max-w-[180px] text-xs'>
-                {displayName}
-              </LongText>
-            )}
-          </div>
-        )
-      },
+      cell: ({ row }) => <UsernameCell user={row.original} />,
       enableHiding: false,
       size: 220,
       meta: { mobileTitle: true },

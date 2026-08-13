@@ -34,7 +34,7 @@ func GetUserInvitees(c *gin.Context) {
 			Id:        u.Id,
 			Username:  u.Username,
 			Email:     u.Email,
-			Phone:     u.Phone,
+			Phone:     common.MaskPhone(u.Phone),
 			Status:    u.Status,
 			Group:     u.Group,
 			Role:      u.Role,

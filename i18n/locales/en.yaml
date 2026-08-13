@@ -105,6 +105,11 @@ user.telegram_id_empty: "Telegram ID is empty!"
 user.telegram_not_bound: "This Telegram account is not bound"
 user.linux_do_id_empty: "Linux DO ID is empty!"
 user.quota_change_zero: "Quota change amount cannot be zero"
+user.group_modify_forbidden_has_invitees: "Cannot modify the group of a user who has already invited others"
+user.password_strength_invalid: "Password is too weak. Must be 8-20 characters and contain uppercase, lowercase letters and digits"
+user.username_too_long: "Username must be at most 50 characters"
+user.display_name_too_long: "Display name must be at most 20 characters"
+user.email_too_long: "Email must be at most 50 characters"
 
 # Ops (运营角色) related messages
 ops.campaign_not_accessible: "No permission to view this campaign"

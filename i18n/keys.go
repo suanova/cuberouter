@@ -117,6 +117,11 @@ const (
 	MsgUserTelegramNotBound          = "user.telegram_not_bound"
 	MsgUserLinuxDOIdEmpty            = "user.linux_do_id_empty"
 	MsgUserQuotaChangeZero           = "user.quota_change_zero"
+	MsgUserGroupModifyForbidden      = "user.group_modify_forbidden_has_invitees"
+	MsgUserPasswordStrengthInvalid   = "user.password_strength_invalid"
+	MsgUserUsernameTooLong           = "user.username_too_long"
+	MsgUserDisplayNameTooLong        = "user.display_name_too_long"
+	MsgUserEmailTooLong              = "user.email_too_long"
 )
 
 // Ops (运营角色) related messages

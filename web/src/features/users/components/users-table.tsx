@@ -45,6 +45,7 @@ import { useUsersColumns } from './users-columns'
 import { useUsers } from './users-provider'
 
 const route = getRouteApi('/_authenticated/users/')
+const USERS_COLUMN_VISIBILITY_STORAGE_KEY = 'users:column-visibility'
 
 const USER_SORTABLE_COLUMNS = new Set<UserSortBy>([
   'id',
@@ -200,6 +201,7 @@ export function UsersTable() {
     manualSorting: true,
     totalCount: data?.total || 0,
     ensurePageInRange,
+    columnVisibilityStorageKey: USERS_COLUMN_VISIBILITY_STORAGE_KEY,
   })
 
   return (

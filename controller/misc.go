@@ -282,10 +282,17 @@ func SendEmailVerification(c *gin.Context) {
 	}
 	code := common.GenerateVerificationCode(6)
 	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
-	subject := fmt.Sprintf("%s邮箱验证邮件", common.SystemName)
-	content := fmt.Sprintf("<p>您好，你正在进行%s邮箱验证。</p>"+
+	subject := common.WrapBilingualSubject(
+		fmt.Sprintf("%s Email Verification", common.SystemName),
+		fmt.Sprintf("%s邮箱验证邮件", common.SystemName),
+	)
+	zhContent := fmt.Sprintf("<p>您好，你正在进行%s邮箱验证。</p>"+
 		"<p>您的验证码为: <strong>%s</strong></p>"+
 		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
+	enContent := fmt.Sprintf("<p>Hello, you are verifying your email for %s.</p>"+
+		"<p>Your verification code is: <strong>%s</strong></p>"+
+		"<p>This code is valid for %d minutes. If you did not request this, please ignore this email.</p>", common.SystemName, code, common.VerificationValidMinutes)
+	content := common.WrapBilingualContent(enContent, zhContent)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
 		common.ApiError(c, err)
@@ -308,11 +315,19 @@ func SendPasswordResetEmail(c *gin.Context) {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
-		subject := fmt.Sprintf("%s密码重置", common.SystemName)
-		content := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
+		subject := common.WrapBilingualSubject(
+			fmt.Sprintf("%s Password Reset", common.SystemName),
+			fmt.Sprintf("%s密码重置", common.SystemName),
+		)
+		zhContent := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
 			"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
 			"<p>如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> %s </p>"+
 			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
+		enContent := fmt.Sprintf("<p>Hello, you are resetting your password for %s.</p>"+
+			"<p>Click <a href='%s'>here</a> to reset your password.</p>"+
+			"<p>If the link does not work, please copy and paste the following URL into your browser:<br> %s </p>"+
+			"<p>This reset link is valid for %d minutes. If you did not request this, please ignore this email.</p>", common.SystemName, link, link, common.VerificationValidMinutes)
+		content := common.WrapBilingualContent(enContent, zhContent)
 		err := common.SendEmail(subject, email, content)
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))

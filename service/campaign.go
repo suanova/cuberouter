@@ -182,7 +182,7 @@ func buildCampaignRewardEmail(campaign *model.Campaign, redemption *model.Redemp
 	if campaign.Type == model.CampaignTypeInvitation {
 		zhSubject := fmt.Sprintf("%s - 活动奖励到账通知", common.SystemName)
 		enSubject := fmt.Sprintf("%s - Campaign Reward Credited", common.SystemName)
-		subject = wrapBilingualSubject(enSubject, zhSubject)
+		subject = common.WrapBilingualSubject(enSubject, zhSubject)
 		enContent := fmt.Sprintf(
 			`<p>Hello,</p>`+
 				`<p>Thank you for participating in the campaign "<b>%s</b>". A reward of <b>%s</b> has been credited to your account automatically — no further action is needed.</p>`+
@@ -197,12 +197,12 @@ func buildCampaignRewardEmail(campaign *model.Campaign, redemption *model.Redemp
 				`<p style="color:#888;font-size:12px;">此邮件由系统自动发送，请勿直接回复。</p>`,
 			campaign.Name, logger.LogQuota(redemption.Quota), redemption.Key,
 		)
-		return subject, wrapBilingualContent(enContent, zhContent)
+		return subject, common.WrapBilingualContent(enContent, zhContent)
 	}
 
 	zhSubject := fmt.Sprintf("%s - 活动兑换码", common.SystemName)
 	enSubject := fmt.Sprintf("%s - Campaign Redemption Code", common.SystemName)
-	subject = wrapBilingualSubject(enSubject, zhSubject)
+	subject = common.WrapBilingualSubject(enSubject, zhSubject)
 	enContent := fmt.Sprintf(
 		`<p>Hello,</p>`+
 			`<p>Thank you for participating in the campaign "<b>%s</b>". Here is your redemption code:</p>`+
@@ -223,7 +223,7 @@ func buildCampaignRewardEmail(campaign *model.Campaign, redemption *model.Redemp
 			`<p style="color:#888;font-size:12px;">此邮件由系统自动发送，请勿直接回复。</p>`,
 		campaign.Name, redemption.Key, logger.LogQuota(redemption.Quota), zhExpireDesc,
 	)
-	return subject, wrapBilingualContent(enContent, zhContent)
+	return subject, common.WrapBilingualContent(enContent, zhContent)
 }
 
 // SendCampaignRewardEmail 发送/补发活动兑换码邮件。
@@ -397,12 +397,4 @@ func (e *CampaignEngine) GenerateInvitationCodes(campaign *model.Campaign) (int,
 		"邀请活动「%s」生成了 %d 个兑换码（当前共 %d 个可用），前缀: %s", campaign.Name, created, finalAvailable, prefix)
 
 	return created, nil
-}
-
-func wrapBilingualSubject(enSubject string, zhSubject string) string {
-	return fmt.Sprintf("%s / %s", enSubject, zhSubject)
-}
-
-func wrapBilingualContent(enContent string, zhContent string) string {
-	return fmt.Sprintf(`%s<hr style="border:none;border-top:1px solid #ddd;margin:20px 0;">%s`, enContent, zhContent)
 }

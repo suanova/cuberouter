@@ -225,6 +225,10 @@ func Register(c *gin.Context) {
 		return
 	}
 	if err := common.Validate.Struct(&user); err != nil {
+		if key := common.GetValidationI18nKey(err); key != "" {
+			common.ApiErrorI18n(c, key)
+			return
+		}
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}
@@ -269,6 +273,15 @@ func Register(c *gin.Context) {
 		Phone:       user.Phone,
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
+	}
+	// 通过邀请码注册时，新用户的分组继承邀请人所属分组
+	if inviterId > 0 {
+		inviterUser, err := model.GetUserById(inviterId, false)
+		if err != nil {
+			common.SysError(fmt.Sprintf("获取邀请人信息失败(inviterId=%d): %v", inviterId, err))
+		} else if inviterUser.Group != "" {
+			cleanUser.Group = inviterUser.Group
+		}
 	}
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
@@ -341,6 +354,9 @@ func GetAllUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
+	for _, u := range users {
+		u.Phone = common.MaskPhone(u.Phone)
+	}
 	pageInfo.SetItems(users)
 
 	common.ApiSuccess(c, pageInfo)
@@ -371,6 +387,9 @@ func SearchUsers(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
+	for _, u := range users {
+		u.Phone = common.MaskPhone(u.Phone)
+	}
 	pageInfo.SetItems(users)
 	common.ApiSuccess(c, pageInfo)
 	return
@@ -690,12 +709,25 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	if updatedUser.Password == "" {
-		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
-	}
-	if err := common.Validate.Struct(&updatedUser); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
-		return
+	// 密码为空表示管理员未修改密码，跳过密码字段校验
+	if updatedUser.Password != "" {
+		if err := common.Validate.Struct(&updatedUser); err != nil {
+			if key := common.GetValidationI18nKey(err); key != "" {
+				common.ApiErrorI18n(c, key)
+				return
+			}
+			common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+			return
+		}
+	} else {
+		if err := common.Validate.StructExcept(&updatedUser, "Password"); err != nil {
+			if key := common.GetValidationI18nKey(err); key != "" {
+				common.ApiErrorI18n(c, key)
+				return
+			}
+			common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
+			return
+		}
 	}
 	originUser, err := model.GetUserById(updatedUser.Id, false)
 	if err != nil {
@@ -712,8 +744,18 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	if updatedUser.Password == "$I_LOVE_U" {
-		updatedUser.Password = "" // rollback to what it should be
+	// 用户已有邀请记录时，禁止修改分组
+	if originUser.Group != updatedUser.Group {
+		hasInvitees, err := model.HasInvitees(updatedUser.Id)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+			common.SysLog(fmt.Sprintf("HasInvitees error in UpdateUser: %v", err))
+			return
+		}
+		if hasInvitees {
+			common.ApiErrorI18n(c, i18n.MsgUserGroupModifyForbidden)
+			return
+		}
 	}
 	updatePassword := updatedUser.Password != ""
 	authzTouched := false
@@ -870,12 +912,17 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
-	if user.Password == "" {
-		user.Password = "$I_LOVE_U" // make Validator happy :)
-	}
-	if err := common.Validate.Struct(&user); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidInput)
-		return
+	// 密码为空表示未修改密码，跳过密码字段校验
+	if user.Password != "" {
+		if err := common.Validate.Struct(&user); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidInput)
+			return
+		}
+	} else {
+		if err := common.Validate.StructExcept(&user, "Password"); err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidInput)
+			return
+		}
 	}
 
 	cleanUser := model.User{
@@ -884,10 +931,6 @@ func UpdateSelf(c *gin.Context) {
 		Password:    user.Password,
 		DisplayName: user.DisplayName,
 		Phone:       user.Phone,
-	}
-	if user.Password == "$I_LOVE_U" {
-		user.Password = "" // rollback to what it should be
-		cleanUser.Password = ""
 	}
 	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
 	if err != nil {
@@ -1037,6 +1080,10 @@ func CreateUser(c *gin.Context) {
 		return
 	}
 	if err := common.Validate.Struct(&user); err != nil {
+		if key := common.GetValidationI18nKey(err); key != "" {
+			common.ApiErrorI18n(c, key)
+			return
+		}
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
 	}

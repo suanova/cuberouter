@@ -67,7 +67,7 @@ func TestRegisterTriggersCampaigns(t *testing.T) {
 	require.NoError(t, phoneCampaign.Insert())
 
 	body, err := common.Marshal(map[string]any{
-		"username": "trig-new-user", "password": "secret-password",
+		"username": "trig-new-user", "password": "Secret-password1",
 		"phone": "13800009999", "aff_code": inviter.AffCode,
 	})
 	require.NoError(t, err)

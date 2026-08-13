@@ -78,8 +78,8 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
 	Id               int                        `json:"id"`
-	Username         string                     `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	Username         string                     `json:"username" gorm:"unique;index" validate:"max=50"`
+	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20,passwordStrength"`
 	OriginalPassword string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
 	DisplayName      string                     `json:"display_name" gorm:"index" validate:"max=20"`
 	Role             int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
@@ -491,6 +491,15 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	var user User
 	err := DB.Select("id").First(&user, "aff_code = ?", affCode).Error
 	return user.Id, err
+}
+
+// HasInvitees 检查指定用户是否已经邀请过其他用户（即 users 表中是否存在 inviter_id == userId 的记录）
+func HasInvitees(userId int) (bool, error) {
+	var count int64
+	if err := DB.Model(&User{}).Where("inviter_id = ?", userId).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func DeleteUserById(id int) (err error) {

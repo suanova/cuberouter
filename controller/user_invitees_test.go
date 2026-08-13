@@ -49,7 +49,7 @@ func TestGetUserInviteesReturnsBriefItems(t *testing.T) {
 	require.Len(t, body.Data.Items, 1)
 	item := body.Data.Items[0]
 	assert.Equal(t, "invitee-brief", item["username"])
-	assert.Equal(t, "13812345678", item["phone"], "raw phone: admins outrank the target")
+	assert.Equal(t, "138****5678", item["phone"], "phone must be masked even for admins")
 	assert.NotContains(t, item, "password")
 	assert.NotContains(t, item, "quota")
 	assert.NotContains(t, item, "used_quota")
