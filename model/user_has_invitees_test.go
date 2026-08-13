@@ -7,15 +7,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// User without invitees -> HasInvitees returns false.
+// Existing user without invitees -> HasInvitees returns false, even when
+// other users have invitees.
 func TestHasInvitees_NoInvitees(t *testing.T) {
 	truncateTables(t)
-	inviter := insertOpsUser(t, "has-invitees-inviter", 0)
-	insertOpsUser(t, "has-invitees-invitee", inviter.Id)
+	user := insertOpsUser(t, "has-invitees-none", 0)
+	other := insertOpsUser(t, "has-invitees-other", 0)
+	insertOpsUser(t, "has-invitees-invitee", other.Id)
 
-	has, err := HasInvitees(200)
+	has, err := HasInvitees(user.Id)
 	require.NoError(t, err)
-	assert.False(t, has, "user with no invitees must return false")
+	assert.False(t, has, "existing user with no invitees must return false")
 }
 
 // User with invitees -> HasInvitees returns true.

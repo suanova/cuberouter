@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -314,19 +316,21 @@ func SendPasswordResetEmail(c *gin.Context) {
 	if _, err := model.GetUniqueUserByEmail(email); err == nil {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
-		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, email, code)
+		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, url.QueryEscape(email), url.QueryEscape(code))
 		subject := common.WrapBilingualSubject(
 			fmt.Sprintf("%s Password Reset", common.SystemName),
 			fmt.Sprintf("%s密码重置", common.SystemName),
 		)
+		// 链接用于 href 属性与可见文本：HTML 转义防止 &、引号等破坏属性或注入标签
+		escapedLink := html.EscapeString(link)
 		zhContent := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
 			"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
 			"<p>如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> %s </p>"+
-			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, link, link, common.VerificationValidMinutes)
+			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, escapedLink, escapedLink, common.VerificationValidMinutes)
 		enContent := fmt.Sprintf("<p>Hello, you are resetting your password for %s.</p>"+
 			"<p>Click <a href='%s'>here</a> to reset your password.</p>"+
 			"<p>If the link does not work, please copy and paste the following URL into your browser:<br> %s </p>"+
-			"<p>This reset link is valid for %d minutes. If you did not request this, please ignore this email.</p>", common.SystemName, link, link, common.VerificationValidMinutes)
+			"<p>This reset link is valid for %d minutes. If you did not request this, please ignore this email.</p>", common.SystemName, escapedLink, escapedLink, common.VerificationValidMinutes)
 		content := common.WrapBilingualContent(enContent, zhContent)
 		err := common.SendEmail(subject, email, content)
 		if err != nil {

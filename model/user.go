@@ -495,11 +495,37 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 
 // HasInvitees 检查指定用户是否已经邀请过其他用户（即 users 表中是否存在 inviter_id == userId 的记录）
 func HasInvitees(userId int) (bool, error) {
+	return HasInviteesTx(DB, userId)
+}
+
+// HasInviteesTx 是 HasInvitees 的事务内变体：调用方在与行锁相同的事务中
+// 检查邀请记录（见 UpdateUser 的分组修改守卫），避免检查与写入之间的竞态。
+func HasInviteesTx(tx *gorm.DB, userId int) (bool, error) {
 	var count int64
-	if err := DB.Model(&User{}).Where("inviter_id = ?", userId).Count(&count).Error; err != nil {
+	if err := tx.Model(&User{}).Where("inviter_id = ?", userId).Count(&count).Error; err != nil {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// ErrUserGroupModifyForbidden 用户已有邀请记录时禁止修改分组
+var ErrUserGroupModifyForbidden = errors.New("user has invitees, group modification forbidden")
+
+// GetUserGroupByIdTx 在事务内锁定用户行并读取其分组。锁在事务提交/回滚时
+// 释放；调用方应把依赖该分组的一致性读取或写入放在同一事务中（注册继承
+// 邀请人分组、UpdateUser 的分组修改守卫、订阅升降级等）。
+func GetUserGroupByIdTx(tx *gorm.DB, userId int) (string, error) {
+	if userId <= 0 {
+		return "", errors.New("invalid userId")
+	}
+	if tx == nil {
+		tx = DB
+	}
+	var user User
+	if err := lockForUpdate(tx).First(&user, userId).Error; err != nil {
+		return "", err
+	}
+	return user.Group, nil
 }
 
 func DeleteUserById(id int) (err error) {

@@ -18,7 +18,7 @@ type UserColumnMeta struct {
 // source strings that the frontend translates with t(); New columns must be
 // added here and in the frontend column defs together.
 var userColumns = []UserColumnMeta{
-	{Key: "select", Label: "Select"},
+	{Key: "select", Label: "Select", Required: true},
 	{Key: "id", Label: "ID", Required: true},
 	{Key: "username", Label: "Username", Required: true},
 	{Key: "status", Label: "Status"},
