@@ -124,6 +124,13 @@ func (*StripeAdaptor) RequestPay(c *gin.Context, req *StripePayRequest) {
 	})
 }
 
+// @Summary  计算 Stripe 充值应付金额
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body StripePayRequest true "充值数量"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/stripe/amount [post]
 func RequestStripeAmount(c *gin.Context) {
 	var req StripePayRequest
 	err := c.ShouldBindJSON(&req)
@@ -134,6 +141,13 @@ func RequestStripeAmount(c *gin.Context) {
 	stripeAdaptor.RequestAmount(c, &req)
 }
 
+// @Summary  Stripe 充值下单
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body StripePayRequest true "充值数量、支付方式与回调地址"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/stripe/pay [post]
 func RequestStripePay(c *gin.Context) {
 	var req StripePayRequest
 	err := c.ShouldBindJSON(&req)

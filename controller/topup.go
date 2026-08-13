@@ -21,6 +21,12 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+// @Summary  获取充值信息
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/topup/info [get]
 func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
@@ -186,6 +192,13 @@ func getMinTopup() int64 {
 	return int64(minTopup)
 }
 
+// @Summary  EPay 充值下单
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body EpayRequest true "充值金额与支付方式"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/pay [post]
 func RequestEpay(c *gin.Context) {
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
@@ -411,6 +424,13 @@ func EpayNotify(c *gin.Context) {
 	}
 }
 
+// @Summary  计算充值应付金额
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body AmountRequest true "充值数量"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/amount [post]
 func RequestAmount(c *gin.Context) {
 	var req AmountRequest
 	err := c.ShouldBindJSON(&req)
@@ -437,6 +457,12 @@ func RequestAmount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
 }
 
+// @Summary  获取我的充值记录
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/topup/self [get]
 func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)

@@ -350,6 +350,12 @@ type PasswordResetRequest struct {
 	Token string `json:"token"`
 }
 
+// @Summary  通过邮箱令牌重置密码
+// @Tags     用户-认证
+// @Produce  json
+// @Param    body body PasswordResetRequest true "重置密码请求(邮箱 + 验证令牌)"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/reset [post]
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
 	err := json.NewDecoder(c.Request.Body).Decode(&req)
