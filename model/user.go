@@ -511,6 +511,17 @@ func HasInviteesTx(tx *gorm.DB, userId int) (bool, error) {
 // ErrUserGroupModifyForbidden 用户已有邀请记录时禁止修改分组
 var ErrUserGroupModifyForbidden = errors.New("user has invitees, group modification forbidden")
 
+// UpdateUserGroupWithInviteesTx 更新用户分组，并在同一事务内同步其直接下级
+// 的分组，保持"邀请人与下级同组"不变量（注册时下级继承邀请人分组，订阅驱动
+// 的分组变更同样联动下级）。订阅的升级/降级/过期恢复路径使用本函数；管理员的
+// UpdateUser 改分组仍由 ErrUserGroupModifyForbidden 守卫拒绝。
+func UpdateUserGroupWithInviteesTx(tx *gorm.DB, userId int, group string) error {
+	if err := tx.Model(&User{}).Where("id = ?", userId).Update("group", group).Error; err != nil {
+		return err
+	}
+	return tx.Model(&User{}).Where("inviter_id = ?", userId).Update("group", group).Error
+}
+
 // GetUserGroupByIdTx 在事务内锁定用户行并读取其分组。锁在事务提交/回滚时
 // 释放；调用方应把依赖该分组的一致性读取或写入放在同一事务中（注册继承
 // 邀请人分组、UpdateUser 的分组修改守卫、订阅升降级等）。
