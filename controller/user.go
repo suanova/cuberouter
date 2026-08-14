@@ -19,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/QuantumNous/new-api/constant"
 
@@ -495,10 +494,6 @@ type TransferAffQuotaRequest struct {
 // @Success  200 {object} dto.APIResponse
 // @Router   /user/aff_transfer [post]
 func TransferAffQuota(c *gin.Context) {
-	if !requirePaymentCompliance(c) {
-		return
-	}
-
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, true)
 	if err != nil {
@@ -1539,11 +1534,6 @@ func getTopUpLock(userID int) *topUpTryLock {
 // @Success  200 {object} dto.APIResponse
 // @Router   /user/topup [post]
 func TopUp(c *gin.Context) {
-	if !operation_setting.IsPaymentComplianceConfirmed() {
-		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
-		return
-	}
-
 	id := c.GetInt("id")
 	lock := getTopUpLock(id)
 	if !lock.TryLock() {
