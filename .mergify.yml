@@ -2,13 +2,16 @@ queue_rules:
   - name: default
     queue_conditions:
       - base = main
+    merge_conditions:
+      - base = main
+      - "#approved-reviews-by >= 1"
     merge_method: squash
 
 pull_request_rules:
   - name: automatically queue approved PRs
     conditions:
       - base = main
-      - '#approved-reviews-by >= 1'
+      - "#approved-reviews-by >= 1"
     actions:
-      queue:
-        name: default
+      - queue:
+          name: default
