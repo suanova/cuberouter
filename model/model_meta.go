@@ -258,3 +258,21 @@ func parseModelSyncFilter(syncOfficial string) (value int, ok bool) {
 		return n, true
 	}
 }
+
+// GetModelByName 按模型名查询。GORM 自动应用 soft-delete 过滤；
+// 不存在时返回 gorm.ErrRecordNotFound。
+func GetModelByName(name string) (*Model, error) {
+	var m Model
+	err := DB.Where("model_name = ?", name).First(&m).Error
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+// UpdateMetaFields 仅更新传入的 map 字段（白名单由 caller 控制），
+// 用于 CSV 导入的 description/updated_time 等元数据写入，避免触碰
+// status / sync_official / endpoints / name_rule / vendor_id 等敏感列。
+func (mi *Model) UpdateMetaFields(fields map[string]interface{}) error {
+	return DB.Model(&Model{}).Where("id = ?", mi.Id).Updates(fields).Error
+}

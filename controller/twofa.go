@@ -36,6 +36,12 @@ type Setup2FAResponse struct {
 }
 
 // Setup2FA 初始化2FA设置
+// @Summary  初始化 2FA 设置，返回密钥/二维码/备用码
+// @Tags     用户-2FA
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/2fa/setup [post]
 func Setup2FA(c *gin.Context) {
 	userId := c.GetInt("id")
 
@@ -131,6 +137,13 @@ func Setup2FA(c *gin.Context) {
 }
 
 // Enable2FA 启用2FA
+// @Summary  验证 TOTP 并启用 2FA
+// @Tags     用户-2FA
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body Setup2FARequest true "TOTP 验证码"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/2fa/enable [post]
 func Enable2FA(c *gin.Context) {
 	var req Setup2FARequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -209,6 +222,13 @@ func Enable2FA(c *gin.Context) {
 }
 
 // Disable2FA 禁用2FA
+// @Summary  验证后禁用 2FA
+// @Tags     用户-2FA
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body Verify2FARequest true "TOTP 验证码或备用码"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/2fa/disable [post]
 func Disable2FA(c *gin.Context) {
 	var req Verify2FARequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -292,6 +312,12 @@ func Disable2FA(c *gin.Context) {
 }
 
 // Get2FAStatus 获取用户2FA状态
+// @Summary  查询当前用户 2FA 状态
+// @Tags     用户-2FA
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/2fa/status [get]
 func Get2FAStatus(c *gin.Context) {
 	userId := c.GetInt("id")
 
@@ -328,6 +354,13 @@ func Get2FAStatus(c *gin.Context) {
 }
 
 // RegenerateBackupCodes 重新生成备用码
+// @Summary  重新生成 2FA 备用码
+// @Tags     用户-2FA
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body Verify2FARequest true "TOTP 验证码"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/2fa/backup_codes [post]
 func RegenerateBackupCodes(c *gin.Context) {
 	var req Verify2FARequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -424,6 +457,12 @@ func RegenerateBackupCodes(c *gin.Context) {
 }
 
 // Verify2FALogin 登录时验证2FA
+// @Summary  登录二次验证(2FA)
+// @Tags     用户-认证
+// @Produce  json
+// @Param    body body Verify2FARequest true "2FA 验证码(TOTP 或备用码)"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/login/2fa [post]
 func Verify2FALogin(c *gin.Context) {
 	var req Verify2FARequest
 	if err := c.ShouldBindJSON(&req); err != nil {

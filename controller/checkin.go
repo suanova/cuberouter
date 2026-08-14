@@ -13,6 +13,12 @@ import (
 )
 
 // GetCheckinStatus 获取用户签到状态和历史记录
+// @Summary  获取签到状态
+// @Tags     用户-其它
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/checkin [get]
 func GetCheckinStatus(c *gin.Context) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
@@ -44,6 +50,12 @@ func GetCheckinStatus(c *gin.Context) {
 }
 
 // DoCheckin 执行用户签到
+// @Summary  每日签到
+// @Tags     用户-其它
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/checkin [post]
 func DoCheckin(c *gin.Context) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {

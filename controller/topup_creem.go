@@ -141,6 +141,13 @@ func (*CreemAdaptor) RequestPay(c *gin.Context, req *CreemPayRequest) {
 	})
 }
 
+// @Summary  Creem 充值下单
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body CreemPayRequest true "产品 ID 与支付方式"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/creem/pay [post]
 func RequestCreemPay(c *gin.Context) {
 	var req CreemPayRequest
 

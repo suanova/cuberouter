@@ -46,6 +46,12 @@ func parsePasskeyFinishRequest(c *gin.Context) (*passkeyFinishRequest, error) {
 	return &request, nil
 }
 
+// @Summary  启动 Passkey 注册
+// @Tags     用户-passkey
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey/register/begin [post]
 func PasskeyRegisterBegin(c *gin.Context) {
 	if !system_setting.GetPasskeySettings().Enabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -124,6 +130,12 @@ func PasskeyRegisterBegin(c *gin.Context) {
 	})
 }
 
+// @Summary  完成 Passkey 注册
+// @Tags     用户-passkey
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey/register/finish [post]
 func PasskeyRegisterFinish(c *gin.Context) {
 	if !system_setting.GetPasskeySettings().Enabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -218,6 +230,12 @@ func PasskeyRegisterFinish(c *gin.Context) {
 	})
 }
 
+// @Summary  解绑当前用户 Passkey
+// @Tags     用户-passkey
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey [delete]
 func PasskeyDelete(c *gin.Context) {
 	user, err := getAuthenticatedUser(c)
 	if err != nil {
@@ -255,6 +273,12 @@ func PasskeyDelete(c *gin.Context) {
 	})
 }
 
+// @Summary  查询当前用户 Passkey 绑定状态
+// @Tags     用户-passkey
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey [get]
 func PasskeyStatus(c *gin.Context) {
 	user, err := getAuthenticatedUser(c)
 	if err != nil {
@@ -293,6 +317,11 @@ func PasskeyStatus(c *gin.Context) {
 	})
 }
 
+// @Summary  启动 Passkey(WebAuthn)登录
+// @Tags     用户-passkey
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey/login/begin [post]
 func PasskeyLoginBegin(c *gin.Context) {
 	if !system_setting.GetPasskeySettings().Enabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -337,6 +366,11 @@ func PasskeyLoginBegin(c *gin.Context) {
 	})
 }
 
+// @Summary  完成 Passkey(WebAuthn)登录
+// @Tags     用户-passkey
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey/login/finish [post]
 func PasskeyLoginFinish(c *gin.Context) {
 	if !system_setting.GetPasskeySettings().Enabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -484,6 +518,12 @@ func AdminResetPasskey(c *gin.Context) {
 	})
 }
 
+// @Summary  启动 Passkey 验证
+// @Tags     用户-passkey
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey/verify/begin [post]
 func PasskeyVerifyBegin(c *gin.Context) {
 	if !system_setting.GetPasskeySettings().Enabled {
 		c.JSON(http.StatusOK, gin.H{
@@ -561,6 +601,12 @@ func PasskeyVerifyBegin(c *gin.Context) {
 	})
 }
 
+// @Summary  完成 Passkey 验证
+// @Tags     用户-passkey
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/passkey/verify/finish [post]
 func PasskeyVerifyFinish(c *gin.Context) {
 	if !system_setting.GetPasskeySettings().Enabled {
 		c.JSON(http.StatusOK, gin.H{

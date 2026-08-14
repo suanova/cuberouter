@@ -23,6 +23,11 @@ func GetGroups(c *gin.Context) {
 	})
 }
 
+// @Summary  获取当前用户可用分组
+// @Tags     用户-认证
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/groups [get]
 func GetUserGroups(c *gin.Context) {
 	usableGroups := make(map[string]map[string]interface{})
 	userGroup := ""

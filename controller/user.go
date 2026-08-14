@@ -37,6 +37,12 @@ var (
 	errOriginalPasswordFail = errors.New("original password is incorrect")
 )
 
+// @Summary  用户名/密码登录
+// @Tags     用户-认证
+// @Produce  json
+// @Param    body body LoginRequest true "登录凭据(用户名 + 密码)"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/login [post]
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserPasswordLoginDisabled)
@@ -203,6 +209,12 @@ func setupLoginAtAuthVersion(user *model.User, expectedAuthVersion int64, c *gin
 	})
 }
 
+// @Summary  注册新用户
+// @Tags     用户-认证
+// @Produce  json
+// @Param    body body model.User true "注册信息(包含用户名、密码等)"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/register [post]
 func Register(c *gin.Context) {
 	if !common.RegisterEnabled {
 		common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
@@ -430,6 +442,12 @@ func GetUser(c *gin.Context) {
 	return
 }
 
+// @Summary  生成新的访问令牌
+// @Tags     用户-自身
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/token [get]
 func GenerateAccessToken(c *gin.Context) {
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, true)
@@ -469,6 +487,13 @@ type TransferAffQuotaRequest struct {
 	Quota int `json:"quota" binding:"required"`
 }
 
+// @Summary  邀请佣金转额度
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body TransferAffQuotaRequest true "转换的佣金额度数量"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/aff_transfer [post]
 func TransferAffQuota(c *gin.Context) {
 	if !requirePaymentCompliance(c) {
 		return
@@ -493,6 +518,12 @@ func TransferAffQuota(c *gin.Context) {
 	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, nil)
 }
 
+// @Summary  获取我的邀请码
+// @Tags     用户-自身
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/aff [get]
 func GetAffCode(c *gin.Context) {
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, true)
@@ -518,6 +549,12 @@ func GetAffCode(c *gin.Context) {
 	return
 }
 
+// @Summary  获取当前登录用户信息
+// @Tags     用户-自身
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/self [get]
 func GetSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
@@ -669,6 +706,12 @@ func generateDefaultSidebarConfig(userRole int) string {
 	return string(configBytes)
 }
 
+// @Summary  获取可用模型列表
+// @Tags     用户-自身
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/models [get]
 func GetUserModels(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -853,6 +896,13 @@ func AdminClearUserBinding(c *gin.Context) {
 	})
 }
 
+// @Summary  更新当前用户资料
+// @Tags     用户-自身
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body object true "用户资料更新字段(sidebar_modules / language)"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/self [put]
 func UpdateSelf(c *gin.Context) {
 	var requestData map[string]interface{}
 	if err := common.DecodeJson(c.Request.Body, &requestData); err != nil {
@@ -1070,6 +1120,12 @@ func DeleteUser(c *gin.Context) {
 	return
 }
 
+// @Summary  注销当前用户自身账号
+// @Tags     用户-自身
+// @Security ApiKeyAuth
+// @Produce  json
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/self [delete]
 func DeleteSelf(c *gin.Context) {
 	id := c.GetInt("id")
 	user, _ := model.GetUserById(id, false)
@@ -1431,7 +1487,7 @@ func EmailBind(c *gin.Context) {
 }
 
 type topUpRequest struct {
-	Key string `json:"key"`
+	Key string `json:"key" binding:"required"`
 }
 
 var topUpLocks sync.Map
@@ -1475,6 +1531,13 @@ func getTopUpLock(userID int) *topUpTryLock {
 	return l
 }
 
+// @Summary  兑换码充值
+// @Tags     用户-充值
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body topUpRequest true "兑换码"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/topup [post]
 func TopUp(c *gin.Context) {
 	if !operation_setting.IsPaymentComplianceConfirmed() {
 		common.ApiErrorI18n(c, i18n.MsgPaymentComplianceRequired)
@@ -1523,6 +1586,13 @@ type UpdateUserSettingRequest struct {
 	RecordIpLog                      bool    `json:"record_ip_log"`
 }
 
+// @Summary  更新用户个人设置
+// @Tags     用户-其它
+// @Security ApiKeyAuth
+// @Produce  json
+// @Param    body body UpdateUserSettingRequest true "用户设置(预警类型/阈值/通知通道)"
+// @Success  200 {object} dto.APIResponse
+// @Router   /user/setting [put]
 func UpdateUserSetting(c *gin.Context) {
 	var req UpdateUserSettingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
