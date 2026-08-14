@@ -1290,7 +1290,7 @@ export function PaymentSettingsSection({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.'
+                          'Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/alipay/notify. Leave blank to use the server address.'
                         )}
                       </FormDescription>
                       <FormMessage />

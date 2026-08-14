@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -35,11 +36,8 @@ func GetAlipayClient() *alipay.Client {
 	var client *alipay.Client
 	var err error
 
-	if setting.AlipaySandboxEnabled {
-		client, err = alipay.New(setting.AlipayAppId, setting.AlipayPrivateKey, false)
-	} else {
-		client, err = alipay.New(setting.AlipayAppId, setting.AlipayPrivateKey, true)
-	}
+	// isProduction 为 false 时 SDK 走沙箱网关
+	client, err = alipay.New(setting.AlipayAppId, setting.AlipayPrivateKey, !setting.AlipaySandboxEnabled)
 
 	if err != nil {
 		logger.LogError(context.Background(), fmt.Sprintf("初始化支付宝客户端失败: %v", err))
@@ -70,11 +68,10 @@ func getAlipayMinTopup() int64 {
 // AlipayNotifyUrl 只存站点根域名（如 https://api.example.com），自动拼接通知路径；
 // 为空时回退到 GetCallbackAddress()（ServerAddress 或 CustomCallbackAddress）。
 func getAlipayNotifyUrl() string {
-	if setting.AlipayNotifyUrl != "" {
-		return setting.AlipayNotifyUrl + "/api/alipay/notify"
+	if base := strings.TrimRight(strings.TrimSpace(setting.AlipayNotifyUrl), "/"); base != "" {
+		return base + "/api/alipay/notify"
 	}
-	callBackAddress := service.GetCallbackAddress()
-	return callBackAddress + "/api/alipay/notify"
+	return strings.TrimRight(service.GetCallbackAddress(), "/") + "/api/alipay/notify"
 }
 
 // RequestAlipayPay handles Alipay payment requests.
@@ -193,7 +190,7 @@ func RequestAlipayAmount(c *gin.Context) {
 		return
 	}
 	payMoney := getPayMoney(req.Amount, group)
-	if payMoney <= 0.01 {
+	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
 	}
@@ -238,6 +235,13 @@ func AlipayNotify(c *gin.Context) {
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("支付宝回调 path=%q client_ip=%s out_trade_no=%s trade_no=%s trade_status=%s", c.Request.RequestURI, c.ClientIP(), outTradeNo, tradeNo, tradeStatus))
 
 	if tradeStatus == "TRADE_SUCCESS" || tradeStatus == "TRADE_FINISHED" {
+		// VerifySign 只能证明是支付宝签名的通知，还要确认属于本应用
+		if appId := c.Request.FormValue("app_id"); appId != setting.AlipayAppId {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("支付宝回调 app_id 不匹配 out_trade_no=%s app_id=%s client_ip=%s", outTradeNo, appId, c.ClientIP()))
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+
 		LockOrder(outTradeNo)
 		defer UnlockOrder(outTradeNo)
 
@@ -250,6 +254,14 @@ func AlipayNotify(c *gin.Context) {
 
 		if topUp.PaymentProvider != model.PaymentProviderAlipay {
 			logger.LogWarn(c.Request.Context(), fmt.Sprintf("支付宝回调订单支付网关不匹配 out_trade_no=%s order_provider=%s client_ip=%s", outTradeNo, topUp.PaymentProvider, c.ClientIP()))
+			_, _ = c.Writer.Write([]byte("fail"))
+			return
+		}
+
+		// 实付金额不得低于订单金额，防止按低金额回调给全额额度
+		paidAmount, parseErr := decimal.NewFromString(c.Request.FormValue("total_amount"))
+		if parseErr != nil || paidAmount.LessThan(decimal.NewFromFloat(topUp.Money)) {
+			logger.LogWarn(c.Request.Context(), fmt.Sprintf("支付宝回调金额不匹配 out_trade_no=%s total_amount=%s order_money=%.2f client_ip=%s", outTradeNo, c.Request.FormValue("total_amount"), topUp.Money, c.ClientIP()))
 			_, _ = c.Writer.Write([]byte("fail"))
 			return
 		}

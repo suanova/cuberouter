@@ -197,7 +197,8 @@ func RechargeAlipay(tradeNo string, callerIp string) (err error) {
 
 		dAmount := decimal.NewFromInt(topUp.Amount)
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quotaToAdd, quotaClamp := common.QuotaFromDecimalChecked(dAmount.Mul(dQuotaPerUnit))
+		var quotaClamp *common.QuotaClamp
+		quotaToAdd, quotaClamp = common.QuotaFromDecimalChecked(dAmount.Mul(dQuotaPerUnit))
 		if quotaClamp != nil {
 			logger.LogWarn(context.Background(), fmt.Sprintf("支付宝充值额度溢出被截断 trade_no=%s user_id=%d clamp=%s", tradeNo, topUp.UserId, quotaClamp.Error()))
 		}
