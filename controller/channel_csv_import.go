@@ -18,7 +18,7 @@ import (
 // @Produce  json
 // @Param    id   path   int    true "渠道 ID"
 // @Param    file formData file   true "UCloud CSV 文件(UTF-8)"
-// @Success  200 {object} dto.APIResponse "data 为 dto.ImportCsvResult 结构化结果"
+// @Success  200 {object} dto.ImportCsvAPIResponse "data 为 dto.ImportCsvResult 结构化结果"
 // @Failure  400 {object} dto.APIResponse "invalid channel id / no_file / bad_header / invalid_csv_row / too_many_rows / bad_encoding / channel_not_found"
 // @Failure  413 {object} dto.APIResponse "file_too_large"
 // @Failure  500 {object} dto.APIResponse

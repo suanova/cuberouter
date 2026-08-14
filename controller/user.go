@@ -1487,7 +1487,7 @@ func EmailBind(c *gin.Context) {
 }
 
 type topUpRequest struct {
-	Key string `json:"key"`
+	Key string `json:"key" binding:"required"`
 }
 
 var topUpLocks sync.Map

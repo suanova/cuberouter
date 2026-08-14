@@ -106,6 +106,8 @@ definitions:
     properties:
       key:
         type: string
+    required:
+    - key
     type: object
   dto.APIResponse:
     properties:
@@ -114,6 +116,74 @@ definitions:
         type: string
       success:
         type: boolean
+    type: object
+  dto.ImportCsvAPIResponse:
+    properties:
+      data:
+        $ref: '#/definitions/dto.ImportCsvResult'
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  dto.ImportCsvResult:
+    properties:
+      channel_id:
+        type: integer
+      channel_update_failed:
+        type: boolean
+      completion_ratio_skipped:
+        type: integer
+      errors:
+        items:
+          $ref: '#/definitions/dto.ImportError'
+        type: array
+      intro_updated:
+        type: integer
+      models_failed:
+        type: integer
+      models_imported:
+        type: integer
+      models_in_csv:
+        type: integer
+      models_recognized:
+        type: integer
+      models_skipped:
+        type: integer
+      models_skipped_no_input:
+        type: integer
+      models_skipped_non_token:
+        type: integer
+      persisted_ratio_models:
+        items:
+          type: string
+        type: array
+      price_skipped:
+        type: integer
+      price_updated:
+        type: integer
+      ratio_persisted:
+        items:
+          type: string
+        type: array
+      warnings:
+        items:
+          $ref: '#/definitions/dto.ImportWarning'
+        type: array
+    type: object
+  dto.ImportError:
+    properties:
+      model:
+        type: string
+      reason:
+        type: string
+    type: object
+  dto.ImportWarning:
+    properties:
+      model:
+        type: string
+      reason:
+        type: string
     type: object
   gorm.DeletedAt:
     properties:
@@ -237,7 +307,7 @@ paths:
         "200":
           description: data 为 dto.ImportCsvResult 结构化结果
           schema:
-            $ref: '#/definitions/dto.APIResponse'
+            $ref: '#/definitions/dto.ImportCsvAPIResponse'
         "400":
           description: invalid channel id / no_file / bad_header / invalid_csv_row
             / too_many_rows / bad_encoding / channel_not_found

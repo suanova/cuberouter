@@ -12,6 +12,15 @@ type ImportWarning struct {
 	Reason string `json:"reason"`
 }
 
+// ImportCsvAPIResponse 是 CSV 导入接口的 200 响应信封。
+// dto.APIResponse.data 为 interface{},生成的 spec 无法表达结构化结果;
+// 此处显式引用 ImportCsvResult,使客户端可以发现并校验 data 的完整 schema。
+type ImportCsvAPIResponse struct {
+	Success bool            `json:"success"`
+	Message string          `json:"message"`
+	Data    ImportCsvResult `json:"data"`
+}
+
 // ImportCsvResult 汇总一次 CSV 渠道-模型导入的结构化结果。
 type ImportCsvResult struct {
 	ChannelID              int             `json:"channel_id"`
