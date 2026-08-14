@@ -13,5 +13,5 @@ pull_request_rules:
       - base = main
       - "#approved-reviews-by >= 1"
     actions:
-      - queue:
-          name: default
+      queue:
+        name: default
