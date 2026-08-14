@@ -3091,7 +3091,7 @@
     "Only configured combinations are overridden. All other calls keep the token group base ratio.": "只有已設定的組合會被覆蓋，其他呼叫仍使用令牌分組的基礎倍率。",
     "Only enabled parameters are sent with the request.": "只有啟用的參數會隨請求傳送。",
     "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.": "只填寫站點根域名，例如 https://api.example.com。不要填寫 /api/user/epay/notify 這類路徑。留空則使用伺服器地址。",
-    "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/alipay/notify. Leave blank to use the server address.": "只填寫站點根網域，例如 https://api.example.com。不要填寫 /api/alipay/notify 這類路徑。留空則使用伺服器位址。",
+    "Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/alipay/notify. Leave blank to use the server address.": "只填寫站點根域名，例如 https://api.example.com。不要填寫 /api/alipay/notify 這類路徑。留空則使用伺服器地址。",
     "Only Mine": "僅自己",
     "Only one catch-all route is allowed for the same incoming path": "同一入口路徑只允許一個兜底路由",
     "Only one OpenAI Models route is allowed": "僅允許設定一條 OpenAI 模型路由",
