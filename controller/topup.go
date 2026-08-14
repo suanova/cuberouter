@@ -28,8 +28,42 @@ import (
 // @Success  200 {object} dto.APIResponse
 // @Router   /user/topup/info [get]
 func GetTopUpInfo(c *gin.Context) {
-	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	// 获取支付方式：只保留对应网关已启用的方式（stripe/waffo_pancake/alipay_official 由各自
+	// 网关判定，其余为 EPay 透传类型，仅在 EPay 已配置时展示）
+	payMethods := lo.Filter(operation_setting.PayMethods, func(method map[string]string, _ int) bool {
+		switch method["type"] {
+		case "stripe":
+			return isStripeTopUpEnabled()
+		case model.PaymentMethodWaffoPancake:
+			return isWaffoPancakeTopUpEnabled()
+		case model.PaymentMethodAlipay:
+			return isAlipayTopUpEnabled()
+		case model.PaymentMethodWaffo:
+			return isWaffoTopUpEnabled()
+		default:
+			return isEpayWebhookConfigured()
+		}
+	})
+
+	// 如果启用了支付宝官方支付，置为支付方式列表第一位（默认支付方式）
+	if isAlipayTopUpEnabled() {
+		hasAlipayOfficial := false
+		for _, method := range payMethods {
+			if method["type"] == model.PaymentMethodAlipay {
+				hasAlipayOfficial = true
+				break
+			}
+		}
+
+		if !hasAlipayOfficial {
+			payMethods = append([]map[string]string{{
+				"name":      "Alipay",
+				"type":      model.PaymentMethodAlipay,
+				"color":     "#1677ff",
+				"min_topup": strconv.Itoa(setting.AlipayMinTopUp),
+			}}, payMethods...)
+		}
+	}
 
 	// 如果启用了 Stripe 支付，添加到支付方法列表
 	if isStripeTopUpEnabled() {
@@ -97,11 +131,13 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	data := gin.H{
-		"enable_online_topup":              isEpayTopUpEnabled(),
-		"enable_stripe_topup":              isStripeTopUpEnabled(),
-		"enable_creem_topup":               isCreemTopUpEnabled(),
-		"enable_waffo_topup":               enableWaffo,
-		"enable_waffo_pancake_topup":       enableWaffoPancake,
+		"enable_online_topup":        isEpayTopUpEnabled(),
+		"enable_stripe_topup":        isStripeTopUpEnabled(),
+		"enable_alipay_topup":        isAlipayTopUpEnabled(),
+		"alipay_min_topup":           setting.AlipayMinTopUp,
+		"enable_creem_topup":         isCreemTopUpEnabled(),
+		"enable_waffo_topup":         enableWaffo,
+		"enable_waffo_pancake_topup": enableWaffoPancake,
 		"waffo_pay_methods": func() interface{} {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()

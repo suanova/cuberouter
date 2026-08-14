@@ -99,6 +99,7 @@ export function getPaymentIcon(
 
   switch (paymentType) {
     case PAYMENT_TYPES.ALIPAY:
+    case PAYMENT_TYPES.ALIPAY_OFFICIAL:
       return (
         <SiAlipay
           className={className}
