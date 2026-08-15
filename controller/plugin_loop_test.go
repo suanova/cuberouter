@@ -308,3 +308,67 @@ func TestNewPluginCompletionID(t *testing.T) {
 	assert.True(t, strings.HasPrefix(fallback, "chatcmpl-plugin-"))
 	assert.NotEqual(t, "chatcmpl-plugin-", fallback)
 }
+
+// Process hints: the loop must emit an interim event for the round's visible
+// assistant text and a tool_call event (slug, tool, args, duration) for each
+// executed MCP tool, so the playground can stream them live.
+func TestRunPluginLoopEmitsProcessEvents(t *testing.T) {
+	c := newLoopTestContext()
+	rounds := 0
+	stubRelayRound(t, func(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int, group string) (*dto.OpenAITextResponse, *types.NewAPIError) {
+		rounds++
+		if rounds == 1 {
+			resp := toolCallsResponse(5)
+			resp.Choices[0].Message.SetStringContent("Let me search for that.")
+			return resp, nil
+		}
+		return textResponse("found it"), nil
+	})
+
+	var events []PluginLoopEvent
+	final, relayErr := runPluginLoop(c, loopRequest(), loopPlugins(), func(ev PluginLoopEvent) {
+		events = append(events, ev)
+	})
+	require.Nil(t, relayErr)
+	require.NotNil(t, final)
+	assert.Equal(t, "found it", final.Choices[0].Message.StringContent())
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "interim", events[0].Type)
+	assert.Equal(t, "Let me search for that.", events[0].Text)
+
+	assert.Equal(t, "tool_call", events[1].Type)
+	assert.Equal(t, "search", events[1].Plugin)
+	assert.Equal(t, "web", events[1].Tool)
+	assert.GreaterOrEqual(t, events[1].DurationMs, int64(0))
+}
+
+// playgroundWithPlugins must stream plugin process events live as SSE chunks
+// (with text/event-stream headers) followed by the final answer and [DONE].
+func TestPlaygroundWithPluginsStreamsProcessEventsAndAnswer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", nil)
+	c.Set("id", 1)
+	rounds := 0
+	stubRelayRound(t, func(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int, group string) (*dto.OpenAITextResponse, *types.NewAPIError) {
+		rounds++
+		if rounds == 1 {
+			resp := toolCallsResponse(5)
+			resp.Choices[0].Message.SetStringContent("Let me search for that.")
+			return resp, nil
+		}
+		return textResponse("answer text"), nil
+	})
+
+	playgroundWithPlugins(c, loopRequest(), loopPlugins())
+
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+	body := w.Body.String()
+	assert.Contains(t, body, `"plugin_event"`)
+	assert.Contains(t, body, `"type":"interim"`)
+	assert.Contains(t, body, `"type":"tool_call"`)
+	assert.Contains(t, body, `"content":"answer text"`)
+	assert.True(t, strings.HasSuffix(body, "data: [DONE]\n\n"))
+}

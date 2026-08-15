@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { t } from 'i18next'
+import { nanoid } from 'nanoid'
 
 import { ERROR_MESSAGES, MESSAGE_ROLES, MESSAGE_STATUS } from '../../constants'
-import type { ChatCompletionResponse, Message } from '../../types'
+import type { ChatCompletionResponse, Message, PluginEvent } from '../../types'
 import { parseThinkTags } from './message-reasoning-utils'
 import {
   completeAssistantTiming,
@@ -153,6 +154,23 @@ export function completeAssistantMessage(message: Message): Message {
     ...finalizeMessage(message),
     status: MESSAGE_STATUS.COMPLETE,
   })
+}
+
+// Append a plugin process event (interim text or completed tool call) to the
+// message. Events arrive live during the request and stay persisted with the
+// message in the conversation history.
+export function appendPluginEvent(
+  message: Message,
+  event: PluginEvent
+): Message {
+  if (message.status === MESSAGE_STATUS.ERROR) {
+    return message
+  }
+
+  return {
+    ...message,
+    pluginEvents: [...(message.pluginEvents ?? []), { ...event, id: nanoid() }],
+  }
 }
 
 export function isAssistantMessageFinal(message: Message): boolean {

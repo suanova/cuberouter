@@ -22,7 +22,7 @@ import type { ChatCompletionChunk } from '../../types'
 const STREAM_DONE_MESSAGE = '[DONE]'
 const STREAM_CLOSED_READY_STATE = 2
 
-export type StreamUpdateType = 'reasoning' | 'content'
+export type StreamUpdateType = 'reasoning' | 'content' | 'plugin_event'
 
 export type StreamMessageUpdate = {
   type: StreamUpdateType
@@ -80,6 +80,10 @@ export function parseStreamMessageUpdates(data: string): StreamMessageUpdate[] {
 
   if (delta.content) {
     updates.push({ type: 'content', chunk: delta.content })
+  }
+
+  if (delta.plugin_event) {
+    updates.push({ type: 'plugin_event', chunk: JSON.stringify(delta.plugin_event) })
   }
 
   return updates

@@ -174,8 +174,10 @@ describe('latest-wins stream request coordination', () => {
       setStreaming: () => undefined,
     })
     const callbacks = {
-      onUpdate: (_type: 'reasoning' | 'content', chunk: string) =>
-        updates.push(chunk),
+      onUpdate: (
+        _type: 'reasoning' | 'content' | 'plugin_event',
+        chunk: string
+      ) => updates.push(chunk),
       onComplete: () => undefined,
       onError: () => undefined,
     }
