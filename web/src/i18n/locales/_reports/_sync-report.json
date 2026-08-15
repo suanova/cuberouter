@@ -11,13 +11,13 @@
       "file": "zh-TW.json",
       "missingCount": 0,
       "extrasCount": 0,
-      "untranslatedCount": 49
+      "untranslatedCount": 3
     },
     "zh": {
       "file": "zh.json",
       "missingCount": 0,
       "extrasCount": 0,
-      "untranslatedCount": 48
+      "untranslatedCount": 3
     }
   }
 }

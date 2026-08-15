@@ -22,7 +22,6 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { z } from 'zod'
 
 import {
   sideDrawerContentClassName,
@@ -55,39 +54,12 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import { createPlugin, testPluginConnection, updatePlugin } from '../api'
+import {
+  getPluginFormSchema,
+  PLUGIN_FORM_DEFAULT_VALUES,
+  type PluginFormValues,
+} from '../lib/plugin-form'
 import type { Plugin } from '../types'
-
-const PLUGIN_SLUG_REGEX = /^[a-z0-9][a-z0-9-]{1,63}$/
-
-const pluginFormSchema = z.object({
-  name: z.string().trim().min(1, 'Name is required'),
-  slug: z
-    .string()
-    .trim()
-    .regex(
-      PLUGIN_SLUG_REGEX,
-      'Lowercase letters, digits and dashes, 2-64 chars, must not start with a dash'
-    ),
-  description: z.string(),
-  mcp_url: z.string().trim().min(1, 'MCP URL is required'),
-  auth_header: z.string(),
-  auth_token: z.string(),
-  skill_source: z.string(),
-  enabled: z.boolean(),
-})
-
-type PluginFormValues = z.infer<typeof pluginFormSchema>
-
-const PLUGIN_FORM_DEFAULT_VALUES: PluginFormValues = {
-  name: '',
-  slug: '',
-  description: '',
-  mcp_url: '',
-  auth_header: '',
-  auth_token: '',
-  skill_source: '',
-  enabled: true,
-}
 
 type PluginMutateDrawerProps = {
   open: boolean
@@ -107,8 +79,10 @@ export function PluginMutateDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
 
+  const schema = getPluginFormSchema(t)
+
   const form = useForm<PluginFormValues>({
-    resolver: zodResolver(pluginFormSchema),
+    resolver: zodResolver(schema),
     defaultValues: PLUGIN_FORM_DEFAULT_VALUES,
   })
 
