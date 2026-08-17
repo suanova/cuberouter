@@ -40,6 +40,11 @@ jobs:
 
       - name: Create KinD cluster
         uses: helm/kind-action@v1.12.0
+        with:
+          # helm/kind-action defaults to cluster_name "chart-testing"; the
+          # downstream `kind load docker-image` call targets the default
+          # "kind" cluster, so match the names.
+          cluster_name: kind
 
       - name: Load image into KinD
         run: kind load docker-image cuberouter:e2e
