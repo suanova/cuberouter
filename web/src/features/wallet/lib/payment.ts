@@ -76,6 +76,17 @@ export function isStripePayment(paymentType: string): boolean {
 }
 
 /**
+ * Check if payment method is the official Alipay gateway
+ *
+ * Distinct from PAYMENT_TYPES.ALIPAY ('alipay'), which is the Epay passthrough
+ * type. Official Alipay returns a pay_url to open in a new tab instead of a
+ * form post.
+ */
+export function isAlipayPayment(paymentType: string): boolean {
+  return paymentType === PAYMENT_TYPES.ALIPAY_OFFICIAL
+}
+
+/**
  * Check if payment method is Waffo
  */
 export function isWaffoPayment(paymentType: string): boolean {
@@ -157,6 +168,10 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
 
   if (topupInfo.enable_online_topup) {
     return topupInfo.min_topup
+  }
+
+  if (topupInfo.enable_alipay_topup) {
+    return topupInfo.alipay_min_topup || DEFAULT_MIN_TOPUP
   }
 
   if (topupInfo.enable_stripe_topup) {
