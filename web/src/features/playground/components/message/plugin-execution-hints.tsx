@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { formatDuration } from '../../lib'
 import type { PluginEvent } from '../../types'
 
 type PluginExecutionHintsProps = {
@@ -26,18 +28,15 @@ type PluginExecutionHintsProps = {
 }
 
 // Renders plugin process hints (interim assistant text, completed MCP tool
-// calls) as muted lines above the final answer.
+// calls) as muted lines above the final answer. The "Used skill" label shows
+// once per plugin, on its first tool call; later calls of the same plugin stay
+// terse.
 export function PluginExecutionHints({
   events,
   pluginNameBySlug,
-}: PluginExecutionHintsProps) {
+}: PluginExecutionHintsProps): ReactNode {
   const { t } = useTranslation()
-  const firstToolPluginSlugs = new Set<string>()
-  for (const event of events) {
-    if (event.type === 'tool_call' && !firstToolPluginSlugs.has(event.plugin)) {
-      firstToolPluginSlugs.add(event.plugin)
-    }
-  }
+  const renderedToolPluginSlugs = new Set<string>()
 
   return (
     <div className='text-muted-foreground mb-1 space-y-1 text-xs'>
@@ -50,7 +49,8 @@ export function PluginExecutionHints({
           )
         }
         const name = pluginNameBySlug?.[event.plugin] ?? event.plugin
-        const showSkill = firstToolPluginSlugs.has(event.plugin)
+        const showSkill = !renderedToolPluginSlugs.has(event.plugin)
+        renderedToolPluginSlugs.add(event.plugin)
 
         return (
           <div className='flex items-baseline gap-1.5' key={event.id}>
@@ -64,6 +64,14 @@ export function PluginExecutionHints({
               <code className='text-muted-foreground/60 max-w-[240px] truncate font-mono'>
                 {event.args}
               </code>
+            )}
+            {event.durationMs !== undefined && (
+              <span className='text-muted-foreground/60'>
+                ·{' '}
+                {t('Took {{duration}}', {
+                  duration: formatDuration(event.durationMs, t),
+                })}
+              </span>
             )}
           </div>
         )

@@ -19,7 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
-import { parseStreamMessageUpdates } from './stream-utils'
+import {
+  parsePluginEventPayload,
+  parseStreamMessageUpdates,
+} from './stream-utils'
 
 function chunkWith(delta: Record<string, unknown>): string {
   return JSON.stringify({ choices: [{ index: 0, delta }] })
@@ -65,6 +68,96 @@ describe('parseStreamMessageUpdates', () => {
 
   test('returns no updates for chunks without a delta', () => {
     assert.deepEqual(parseStreamMessageUpdates(JSON.stringify({})), [])
-    assert.deepEqual(parseStreamMessageUpdates(JSON.stringify({ choices: [] })), [])
+    assert.deepEqual(
+      parseStreamMessageUpdates(JSON.stringify({ choices: [] })),
+      []
+    )
+  })
+})
+
+describe('parsePluginEventPayload', () => {
+  test('accepts a valid interim event', () => {
+    assert.deepEqual(
+      parsePluginEventPayload({ type: 'interim', text: 'searching' }),
+      {
+        type: 'interim',
+        text: 'searching',
+      }
+    )
+  })
+
+  test('accepts a valid tool_call event with optional fields', () => {
+    assert.deepEqual(
+      parsePluginEventPayload({
+        type: 'tool_call',
+        plugin: 'search',
+        tool: 'web',
+        args: '{"query":"x"}',
+        durationMs: 3200,
+      }),
+      {
+        type: 'tool_call',
+        plugin: 'search',
+        tool: 'web',
+        args: '{"query":"x"}',
+        durationMs: 3200,
+      }
+    )
+  })
+
+  test('keeps a zero durationMs instead of dropping it', () => {
+    const event = parsePluginEventPayload({
+      type: 'tool_call',
+      plugin: 'search',
+      tool: 'web',
+      durationMs: 0,
+    })
+    assert.deepEqual(event, {
+      type: 'tool_call',
+      plugin: 'search',
+      tool: 'web',
+      durationMs: 0,
+    })
+  })
+
+  test('rejects payloads that are not objects or lack a valid type', () => {
+    assert.equal(parsePluginEventPayload(null), null)
+    assert.equal(parsePluginEventPayload('tool_call'), null)
+    assert.equal(parsePluginEventPayload({ type: 'unknown' }), null)
+    assert.equal(parsePluginEventPayload({}), null)
+  })
+
+  test('rejects variants missing required fields', () => {
+    assert.equal(parsePluginEventPayload({ type: 'interim' }), null)
+    assert.equal(parsePluginEventPayload({ type: 'interim', text: 42 }), null)
+    assert.equal(
+      parsePluginEventPayload({ type: 'tool_call', tool: 'web' }),
+      null
+    )
+    assert.equal(
+      parsePluginEventPayload({ type: 'tool_call', plugin: 'search' }),
+      null
+    )
+  })
+
+  test('drops malformed optional fields', () => {
+    assert.deepEqual(
+      parsePluginEventPayload({
+        type: 'tool_call',
+        plugin: 'search',
+        tool: 'web',
+        args: 7,
+      }),
+      { type: 'tool_call', plugin: 'search', tool: 'web' }
+    )
+    assert.deepEqual(
+      parsePluginEventPayload({
+        type: 'tool_call',
+        plugin: 'search',
+        tool: 'web',
+        durationMs: 'fast',
+      }),
+      { type: 'tool_call', plugin: 'search', tool: 'web' }
+    )
   })
 })

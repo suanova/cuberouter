@@ -55,7 +55,11 @@ import { PluginExecutionHints } from './plugin-execution-hints'
 
 // Live elapsed-time label shown while a plugin request is in flight, so the
 // user knows MCP data fetching is progressing rather than hung.
-function PluginExecutionTimer({ startedAt }: { startedAt?: number }) {
+function PluginExecutionTimer({
+  startedAt,
+}: {
+  startedAt?: number
+}): ReactNode {
   const { t } = useTranslation()
   const [seconds, setSeconds] = useState(0)
 

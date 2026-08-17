@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Loader2, PlugZap } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -79,7 +79,7 @@ export function PluginMutateDrawer({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
 
-  const schema = getPluginFormSchema(t)
+  const schema = useMemo(() => getPluginFormSchema(t), [t])
 
   const form = useForm<PluginFormValues>({
     resolver: zodResolver(schema),
@@ -201,10 +201,7 @@ export function PluginMutateDrawer({
                   <FormItem>
                     <FormLabel>{t('Name *')}</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder={t('e.g. GitHub Tools')}
-                        {...field}
-                      />
+                      <Input placeholder={t('e.g. GitHub Tools')} {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -309,10 +306,7 @@ export function PluginMutateDrawer({
                 <FormItem>
                   <FormLabel>{t('Auth Header')}</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder={t('e.g. X-Auth-Token')}
-                      {...field}
-                    />
+                    <Input placeholder={t('e.g. X-Auth-Token')} {...field} />
                   </FormControl>
                   <FormDescription>
                     {t(
@@ -354,7 +348,9 @@ export function PluginMutateDrawer({
                   <div className='flex flex-col gap-0.5'>
                     <FormLabel>{t('Enabled')}</FormLabel>
                     <FormDescription className='text-xs'>
-                      {t('Only enabled plugins are available in the playground')}
+                      {t(
+                        'Only enabled plugins are available in the playground'
+                      )}
                     </FormDescription>
                   </div>
                   <FormControl>

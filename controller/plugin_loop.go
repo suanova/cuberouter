@@ -36,12 +36,12 @@ const (
 // loop runs: interim assistant text from a round, or a completed MCP tool
 // call. The playground renders these as muted lines above the final answer.
 type PluginLoopEvent struct {
-	Type       string `json:"type"`                 // "interim" | "tool_call"
-	Plugin     string `json:"plugin,omitempty"`     // plugin slug (tool_call only)
-	Tool       string `json:"tool,omitempty"`       // tool name (tool_call only)
-	Args       string `json:"args,omitempty"`       // raw tool arguments (tool_call only)
-	DurationMs int64  `json:"durationMs,omitempty"` // tool execution duration (tool_call only)
-	Text       string `json:"text,omitempty"`       // interim assistant text (interim only)
+	Type       string `json:"type"`             // "interim" | "tool_call"
+	Plugin     string `json:"plugin,omitempty"` // plugin slug (tool_call only)
+	Tool       string `json:"tool,omitempty"`   // tool name (tool_call only)
+	Args       string `json:"args,omitempty"`   // raw tool arguments (tool_call only)
+	DurationMs int64  `json:"durationMs"`       // tool execution duration (tool_call only); always present so the UI can render 0
+	Text       string `json:"text,omitempty"`   // interim assistant text (interim only)
 }
 
 // relayRound performs one non-streaming relay round; a variable so tests can

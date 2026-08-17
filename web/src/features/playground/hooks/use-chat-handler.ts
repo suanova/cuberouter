@@ -28,6 +28,7 @@ import {
   buildChatCompletionPayload,
   updateAssistantMessageWithError,
   updateLastAssistantMessage,
+  parsePluginEventPayload,
   parseRequestErrorDetails,
   applyChatCompletionResponse,
   completeAssistantMessage,
@@ -35,12 +36,7 @@ import {
   isAssistantMessageFinal,
   isAssistantMessagePending,
 } from '../lib'
-import type {
-  Message,
-  PlaygroundConfig,
-  ParameterEnabled,
-  PluginEvent,
-} from '../types'
+import type { Message, PlaygroundConfig, ParameterEnabled } from '../types'
 import { useStreamRequest } from './use-stream-request'
 
 interface UseChatHandlerOptions {
@@ -205,11 +201,16 @@ export function useChatHandler({
       if (type === 'plugin_event') {
         // Plugin process events are low-frequency and must render as soon as
         // they arrive (each MCP call can take seconds), so they bypass the
-        // content flush batching.
-        let event: PluginEvent
+        // content flush batching. Malformed payloads are dropped rather than
+        // persisted as broken hints.
+        let payload: unknown
         try {
-          event = JSON.parse(chunk) as PluginEvent
+          payload = JSON.parse(chunk)
         } catch {
+          return
+        }
+        const event = parsePluginEventPayload(payload)
+        if (!event) {
           return
         }
         flushStreamUpdates(generation)

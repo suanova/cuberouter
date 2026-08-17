@@ -92,7 +92,7 @@ func TestInjectPluginToolsNamespaced(t *testing.T) {
 func toolCallsResponse(promptTokens int) *dto.OpenAITextResponse {
 	msg := dto.Message{Role: "assistant"}
 	msg.SetNullContent()
-	msg.SetToolCalls([]dto.ToolCallRequest{{ID: "call_1", Function: dto.FunctionRequest{Name: "search__web"}}})
+	msg.SetToolCalls([]dto.ToolCallRequest{{ID: "call_1", Function: dto.FunctionRequest{Name: "search__web", Arguments: `{"query":"example"}`}}})
 	resp := &dto.OpenAITextResponse{
 		Choices: []dto.OpenAITextResponseChoice{{
 			Message:      msg,
@@ -340,6 +340,7 @@ func TestRunPluginLoopEmitsProcessEvents(t *testing.T) {
 	assert.Equal(t, "tool_call", events[1].Type)
 	assert.Equal(t, "search", events[1].Plugin)
 	assert.Equal(t, "web", events[1].Tool)
+	assert.Equal(t, `{"query":"example"}`, events[1].Args)
 	assert.GreaterOrEqual(t, events[1].DurationMs, int64(0))
 }
 
@@ -371,4 +372,40 @@ func TestPlaygroundWithPluginsStreamsProcessEventsAndAnswer(t *testing.T) {
 	assert.Contains(t, body, `"type":"tool_call"`)
 	assert.Contains(t, body, `"content":"answer text"`)
 	assert.True(t, strings.HasSuffix(body, "data: [DONE]\n\n"))
+
+	// The tool_call event must always carry durationMs on the wire, including
+	// when the tool finished in under a millisecond (omitempty would drop it).
+	var toolEvent map[string]any
+	found := false
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					PluginEvent json.RawMessage `json:"plugin_event"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 || len(chunk.Choices[0].Delta.PluginEvent) == 0 {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal(chunk.Choices[0].Delta.PluginEvent, &ev); err != nil {
+			continue
+		}
+		if ev["type"] != "tool_call" {
+			continue
+		}
+		toolEvent = ev
+		found = true
+	}
+	require.True(t, found, "stream must contain a tool_call plugin event")
+	durationMs, ok := toolEvent["durationMs"].(float64)
+	require.True(t, ok, "tool_call event must carry a numeric durationMs")
+	assert.GreaterOrEqual(t, durationMs, float64(0))
 }
