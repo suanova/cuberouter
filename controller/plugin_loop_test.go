@@ -92,7 +92,7 @@ func TestInjectPluginToolsNamespaced(t *testing.T) {
 func toolCallsResponse(promptTokens int) *dto.OpenAITextResponse {
 	msg := dto.Message{Role: "assistant"}
 	msg.SetNullContent()
-	msg.SetToolCalls([]dto.ToolCallRequest{{ID: "call_1", Function: dto.FunctionRequest{Name: "search__web"}}})
+	msg.SetToolCalls([]dto.ToolCallRequest{{ID: "call_1", Function: dto.FunctionRequest{Name: "search__web", Arguments: `{"query":"example"}`}}})
 	resp := &dto.OpenAITextResponse{
 		Choices: []dto.OpenAITextResponseChoice{{
 			Message:      msg,
@@ -307,4 +307,105 @@ func TestNewPluginCompletionID(t *testing.T) {
 	fallback := newPluginCompletionID(c2)
 	assert.True(t, strings.HasPrefix(fallback, "chatcmpl-plugin-"))
 	assert.NotEqual(t, "chatcmpl-plugin-", fallback)
+}
+
+// Process hints: the loop must emit an interim event for the round's visible
+// assistant text and a tool_call event (slug, tool, args, duration) for each
+// executed MCP tool, so the playground can stream them live.
+func TestRunPluginLoopEmitsProcessEvents(t *testing.T) {
+	c := newLoopTestContext()
+	rounds := 0
+	stubRelayRound(t, func(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int, group string) (*dto.OpenAITextResponse, *types.NewAPIError) {
+		rounds++
+		if rounds == 1 {
+			resp := toolCallsResponse(5)
+			resp.Choices[0].Message.SetStringContent("Let me search for that.")
+			return resp, nil
+		}
+		return textResponse("found it"), nil
+	})
+
+	var events []PluginLoopEvent
+	final, relayErr := runPluginLoop(c, loopRequest(), loopPlugins(), func(ev PluginLoopEvent) {
+		events = append(events, ev)
+	})
+	require.Nil(t, relayErr)
+	require.NotNil(t, final)
+	assert.Equal(t, "found it", final.Choices[0].Message.StringContent())
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "interim", events[0].Type)
+	assert.Equal(t, "Let me search for that.", events[0].Text)
+
+	assert.Equal(t, "tool_call", events[1].Type)
+	assert.Equal(t, "search", events[1].Plugin)
+	assert.Equal(t, "web", events[1].Tool)
+	assert.Equal(t, `{"query":"example"}`, events[1].Args)
+	assert.GreaterOrEqual(t, events[1].DurationMs, int64(0))
+}
+
+// playgroundWithPlugins must stream plugin process events live as SSE chunks
+// (with text/event-stream headers) followed by the final answer and [DONE].
+func TestPlaygroundWithPluginsStreamsProcessEventsAndAnswer(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", nil)
+	c.Set("id", 1)
+	rounds := 0
+	stubRelayRound(t, func(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int, group string) (*dto.OpenAITextResponse, *types.NewAPIError) {
+		rounds++
+		if rounds == 1 {
+			resp := toolCallsResponse(5)
+			resp.Choices[0].Message.SetStringContent("Let me search for that.")
+			return resp, nil
+		}
+		return textResponse("answer text"), nil
+	})
+
+	playgroundWithPlugins(c, loopRequest(), loopPlugins())
+
+	assert.Equal(t, "text/event-stream", w.Header().Get("Content-Type"))
+	body := w.Body.String()
+	assert.Contains(t, body, `"plugin_event"`)
+	assert.Contains(t, body, `"type":"interim"`)
+	assert.Contains(t, body, `"type":"tool_call"`)
+	assert.Contains(t, body, `"content":"answer text"`)
+	assert.True(t, strings.HasSuffix(body, "data: [DONE]\n\n"))
+
+	// The tool_call event must always carry durationMs on the wire, including
+	// when the tool finished in under a millisecond (omitempty would drop it).
+	var toolEvent map[string]any
+	found := false
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "data: ") || line == "data: [DONE]" {
+			continue
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					PluginEvent json.RawMessage `json:"plugin_event"`
+				} `json:"delta"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &chunk); err != nil {
+			continue
+		}
+		if len(chunk.Choices) == 0 || len(chunk.Choices[0].Delta.PluginEvent) == 0 {
+			continue
+		}
+		var ev map[string]any
+		if err := json.Unmarshal(chunk.Choices[0].Delta.PluginEvent, &ev); err != nil {
+			continue
+		}
+		if ev["type"] != "tool_call" {
+			continue
+		}
+		toolEvent = ev
+		found = true
+	}
+	require.True(t, found, "stream must contain a tool_call plugin event")
+	durationMs, ok := toolEvent["durationMs"].(float64)
+	require.True(t, ok, "tool_call event must carry a numeric durationMs")
+	assert.GreaterOrEqual(t, durationMs, float64(0))
 }

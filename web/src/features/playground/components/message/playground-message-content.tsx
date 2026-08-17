@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -51,6 +51,33 @@ import { getMessageContentStyles } from '../../lib/message/message-styles'
 import type { Message } from '../../types'
 import { MessageError } from './message-error'
 import { MessageMetadata } from './message-metadata'
+import { PluginExecutionHints } from './plugin-execution-hints'
+
+// Live elapsed-time label shown while a plugin request is in flight, so the
+// user knows MCP data fetching is progressing rather than hung.
+function PluginExecutionTimer({
+  startedAt,
+}: {
+  startedAt?: number
+}): ReactNode {
+  const { t } = useTranslation()
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    if (startedAt === undefined) return
+    const update = () =>
+      setSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)))
+    update()
+    const intervalId = window.setInterval(update, 1000)
+    return () => window.clearInterval(intervalId)
+  }, [startedAt])
+
+  return (
+    <span className='text-muted-foreground text-xs'>
+      {t('Executing {{seconds}}s', { seconds })}
+    </span>
+  )
+}
 
 type PlaygroundMessageContentProps = {
   actions: ReactNode
@@ -59,6 +86,8 @@ type PlaygroundMessageContentProps = {
   isSourceVisible?: boolean
   message: Message
   pendingLabel?: string
+  pluginNameBySlug?: Record<string, string>
+  pluginSlug?: string
   versionContent: string
 }
 
@@ -69,6 +98,8 @@ export function PlaygroundMessageContent({
   isSourceVisible = false,
   message,
   pendingLabel,
+  pluginNameBySlug,
+  pluginSlug,
   versionContent,
 }: PlaygroundMessageContentProps) {
   const { t } = useTranslation()
@@ -125,7 +156,15 @@ export function PlaygroundMessageContent({
           <Shimmer className='text-sm' duration={1}>
             {pendingLabel ?? t('Responding...')}
           </Shimmer>
+          {pluginSlug && <PluginExecutionTimer startedAt={message.startedAt} />}
         </div>
+      )}
+
+      {message.pluginEvents && message.pluginEvents.length > 0 && (
+        <PluginExecutionHints
+          events={message.pluginEvents}
+          pluginNameBySlug={pluginNameBySlug}
+        />
       )}
 
       {isError && (

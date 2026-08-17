@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -30,6 +31,18 @@ const (
 	// message list when the loop cap is reached.
 	toolRoundLimitNote = "tool round limit reached"
 )
+
+// PluginLoopEvent is a process hint streamed to the browser while the plugin
+// loop runs: interim assistant text from a round, or a completed MCP tool
+// call. The playground renders these as muted lines above the final answer.
+type PluginLoopEvent struct {
+	Type       string `json:"type"`             // "interim" | "tool_call"
+	Plugin     string `json:"plugin,omitempty"` // plugin slug (tool_call only)
+	Tool       string `json:"tool,omitempty"`   // tool name (tool_call only)
+	Args       string `json:"args,omitempty"`   // raw tool arguments (tool_call only)
+	DurationMs int64  `json:"durationMs"`       // tool execution duration (tool_call only); always present so the UI can render 0
+	Text       string `json:"text,omitempty"`   // interim assistant text (interim only)
+}
 
 // relayRound performs one non-streaming relay round; a variable so tests can
 // stub the full Relay pipeline.
@@ -130,8 +143,11 @@ func lastUserMessageText(req *dto.GeneralOpenAIRequest) string {
 	return ""
 }
 
-// playgroundWithPlugins injects skills + tools, runs the loop, then streams
-// the final answer as a standard SSE stream so the frontend needs no changes.
+// playgroundWithPlugins injects skills + tools, runs the loop, and streams
+// plugin process events (interim text, tool calls) live as SSE chunks, then
+// the final answer. SSE headers are only written on the first event or the
+// final content, so failures before any event keep the JSON error response
+// the playground already understands.
 func playgroundWithPlugins(c *gin.Context, req *dto.GeneralOpenAIRequest, plugins []*model.Plugin) {
 	for _, p := range plugins {
 		InjectPluginSkill(req, p)
@@ -149,18 +165,60 @@ func playgroundWithPlugins(c *gin.Context, req *dto.GeneralOpenAIRequest, plugin
 	}
 	common.SetContextKey(c, constant.ContextKeyPluginSlugs, strings.Join(slugs, ","))
 
-	finalResp, relayErr := runPluginLoop(c, req, plugins)
+	streamStarted := false
+	streamChunk := func(delta map[string]any) {
+		if !streamStarted {
+			c.Writer.Header().Set("Content-Type", "text/event-stream")
+			c.Writer.Header().Set("Cache-Control", "no-cache")
+			c.Writer.Header().Set("Connection", "keep-alive")
+			streamStarted = true
+		}
+		chunk := map[string]any{
+			"id":      newPluginCompletionID(c),
+			"object":  "chat.completion.chunk",
+			"created": common.GetTimestamp(),
+			"model":   req.Model,
+			"choices": []map[string]any{{
+				"index":         0,
+				"delta":         delta,
+				"finish_reason": nil,
+			}},
+		}
+		data, _ := common.Marshal(chunk)
+		fmt.Fprintf(c.Writer, "data: %s\n\n", data)
+		c.Writer.Flush()
+	}
+
+	finalResp, relayErr := runPluginLoop(c, req, plugins, func(ev PluginLoopEvent) {
+		streamChunk(map[string]any{"plugin_event": ev})
+	})
 	if relayErr != nil {
+		if streamStarted {
+			streamErrorAsContent(c, streamChunk, relayErr.Error())
+			return
+		}
 		c.JSON(relayErr.StatusCode, gin.H{"error": relayErr.ToOpenAIError()})
 		return
 	}
 	if finalResp == nil || len(finalResp.Choices) == 0 {
+		if streamStarted {
+			streamErrorAsContent(c, streamChunk, "plugin loop produced no response")
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": gin.H{"message": "plugin loop produced no response", "type": "server_error"}})
 		return
 	}
 
 	content := finalResp.Choices[0].Message.StringContent()
 	streamFinalAnswer(c, req.Model, content)
+}
+
+// streamErrorAsContent terminates a live plugin stream with the error text as
+// the final assistant content, since the response status is already committed.
+func streamErrorAsContent(c *gin.Context, streamChunk func(delta map[string]any), message string) {
+	streamChunk(map[string]any{"content": message})
+	fmt.Fprintf(c.Writer, "data: [DONE]\n\n")
+	c.Writer.Flush()
 }
 
 // streamFinalAnswer emits content as one OpenAI SSE content chunk followed by
@@ -201,8 +259,15 @@ func newPluginCompletionID(c *gin.Context) string {
 
 // runPluginLoop drives up to maxToolRounds non-streaming relay calls in
 // recorder-backed sub-contexts (channel-test pattern). Returns the final
-// response to stream to the browser.
-func runPluginLoop(c *gin.Context, req *dto.GeneralOpenAIRequest, plugins []*model.Plugin) (*dto.OpenAITextResponse, *types.NewAPIError) {
+// response to stream to the browser. When onEvent is provided, it is invoked
+// for each interim assistant text and completed MCP tool call so callers can
+// stream plugin process hints live.
+func runPluginLoop(c *gin.Context, req *dto.GeneralOpenAIRequest, plugins []*model.Plugin, onEvent ...func(PluginLoopEvent)) (*dto.OpenAITextResponse, *types.NewAPIError) {
+	emit := func(PluginLoopEvent) {}
+	if len(onEvent) > 0 && onEvent[0] != nil {
+		emit = onEvent[0]
+	}
+
 	userId := c.GetInt("id")
 	// Only ContextKeyUsingGroup is read here: the outer Playground request's
 	// Distribute already validated this group against the user's usable groups
@@ -248,6 +313,7 @@ func runPluginLoop(c *gin.Context, req *dto.GeneralOpenAIRequest, plugins []*mod
 		assistantMsg := dto.Message{Role: "assistant"}
 		if content := choice.Message.StringContent(); content != "" {
 			assistantMsg.SetStringContent(content)
+			emit(PluginLoopEvent{Type: "interim", Text: content})
 		} else {
 			assistantMsg.SetNullContent()
 		}
@@ -255,10 +321,21 @@ func runPluginLoop(c *gin.Context, req *dto.GeneralOpenAIRequest, plugins []*mod
 		req.Messages = append(req.Messages, assistantMsg)
 
 		for _, tc := range toolCalls {
+			start := time.Now()
+			result := executePluginToolCall(c.Request.Context(), clients, tc)
+			if slug, tool, ok := SplitNamespacedToolName(tc.Function.Name); ok {
+				emit(PluginLoopEvent{
+					Type:       "tool_call",
+					Plugin:     slug,
+					Tool:       tool,
+					Args:       tc.Function.Arguments,
+					DurationMs: time.Since(start).Milliseconds(),
+				})
+			}
 			req.Messages = append(req.Messages, dto.Message{
 				Role:       "tool",
 				ToolCallId: tc.ID,
-				Content:    executePluginToolCall(c.Request.Context(), clients, tc),
+				Content:    result,
 			})
 		}
 		toolCallsExecuted += len(toolCalls)

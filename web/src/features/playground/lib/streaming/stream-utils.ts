@@ -17,12 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ERROR_MESSAGES } from '../../constants'
-import type { ChatCompletionChunk } from '../../types'
+import type { ChatCompletionChunk, PluginEventPayload } from '../../types'
 
 const STREAM_DONE_MESSAGE = '[DONE]'
 const STREAM_CLOSED_READY_STATE = 2
 
-export type StreamUpdateType = 'reasoning' | 'content'
+export type StreamUpdateType = 'reasoning' | 'content' | 'plugin_event'
 
 export type StreamMessageUpdate = {
   type: StreamUpdateType
@@ -64,6 +64,43 @@ export function parseStreamErrorDetails(data?: string): StreamErrorDetails {
   }
 }
 
+// Validates an incoming plugin_event payload from the backend before it is
+// persisted on a message. Returns null when the discriminator or a required
+// variant field is missing or malformed, so bad events are dropped instead of
+// being stored and rendered as broken hints.
+export function parsePluginEventPayload(
+  payload: unknown
+): PluginEventPayload | null {
+  if (typeof payload !== 'object' || payload === null) {
+    return null
+  }
+  const event = payload as Record<string, unknown>
+
+  if (event.type === 'interim') {
+    if (typeof event.text !== 'string') {
+      return null
+    }
+    return { type: 'interim', text: event.text }
+  }
+
+  if (event.type === 'tool_call') {
+    if (typeof event.plugin !== 'string' || typeof event.tool !== 'string') {
+      return null
+    }
+    return {
+      type: 'tool_call',
+      plugin: event.plugin,
+      tool: event.tool,
+      ...(typeof event.args === 'string' ? { args: event.args } : {}),
+      ...(typeof event.durationMs === 'number'
+        ? { durationMs: event.durationMs }
+        : {}),
+    }
+  }
+
+  return null
+}
+
 export function parseStreamMessageUpdates(data: string): StreamMessageUpdate[] {
   const chunk = JSON.parse(data) as ChatCompletionChunk
   const delta = chunk.choices?.[0]?.delta
@@ -80,6 +117,13 @@ export function parseStreamMessageUpdates(data: string): StreamMessageUpdate[] {
 
   if (delta.content) {
     updates.push({ type: 'content', chunk: delta.content })
+  }
+
+  if (delta.plugin_event) {
+    updates.push({
+      type: 'plugin_event',
+      chunk: JSON.stringify(delta.plugin_event),
+    })
   }
 
   return updates

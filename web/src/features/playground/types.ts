@@ -28,6 +28,25 @@ export interface MessageVersion {
   content: string
 }
 
+// Plugin process hints streamed by the backend while a plugin chat runs:
+// interim assistant text from a round, or a completed MCP tool call.
+// PluginEventPayload is the wire shape sent over SSE (no id); the client
+// assigns `id` when the event is appended to a message.
+export type PluginEventPayload =
+  | {
+      type: 'interim'
+      text: string
+    }
+  | {
+      type: 'tool_call'
+      plugin: string
+      tool: string
+      args?: string
+      durationMs?: number
+    }
+
+export type PluginEvent = PluginEventPayload & { id: string }
+
 export interface Message {
   key: string
   from: MessageRole
@@ -47,6 +66,7 @@ export interface Message {
   isReasoningStreaming?: boolean
   isReasoningComplete?: boolean
   isContentComplete?: boolean
+  pluginEvents?: PluginEvent[]
   status?: MessageStatus
   errorCode?: string | null
 }
@@ -89,6 +109,7 @@ export interface ChatCompletionChunk {
       role?: MessageRole
       content?: string
       reasoning_content?: string
+      plugin_event?: PluginEventPayload
     }
     finish_reason: string | null
   }>

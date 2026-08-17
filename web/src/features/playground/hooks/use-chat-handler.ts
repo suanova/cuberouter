@@ -23,10 +23,12 @@ import { toast } from 'sonner'
 import { sendChatCompletion } from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import {
+  appendPluginEvent,
   applyStreamingChunk,
   buildChatCompletionPayload,
   updateAssistantMessageWithError,
   updateLastAssistantMessage,
+  parsePluginEventPayload,
   parseRequestErrorDetails,
   applyChatCompletionResponse,
   completeAssistantMessage,
@@ -188,16 +190,46 @@ export function useChatHandler({
 
   // Handle stream update
   const handleStreamUpdate = useCallback(
-    (generation: number, type: 'reasoning' | 'content', chunk: string) => {
+    (
+      generation: number,
+      type: 'reasoning' | 'content' | 'plugin_event',
+      chunk: string
+    ) => {
       if (generation !== requestGenerationRef.current) return
       if (pendingStreamChunksRef.current.generation !== generation) return
+
+      if (type === 'plugin_event') {
+        // Plugin process events are low-frequency and must render as soon as
+        // they arrive (each MCP call can take seconds), so they bypass the
+        // content flush batching. Malformed payloads are dropped rather than
+        // persisted as broken hints.
+        let payload: unknown
+        try {
+          payload = JSON.parse(chunk)
+        } catch {
+          return
+        }
+        const event = parsePluginEventPayload(payload)
+        if (!event) {
+          return
+        }
+        flushStreamUpdates(generation)
+        onMessageUpdate((prev) => {
+          if (generation !== requestGenerationRef.current) return prev
+          return updateLastAssistantMessage(prev, (message) =>
+            appendPluginEvent(message, event)
+          )
+        })
+        return
+      }
+
       pendingStreamChunksRef.current[type] = mergePendingStreamChunk(
         pendingStreamChunksRef.current[type],
         chunk
       )
       scheduleStreamFlush(generation)
     },
-    [scheduleStreamFlush]
+    [scheduleStreamFlush, flushStreamUpdates, onMessageUpdate]
   )
 
   // Handle stream complete

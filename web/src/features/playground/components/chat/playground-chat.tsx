@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -82,6 +82,10 @@ export function PlaygroundChat({
 }: PlaygroundChatProps) {
   const { t } = useTranslation()
   const { plugins } = useEnabledPlugins()
+  const pluginNameBySlug = useMemo(
+    () => Object.fromEntries(plugins.map((plugin) => [plugin.slug, plugin.name])),
+    [plugins]
+  )
   const [editText, setEditText] = useState('')
   const [originalText, setOriginalText] = useState('')
   const [sourceMessageKeys, setSourceMessageKeys] = useState<
@@ -131,6 +135,7 @@ export function PlaygroundChat({
     const isSourceVisible = sourceMessageKeys.has(message.key)
 
     let pendingLabel: string | undefined
+    let pluginSlug: string | undefined
     if (message.from === MESSAGE_ROLES.ASSISTANT && previousUserMessage) {
       const slugMatch = /@([a-z0-9-]+)/.exec(
         getMessageContent(previousUserMessage)
@@ -140,6 +145,7 @@ export function PlaygroundChat({
         : undefined
       if (plugin) {
         pendingLabel = t('Using {{slug}}…', { slug: plugin.slug })
+        pluginSlug = plugin.slug
       }
     }
 
@@ -180,6 +186,8 @@ export function PlaygroundChat({
               isSourceVisible={isSourceVisible}
               message={message}
               pendingLabel={pendingLabel}
+              pluginNameBySlug={pluginNameBySlug}
+              pluginSlug={pluginSlug}
               errorActions={
                 isError ? (
                   <MessageErrorActions

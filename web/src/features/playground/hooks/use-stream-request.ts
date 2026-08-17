@@ -42,7 +42,10 @@ interface StreamEventSource {
 }
 
 interface StreamRequestCallbacks {
-  onUpdate: (type: 'reasoning' | 'content', chunk: string) => void
+  onUpdate: (
+    type: 'reasoning' | 'content' | 'plugin_event',
+    chunk: string
+  ) => void
   onComplete: () => void
   onError: (error: string, errorCode?: string) => void
 }
@@ -204,7 +207,10 @@ export function useStreamRequest() {
   const sendStreamRequest = useCallback(
     (
       payload: ChatCompletionRequest,
-      onUpdate: (type: 'reasoning' | 'content', chunk: string) => void,
+      onUpdate: (
+        type: 'reasoning' | 'content' | 'plugin_event',
+        chunk: string
+      ) => void,
       onComplete: () => void,
       onError: (error: string, errorCode?: string) => void
     ) =>

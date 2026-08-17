@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { TFunction } from 'i18next'
+
 import { MESSAGE_ROLES } from '../../constants'
 import type { Message } from '../../types'
 
@@ -48,6 +50,24 @@ export function startReasoningTiming(
     completedAt: message.reasoning?.completedAt,
     durationMs: message.reasoning?.durationMs,
   }
+}
+
+// Formats a duration in milliseconds for display, sharing the {{value}}ms /
+// {{value}}s locale keys used across the app. Returns undefined for
+// non-finite values so callers can hide the label entirely.
+export function formatDuration(
+  durationMs: number | undefined,
+  t: TFunction
+): string | undefined {
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) {
+    return undefined
+  }
+
+  if (durationMs < 1000) {
+    return t('{{value}}ms', { value: Math.max(1, Math.round(durationMs)) })
+  }
+
+  return t('{{value}}s', { value: (durationMs / 1000).toFixed(2) })
 }
 
 export function completeReasoningTiming(

@@ -16,12 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 
-import type { MessageAlignment } from '../../lib'
+import { formatDuration, type MessageAlignment } from '../../lib'
 import type { Message } from '../../types'
 
 type MessageMetadataProps = {
@@ -39,21 +38,6 @@ function formatMessageTime(timestamp?: number): string | undefined {
     minute: '2-digit',
     second: '2-digit',
   }).format(new Date(timestamp))
-}
-
-function formatDuration(
-  durationMs: number | undefined,
-  t: TFunction
-): string | undefined {
-  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) {
-    return undefined
-  }
-
-  if (durationMs < 1000) {
-    return t('{{value}}ms', { value: Math.max(1, Math.round(durationMs)) })
-  }
-
-  return t('{{value}}s', { value: (durationMs / 1000).toFixed(2) })
 }
 
 export function MessageMetadata(props: MessageMetadataProps) {
