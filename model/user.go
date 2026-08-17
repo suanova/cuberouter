@@ -1138,17 +1138,22 @@ func IsTelegramIdAlreadyTaken(telegramId string) bool {
 	return DB.Unscoped().Where("telegram_id = ?", telegramId).Find(&User{}).RowsAffected == 1
 }
 
-func ResetUserPasswordByEmail(email string, password string) error {
+// ResetUserPasswordByEmail resets a user's password by email. The first
+// return value reports whether the password update committed: the transaction
+// may commit while a post-commit step (auth cache publish / session revoke)
+// fails, in which case the caller must still treat the password as changed —
+// e.g. consume the reset token, otherwise it can be replayed.
+func ResetUserPasswordByEmail(email string, password string) (bool, error) {
 	if email == "" || password == "" {
-		return errors.New("邮箱地址或密码为空！")
+		return false, errors.New("邮箱地址或密码为空！")
 	}
 	user, err := GetUniqueUserByEmail(email)
 	if err != nil {
-		return err
+		return false, err
 	}
 	hashedPassword, err := common.Password2Hash(password)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err = DB.Transaction(func(tx *gorm.DB) error {
 		if _, err := IncrementUserAuthVersionWithTx(tx, user.Id); err != nil {
@@ -1156,13 +1161,13 @@ func ResetUserPasswordByEmail(email string, password string) error {
 		}
 		return tx.Model(&User{}).Where("id = ?", user.Id).Update("password", hashedPassword).Error
 	}); err != nil {
-		return err
+		return false, err
 	}
 	if err := PublishUserAuthCache(user.Id); err != nil {
-		return err
+		return true, err
 	}
 	_, err = RevokeAllUserSessions(user.Id, "password_reset")
-	return err
+	return true, err
 }
 
 func IsAdmin(userId int) bool {

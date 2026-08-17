@@ -192,7 +192,7 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
-	err := ResetUserPasswordByEmail("legacy@example.com", "NewPassword123")
+	_, err := ResetUserPasswordByEmail("legacy@example.com", "NewPassword123")
 	require.ErrorIs(t, err, ErrEmailAmbiguous)
 
 	var duplicates []User
@@ -209,12 +209,14 @@ func TestResetUserPasswordByEmailRequiresSingleActiveMatch(t *testing.T) {
 		Status:   common.UserStatusEnabled,
 	}).Error)
 
-	require.NoError(t, ResetUserPasswordByEmail("UNIQUE@example.com", "NewPassword123"))
+	committed, err := ResetUserPasswordByEmail("UNIQUE@example.com", "NewPassword123")
+	require.NoError(t, err)
+	assert.True(t, committed, "密码更新提交后必须返回 committed")
 
 	var unique User
 	require.NoError(t, DB.Where("username = ?", "unique").First(&unique).Error)
 	assert.True(t, common.ValidatePasswordAndHash("NewPassword123", unique.Password))
 
-	err = ResetUserPasswordByEmail("missing@example.com", "NewPassword123")
+	_, err = ResetUserPasswordByEmail("missing@example.com", "NewPassword123")
 	require.True(t, errors.Is(err, ErrEmailNotFound))
 }

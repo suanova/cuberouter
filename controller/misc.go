@@ -398,7 +398,13 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 
-	err = model.ResetUserPasswordByEmail(req.Email, password)
+	committed, err := model.ResetUserPasswordByEmail(req.Email, password)
+	if committed {
+		// 密码更新已提交即消费重置 token：即使 post-commit 步骤（缓存发布/
+		// 会话撤销）失败返回 error，token 也不能保留——否则可被重放再次
+		// 轮换密码
+		common.DeleteKey(req.Email, common.PasswordResetPurpose)
+	}
 	if err != nil {
 		if errors.Is(err, model.ErrEmailNotFound) || errors.Is(err, model.ErrEmailAmbiguous) {
 			common.ApiErrorI18n(c, i18n.MsgUserPasswordResetLinkInvalid)
@@ -407,7 +413,6 @@ func ResetPassword(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	common.DeleteKey(req.Email, common.PasswordResetPurpose)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

@@ -644,7 +644,9 @@ func TestPasswordResetBumpsAuthVersionAndRevokesSessions(t *testing.T) {
 	session := newTestUserSession("password-reset-session", user.Id, now)
 	require.NoError(t, CreateUserSession(session))
 
-	require.NoError(t, ResetUserPasswordByEmail(user.Email, "new-password"))
+	committed, err := ResetUserPasswordByEmail(user.Email, "new-password")
+	require.NoError(t, err)
+	assert.True(t, committed, "密码更新提交后必须返回 committed")
 	var stored User
 	require.NoError(t, DB.First(&stored, user.Id).Error)
 	assert.Equal(t, int64(2), stored.AuthVersion)
