@@ -350,6 +350,19 @@ type PasswordResetRequest struct {
 	Token string `json:"token"`
 }
 
+// resetLinkInvalidCode 标记重置链接失效（token 缺失/过期/已消费），前端据此
+// 切换到无效链接状态而不是停留在表单
+const resetLinkInvalidCode = "PASSWORD_RESET_LINK_INVALID"
+
+// resetLinkInvalidResponse 返回带 code 的失效链接响应（区别于普通业务错误）
+func resetLinkInvalidResponse(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"success": false,
+		"code":    resetLinkInvalidCode,
+		"message": i18n.T(c, i18n.MsgUserPasswordResetLinkInvalid),
+	})
+}
+
 // @Summary  通过邮箱令牌重置密码
 // @Tags     用户-认证
 // @Produce  json
@@ -369,7 +382,7 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	if !common.VerifyCodeWithKey(req.Email, req.Token, common.PasswordResetPurpose) {
-		common.ApiErrorI18n(c, i18n.MsgUserPasswordResetLinkInvalid)
+		resetLinkInvalidResponse(c)
 		return
 	}
 	password := common.GenerateVerificationCode(12)
@@ -407,7 +420,7 @@ func ResetPassword(c *gin.Context) {
 	}
 	if err != nil {
 		if errors.Is(err, model.ErrEmailNotFound) || errors.Is(err, model.ErrEmailAmbiguous) {
-			common.ApiErrorI18n(c, i18n.MsgUserPasswordResetLinkInvalid)
+			resetLinkInvalidResponse(c)
 			return
 		}
 		common.ApiError(c, err)

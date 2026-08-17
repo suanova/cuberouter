@@ -45,8 +45,10 @@ export function ResetPasswordConfirm({
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)
   const [resetSucceeded, setResetSucceeded] = useState(false)
+  const [linkInvalidated, setLinkInvalidated] = useState(false)
 
   const isValidResetLink = Boolean(email && token)
+  const showInvalidLink = !isValidResetLink || linkInvalidated
 
   async function handleSubmit() {
     if (!isValidResetLink || !email || !token) {
@@ -68,9 +70,14 @@ export function ResetPasswordConfirm({
           )
         )
       } else {
-        // 后端业务失败（HTTP 200 + success:false，如邮件发送失败、链接失效）：
-        // skipBusinessError 下全局拦截器不处理，这里直接用后端已按请求语言
-        // 翻译的消息提示；表单保留，用户可重试或返回登录
+        // 链接失效（token 缺失/过期/已消费）：后端以 code 标记，切换到
+        // 无效链接态（Banner + 返回登录），不再停留在表单
+        if (res?.data?.code === 'PASSWORD_RESET_LINK_INVALID') {
+          setLinkInvalidated(true)
+          return
+        }
+        // 其他业务失败（如邮件发送失败）：用后端已按请求语言翻译的消息
+        // 提示；表单保留，用户可重试
         const message = res?.data?.message
         toast.error(
           typeof message === 'string' && message
@@ -85,8 +92,9 @@ export function ResetPasswordConfirm({
     }
   }
 
-  // 无效链接（缺 email/token）：仅警告横幅 + 返回登录，不渲染表单
-  if (!isValidResetLink) {
+  // 无效链接（缺 email/token，或提交时后端判定 token 已失效）：
+  // 仅警告横幅 + 返回登录，不渲染表单
+  if (showInvalidLink) {
     return (
       <AuthLayout>
         <div className='w-full space-y-8'>

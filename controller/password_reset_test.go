@@ -43,6 +43,15 @@ import (
 func TestResetPasswordEmailFailureKeepsPasswordAndToken(t *testing.T) {
 	db := setupManageUserTestDB(t)
 
+	// 显式强制邮件投递失败（而不是依赖环境未配置 SMTP）：若其他测试或
+	// 设置项已配置 SMTP，ResetPassword 会走成功路径并改动用户状态，
+	// 测试就失去确定性。保存原配置，测试结束恢复。
+	prevSMTPServer, prevSMTPAccount := common.SMTPServer, common.SMTPAccount
+	common.SMTPServer, common.SMTPAccount = "", ""
+	t.Cleanup(func() {
+		common.SMTPServer, common.SMTPAccount = prevSMTPServer, prevSMTPAccount
+	})
+
 	passwordHash, err := common.Password2Hash("OldPass123")
 	require.NoError(t, err)
 	user := model.User{
