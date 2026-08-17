@@ -1,0 +1,68 @@
+# Minimal single-container topology: the image embeds the web build and
+# defaults to SQLite, so no database pods are needed for the journey smoke.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cuberouter-e2e
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cuberouter
+  namespace: cuberouter-e2e
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cuberouter
+  template:
+    metadata:
+      labels:
+        app: cuberouter
+    spec:
+      containers:
+        - name: app
+          # Built and loaded into the cluster in the same CI job; never pull.
+          image: cuberouter:e2e
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3000
+          env:
+            - name: TZ
+              value: UTC
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cuberouter
+  namespace: cuberouter-e2e
+spec:
+  selector:
+    app: cuberouter
+  ports:
+    - port: 3000
+      targetPort: 3000
