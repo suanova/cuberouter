@@ -89,6 +89,8 @@ const (
 	MsgUserEmailAlreadyTaken         = "user.email_already_taken"
 	MsgUserPasswordUnset             = "user.password_unset"
 	MsgUserPasswordResetLinkInvalid  = "user.password_reset_link_invalid"
+	MsgUserPasswordResetEmailSent    = "user.password_reset_email_sent"
+	MsgUserPasswordResetEmailSendFailed = "user.password_reset_email_send_failed"
 	MsgUserInputInvalid              = "user.input_invalid"
 	MsgUserNoPermissionSameLevel     = "user.no_permission_same_level"
 	MsgUserNoPermissionHigherLevel   = "user.no_permission_higher_level"

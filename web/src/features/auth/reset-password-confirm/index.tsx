@@ -67,6 +67,16 @@ export function ResetPasswordConfirm({
             'Password reset, the new password has been sent to your email'
           )
         )
+      } else {
+        // 后端业务失败（HTTP 200 + success:false，如邮件发送失败、链接失效）：
+        // skipBusinessError 下全局拦截器不处理，这里直接用后端已按请求语言
+        // 翻译的消息提示；表单保留，用户可重试或返回登录
+        const message = res?.data?.message
+        toast.error(
+          typeof message === 'string' && message
+            ? message
+            : t('Invalid reset link, please request a new password reset')
+        )
       }
     } catch {
       // Errors handled by global interceptor

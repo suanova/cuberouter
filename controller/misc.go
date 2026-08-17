@@ -392,11 +392,9 @@ func ResetPassword(c *gin.Context) {
 	content := common.WrapBilingualContent(enContent, zhContent)
 	emailErr := common.SendEmail(subject, req.Email, content)
 	if emailErr != nil {
-		common.SysError(fmt.Sprintf("密码重置邮件发送失败 (email=%s): %v", req.Email, emailErr))
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "密码重置邮件发送失败，请重试",
-		})
+		// 不记录用户邮箱：邮箱属于用户标识，落日志会形成 PII 留存路径
+		common.SysError(fmt.Sprintf("密码重置邮件发送失败: %v", emailErr))
+		common.ApiErrorI18n(c, i18n.MsgUserPasswordResetEmailSendFailed)
 		return
 	}
 
@@ -413,7 +411,7 @@ func ResetPassword(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "密码已重置，新密码已发送至您的邮箱",
+		"message": i18n.T(c, i18n.MsgUserPasswordResetEmailSent),
 	})
 	return
 }

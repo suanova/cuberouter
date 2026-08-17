@@ -1,11 +1,5 @@
 {
-  "Completion Tokens": "Completion Tokens",
   "CubeRouter": "CubeRouter",
   "CubeRouter <noreply@example.com>": "CubeRouter <noreply@example.com>",
-  "Password copied to clipboard: {{password}}": "密码已复制到剪贴板：{{password}}",
-  "Password reset and copied to clipboard: {{password}}": "密码已重置并复制到剪贴板：{{password}}",
-  "Password reset: {{password}}": "密码已重置：{{password}}",
-  "Prompt Tokens": "Prompt Tokens",
-  "User Management": "User Management",
   "© 2026 CubeRouter · Suanova Technology Ltd": "© 2026 CubeRouter · Suanova Technology Ltd"
 }
