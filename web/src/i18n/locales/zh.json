@@ -5425,6 +5425,7 @@
     "No invitees yet": "暂无受邀用户",
     "Search invitees": "搜索邀请用户",
     "Select columns": "选择列",
-    "{{username}} (ID: {{id}})": "{{username}}（ID: {{id}}）"
+    "{{username}} (ID: {{id}})": "{{username}}（ID: {{id}}）",
+    "BoosterAI (Seedance)": "BoosterAI (Seedance)"
   }
 }

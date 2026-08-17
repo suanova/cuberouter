@@ -5425,6 +5425,7 @@
     "No invitees yet": "No invitees yet",
     "Search invitees": "Search invitees",
     "Select columns": "Select columns",
-    "{{username}} (ID: {{id}})": "{{username}} (ID: {{id}})"
+    "{{username}} (ID: {{id}})": "{{username}} (ID: {{id}})",
+    "BoosterAI (Seedance)": "BoosterAI (Seedance)"
   }
 }

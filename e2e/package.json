@@ -1,0 +1,11 @@
+{
+  "name": "cuberouter-e2e",
+  "private": true,
+  "description": "Journey-level e2e tests for the cuberouter container image (KinD + Playwright)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}
