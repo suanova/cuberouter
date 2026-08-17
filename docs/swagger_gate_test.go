@@ -12,7 +12,7 @@ import (
 
 func TestSwaggerInfo_GlobalAnnotations(t *testing.T) {
 	assert.Equal(t, "new-api 用户 API", SwaggerInfo.Title)
-	assert.Equal(t, "/api", SwaggerInfo.BasePath)
+	assert.Equal(t, "/api/v1", SwaggerInfo.BasePath)
 	assert.NotEmpty(t, SwaggerInfo.Version, "version 为空")
 }
 
@@ -98,15 +98,6 @@ func TestSpec_NoPasswordInResponses(t *testing.T) {
 		_, hasPassword := props["password"]
 		assert.Falsef(t, hasPassword, "响应 definition %s 含 password 字段", name)
 	}
-}
-
-// TestSpec_HasUserSelfPath asserts that the annotated self-info endpoint is
-// present in the spec.
-func TestSpec_HasUserSelfPath(t *testing.T) {
-	paths, ok := loadSpec(t)["paths"].(map[string]interface{})
-	require.True(t, ok, "spec.paths 必须是对象")
-	_, hasSelf := paths["/user/self"]
-	assert.True(t, hasSelf, "spec 缺少 /user/self")
 }
 
 // TestSpec_HasImportCsvPath asserts that the CSV channel-model import endpoint

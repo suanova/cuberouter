@@ -55,6 +55,9 @@ const OPS_USER_COLUMN_LABEL_KEYS: Record<string, string> = {
   group: 'Group',
   quota: 'Quota',
   used_quota: 'Used Quota',
+  request_count: 'Requests',
+  total_prompt_tokens: 'Prompt Tokens',
+  total_completion_tokens: 'Completion Tokens',
   aff_code: 'Aff Code',
   aff_count: 'Invite Count',
   created_at: 'Created At',
@@ -72,6 +75,13 @@ const DEFAULT_OPS_USER_COLUMNS: OpsUserColumnMeta[] = [
   { key: 'group', label: 'Group', required: false },
   { key: 'quota', label: 'Quota', required: false },
   { key: 'used_quota', label: 'Used Quota', required: false },
+  { key: 'request_count', label: 'Requests', required: false },
+  { key: 'total_prompt_tokens', label: 'Prompt Tokens', required: false },
+  {
+    key: 'total_completion_tokens',
+    label: 'Completion Tokens',
+    required: false,
+  },
   { key: 'aff_code', label: 'Aff Code', required: false },
   { key: 'aff_count', label: 'Invite Count', required: false },
   { key: 'created_at', label: 'Created At', required: false },
@@ -318,6 +328,19 @@ function buildOpsUserColumn(
           </span>
         ),
         size: 120,
+      }
+    case 'request_count':
+    case 'total_prompt_tokens':
+    case 'total_completion_tokens':
+      return {
+        accessorKey: columnId,
+        header,
+        cell: ({ row }) => (
+          <span className='font-mono text-sm'>
+            {(row.getValue(columnId) as number).toLocaleString()}
+          </span>
+        ),
+        size: 130,
       }
     case 'aff_code':
       return {

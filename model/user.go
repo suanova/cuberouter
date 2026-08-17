@@ -93,8 +93,11 @@ type User struct {
 	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
 	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount     int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
-	Group            string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	RequestCount        int    `json:"request_count" gorm:"type:int;default:0;"` // request number
+	TotalPromptTokens   int64  `json:"total_prompt_tokens" gorm:"type:bigint;default:0;column:total_prompt_tokens"`
+	TotalCompletionTokens int64 `json:"total_completion_tokens" gorm:"type:bigint;default:0;column:total_completion_tokens"`
+	TotalCacheTokens    int64  `json:"total_cache_tokens" gorm:"type:bigint;default:0;column:total_cache_tokens"`
+	Group               string `json:"group" gorm:"type:varchar(64);default:'default'"`
 	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
 	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
 	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
@@ -1431,6 +1434,41 @@ func updateUserRequestCount(id int, count int) {
 	err := DB.Model(&User{}).Where("id = ?", id).Update("request_count", gorm.Expr("request_count + ?", count)).Error
 	if err != nil {
 		common.SysLog("failed to update user request count: " + err.Error())
+	}
+}
+
+// UpdateUserTokens 增量累加用户 Token 消耗统计（prompt/completion/cache），供 LLM 转发侧调用。
+// 非 LLM 场景（如 MJ、Task、视频等）无 Token 数据，不需要调用此函数。
+func UpdateUserTokens(id int, promptTokens int, completionTokens int, cacheTokens int) {
+	if common.BatchUpdateEnabled {
+		addNewRecord(BatchUpdateTypeTotalPromptTokens, id, promptTokens)
+		addNewRecord(BatchUpdateTypeTotalCompletionTokens, id, completionTokens)
+		addNewRecord(BatchUpdateTypeTotalCacheTokens, id, cacheTokens)
+		return
+	}
+	updateUserTotalPromptTokens(id, int64(promptTokens))
+	updateUserTotalCompletionTokens(id, int64(completionTokens))
+	updateUserTotalCacheTokens(id, int64(cacheTokens))
+}
+
+func updateUserTotalPromptTokens(id int, tokens int64) {
+	err := DB.Model(&User{}).Where("id = ?", id).Update("total_prompt_tokens", gorm.Expr("total_prompt_tokens + ?", tokens)).Error
+	if err != nil {
+		common.SysLog("failed to update user total prompt tokens: " + err.Error())
+	}
+}
+
+func updateUserTotalCompletionTokens(id int, tokens int64) {
+	err := DB.Model(&User{}).Where("id = ?", id).Update("total_completion_tokens", gorm.Expr("total_completion_tokens + ?", tokens)).Error
+	if err != nil {
+		common.SysLog("failed to update user total completion tokens: " + err.Error())
+	}
+}
+
+func updateUserTotalCacheTokens(id int, tokens int64) {
+	err := DB.Model(&User{}).Where("id = ?", id).Update("total_cache_tokens", gorm.Expr("total_cache_tokens + ?", tokens)).Error
+	if err != nil {
+		common.SysLog("failed to update user total cache tokens: " + err.Error())
 	}
 }
 

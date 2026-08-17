@@ -6,7 +6,7 @@
         "contact": {},
         "version": "1.0"
     },
-    "basePath": "/api",
+    "basePath": "/api/v1",
     "paths": {
         "/channel/{id}/import_models_csv": {
             "post": {
@@ -69,1055 +69,190 @@
                 }
             }
         },
-        "/user/2fa/backup_codes": {
+        "/plans": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "用户-2FA"
+                    "聚合API-订阅管理"
                 ],
-                "summary": "重新生成 2FA 备用码",
+                "summary": "创建订阅计划（聚合 API）",
                 "parameters": [
                     {
-                        "description": "TOTP 验证码",
+                        "description": "创建订阅计划请求（推荐使用 {plan: {...}} 格式，与控制台参数一致）",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/controller.Verify2FARequest"
+                            "$ref": "#/definitions/controller.AggregatedCreatePlanRequest"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "{status: success, plan_id: int}",
                         "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
-        "/user/2fa/disable": {
+        "/users": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "用户-2FA"
+                    "聚合API-用户管理"
                 ],
-                "summary": "验证后禁用 2FA",
+                "summary": "创建用户（聚合 API，默认禁用状态）",
                 "parameters": [
                     {
-                        "description": "TOTP 验证码或备用码",
+                        "description": "创建用户请求",
                         "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/controller.Verify2FARequest"
+                            "$ref": "#/definitions/controller.AggregatedCreateUserRequest"
                         }
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "{status: success, user_id: string}",
                         "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
-        "/user/2fa/enable": {
+        "/users/{user_id}/reactivate": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "用户-2FA"
+                    "聚合API-用户管理"
                 ],
-                "summary": "验证 TOTP 并启用 2FA",
+                "summary": "启用用户（聚合 API）",
                 "parameters": [
                     {
-                        "description": "TOTP 验证码",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.Setup2FARequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/2fa/setup": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-2FA"
-                ],
-                "summary": "初始化 2FA 设置，返回密钥/二维码/备用码",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/2fa/status": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-2FA"
-                ],
-                "summary": "查询当前用户 2FA 状态",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/aff": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-自身"
-                ],
-                "summary": "获取我的邀请码",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/aff_transfer": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "邀请佣金转额度",
-                "parameters": [
-                    {
-                        "description": "转换的佣金额度数量",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.TransferAffQuotaRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/amount": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "计算充值应付金额",
-                "parameters": [
-                    {
-                        "description": "充值数量",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.AmountRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/checkin": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-其它"
-                ],
-                "summary": "获取签到状态",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-其它"
-                ],
-                "summary": "每日签到",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/creem/pay": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "Creem 充值下单",
-                "parameters": [
-                    {
-                        "description": "产品 ID 与支付方式",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.CreemPayRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/groups": {
-            "get": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-认证"
-                ],
-                "summary": "获取当前用户可用分组",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/login": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-认证"
-                ],
-                "summary": "用户名/密码登录",
-                "parameters": [
-                    {
-                        "description": "登录凭据(用户名 + 密码)",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.LoginRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/login/2fa": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-认证"
-                ],
-                "summary": "登录二次验证(2FA)",
-                "parameters": [
-                    {
-                        "description": "2FA 验证码(TOTP 或备用码)",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.Verify2FARequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/models": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-自身"
-                ],
-                "summary": "获取可用模型列表",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/oauth/bindings": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-其它"
-                ],
-                "summary": "获取我的 OAuth 绑定列表",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/oauth/bindings/{provider_id}": {
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-其它"
-                ],
-                "summary": "解绑 OAuth 提供商",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "提供商ID",
-                        "name": "provider_id",
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "{status: success, status_code: 2000}",
                         "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
-        "/user/passkey": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "查询当前用户 Passkey 绑定状态",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "解绑当前用户 Passkey",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/passkey/login/begin": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "启动 Passkey(WebAuthn)登录",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/passkey/login/finish": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "完成 Passkey(WebAuthn)登录",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/passkey/register/begin": {
+        "/users/{user_id}/reset-password": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "produces": [
+                "consumes": [
                     "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "启动 Passkey 注册",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/passkey/register/finish": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
                 ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "用户-passkey"
+                    "聚合API-用户管理"
                 ],
-                "summary": "完成 Passkey 注册",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/passkey/verify/begin": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "启动 Passkey 验证",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/passkey/verify/finish": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-passkey"
-                ],
-                "summary": "完成 Passkey 验证",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/pay": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "EPay 充值下单",
+                "summary": "发送重置密码邮件（聚合 API）",
                 "parameters": [
                     {
-                        "description": "充值金额与支付方式",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.EpayRequest"
-                        }
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "{status: success, status_code: 2000}",
                         "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
-        "/user/register": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-认证"
-                ],
-                "summary": "注册新用户",
-                "parameters": [
-                    {
-                        "description": "注册信息(包含用户名、密码等)",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/model.User"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/reset": {
-            "post": {
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-认证"
-                ],
-                "summary": "通过邮箱令牌重置密码",
-                "parameters": [
-                    {
-                        "description": "重置密码请求(邮箱 + 验证令牌)",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.PasswordResetRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/self": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-自身"
-                ],
-                "summary": "获取当前登录用户信息",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-自身"
-                ],
-                "summary": "更新当前用户资料",
-                "parameters": [
-                    {
-                        "description": "用户资料更新字段(sidebar_modules / language)",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-自身"
-                ],
-                "summary": "注销当前用户自身账号",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/setting": {
-            "put": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-其它"
-                ],
-                "summary": "更新用户个人设置",
-                "parameters": [
-                    {
-                        "description": "用户设置(预警类型/阈值/通知通道)",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.UpdateUserSettingRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/stripe/amount": {
+        "/users/{user_id}/suspend": {
             "post": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "用户-充值"
+                    "聚合API-用户管理"
                 ],
-                "summary": "计算 Stripe 充值应付金额",
+                "summary": "禁用用户（聚合 API）",
                 "parameters": [
                     {
-                        "description": "充值数量",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.StripePayRequest"
-                        }
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "{status: success, status_code: 2000}",
                         "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/stripe/pay": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "Stripe 充值下单",
-                "parameters": [
-                    {
-                        "description": "充值数量、支付方式与回调地址",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.StripePayRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/token": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-自身"
-                ],
-                "summary": "生成新的访问令牌",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/topup": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "兑换码充值",
-                "parameters": [
-                    {
-                        "description": "兑换码",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/controller.topUpRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/topup/info": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "获取充值信息",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/user/topup/self": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "用户-充值"
-                ],
-                "summary": "获取我的充值记录",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/dto.APIResponse"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -1125,163 +260,36 @@
         }
     },
     "definitions": {
-        "controller.AmountRequest": {
+        "controller.AggregatedCreatePlanRequest": {
             "type": "object",
             "properties": {
-                "amount": {
-                    "type": "integer"
+                "plan": {
+                    "description": "新格式：完整 plan 对象，与控制台 AdminCreateSubscriptionPlan 一致",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.SubscriptionPlan"
+                        }
+                    ]
                 }
             }
         },
-        "controller.CreemPayRequest": {
-            "type": "object",
-            "properties": {
-                "payment_method": {
-                    "type": "string"
-                },
-                "product_id": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.EpayRequest": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "type": "integer"
-                },
-                "payment_method": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.LoginRequest": {
-            "type": "object",
-            "properties": {
-                "password": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.PasswordResetRequest": {
+        "controller.AggregatedCreateUserRequest": {
             "type": "object",
             "properties": {
                 "email": {
                     "type": "string"
                 },
-                "token": {
+                "password": {
                     "type": "string"
-                }
-            }
-        },
-        "controller.Setup2FARequest": {
-            "type": "object",
-            "required": [
-                "code"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.StripePayRequest": {
-            "type": "object",
-            "properties": {
-                "amount": {
-                    "description": "Amount is the quantity of units to purchase.",
+                },
+                "plan_id": {
                     "type": "integer"
                 },
-                "cancel_url": {
-                    "description": "CancelURL is the optional custom URL to redirect when payment is canceled.\nIf empty, defaults to the server's console topup page.",
+                "user_validity": {
+                    "description": "ISO 8601 date, e.g. \"2026-12-31\"",
                     "type": "string"
                 },
-                "payment_method": {
-                    "description": "PaymentMethod specifies the payment method (e.g., \"stripe\").",
-                    "type": "string"
-                },
-                "success_url": {
-                    "description": "SuccessURL is the optional custom URL to redirect after successful payment.\nIf empty, defaults to the server's console log page.",
-                    "type": "string"
-                }
-            }
-        },
-        "controller.TransferAffQuotaRequest": {
-            "type": "object",
-            "required": [
-                "quota"
-            ],
-            "properties": {
-                "quota": {
-                    "type": "integer"
-                }
-            }
-        },
-        "controller.UpdateUserSettingRequest": {
-            "type": "object",
-            "properties": {
-                "accept_unset_model_ratio_model": {
-                    "type": "boolean"
-                },
-                "bark_url": {
-                    "type": "string"
-                },
-                "gotify_priority": {
-                    "type": "integer"
-                },
-                "gotify_token": {
-                    "type": "string"
-                },
-                "gotify_url": {
-                    "type": "string"
-                },
-                "notification_email": {
-                    "type": "string"
-                },
-                "notify_type": {
-                    "type": "string"
-                },
-                "quota_warning_threshold": {
-                    "type": "number"
-                },
-                "record_ip_log": {
-                    "type": "boolean"
-                },
-                "upstream_model_update_notify_enabled": {
-                    "type": "boolean"
-                },
-                "webhook_secret": {
-                    "type": "string"
-                },
-                "webhook_url": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.Verify2FARequest": {
-            "type": "object",
-            "required": [
-                "code"
-            ],
-            "properties": {
-                "code": {
-                    "type": "string"
-                },
-                "flow_token": {
-                    "type": "string"
-                }
-            }
-        },
-        "controller.topUpRequest": {
-            "type": "object",
-            "required": [
-                "key"
-            ],
-            "properties": {
-                "key": {
+                "username": {
                     "type": "string"
                 }
             }
@@ -1402,136 +410,83 @@
                 }
             }
         },
-        "gorm.DeletedAt": {
+        "model.SubscriptionPlan": {
             "type": "object",
             "properties": {
-                "time": {
-                    "type": "string"
-                },
-                "valid": {
-                    "description": "Valid is true if Time is not NULL",
+                "allow_balance_pay": {
                     "type": "boolean"
-                }
-            }
-        },
-        "model.User": {
-            "type": "object",
-            "properties": {
-                "admin_permissions": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "type": "object",
-                        "additionalProperties": {
-                            "type": "boolean"
-                        }
-                    }
                 },
-                "aff_code": {
-                    "type": "string"
-                },
-                "aff_count": {
-                    "type": "integer"
-                },
-                "aff_history_quota": {
-                    "description": "邀请历史额度",
-                    "type": "integer"
-                },
-                "aff_quota": {
-                    "description": "邀请剩余额度",
-                    "type": "integer"
+                "allow_wallet_overflow": {
+                    "description": "Allow falling back to wallet balance after subscription quota is exhausted (empty = true)",
+                    "type": "boolean"
                 },
                 "created_at": {
                     "type": "integer"
                 },
-                "deletedAt": {
-                    "$ref": "#/definitions/gorm.DeletedAt"
-                },
-                "discord_id": {
+                "creem_product_id": {
                     "type": "string"
                 },
-                "display_name": {
-                    "type": "string",
-                    "maxLength": 20
-                },
-                "email": {
-                    "type": "string",
-                    "maxLength": 50
-                },
-                "github_id": {
+                "currency": {
                     "type": "string"
                 },
-                "group": {
+                "custom_seconds": {
+                    "type": "integer"
+                },
+                "downgrade_group": {
+                    "description": "Downgrade user group on expiry (empty = revert to the group held before purchase)",
                     "type": "string"
+                },
+                "duration_unit": {
+                    "type": "string"
+                },
+                "duration_value": {
+                    "type": "integer"
+                },
+                "enabled": {
+                    "type": "boolean"
                 },
                 "id": {
                     "type": "integer"
                 },
-                "inviter_id": {
+                "max_purchase_per_user": {
+                    "description": "Max purchases per user (0 = unlimited)",
                     "type": "integer"
                 },
-                "last_login_at": {
+                "price_amount": {
+                    "description": "Display money amount (follow existing code style: float64 for money)",
+                    "type": "number"
+                },
+                "quota_reset_custom_seconds": {
                     "type": "integer"
                 },
-                "linux_do_id": {
+                "quota_reset_period": {
+                    "description": "Quota reset period for plan",
                     "type": "string"
                 },
-                "oidc_id": {
-                    "type": "string"
-                },
-                "original_password": {
-                    "description": "this field is only for Password change verification, don't save it to database!",
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string",
-                    "maxLength": 20,
-                    "minLength": 8
-                },
-                "phone": {
-                    "type": "string",
-                    "maxLength": 32
-                },
-                "quota": {
+                "sort_order": {
                     "type": "integer"
                 },
-                "remark": {
-                    "type": "string",
-                    "maxLength": 255
-                },
-                "request_count": {
-                    "description": "request number",
-                    "type": "integer"
-                },
-                "role": {
-                    "description": "admin, common",
-                    "type": "integer"
-                },
-                "setting": {
+                "stripe_price_id": {
                     "type": "string"
                 },
-                "status": {
-                    "description": "enabled, disabled",
+                "subtitle": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "total_amount": {
+                    "description": "Total quota (amount in quota units, 0 = unlimited)",
                     "type": "integer"
                 },
-                "stripe_customer": {
-                    "type": "string"
-                },
-                "telegram_id": {
-                    "type": "string"
-                },
-                "used_quota": {
-                    "description": "used quota",
+                "updated_at": {
                     "type": "integer"
                 },
-                "username": {
-                    "type": "string",
-                    "maxLength": 50
-                },
-                "verification_code": {
-                    "description": "this field is only for Email verification, don't save it to database!",
+                "upgrade_group": {
+                    "description": "Upgrade user group after purchase (empty = no change)",
                     "type": "string"
                 },
-                "wechat_id": {
+                "waffo_pancake_product_id": {
                     "type": "string"
                 }
             }

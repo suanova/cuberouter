@@ -40,7 +40,7 @@ dev-web:
 dev: dev-api dev-web
 
 swag:
-	swag init -g controller/swagger.go --parseDependency --parseInternal --tags '!Video','!Origin' -o docs
+	swag init -g controller/swagger.go --parseDependency --parseInternal --tags '!Video','!Origin','!用户-2FA','!用户-自身','!用户-充值','!用户-其它','!用户-认证','!用户-passkey' -o docs
 
 reset-setup:
 	@echo "Resetting local setup wizard state..."

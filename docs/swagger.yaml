@@ -1,113 +1,25 @@
-basePath: /api
+basePath: /api/v1
 definitions:
-  controller.AmountRequest:
+  controller.AggregatedCreatePlanRequest:
     properties:
-      amount:
-        type: integer
+      plan:
+        allOf:
+        - $ref: '#/definitions/model.SubscriptionPlan'
+        description: 新格式：完整 plan 对象，与控制台 AdminCreateSubscriptionPlan 一致
     type: object
-  controller.CreemPayRequest:
-    properties:
-      payment_method:
-        type: string
-      product_id:
-        type: string
-    type: object
-  controller.EpayRequest:
-    properties:
-      amount:
-        type: integer
-      payment_method:
-        type: string
-    type: object
-  controller.LoginRequest:
-    properties:
-      password:
-        type: string
-      username:
-        type: string
-    type: object
-  controller.PasswordResetRequest:
+  controller.AggregatedCreateUserRequest:
     properties:
       email:
         type: string
-      token:
+      password:
         type: string
-    type: object
-  controller.Setup2FARequest:
-    properties:
-      code:
-        type: string
-    required:
-    - code
-    type: object
-  controller.StripePayRequest:
-    properties:
-      amount:
-        description: Amount is the quantity of units to purchase.
+      plan_id:
         type: integer
-      cancel_url:
-        description: |-
-          CancelURL is the optional custom URL to redirect when payment is canceled.
-          If empty, defaults to the server's console topup page.
+      user_validity:
+        description: ISO 8601 date, e.g. "2026-12-31"
         type: string
-      payment_method:
-        description: PaymentMethod specifies the payment method (e.g., "stripe").
+      username:
         type: string
-      success_url:
-        description: |-
-          SuccessURL is the optional custom URL to redirect after successful payment.
-          If empty, defaults to the server's console log page.
-        type: string
-    type: object
-  controller.TransferAffQuotaRequest:
-    properties:
-      quota:
-        type: integer
-    required:
-    - quota
-    type: object
-  controller.UpdateUserSettingRequest:
-    properties:
-      accept_unset_model_ratio_model:
-        type: boolean
-      bark_url:
-        type: string
-      gotify_priority:
-        type: integer
-      gotify_token:
-        type: string
-      gotify_url:
-        type: string
-      notification_email:
-        type: string
-      notify_type:
-        type: string
-      quota_warning_threshold:
-        type: number
-      record_ip_log:
-        type: boolean
-      upstream_model_update_notify_enabled:
-        type: boolean
-      webhook_secret:
-        type: string
-      webhook_url:
-        type: string
-    type: object
-  controller.Verify2FARequest:
-    properties:
-      code:
-        type: string
-      flow_token:
-        type: string
-    required:
-    - code
-    type: object
-  controller.topUpRequest:
-    properties:
-      key:
-        type: string
-    required:
-    - key
     type: object
   dto.APIResponse:
     properties:
@@ -185,99 +97,63 @@ definitions:
       reason:
         type: string
     type: object
-  gorm.DeletedAt:
+  model.SubscriptionPlan:
     properties:
-      time:
-        type: string
-      valid:
-        description: Valid is true if Time is not NULL
+      allow_balance_pay:
         type: boolean
-    type: object
-  model.User:
-    properties:
-      admin_permissions:
-        additionalProperties:
-          additionalProperties:
-            type: boolean
-          type: object
-        type: object
-      aff_code:
-        type: string
-      aff_count:
-        type: integer
-      aff_history_quota:
-        description: 邀请历史额度
-        type: integer
-      aff_quota:
-        description: 邀请剩余额度
-        type: integer
+      allow_wallet_overflow:
+        description: Allow falling back to wallet balance after subscription quota
+          is exhausted (empty = true)
+        type: boolean
       created_at:
         type: integer
-      deletedAt:
-        $ref: '#/definitions/gorm.DeletedAt'
-      discord_id:
+      creem_product_id:
         type: string
-      display_name:
-        maxLength: 20
+      currency:
         type: string
-      email:
-        maxLength: 50
+      custom_seconds:
+        type: integer
+      downgrade_group:
+        description: Downgrade user group on expiry (empty = revert to the group held
+          before purchase)
         type: string
-      github_id:
+      duration_unit:
         type: string
-      group:
-        type: string
+      duration_value:
+        type: integer
+      enabled:
+        type: boolean
       id:
         type: integer
-      inviter_id:
+      max_purchase_per_user:
+        description: Max purchases per user (0 = unlimited)
         type: integer
-      last_login_at:
+      price_amount:
+        description: 'Display money amount (follow existing code style: float64 for
+          money)'
+        type: number
+      quota_reset_custom_seconds:
         type: integer
-      linux_do_id:
+      quota_reset_period:
+        description: Quota reset period for plan
         type: string
-      oidc_id:
-        type: string
-      original_password:
-        description: this field is only for Password change verification, don't save
-          it to database!
-        type: string
-      password:
-        maxLength: 20
-        minLength: 8
-        type: string
-      phone:
-        maxLength: 32
-        type: string
-      quota:
+      sort_order:
         type: integer
-      remark:
-        maxLength: 255
+      stripe_price_id:
         type: string
-      request_count:
-        description: request number
+      subtitle:
+        type: string
+      title:
+        type: string
+      total_amount:
+        description: Total quota (amount in quota units, 0 = unlimited)
         type: integer
-      role:
-        description: admin, common
+      updated_at:
         type: integer
-      setting:
+      upgrade_group:
+        description: Upgrade user group after purchase (empty = no change)
         type: string
-      status:
-        description: enabled, disabled
-        type: integer
-      stripe_customer:
-        type: string
-      telegram_id:
-        type: string
-      used_quota:
-        description: used quota
-        type: integer
-      username:
-        maxLength: 50
-        type: string
-      verification_code:
-        description: this field is only for Email verification, don't save it to database!
-        type: string
-      wechat_id:
+      waffo_pancake_product_id:
         type: string
     type: object
 info:
@@ -326,638 +202,123 @@ paths:
       summary: CSV 批量导入渠道模型/价格/介绍
       tags:
       - 渠道-模型导入
-  /user/2fa/backup_codes:
+  /plans:
     post:
+      consumes:
+      - application/json
       parameters:
-      - description: TOTP 验证码
+      - description: '创建订阅计划请求（推荐使用 {plan: {...}} 格式，与控制台参数一致）'
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/controller.Verify2FARequest'
+          $ref: '#/definitions/controller.AggregatedCreatePlanRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: '{status: success, plan_id: int}'
           schema:
-            $ref: '#/definitions/dto.APIResponse'
+            additionalProperties: true
+            type: object
       security:
       - ApiKeyAuth: []
-      summary: 重新生成 2FA 备用码
+      summary: 创建订阅计划（聚合 API）
       tags:
-      - 用户-2FA
-  /user/2fa/disable:
+      - 聚合API-订阅管理
+  /users:
     post:
+      consumes:
+      - application/json
       parameters:
-      - description: TOTP 验证码或备用码
+      - description: 创建用户请求
         in: body
         name: body
         required: true
         schema:
-          $ref: '#/definitions/controller.Verify2FARequest'
+          $ref: '#/definitions/controller.AggregatedCreateUserRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: '{status: success, user_id: string}'
           schema:
-            $ref: '#/definitions/dto.APIResponse'
+            additionalProperties: true
+            type: object
       security:
       - ApiKeyAuth: []
-      summary: 验证后禁用 2FA
+      summary: 创建用户（聚合 API，默认禁用状态）
       tags:
-      - 用户-2FA
-  /user/2fa/enable:
+      - 聚合API-用户管理
+  /users/{user_id}/reactivate:
     post:
+      consumes:
+      - application/json
       parameters:
-      - description: TOTP 验证码
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.Setup2FARequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 验证 TOTP 并启用 2FA
-      tags:
-      - 用户-2FA
-  /user/2fa/setup:
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 初始化 2FA 设置，返回密钥/二维码/备用码
-      tags:
-      - 用户-2FA
-  /user/2fa/status:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 查询当前用户 2FA 状态
-      tags:
-      - 用户-2FA
-  /user/aff:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取我的邀请码
-      tags:
-      - 用户-自身
-  /user/aff_transfer:
-    post:
-      parameters:
-      - description: 转换的佣金额度数量
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.TransferAffQuotaRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 邀请佣金转额度
-      tags:
-      - 用户-充值
-  /user/amount:
-    post:
-      parameters:
-      - description: 充值数量
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.AmountRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 计算充值应付金额
-      tags:
-      - 用户-充值
-  /user/checkin:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取签到状态
-      tags:
-      - 用户-其它
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 每日签到
-      tags:
-      - 用户-其它
-  /user/creem/pay:
-    post:
-      parameters:
-      - description: 产品 ID 与支付方式
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.CreemPayRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: Creem 充值下单
-      tags:
-      - 用户-充值
-  /user/groups:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 获取当前用户可用分组
-      tags:
-      - 用户-认证
-  /user/login:
-    post:
-      parameters:
-      - description: 登录凭据(用户名 + 密码)
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.LoginRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 用户名/密码登录
-      tags:
-      - 用户-认证
-  /user/login/2fa:
-    post:
-      parameters:
-      - description: 2FA 验证码(TOTP 或备用码)
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.Verify2FARequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 登录二次验证(2FA)
-      tags:
-      - 用户-认证
-  /user/models:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取可用模型列表
-      tags:
-      - 用户-自身
-  /user/oauth/bindings:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取我的 OAuth 绑定列表
-      tags:
-      - 用户-其它
-  /user/oauth/bindings/{provider_id}:
-    delete:
-      parameters:
-      - description: 提供商ID
+      - description: 用户 ID
         in: path
-        name: provider_id
+        name: user_id
         required: true
-        type: string
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: '{status: success, status_code: 2000}'
           schema:
-            $ref: '#/definitions/dto.APIResponse'
+            additionalProperties: true
+            type: object
       security:
       - ApiKeyAuth: []
-      summary: 解绑 OAuth 提供商
+      summary: 启用用户（聚合 API）
       tags:
-      - 用户-其它
-  /user/passkey:
-    delete:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 解绑当前用户 Passkey
-      tags:
-      - 用户-passkey
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 查询当前用户 Passkey 绑定状态
-      tags:
-      - 用户-passkey
-  /user/passkey/login/begin:
+      - 聚合API-用户管理
+  /users/{user_id}/reset-password:
     post:
-      produces:
+      consumes:
       - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 启动 Passkey(WebAuthn)登录
-      tags:
-      - 用户-passkey
-  /user/passkey/login/finish:
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 完成 Passkey(WebAuthn)登录
-      tags:
-      - 用户-passkey
-  /user/passkey/register/begin:
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 启动 Passkey 注册
-      tags:
-      - 用户-passkey
-  /user/passkey/register/finish:
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 完成 Passkey 注册
-      tags:
-      - 用户-passkey
-  /user/passkey/verify/begin:
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 启动 Passkey 验证
-      tags:
-      - 用户-passkey
-  /user/passkey/verify/finish:
-    post:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 完成 Passkey 验证
-      tags:
-      - 用户-passkey
-  /user/pay:
-    post:
       parameters:
-      - description: 充值金额与支付方式
-        in: body
-        name: body
+      - description: 用户 ID
+        in: path
+        name: user_id
         required: true
-        schema:
-          $ref: '#/definitions/controller.EpayRequest'
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: '{status: success, status_code: 2000}'
           schema:
-            $ref: '#/definitions/dto.APIResponse'
+            additionalProperties: true
+            type: object
       security:
       - ApiKeyAuth: []
-      summary: EPay 充值下单
+      summary: 发送重置密码邮件（聚合 API）
       tags:
-      - 用户-充值
-  /user/register:
+      - 聚合API-用户管理
+  /users/{user_id}/suspend:
     post:
+      consumes:
+      - application/json
       parameters:
-      - description: 注册信息(包含用户名、密码等)
-        in: body
-        name: body
+      - description: 用户 ID
+        in: path
+        name: user_id
         required: true
-        schema:
-          $ref: '#/definitions/model.User'
+        type: integer
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: '{status: success, status_code: 2000}'
           schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 注册新用户
-      tags:
-      - 用户-认证
-  /user/reset:
-    post:
-      parameters:
-      - description: 重置密码请求(邮箱 + 验证令牌)
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.PasswordResetRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      summary: 通过邮箱令牌重置密码
-      tags:
-      - 用户-认证
-  /user/self:
-    delete:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
+            additionalProperties: true
+            type: object
       security:
       - ApiKeyAuth: []
-      summary: 注销当前用户自身账号
+      summary: 禁用用户（聚合 API）
       tags:
-      - 用户-自身
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取当前登录用户信息
-      tags:
-      - 用户-自身
-    put:
-      parameters:
-      - description: 用户资料更新字段(sidebar_modules / language)
-        in: body
-        name: body
-        required: true
-        schema:
-          type: object
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 更新当前用户资料
-      tags:
-      - 用户-自身
-  /user/setting:
-    put:
-      parameters:
-      - description: 用户设置(预警类型/阈值/通知通道)
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.UpdateUserSettingRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 更新用户个人设置
-      tags:
-      - 用户-其它
-  /user/stripe/amount:
-    post:
-      parameters:
-      - description: 充值数量
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.StripePayRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 计算 Stripe 充值应付金额
-      tags:
-      - 用户-充值
-  /user/stripe/pay:
-    post:
-      parameters:
-      - description: 充值数量、支付方式与回调地址
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.StripePayRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: Stripe 充值下单
-      tags:
-      - 用户-充值
-  /user/token:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 生成新的访问令牌
-      tags:
-      - 用户-自身
-  /user/topup:
-    post:
-      parameters:
-      - description: 兑换码
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/controller.topUpRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 兑换码充值
-      tags:
-      - 用户-充值
-  /user/topup/info:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取充值信息
-      tags:
-      - 用户-充值
-  /user/topup/self:
-    get:
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/dto.APIResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: 获取我的充值记录
-      tags:
-      - 用户-充值
+      - 聚合API-用户管理
 securityDefinitions:
   ApiKeyAuth:
     in: header

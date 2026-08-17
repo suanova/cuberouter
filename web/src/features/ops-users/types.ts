@@ -26,6 +26,8 @@ export interface OpsUser {
   quota: number
   used_quota: number
   request_count: number
+  total_prompt_tokens: number
+  total_completion_tokens: number
   created_at: number
   aff_code: string
   aff_count: number

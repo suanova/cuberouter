@@ -383,10 +383,35 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	common.DeleteKey(req.Email, common.PasswordResetPurpose)
+
+	// 将新密码通过邮件发送给用户，不在 API 响应中直接返回
+	subject := common.WrapBilingualSubject(
+		fmt.Sprintf("%s Password Reset", common.SystemName),
+		fmt.Sprintf("%s密码重置", common.SystemName),
+	)
+	zhContent := fmt.Sprintf("<p>您好，您的 %s 密码已重置。</p>"+
+		"<p>您的新密码为：<strong>%s</strong></p>"+
+		"<p>请使用新密码登录并及时修改密码。如果不是本人操作，请立即联系管理员。</p>",
+		common.SystemName, password)
+	enContent := fmt.Sprintf("<p>Hello, your password for %s has been reset.</p>"+
+		"<p>Your new password is: <strong>%s</strong></p>"+
+		"<p>Please log in with the new password and change it as soon as possible. "+
+		"If this was not your action, please contact the administrator immediately.</p>",
+		common.SystemName, password)
+	content := common.WrapBilingualContent(enContent, zhContent)
+	emailErr := common.SendEmail(subject, req.Email, content)
+	if emailErr != nil {
+		common.SysError(fmt.Sprintf("密码重置后发送邮件失败 (email=%s): %v", req.Email, emailErr))
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "密码已重置，但发送邮件失败，请联系管理员",
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
-		"message": "",
-		"data":    password,
+		"message": "密码已重置，新密码已发送至您的邮箱",
 	})
 	return
 }

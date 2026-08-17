@@ -181,7 +181,7 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.OPS,
           },
           {
-            title: t('Invite History'),
+            title: t('User Management'),
             url: '/ops/invite-history',
             icon: Users,
             requiredRole: ROLE.OPS,

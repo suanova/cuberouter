@@ -12,7 +12,14 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
-	apiRouter := router.Group("/api")
+	registerApiRoutes(router.Group("/api"))
+	registerApiRoutes(router.Group("/api/v1"))
+}
+
+// registerApiRoutes 注册 /api 前缀下的全部内部路由。SetApiRouter 将其挂到
+// /api 与 /api/v1 双前缀（对外第三方收敛接口的稳定契约前缀，见
+// controller/aggregated_api.go）。两套前缀共享同一组 handler 与中间件。
+func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
@@ -439,6 +446,25 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.PUT("/:id/name", controller.UpdateDeploymentName)
 			deploymentsRoute.POST("/:id/extend", controller.ExtendDeployment)
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
+		}
+
+		// 聚合 API（对外第三方收敛接口，见 controller/aggregated_api.go）。
+		// 双路径注册（"" + "/"）防止 Gin 尾斜杠 307 重定向：POST 重定向
+		// 多数客户端不跟随，会丢 body。
+		aggregatedUserRoute := apiRouter.Group("/users")
+		aggregatedUserRoute.Use(middleware.AdminAuth())
+		{
+			aggregatedUserRoute.POST("", controller.AggregatedCreateUser)
+			aggregatedUserRoute.POST("/", controller.AggregatedCreateUser)
+			aggregatedUserRoute.POST("/:user_id/suspend", controller.AggregatedSuspendUser)
+			aggregatedUserRoute.POST("/:user_id/reactivate", controller.AggregatedReactivateUser)
+			aggregatedUserRoute.POST("/:user_id/reset-password", controller.AggregatedResetUserPassword)
+		}
+		aggregatedPlanRoute := apiRouter.Group("/plans")
+		aggregatedPlanRoute.Use(middleware.AdminAuth())
+		{
+			aggregatedPlanRoute.POST("", controller.AggregatedCreatePlan)
+			aggregatedPlanRoute.POST("/", controller.AggregatedCreatePlan)
 		}
 	}
 }

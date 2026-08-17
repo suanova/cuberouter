@@ -143,6 +143,8 @@ const (
 	MsgOpsExportHeaderQuota                 = "ops.export_header.quota"
 	MsgOpsExportHeaderUsedQuota             = "ops.export_header.used_quota"
 	MsgOpsExportHeaderRequestCount          = "ops.export_header.request_count"
+	MsgOpsExportHeaderPromptTokens          = "ops.export_header.prompt_tokens"
+	MsgOpsExportHeaderCompletionTokens      = "ops.export_header.completion_tokens"
 	MsgOpsExportHeaderCreatedAt             = "ops.export_header.created_at"
 	MsgOpsExportHeaderAffCode               = "ops.export_header.aff_code"
 	MsgOpsExportHeaderAffCount              = "ops.export_header.aff_count"
