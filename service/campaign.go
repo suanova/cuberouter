@@ -21,6 +21,25 @@ type CampaignEngine struct {
 // Global campaign engine instance
 var CampaignEngineInstance = &CampaignEngine{}
 
+// campaignDispatches tracks in-flight campaign goroutines so tests can wait
+// for them to finish before tearing down global state.
+var campaignDispatches sync.WaitGroup
+
+func campaignGo(f func()) {
+	campaignDispatches.Add(1)
+	gopool.Go(func() {
+		defer campaignDispatches.Done()
+		f()
+	})
+}
+
+// DrainCampaignDispatches blocks until every queued campaign dispatch (reward
+// handling and notification emails) has returned. Tests call it before
+// restoring global handles so no campaign goroutine outlives the test.
+func DrainCampaignDispatches() {
+	campaignDispatches.Wait()
+}
+
 // handleCampaignType processes a specific campaign type for a user
 func (e *CampaignEngine) handleCampaignType(campaignType string, user *model.User, inviterId int) {
 	// Entry points may pass a slim struct without Email (e.g. request-body users
@@ -114,7 +133,7 @@ func (e *CampaignEngine) OnPhoneFilled(user *model.User) {
 		return
 	}
 
-	gopool.Go(func() {
+	campaignGo(func() {
 		e.handleCampaignType(model.CampaignTypePhoneFilled, user, 0)
 	})
 }
@@ -160,7 +179,7 @@ func (e *CampaignEngine) dispatchPhoneFilledReward(campaign *model.Campaign, use
 
 	// 发送兑换码邮件：用户未绑定邮箱或 SMTP 未配置时静默跳过
 	if reward != nil {
-		gopool.Go(func() {
+		campaignGo(func() {
 			SendCampaignRewardEmail(user, campaign, redemption, reward)
 		})
 	}
@@ -250,7 +269,7 @@ func (e *CampaignEngine) OnInvitationRegister(user *model.User, inviterId int) {
 		return
 	}
 
-	gopool.Go(func() {
+	campaignGo(func() {
 		e.handleCampaignType(model.CampaignTypeInvitation, user, inviterId)
 	})
 }
@@ -298,7 +317,7 @@ func (e *CampaignEngine) dispatchInvitationReward(campaign *model.Campaign, user
 
 	// Send email notification if user has email bound
 	if reward != nil {
-		gopool.Go(func() {
+		campaignGo(func() {
 			SendCampaignRewardEmail(user, campaign, redemption, reward)
 		})
 	}
