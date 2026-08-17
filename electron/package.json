@@ -65,10 +65,6 @@
           "to": "licenses/LICENSE"
         },
         {
-          "from": "../NOTICE",
-          "to": "licenses/NOTICE"
-        },
-        {
           "from": "../THIRD-PARTY-LICENSES.md",
           "to": "licenses/THIRD-PARTY-LICENSES.md"
         },
@@ -96,10 +92,6 @@
         {
           "from": "../LICENSE",
           "to": "licenses/LICENSE"
-        },
-        {
-          "from": "../NOTICE",
-          "to": "licenses/NOTICE"
         },
         {
           "from": "../THIRD-PARTY-LICENSES.md",
@@ -130,10 +122,6 @@
         {
           "from": "../LICENSE",
           "to": "licenses/LICENSE"
-        },
-        {
-          "from": "../NOTICE",
-          "to": "licenses/NOTICE"
         },
         {
           "from": "../THIRD-PARTY-LICENSES.md",
