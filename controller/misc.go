@@ -373,18 +373,9 @@ func ResetPassword(c *gin.Context) {
 		return
 	}
 	password := common.GenerateVerificationCode(12)
-	err = model.ResetUserPasswordByEmail(req.Email, password)
-	if err != nil {
-		if errors.Is(err, model.ErrEmailNotFound) || errors.Is(err, model.ErrEmailAmbiguous) {
-			common.ApiErrorI18n(c, i18n.MsgUserPasswordResetLinkInvalid)
-			return
-		}
-		common.ApiError(c, err)
-		return
-	}
-	common.DeleteKey(req.Email, common.PasswordResetPurpose)
 
-	// 将新密码通过邮件发送给用户，不在 API 响应中直接返回
+	// 先发送邮件，投递成功后再落库新密码并消费重置 token：SMTP 失败时
+	// 旧密码与 token 都保持原样，用户可重试，不会被锁在门外。
 	subject := common.WrapBilingualSubject(
 		fmt.Sprintf("%s Password Reset", common.SystemName),
 		fmt.Sprintf("%s密码重置", common.SystemName),
@@ -401,13 +392,24 @@ func ResetPassword(c *gin.Context) {
 	content := common.WrapBilingualContent(enContent, zhContent)
 	emailErr := common.SendEmail(subject, req.Email, content)
 	if emailErr != nil {
-		common.SysError(fmt.Sprintf("密码重置后发送邮件失败 (email=%s): %v", req.Email, emailErr))
+		common.SysError(fmt.Sprintf("密码重置邮件发送失败 (email=%s): %v", req.Email, emailErr))
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
-			"message": "密码已重置，但发送邮件失败，请联系管理员",
+			"message": "密码重置邮件发送失败，请重试",
 		})
 		return
 	}
+
+	err = model.ResetUserPasswordByEmail(req.Email, password)
+	if err != nil {
+		if errors.Is(err, model.ErrEmailNotFound) || errors.Is(err, model.ErrEmailAmbiguous) {
+			common.ApiErrorI18n(c, i18n.MsgUserPasswordResetLinkInvalid)
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	common.DeleteKey(req.Email, common.PasswordResetPurpose)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

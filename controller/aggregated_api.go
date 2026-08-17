@@ -105,6 +105,15 @@ func AggregatedCreateUser(c *gin.Context) {
 		return
 	}
 
+	// 校验 user_validity 格式（ISO 8601 YYYY-MM-DD），无效直接拒绝，
+	// 避免创建用户后才发现无效日期被静默忽略
+	if req.UserValidity != "" {
+		if _, err := time.Parse("2006-01-02", req.UserValidity); err != nil {
+			aggregatedFail(c, fmt.Sprintf("无效的 user_validity: %s（需 YYYY-MM-DD 格式）", req.UserValidity))
+			return
+		}
+	}
+
 	// 创建用户（复用 model.User.Insert）
 	// Issue #62 / 需求变更 #61: 注册后用户默认为禁用状态，需管理员启用
 	myRole := c.GetInt("role")
@@ -135,7 +144,13 @@ func AggregatedCreateUser(c *gin.Context) {
 		msg, err := model.AdminBindSubscription(cleanUser.Id, req.PlanId, "aggregated_api")
 		if err != nil {
 			common.SysError(fmt.Sprintf("AggregatedCreateUser AdminBindSubscription error: %v", err))
-			aggregatedFail(c, fmt.Sprintf("绑定订阅计划失败: %s", err.Error()))
+			// 用户已创建成功：返回 user_id 让调用方定位部分创建的账户
+			// （无 user_id 时重试会撞"用户名或邮箱已存在"，账户沦为孤儿）
+			c.JSON(http.StatusOK, gin.H{
+				"status":  aggregatedStatusFail,
+				"message": fmt.Sprintf("绑定订阅计划失败: %s", err.Error()),
+				"user_id": strconv.Itoa(cleanUser.Id),
+			})
 			return
 		}
 		if msg != "" {
@@ -143,13 +158,13 @@ func AggregatedCreateUser(c *gin.Context) {
 		}
 	}
 
-	// 处理 user_validity：解析 ISO 8601 日期并记录到 remark
+	// 处理 user_validity：解析 ISO 8601 日期并记录到 remark（格式已在
+	// Insert 前校验，此处解析不会失败）
 	if req.UserValidity != "" {
-		if validityTime, err := time.Parse("2006-01-02", req.UserValidity); err == nil {
-			remark := fmt.Sprintf("账户有效期至 %s", validityTime.Format("2006-01-02"))
-			if err := model.DB.Model(&model.User{}).Where("id = ?", cleanUser.Id).Update("remark", remark).Error; err != nil {
-				common.SysError(fmt.Sprintf("AggregatedCreateUser 更新 remark 失败: %v", err))
-			}
+		validityTime, _ := time.Parse("2006-01-02", req.UserValidity)
+		remark := fmt.Sprintf("账户有效期至 %s", validityTime.Format("2006-01-02"))
+		if err := model.DB.Model(&model.User{}).Where("id = ?", cleanUser.Id).Update("remark", remark).Error; err != nil {
+			common.SysError(fmt.Sprintf("AggregatedCreateUser 更新 remark 失败: %v", err))
 		}
 	}
 
