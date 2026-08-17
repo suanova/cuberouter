@@ -32,7 +32,7 @@ RUN apt-get update \
     && update-ca-certificates
 
 COPY --from=builder2 /build/cube-router /
-COPY LICENSE NOTICE THIRD-PARTY-LICENSES.md /licenses/
+COPY LICENSE THIRD-PARTY-LICENSES.md /licenses/
 EXPOSE 3000
 WORKDIR /data
 ENTRYPOINT ["/cube-router"]
