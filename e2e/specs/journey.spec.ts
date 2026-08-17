@@ -8,7 +8,10 @@ import { expect, test } from '@playwright/test'
 
 const ADMIN = { username: 'root', password: 'correct-horse-battery' }
 
-test.describe.configure({ mode: 'serial' })
+// A fresh-deployment journey mutates global state (system setup can only
+// happen once), so Playwright cannot retry it: after any partial run the
+// system is no longer fresh and the pre-init assertions would fail again.
+test.describe.configure({ mode: 'serial', retries: 0 })
 
 test.describe('fresh deployment journey', () => {
   test('API health and setup gate are sane before initialization', async ({

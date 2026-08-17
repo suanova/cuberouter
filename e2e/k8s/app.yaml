@@ -61,8 +61,10 @@ metadata:
   name: cuberouter
   namespace: cuberouter-e2e
 spec:
+  type: NodePort
   selector:
     app: cuberouter
   ports:
     - port: 3000
       targetPort: 3000
+      nodePort: 30080
