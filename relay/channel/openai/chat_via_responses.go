@@ -267,6 +267,8 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		}
 	}
 
+	var sawCompleted bool
+
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		if streamErr != nil {
 			sr.Stop(streamErr)
@@ -278,6 +280,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			logger.LogError(c, "failed to unmarshal responses stream event: "+err.Error())
 			sr.Error(err)
 			return
+		}
+
+		if streamResp.Type == "response.completed" {
+			sawCompleted = true
 		}
 
 		if streamResp.Type == "response.error" || streamResp.Type == "response.failed" {
@@ -317,6 +323,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
 			st.EndReason == relaycommon.StreamEndReasonPingFail
 		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
+	}
+	// 未收到 response.completed 就 EOF：上游在完整结束前断开，视为不完整流。
+	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF && !sawCompleted {
+		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
 	}
 
 	usage := state.Usage()

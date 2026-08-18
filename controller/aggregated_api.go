@@ -556,8 +556,14 @@ func AggregatedAdjustQuota(c *gin.Context) {
 		return
 	}
 
-	// 充值前金额（原生额度对应的 USD 金额）
-	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	// 充值前金额（原生额度对应的 USD 金额）。
+	// QuotaPerUnit 为可配置项（strconv.ParseFloat 丢弃错误），为 0 时
+	// decimal.Div 会 panic；退化为 1 仅影响展示金额，不影响计费。
+	quotaPerUnit := common.QuotaPerUnit
+	if quotaPerUnit <= 0 {
+		quotaPerUnit = 1
+	}
+	dQuotaPerUnit := decimal.NewFromFloat(quotaPerUnit)
 	currentPrice := decimal.NewFromInt(int64(user.Quota)).Div(dQuotaPerUnit).InexactFloat64()
 
 	// 强制同步写库（db=true），跳过 BatchUpdate 异步入队。
@@ -665,6 +671,14 @@ func AggregatedGetUserStatus(c *gin.Context) {
 		return
 	}
 
+	// 权限检查：不能查看同级或更高级用户的敏感信息（分组/额度/邀请人/订阅）。
+	// 与其他聚合 API 保持一致，防止低权限调用方读取 root/admin 的详情。
+	myRole := c.GetInt("role")
+	if myRole <= user.Role && myRole != common.RoleRootUser {
+		aggregatedFail(c, "无权操作同级或更高级用户")
+		return
+	}
+
 	// 构建响应数据
 	resp := gin.H{
 		"user_id":     user.Id,
@@ -689,46 +703,53 @@ func AggregatedGetUserStatus(c *gin.Context) {
 
 	// 查询用户全部订阅记录（active + expired + cancelled），按 id 降序排列
 	subs, subErr := model.GetAllUserSubscriptionsByIdDesc(user.Id)
+	if subErr != nil {
+		common.SysError(fmt.Sprintf("AggregatedGetUserStatus GetAllUserSubscriptionsByIdDesc error: %v", subErr))
+		aggregatedFail(c, "查询订阅记录失败")
+		return
+	}
 	plans := make([]AggregatedUserStatusPlanItem, 0)
-	if subErr == nil {
-		for _, summary := range subs {
-			if summary.Subscription == nil {
-				continue
-			}
-			sub := summary.Subscription
-
-			// 查询订阅计划详情
-			planTitle := ""
-			if sub.PlanId > 0 {
-				plan, planErr := model.GetSubscriptionPlanById(sub.PlanId)
-				if planErr == nil && plan != nil {
-					planTitle = plan.Title
-				}
-			}
-
-			// 将内部状态映射为对外状态值：
-			// active -> active, cancelled -> invalidated, 其他按原值返回
-			externalStatus := sub.Status
-			if externalStatus == "cancelled" {
-				externalStatus = "invalidated"
-			}
-
-			plans = append(plans, AggregatedUserStatusPlanItem{
-				Id:                 sub.Id,
-				Status:             externalStatus,
-				ValidityStartAt:    time.Unix(sub.StartTime, 0).Format("2006-01-02 15:04:05"),
-				ValidityEndAt:      time.Unix(sub.EndTime, 0).Format("2006-01-02 15:04:05"),
-				PlanId:             sub.PlanId,
-				PlanTitle:          planTitle,
-				PlanRawQuota:       sub.AmountTotal,
-				PlanRemainingQuota: sub.AmountTotal - sub.AmountUsed,
-			})
+	for _, summary := range subs {
+		if summary.Subscription == nil {
+			continue
 		}
+		sub := summary.Subscription
+
+		// 查询订阅计划详情
+		planTitle := ""
+		if sub.PlanId > 0 {
+			plan, planErr := model.GetSubscriptionPlanById(sub.PlanId)
+			if planErr == nil && plan != nil {
+				planTitle = plan.Title
+			}
+		}
+
+		// 将内部状态映射为对外状态值：
+		// active -> active, cancelled -> invalidated, 其他按原值返回
+		externalStatus := sub.Status
+		if externalStatus == "cancelled" {
+			externalStatus = "invalidated"
+		}
+
+		plans = append(plans, AggregatedUserStatusPlanItem{
+			Id:                 sub.Id,
+			Status:             externalStatus,
+			ValidityStartAt:    time.Unix(sub.StartTime, 0).Format("2006-01-02 15:04:05"),
+			ValidityEndAt:      time.Unix(sub.EndTime, 0).Format("2006-01-02 15:04:05"),
+			PlanId:             sub.PlanId,
+			PlanTitle:          planTitle,
+			PlanRawQuota:       sub.AmountTotal,
+			PlanRemainingQuota: sub.AmountTotal - sub.AmountUsed,
+		})
 	}
 	resp["plans"] = plans
 
 	// 当前总额度和总额
-	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	quotaPerUnit := common.QuotaPerUnit
+	if quotaPerUnit <= 0 {
+		quotaPerUnit = 1
+	}
+	dQuotaPerUnit := decimal.NewFromFloat(quotaPerUnit)
 	resp["total_price"] = decimal.NewFromInt(int64(user.Quota)).Div(dQuotaPerUnit).InexactFloat64()
 	resp["total_quota"] = user.Quota
 

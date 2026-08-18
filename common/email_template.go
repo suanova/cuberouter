@@ -87,24 +87,40 @@ type PasswordResetSuccessEmailTemplateData struct {
 	NewPassword string
 }
 
-// renderTemplate safely renders a Go text/template. On error it returns the
-// raw template string so the email still goes out (better than blocking a
-// password reset).
-func renderTemplate(tmplStr string, data interface{}) string {
+// renderTemplate safely renders a Go text/template, returning an error on
+// parse or execute failure so the caller can fall back to a default template
+// (instead of emailing the raw template with unresolved {{.Var}} placeholders).
+func renderTemplate(tmplStr string, data interface{}) (string, error) {
 	if tmplStr == "" {
-		return ""
+		return "", nil
 	}
 	tmpl, err := template.New("email").Parse(tmplStr)
 	if err != nil {
-		SysError("failed to parse email template: " + err.Error())
-		return tmplStr
+		return "", err
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		SysError("failed to execute email template: " + err.Error())
-		return tmplStr
+		return "", err
 	}
-	return buf.String()
+	return buf.String(), nil
+}
+
+// renderTemplateWithFallback renders the configured template; on parse or
+// execute failure it logs and falls back to the given default template, so a
+// misconfigured admin template never mails unresolved {{.Link}}/{{.NewPassword}}
+// placeholders (which would hide the reset link or the new password).
+func renderTemplateWithFallback(configured, def string, data interface{}) string {
+	out, err := renderTemplate(configured, data)
+	if err == nil {
+		return out
+	}
+	SysError("failed to render email template, falling back to default: " + err.Error())
+	out, err = renderTemplate(def, data)
+	if err != nil {
+		// 默认模板为静态常量，理论上不会失败；兜底仍返回默认模板原文。
+		return def
+	}
+	return out
 }
 
 // RenderPasswordResetEmail renders subject + content for the password-reset
@@ -125,8 +141,8 @@ func RenderPasswordResetEmail(systemName, link string, validMinutes int) (subjec
 	if subjZhTmpl == "" {
 		subjZhTmpl = DefaultPasswordResetEmailSubjectZh
 	}
-	subjectEn := renderTemplate(subjEnTmpl, data)
-	subjectZh := renderTemplate(subjZhTmpl, data)
+	subjectEn := renderTemplateWithFallback(subjEnTmpl, DefaultPasswordResetEmailSubjectEn, data)
+	subjectZh := renderTemplateWithFallback(subjZhTmpl, DefaultPasswordResetEmailSubjectZh, data)
 	subject = WrapBilingualSubject(subjectEn, subjectZh)
 
 	contentEnTmpl := PasswordResetEmailContentEn
@@ -137,8 +153,8 @@ func RenderPasswordResetEmail(systemName, link string, validMinutes int) (subjec
 	if contentZhTmpl == "" {
 		contentZhTmpl = DefaultPasswordResetEmailContentZh
 	}
-	contentEn := renderTemplate(contentEnTmpl, data)
-	contentZh := renderTemplate(contentZhTmpl, data)
+	contentEn := renderTemplateWithFallback(contentEnTmpl, DefaultPasswordResetEmailContentEn, data)
+	contentZh := renderTemplateWithFallback(contentZhTmpl, DefaultPasswordResetEmailContentZh, data)
 	content = WrapBilingualContent(contentEn, contentZh)
 	return subject, content
 }
@@ -159,8 +175,8 @@ func RenderPasswordResetSuccessEmail(systemName, newPassword string) (subject, c
 	if subjZhTmpl == "" {
 		subjZhTmpl = DefaultPasswordResetSuccessEmailSubjectZh
 	}
-	subjectEn := renderTemplate(subjEnTmpl, data)
-	subjectZh := renderTemplate(subjZhTmpl, data)
+	subjectEn := renderTemplateWithFallback(subjEnTmpl, DefaultPasswordResetSuccessEmailSubjectEn, data)
+	subjectZh := renderTemplateWithFallback(subjZhTmpl, DefaultPasswordResetSuccessEmailSubjectZh, data)
 	subject = WrapBilingualSubject(subjectEn, subjectZh)
 
 	contentEnTmpl := PasswordResetSuccessEmailContentEn
@@ -171,8 +187,8 @@ func RenderPasswordResetSuccessEmail(systemName, newPassword string) (subject, c
 	if contentZhTmpl == "" {
 		contentZhTmpl = DefaultPasswordResetSuccessEmailContentZh
 	}
-	contentEn := renderTemplate(contentEnTmpl, data)
-	contentZh := renderTemplate(contentZhTmpl, data)
+	contentEn := renderTemplateWithFallback(contentEnTmpl, DefaultPasswordResetSuccessEmailContentEn, data)
+	contentZh := renderTemplateWithFallback(contentZhTmpl, DefaultPasswordResetSuccessEmailContentZh, data)
 	content = WrapBilingualContent(contentEn, contentZh)
 	return subject, content
 }

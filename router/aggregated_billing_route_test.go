@@ -11,7 +11,8 @@ import (
 // TestAggregatedAndBillingRoutesRegistered verifies that the aggregated API
 // (9 user routes + plans) is registered under all three prefixes
 // (/api, /api/v1, /api/v2 — see SetApiRouter) and that the billing report
-// routes are registered once. This guards against prefix drift and route typos.
+// routes are mirrored under the same three prefixes. This guards against
+// prefix drift and route typos.
 func TestAggregatedAndBillingRoutesRegistered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()

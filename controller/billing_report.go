@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -49,13 +50,20 @@ func parseBillingDateRange(start, end string) (startTs, endTs int64, err error) 
 	return st.Unix(), et.Unix(), nil
 }
 
-// quotaToDisplayAmount 把内部额度按站点展示类型换算为金额,行为与
-// controller/billing.go 一致。
+// quotaToDisplayAmount 把内部额度按站点展示类型换算为金额。
+// 供账单报表与 OpenAI 兼容 billing 接口（controller/billing.go）共用。
+// 支持 USD / CNY / TOKENS / CUSTOM 四种展示类型。
 func quotaToDisplayAmount(quota int) float64 {
 	amount := float64(quota)
 	switch operation_setting.GetQuotaDisplayType() {
 	case operation_setting.QuotaDisplayTypeCNY:
 		amount = amount / common.QuotaPerUnit * operation_setting.USDExchangeRate
+	case operation_setting.QuotaDisplayTypeCustom:
+		rate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+		if rate <= 0 {
+			rate = 1
+		}
+		amount = amount / common.QuotaPerUnit * rate
 	case operation_setting.QuotaDisplayTypeTokens:
 		// 保持 tokens 原值
 	default:
@@ -64,42 +72,18 @@ func quotaToDisplayAmount(quota int) float64 {
 	return amount
 }
 
-// GetUserBillingReport 查询用户计费账单报表(管理员)。
-// 按用户名 + 日期范围(YYYY-MM-DD) 查询 token 用量与费用,含汇总与按日明细,
-// 均按 model_name 分组。最大跨度 31 天。
-func GetUserBillingReport(c *gin.Context) {
-	username := c.Query("username")
-	if username == "" {
-		common.ApiErrorMsg(c, "用户名不能为空")
-		return
-	}
-
-	startStr := c.Query("start")
-	endStr := c.Query("end")
-	startTs, endTs, err := parseBillingDateRange(startStr, endStr)
-	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
-		return
-	}
-
-	// 按用户名定位用户
-	var user model.User
-	if err := model.DB.Where("username = ?", username).First(&user).Error; err != nil {
-		common.ApiErrorMsg(c, "用户不存在")
-		return
-	}
-
+// buildBillingReportData 汇总指定用户计费账单：按模型汇总 + 按日明细。
+// GetUserBillingReport 与 GetOpsBillingReport 共享，避免报表装配逻辑漂移。
+func buildBillingReportData(user *model.User, startStr, endStr string, startTs, endTs int64) (dto.BillingReportData, error) {
 	// 汇总(按模型)
-	summaryRows, err := model.GetUserBillingAgg(username, startTs, endTs, false)
+	summaryRows, err := model.GetUserBillingAgg(user.Username, startTs, endTs, false)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return dto.BillingReportData{}, err
 	}
 	// 按日(按模型)
-	dailyRows, err := model.GetUserBillingAgg(username, startTs, endTs, true)
+	dailyRows, err := model.GetUserBillingAgg(user.Username, startTs, endTs, true)
 	if err != nil {
-		common.ApiError(c, err)
-		return
+		return dto.BillingReportData{}, err
 	}
 
 	// 组装汇总
@@ -151,7 +135,7 @@ func GetUserBillingReport(c *gin.Context) {
 		daily = append(daily, *dailyMap[k])
 	}
 
-	data := dto.BillingReportData{
+	return dto.BillingReportData{
 		User: dto.UserDashboardBrief{
 			Id:           user.Id,
 			Username:     user.Username,
@@ -174,6 +158,38 @@ func GetUserBillingReport(c *gin.Context) {
 		},
 		Summary: summary,
 		Daily:   daily,
+	}, nil
+}
+
+// GetUserBillingReport 查询用户计费账单报表(管理员)。
+// 按用户名 + 日期范围(YYYY-MM-DD) 查询 token 用量与费用,含汇总与按日明细,
+// 均按 model_name 分组。最大跨度 31 天。
+func GetUserBillingReport(c *gin.Context) {
+	username := c.Query("username")
+	if username == "" {
+		common.ApiErrorMsg(c, "用户名不能为空")
+		return
+	}
+
+	startStr := c.Query("start")
+	endStr := c.Query("end")
+	startTs, endTs, err := parseBillingDateRange(startStr, endStr)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+
+	// 按用户名定位用户
+	var user model.User
+	if err := model.DB.Where("username = ?", username).First(&user).Error; err != nil {
+		common.ApiErrorMsg(c, "用户不存在")
+		return
+	}
+
+	data, err := buildBillingReportData(&user, startStr, endStr, startTs, endTs)
+	if err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	common.ApiSuccess(c, data)
 }
@@ -183,6 +199,12 @@ func GetUserBillingReport(c *gin.Context) {
 func GetOpsBillingReport(c *gin.Context) {
 	callerId := c.GetInt("id")
 	callerRole := c.GetInt("role")
+	// callerId 由 OpsAuth 解析的身份写入；为 0 说明身份缺失，直接拒绝，
+	// 避免与 InviterId==0 的无邀请人用户误判为匹配而越权。
+	if callerId <= 0 {
+		common.ApiErrorMsg(c, "无效的身份信息")
+		return
+	}
 
 	username := c.Query("username")
 	if username == "" {
@@ -213,91 +235,10 @@ func GetOpsBillingReport(c *gin.Context) {
 		}
 	}
 
-	// 汇总(按模型)
-	summaryRows, err := model.GetUserBillingAgg(username, startTs, endTs, false)
+	data, err := buildBillingReportData(&user, startStr, endStr, startTs, endTs)
 	if err != nil {
 		common.ApiError(c, err)
 		return
-	}
-	// 按日(按模型)
-	dailyRows, err := model.GetUserBillingAgg(username, startTs, endTs, true)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-
-	// 组装汇总
-	summary := make([]dto.BillingModelStat, 0, len(summaryRows))
-	for _, r := range summaryRows {
-		summary = append(summary, dto.BillingModelStat{
-			ModelName:        r.ModelName,
-			RequestCount:     r.RequestCount,
-			PromptTokens:     r.PromptTokens,
-			CompletionTokens: r.CompletionTokens,
-			CacheTokens:      r.CacheTokens,
-			TotalTokens:      r.PromptTokens + r.CompletionTokens,
-			Quota:            r.Quota,
-			Amount:           quotaToDisplayAmount(r.Quota),
-		})
-	}
-
-	// 组装按日(按 day_key 分组,每组内按模型)
-	dailyMap := make(map[int64]*dto.BillingDailyStat)
-	dailyOrder := make([]int64, 0)
-	for _, r := range dailyRows {
-		day, ok := dailyMap[r.DayKey]
-		if !ok {
-			day = &dto.BillingDailyStat{Date: model.BillingDayKeyToDate(r.DayKey)}
-			dailyMap[r.DayKey] = day
-			dailyOrder = append(dailyOrder, r.DayKey)
-		}
-		stat := dto.BillingModelStat{
-			ModelName:        r.ModelName,
-			RequestCount:     r.RequestCount,
-			PromptTokens:     r.PromptTokens,
-			CompletionTokens: r.CompletionTokens,
-			CacheTokens:      r.CacheTokens,
-			TotalTokens:      r.PromptTokens + r.CompletionTokens,
-			Quota:            r.Quota,
-			Amount:           quotaToDisplayAmount(r.Quota),
-		}
-		day.Models = append(day.Models, stat)
-		day.RequestCount += stat.RequestCount
-		day.PromptTokens += stat.PromptTokens
-		day.CompletionTokens += stat.CompletionTokens
-		day.CacheTokens += stat.CacheTokens
-		day.TotalTokens += stat.TotalTokens
-		day.Quota += stat.Quota
-		day.Amount += stat.Amount
-	}
-	daily := make([]dto.BillingDailyStat, 0, len(dailyOrder))
-	for _, k := range dailyOrder {
-		daily = append(daily, *dailyMap[k])
-	}
-
-	data := dto.BillingReportData{
-		User: dto.UserDashboardBrief{
-			Id:           user.Id,
-			Username:     user.Username,
-			DisplayName:  user.DisplayName,
-			Role:         user.Role,
-			Group:        user.Group,
-			Quota:        user.Quota,
-			UsedQuota:    user.UsedQuota,
-			RequestCount: user.RequestCount,
-		},
-		Currency: dto.BillingCurrency{
-			Type:   operation_setting.GetQuotaDisplayType(),
-			Symbol: operation_setting.GetCurrencySymbol(),
-		},
-		Range: dto.BillingRange{
-			Start:          startStr,
-			End:            endStr,
-			StartTimestamp: startTs,
-			EndTimestamp:   endTs,
-		},
-		Summary: summary,
-		Daily:   daily,
 	}
 	common.ApiSuccess(c, data)
 }
@@ -321,7 +262,8 @@ func GetReconciliationReport(c *gin.Context) {
 	}
 
 	// 批量补齐用户概要(display_name/group/role)。rows 按 user_id 聚合,
-	// 用一条 IN 查询取所有相关用户。走 GORM User 模型以正确处理 "group" 保留字。
+	// 用一条 IN 查询取所有相关用户。走 GORM User 模型让 GORM 按方言正确
+	// 引用 "group" 保留字（不手写 SELECT 投影，避免 MySQL ANSI_QUOTES 问题）。
 	userIds := make([]int, 0, len(rows))
 	for _, r := range rows {
 		if r.UserId > 0 {
@@ -337,8 +279,10 @@ func GetReconciliationReport(c *gin.Context) {
 	briefMap := make(map[int]userBrief)
 	if len(userIds) > 0 {
 		var users2 []model.User
-		if err := model.DB.Select("id, display_name, \"group\", role").
-			Where("id IN ?", userIds).Find(&users2).Error; err == nil {
+		if err := model.DB.Where("id IN ?", userIds).Find(&users2).Error; err != nil {
+			// 用户概要仅用于回显：查询失败时降级为空白，而不是让整个对账报表失败
+			common.SysError(fmt.Sprintf("GetReconciliationReport 补齐用户概要失败: %v", err))
+		} else {
 			for _, u := range users2 {
 				briefMap[u.Id] = userBrief{
 					Id:          u.Id,

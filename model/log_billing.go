@@ -10,6 +10,10 @@ import (
 // BillingAggRow 账单报表聚合行。
 // DayKey 为"本地自然日"序号(自 Unix 纪元起的天数,按服务器本地时区截断);
 // 仅按日查询填充,汇总查询留 0。日期字符串由调用方通过 DayKey 还原。
+//
+// CacheTokens 恒为 0（占位）：本仓库 Log 表没有 cache_tokens 列，缓存 token
+// 数据记录在日志 other JSON 中，跨库（SQLite/MySQL/PG）JSON 提取不可行，
+// 报表暂以占位 0 返回，调用方不应把该字段当作实测值。
 type BillingAggRow struct {
 	ModelName        string
 	DayKey           int64
@@ -89,6 +93,7 @@ func BillingDayKeyToDate(dayKey int64) string {
 }
 
 // ReconciliationRow 计费对账报表按用户聚合行。
+// CacheTokens 恒为 0（占位），原因同 BillingAggRow：Log 表无 cache_tokens 列。
 type ReconciliationRow struct {
 	UserId           int
 	Username         string
