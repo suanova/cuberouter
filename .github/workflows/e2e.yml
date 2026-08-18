@@ -40,6 +40,11 @@ jobs:
 
       - name: Create KinD cluster
         uses: helm/kind-action@v1.12.0
+        with:
+          # helm/kind-action defaults to cluster_name "chart-testing"; the
+          # downstream `kind load docker-image` call targets the default
+          # "kind" cluster, so match the names.
+          cluster_name: kind
 
       - name: Load image into KinD
         run: kind load docker-image cuberouter:e2e
@@ -49,18 +54,23 @@ jobs:
           kubectl apply -f e2e/k8s/
           kubectl -n cuberouter-e2e rollout status deployment/cuberouter --timeout=240s
 
-      - name: Port-forward and wait for API readiness
+      # kubectl port-forward drops connections under load (broken pipes,
+      # ECONNRESET); the journey burst-loads many JS chunks + API calls at
+      # once, which reliably trips it. Reach the service over its NodePort on
+      # the KinD node IP instead — that path stays up for the whole run.
+      - name: Wait for API readiness via NodePort
         run: |
-          nohup kubectl -n cuberouter-e2e port-forward svc/cuberouter 3000:3000 >/tmp/port-forward.log 2>&1 &
+          NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+          echo "Node IP: ${NODE_IP}"
+          echo "E2E_BASE_URL=http://${NODE_IP}:30080" >> "$GITHUB_ENV"
           for i in $(seq 1 60); do
-            if curl -sf http://127.0.0.1:3000/api/status | grep -q '"success":true'; then
+            if curl -sf "http://${NODE_IP}:30080/api/status" | grep -q '"success":true'; then
               echo "API ready after ${i} checks"
               exit 0
             fi
             sleep 2
           done
           echo "API did not become ready in time"
-          cat /tmp/port-forward.log || true
           exit 1
 
       - uses: oven-sh/setup-bun@v2
@@ -84,7 +94,7 @@ jobs:
       - name: Run Playwright journey specs
         working-directory: e2e
         env:
-          E2E_BASE_URL: http://127.0.0.1:3000
+          E2E_BASE_URL: ${{ env.E2E_BASE_URL }}
           CI: 'true'
         run: npx playwright test
 
@@ -94,7 +104,6 @@ jobs:
           kubectl -n cuberouter-e2e get all -o wide || true
           kubectl -n cuberouter-e2e describe deployment/cuberouter || true
           kubectl -n cuberouter-e2e logs deployment/cuberouter --tail=300 || true
-          cat /tmp/port-forward.log || true
 
       - name: Upload Playwright report
         if: always()

@@ -30,6 +30,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # main.go embeds web/dist, which is gitignored and only produced by the
+      # frontend build. go test needs the embed patterns to resolve, so create
+      # a placeholder index.html before compiling the root package.
+      - name: Create web/dist placeholder for go:embed
+        run: |
+          mkdir -p web/dist
+          echo '<!doctype html>' > web/dist/index.html
+
       - name: go test ./...
         run: go test -race -count=1 ./...
 

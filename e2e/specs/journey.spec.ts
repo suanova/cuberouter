@@ -8,7 +8,10 @@ import { expect, test } from '@playwright/test'
 
 const ADMIN = { username: 'root', password: 'correct-horse-battery' }
 
-test.describe.configure({ mode: 'serial' })
+// A fresh-deployment journey mutates global state (system setup can only
+// happen once), so Playwright cannot retry it: after any partial run the
+// system is no longer fresh and the pre-init assertions would fail again.
+test.describe.configure({ mode: 'serial', retries: 0 })
 
 test.describe('fresh deployment journey', () => {
   test('API health and setup gate are sane before initialization', async ({
@@ -33,6 +36,7 @@ test.describe('fresh deployment journey', () => {
 
   test('setup wizard, sign-in, and authenticated session work end to end', async ({
     page,
+    request,
   }) => {
     await page.goto('/setup')
 
@@ -67,8 +71,20 @@ test.describe('fresh deployment journey', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await page.waitForURL('**/dashboard**')
 
-    // page.request shares the browser context, so the login session applies.
-    const self = await page.request.get('/api/user/self')
+    // Dashboard auth is stateless: /api/user/login returns an access token in
+    // the response body and the UI sends it as an Authorization header via its
+    // axios interceptor. page.request shares only cookies with the browser, so
+    // log in through the API and authenticate the way the backend expects.
+    const login = await request.post('/api/user/login', {
+      data: { username: ADMIN.username, password: ADMIN.password },
+    })
+    const loginBody = await login.json()
+    expect(loginBody.success).toBe(true)
+    const accessToken = loginBody.data.access_token
+
+    const self = await request.get('/api/user/self', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
     const selfBody = await self.json()
     expect(selfBody.success).toBe(true)
     expect(selfBody.data.username).toBe(ADMIN.username)
