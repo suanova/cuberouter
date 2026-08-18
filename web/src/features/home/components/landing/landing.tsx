@@ -422,8 +422,11 @@ export function Landing() {
           </div>
 
           <div className='cr-footer__bottom'>
+            {/* Single consolidated copyright. The project is AGPL-3.0, so the
+                legacy "All Rights Reserved" phrase (which contradicts the
+                rights the license grants) is intentionally omitted; upstream
+                credits live on the About page. */}
             <span>{t('© 2026 CubeRouter · Suanova Technology Ltd')}</span>
-            <span>{t('All Rights Reserved')}</span>
           </div>
         </div>
       </footer>

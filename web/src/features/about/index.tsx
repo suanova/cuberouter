@@ -49,13 +49,17 @@ function EmptyAboutState() {
           <p>
             {t('CubeRouter Project Repository:')}{' '}
             <a
-              href='https://github.com/QuantumNous/new-api'
+              href='https://github.com/suanova/cuberouter'
               target='_blank'
               rel='noopener noreferrer'
               className='text-primary hover:underline'
             >
-              {t('https://github.com/QuantumNous/new-api')}
+              {t('https://github.com/suanova/cuberouter')}
             </a>
+          </p>
+          {/* Keep the project copyright consistent with the home page footer. */}
+          <p className='text-muted-foreground'>
+            {t('© 2026 CubeRouter · Suanova Technology Ltd')}
           </p>
           <p className='text-muted-foreground'>
             <a
@@ -97,7 +101,7 @@ function EmptyAboutState() {
           <p className='text-muted-foreground'>
             {t('This project must be used in compliance with the')}{' '}
             <a
-              href='https://github.com/QuantumNous/new-api/blob/main/LICENSE'
+              href='https://github.com/suanova/cuberouter/blob/main/LICENSE'
               target='_blank'
               rel='noopener noreferrer'
               className='text-primary hover:underline'
