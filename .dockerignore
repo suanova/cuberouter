@@ -4,7 +4,16 @@
 .vscode
 .gitignore
 Makefile
-docs
+# Exclude docs content, but not docs/docs.go: router/main.go imports the
+# generated swagger docs package, so excluding the whole directory breaks
+# go build inside the image. List the excluded subpaths explicitly instead
+# of 'docs' + negation, which is unreliable across builders.
+docs/*.md
+docs/channel
+docs/images
+docs/installation
+docs/openapi
+docs/superpowers
 .eslintcache
 .gocache
 /web/node_modules

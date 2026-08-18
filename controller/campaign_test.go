@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -33,6 +34,9 @@ func setupCampaignTestDB(t *testing.T) {
 		model.DB, model.LOG_DB = oldDB, oldLogDB
 		common.RedisEnabled = oldRedisEnabled
 	})
+	// Drain in-flight campaign dispatch goroutines before restoring the global
+	// handles: cleanup is LIFO, so this drain runs before the restore above.
+	t.Cleanup(service.DrainCampaignDispatches)
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Redemption{}, &model.Log{},
 		&model.Campaign{}, &model.CampaignParticipant{}, &model.CampaignReward{}))
 }

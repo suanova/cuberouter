@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -45,6 +46,9 @@ func setupOpsUserTestDB(t *testing.T) *gorm.DB {
 			_ = sqlDB.Close()
 		}
 	})
+	// Drain in-flight campaign dispatch goroutines before restoring the global
+	// handles: cleanup is LIFO, so this drain runs before the restore above.
+	t.Cleanup(service.DrainCampaignDispatches)
 	return db
 }
 
