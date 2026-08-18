@@ -25,8 +25,17 @@ var CampaignEngineInstance = &CampaignEngine{}
 // for them to finish before tearing down global state.
 var campaignDispatches sync.WaitGroup
 
+// campaignLifecycle serializes dispatch registration against drains. Without
+// it, DrainCampaignDispatches could observe a zero WaitGroup counter and
+// return while a concurrent OnPhoneFilled / OnInvitationRegister call had not
+// yet reached Add(1), leaving that dispatch goroutine untracked and free to
+// outlive the test teardown.
+var campaignLifecycle sync.Mutex
+
 func campaignGo(f func()) {
+	campaignLifecycle.Lock()
 	campaignDispatches.Add(1)
+	campaignLifecycle.Unlock()
 	gopool.Go(func() {
 		defer campaignDispatches.Done()
 		f()
@@ -36,7 +45,11 @@ func campaignGo(f func()) {
 // DrainCampaignDispatches blocks until every queued campaign dispatch (reward
 // handling and notification emails) has returned. Tests call it before
 // restoring global handles so no campaign goroutine outlives the test.
+// It holds campaignLifecycle, so no concurrent registration can interleave
+// its Add(1) with the Wait below.
 func DrainCampaignDispatches() {
+	campaignLifecycle.Lock()
+	defer campaignLifecycle.Unlock()
 	campaignDispatches.Wait()
 }
 
