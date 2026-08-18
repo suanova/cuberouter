@@ -1,13 +1,5 @@
 # Security Policy
 
-> [!IMPORTANT]
-> **Bulk Reporting Policy:** If you need to submit multiple vulnerability reports in bulk, **you must contact us first** ([support@quantumnous.com](mailto:support@quantumnous.com)) to coordinate the submission process. Uncoordinated bulk submissions have caused significant disruption to our team, and we will take the following actions:
->
-> 1. **All uncoordinated bulk reports will be closed without review.**
-> 2. **Repeated offenders may be blocked** from further submissions.
->
-> We welcome thorough security research, but please reach out before submitting multiple reports.
-
 ## Supported Versions
 
 We provide security updates for the following versions:
