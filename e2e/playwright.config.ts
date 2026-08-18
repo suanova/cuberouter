@@ -4,8 +4,10 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './specs',
-  // The suite drives a single fresh deployment: system setup can only happen
-  // once, so specs run serially on one worker.
+  // Deployment initialization is a one-time gate; global-setup.ts runs before
+  // every project/spec, so no spec file has to run (or depend on the order
+  // of) system setup itself.
+  globalSetup: './global-setup',
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,

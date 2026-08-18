@@ -30,6 +30,18 @@ spec:
           env:
             - name: TZ
               value: UTC
+            # The e2e suite signs in repeatedly from one IP, and each page
+            # load also fires CriticalRateLimit-marked calls (login,
+            # auth/refresh, PUT /api/user/self), which would trip the default
+            # 20 requests / 20 min per-IP cap and cause 429 flakes. Rate
+            # limiting is a production concern, not what this suite asserts.
+            - name: CRITICAL_RATE_LIMIT_ENABLE
+              value: "false"
+            # The SPA fetches many static chunks per page load and every UI
+            # test starts with a fresh browser context (empty cache), which
+            # blows through the default 120 requests / 3 min per-IP web cap.
+            - name: GLOBAL_WEB_RATE_LIMIT_ENABLE
+              value: "false"
           volumeMounts:
             - name: data
               mountPath: /data
