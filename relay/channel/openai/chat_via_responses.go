@@ -311,6 +311,14 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, streamErr
 	}
 
+	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
+	// 不产出合成 usage 计费，返回对应错误并跳过计费与消费日志。
+	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
+		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
+			st.EndReason == relaycommon.StreamEndReasonPingFail
+		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
+	}
+
 	usage := state.Usage()
 	if usage == nil || usage.TotalTokens == 0 {
 		usage = service.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())

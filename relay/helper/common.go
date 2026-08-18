@@ -58,6 +58,22 @@ func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 }
 
+// ClearEventStreamHeaders removes headers that were prepared for SSE but have
+// not yet been written. This allows an early stream failure to return a normal
+// HTTP error response with the correct content type.
+func ClearEventStreamHeaders(c *gin.Context) {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return
+	}
+	c.Set("event_stream_headers_set", false)
+	header := c.Writer.Header()
+	header.Del("Content-Type")
+	header.Del("Cache-Control")
+	header.Del("Connection")
+	header.Del("Transfer-Encoding")
+	header.Del("X-Accel-Buffering")
+}
+
 func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 	if requestContextDone(c) {
 		return nil
@@ -131,6 +147,31 @@ func ObjectData(c *gin.Context, object interface{}) error {
 		return fmt.Errorf("error marshalling object: %w", err)
 	}
 	return StringData(c, string(jsonData))
+}
+
+const streamErrorResponseHandledKey = "stream_error_response_handled"
+
+// MarkStreamErrorResponseHandled 标记"流式错误响应已处理"，供调用方区分
+// 已通过 SSE 发送错误事件（无需再写普通错误响应）与尚未处理的情况。
+func MarkStreamErrorResponseHandled(c *gin.Context) {
+	if c != nil {
+		c.Set(streamErrorResponseHandledKey, true)
+	}
+}
+
+// StreamErrorResponseHandled 返回流式错误响应是否已处理。
+func StreamErrorResponseHandled(c *gin.Context) bool {
+	return c != nil && c.GetBool(streamErrorResponseHandledKey)
+}
+
+// OpenAIStreamError sends an OpenAI-compatible error object as an SSE data
+// event. It deliberately does not send [DONE], because the stream failed.
+func OpenAIStreamError(c *gin.Context, apiErr *types.NewAPIError) error {
+	MarkStreamErrorResponseHandled(c)
+	if apiErr == nil {
+		return errors.New("stream error is nil")
+	}
+	return ObjectData(c, gin.H{"error": apiErr.ToOpenAIError()})
 }
 
 func Done(c *gin.Context) {

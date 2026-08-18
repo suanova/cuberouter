@@ -131,7 +131,7 @@ const docTemplate = `{
                 "tags": [
                     "聚合API-用户管理"
                 ],
-                "summary": "创建用户（聚合 API，默认禁用状态）",
+                "summary": "创建用户（聚合 API，默认可用状态）",
                 "parameters": [
                     {
                         "description": "创建用户请求",
@@ -146,6 +146,135 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "{status: success, user_id: string}",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/adjust-quota": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "聚合API-额度调整(增值套餐)"
+                ],
+                "summary": "调整用户额度（聚合 API-额度调整）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "额度调整请求（added_quota 为正数增加额度，负数扣减额度）",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.AggregatedAdjustQuotaRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{status: success, status_code: 2000, current_quota: int, current_price: float64, total_quota: int, total_price: float64}",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/bind-subscription": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "聚合API-订阅管理"
+                ],
+                "summary": "给用户绑定订阅（聚合 API）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "绑定订阅请求",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/controller.AggregatedBindSubscriptionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{status: success, status_code: 2000}",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/delete": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "聚合API-用户管理"
+                ],
+                "summary": "删除用户（聚合 API）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{status: success, status_code: 2000}",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -228,6 +357,44 @@ const docTemplate = `{
                 }
             }
         },
+        "/users/{user_id}/status": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "返回用户基本信息和全部订阅计划列表，plans 按 id 降序排列",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "聚合API-用户管理"
+                ],
+                "summary": "查看用户状态（聚合 API）",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "用户 ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "{status: success, user_id, user_role, user_group, user_status, invitor_id, invitor_username, plans: [...], total_price, total_quota}",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/users/{user_id}/suspend": {
             "post": {
                 "security": [
@@ -267,6 +434,24 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "controller.AggregatedAdjustQuotaRequest": {
+            "type": "object",
+            "properties": {
+                "added_quota": {
+                    "description": "额度变化量，正数为增加额度，负数为扣减额度",
+                    "type": "integer"
+                }
+            }
+        },
+        "controller.AggregatedBindSubscriptionRequest": {
+            "type": "object",
+            "properties": {
+                "plan_id": {
+                    "description": "订阅计划 ID",
+                    "type": "integer"
+                }
+            }
+        },
         "controller.AggregatedCreatePlanRequest": {
             "type": "object",
             "properties": {
@@ -285,6 +470,10 @@ const docTemplate = `{
             "properties": {
                 "email": {
                     "type": "string"
+                },
+                "inviter_id": {
+                    "description": "运营用户邀请人 user id",
+                    "type": "integer"
                 },
                 "password": {
                     "type": "string"
@@ -512,7 +701,7 @@ const docTemplate = `{
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
 	Host:             "",
-	BasePath:         "/api/v1",
+	BasePath:         "/api/v2",
 	Schemes:          []string{},
 	Title:            "new-api 用户 API",
 	Description:      "new-api AI 网关 —— 用户与账号相关接口(对外第三方)",

@@ -1,5 +1,17 @@
-basePath: /api/v1
+basePath: /api/v2
 definitions:
+  controller.AggregatedAdjustQuotaRequest:
+    properties:
+      added_quota:
+        description: 额度变化量，正数为增加额度，负数为扣减额度
+        type: integer
+    type: object
+  controller.AggregatedBindSubscriptionRequest:
+    properties:
+      plan_id:
+        description: 订阅计划 ID
+        type: integer
+    type: object
   controller.AggregatedCreatePlanRequest:
     properties:
       plan:
@@ -11,6 +23,9 @@ definitions:
     properties:
       email:
         type: string
+      inviter_id:
+        description: 运营用户邀请人 user id
+        type: integer
       password:
         type: string
       plan_id:
@@ -247,7 +262,89 @@ paths:
             type: object
       security:
       - ApiKeyAuth: []
-      summary: 创建用户（聚合 API，默认禁用状态）
+      summary: 创建用户（聚合 API，默认可用状态）
+      tags:
+      - 聚合API-用户管理
+  /users/{user_id}/adjust-quota:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: 额度调整请求（added_quota 为正数增加额度，负数扣减额度）
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.AggregatedAdjustQuotaRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{status: success, status_code: 2000, current_quota: int, current_price:
+            float64, total_quota: int, total_price: float64}'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: 调整用户额度（聚合 API-额度调整）
+      tags:
+      - 聚合API-额度调整(增值套餐)
+  /users/{user_id}/bind-subscription:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: 绑定订阅请求
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/controller.AggregatedBindSubscriptionRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{status: success, status_code: 2000}'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: 给用户绑定订阅（聚合 API）
+      tags:
+      - 聚合API-订阅管理
+  /users/{user_id}/delete:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{status: success, status_code: 2000}'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: 删除用户（聚合 API）
       tags:
       - 聚合API-用户管理
   /users/{user_id}/reactivate:
@@ -294,6 +391,31 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: 发送重置密码邮件（聚合 API）
+      tags:
+      - 聚合API-用户管理
+  /users/{user_id}/status:
+    get:
+      consumes:
+      - application/json
+      description: 返回用户基本信息和全部订阅计划列表，plans 按 id 降序排列
+      parameters:
+      - description: 用户 ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: '{status: success, user_id, user_role, user_group, user_status,
+            invitor_id, invitor_username, plans: [...], total_price, total_quota}'
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: 查看用户状态（聚合 API）
       tags:
       - 聚合API-用户管理
   /users/{user_id}/suspend:

@@ -883,6 +883,22 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 	return buildSubscriptionSummaries(subs), nil
 }
 
+// GetAllUserSubscriptionsByIdDesc returns all subscriptions for a user, ordered by id descending.
+// Used by the aggregated API which requires plans sorted by id DESC.
+func GetAllUserSubscriptionsByIdDesc(userId int) ([]SubscriptionSummary, error) {
+	if userId <= 0 {
+		return nil, errors.New("invalid userId")
+	}
+	var subs []UserSubscription
+	err := DB.Where("user_id = ?", userId).
+		Order("id desc").
+		Find(&subs).Error
+	if err != nil {
+		return nil, err
+	}
+	return buildSubscriptionSummaries(subs), nil
+}
+
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}

@@ -317,21 +317,10 @@ func SendPasswordResetEmail(c *gin.Context) {
 		code := common.GenerateVerificationCode(0)
 		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
 		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, url.QueryEscape(email), url.QueryEscape(code))
-		subject := common.WrapBilingualSubject(
-			fmt.Sprintf("%s Password Reset", common.SystemName),
-			fmt.Sprintf("%s密码重置", common.SystemName),
-		)
-		// 链接用于 href 属性与可见文本：HTML 转义防止 &、引号等破坏属性或注入标签
+		// 链接用于 href 属性与可见文本：HTML 转义防止 &、引号等破坏属性或注入标签。
+		// 模板以 {{.Link}} 原样插入，故传入已转义链接。
 		escapedLink := html.EscapeString(link)
-		zhContent := fmt.Sprintf("<p>您好，你正在进行%s密码重置。</p>"+
-			"<p>点击 <a href='%s'>此处</a> 进行密码重置。</p>"+
-			"<p>如果链接无法点击，请尝试点击下面的链接或将其复制到浏览器中打开：<br> %s </p>"+
-			"<p>重置链接 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, escapedLink, escapedLink, common.VerificationValidMinutes)
-		enContent := fmt.Sprintf("<p>Hello, you are resetting your password for %s.</p>"+
-			"<p>Click <a href='%s'>here</a> to reset your password.</p>"+
-			"<p>If the link does not work, please copy and paste the following URL into your browser:<br> %s </p>"+
-			"<p>This reset link is valid for %d minutes. If you did not request this, please ignore this email.</p>", common.SystemName, escapedLink, escapedLink, common.VerificationValidMinutes)
-		content := common.WrapBilingualContent(enContent, zhContent)
+		subject, content := common.RenderPasswordResetEmail(common.SystemName, escapedLink, common.VerificationValidMinutes)
 		err := common.SendEmail(subject, email, content)
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
@@ -362,13 +351,6 @@ func resetLinkInvalidResponse(c *gin.Context) {
 		"message": common.TranslateMessage(c, i18n.MsgUserPasswordResetLinkInvalid),
 	})
 }
-
-// @Summary  通过邮箱令牌重置密码
-// @Tags     用户-认证
-// @Produce  json
-// @Param    body body PasswordResetRequest true "重置密码请求(邮箱 + 验证令牌)"
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/reset [post]
 func ResetPassword(c *gin.Context) {
 	var req PasswordResetRequest
 	err := json.NewDecoder(c.Request.Body).Decode(&req)
@@ -391,20 +373,7 @@ func ResetPassword(c *gin.Context) {
 
 	// 先发送邮件，投递成功后再落库新密码并消费重置 token：SMTP 失败时
 	// 旧密码与 token 都保持原样，用户可重试，不会被锁在门外。
-	subject := common.WrapBilingualSubject(
-		fmt.Sprintf("%s Password Reset", common.SystemName),
-		fmt.Sprintf("%s密码重置", common.SystemName),
-	)
-	zhContent := fmt.Sprintf("<p>您好，您的 %s 密码已重置。</p>"+
-		"<p>您的新密码为：<strong>%s</strong></p>"+
-		"<p>请使用新密码登录并及时修改密码。如果不是本人操作，请立即联系管理员。</p>",
-		common.SystemName, password)
-	enContent := fmt.Sprintf("<p>Hello, your password for %s has been reset.</p>"+
-		"<p>Your new password is: <strong>%s</strong></p>"+
-		"<p>Please log in with the new password and change it as soon as possible. "+
-		"If this was not your action, please contact the administrator immediately.</p>",
-		common.SystemName, password)
-	content := common.WrapBilingualContent(enContent, zhContent)
+	subject, content := common.RenderPasswordResetSuccessEmail(common.SystemName, password)
 	emailErr := common.SendEmail(subject, req.Email, content)
 	if emailErr != nil {
 		// 邮件未投出，释放 claim：旧密码与 token 都保持原样，用户可重试，

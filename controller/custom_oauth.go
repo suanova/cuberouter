@@ -466,12 +466,6 @@ func buildUserOAuthBindingsResponse(userId int) ([]UserOAuthBindingResponse, err
 }
 
 // GetUserOAuthBindings returns all OAuth bindings for the current user
-// @Summary  获取我的 OAuth 绑定列表
-// @Tags     用户-其它
-// @Security ApiKeyAuth
-// @Produce  json
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/oauth/bindings [get]
 func GetUserOAuthBindings(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {
@@ -526,13 +520,6 @@ func GetUserOAuthBindingsByAdmin(c *gin.Context) {
 }
 
 // UnbindCustomOAuth unbinds a custom OAuth provider from the current user
-// @Summary  解绑 OAuth 提供商
-// @Tags     用户-其它
-// @Security ApiKeyAuth
-// @Produce  json
-// @Param    provider_id path string true "提供商ID"
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/oauth/bindings/{provider_id} [delete]
 func UnbindCustomOAuth(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId == 0 {

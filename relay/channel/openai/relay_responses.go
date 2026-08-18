@@ -79,6 +79,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	var sawCompleted bool
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -92,6 +93,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed":
+			sawCompleted = true
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
 					if streamResponse.Response.Usage.InputTokens != 0 {
@@ -131,6 +133,18 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			}
 		}
 	})
+
+	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
+	// 不产出合成 usage 计费，返回对应错误并跳过计费与消费日志。
+	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
+		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
+			st.EndReason == relaycommon.StreamEndReasonPingFail
+		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
+	}
+	// 未收到 response.completed 就 EOF：视为不完整流，不按成功计费。
+	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF && !sawCompleted {
+		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
+	}
 
 	if usage.CompletionTokens == 0 {
 		// 计算输出文本的 token 数量

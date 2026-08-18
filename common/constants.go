@@ -105,6 +105,17 @@ var SMTPAccount = ""
 var SMTPFrom = ""
 var SMTPToken = ""
 
+// 密码重置邮件模板（可配置，见 RenderPasswordResetEmail/RenderPasswordResetSuccessEmail）。
+// 空值表示回退到 DefaultPasswordReset* 默认模板。
+var PasswordResetEmailSubjectEn = ""
+var PasswordResetEmailSubjectZh = ""
+var PasswordResetEmailContentEn = ""
+var PasswordResetEmailContentZh = ""
+var PasswordResetSuccessEmailSubjectEn = ""
+var PasswordResetSuccessEmailSubjectZh = ""
+var PasswordResetSuccessEmailContentEn = ""
+var PasswordResetSuccessEmailContentZh = ""
+
 var GitHubClientId = ""
 var GitHubClientSecret = ""
 var LinuxDOClientId = ""

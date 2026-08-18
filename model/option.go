@@ -66,6 +66,14 @@ func InitOptionMap() {
 	common.OptionMap["SMTPStartTLSEnabled"] = strconv.FormatBool(common.SMTPStartTLSEnabled)
 	common.OptionMap["SMTPInsecureSkipVerify"] = strconv.FormatBool(common.SMTPInsecureSkipVerify)
 	common.OptionMap["SMTPForceAuthLogin"] = strconv.FormatBool(common.SMTPForceAuthLogin)
+	common.OptionMap["PasswordResetEmailSubjectEn"] = common.DefaultPasswordResetEmailSubjectEn
+	common.OptionMap["PasswordResetEmailSubjectZh"] = common.DefaultPasswordResetEmailSubjectZh
+	common.OptionMap["PasswordResetEmailContentEn"] = common.DefaultPasswordResetEmailContentEn
+	common.OptionMap["PasswordResetEmailContentZh"] = common.DefaultPasswordResetEmailContentZh
+	common.OptionMap["PasswordResetSuccessEmailSubjectEn"] = common.DefaultPasswordResetSuccessEmailSubjectEn
+	common.OptionMap["PasswordResetSuccessEmailSubjectZh"] = common.DefaultPasswordResetSuccessEmailSubjectZh
+	common.OptionMap["PasswordResetSuccessEmailContentEn"] = common.DefaultPasswordResetSuccessEmailContentEn
+	common.OptionMap["PasswordResetSuccessEmailContentZh"] = common.DefaultPasswordResetSuccessEmailContentZh
 	common.OptionMap["Notice"] = ""
 	common.OptionMap["About"] = ""
 	common.OptionMap["HomePageContent"] = ""
@@ -392,6 +400,22 @@ func updateOptionMap(key string, value string) (err error) {
 		common.SMTPFrom = value
 	case "SMTPToken":
 		common.SMTPToken = value
+	case "PasswordResetEmailSubjectEn":
+		common.PasswordResetEmailSubjectEn = value
+	case "PasswordResetEmailSubjectZh":
+		common.PasswordResetEmailSubjectZh = value
+	case "PasswordResetEmailContentEn":
+		common.PasswordResetEmailContentEn = value
+	case "PasswordResetEmailContentZh":
+		common.PasswordResetEmailContentZh = value
+	case "PasswordResetSuccessEmailSubjectEn":
+		common.PasswordResetSuccessEmailSubjectEn = value
+	case "PasswordResetSuccessEmailSubjectZh":
+		common.PasswordResetSuccessEmailSubjectZh = value
+	case "PasswordResetSuccessEmailContentEn":
+		common.PasswordResetSuccessEmailContentEn = value
+	case "PasswordResetSuccessEmailContentZh":
+		common.PasswordResetSuccessEmailContentZh = value
 	case "ServerAddress":
 		system_setting.ServerAddress = value
 	case "WorkerUrl":

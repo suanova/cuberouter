@@ -12,7 +12,7 @@ import (
 
 func TestSwaggerInfo_GlobalAnnotations(t *testing.T) {
 	assert.Equal(t, "new-api 用户 API", SwaggerInfo.Title)
-	assert.Equal(t, "/api/v1", SwaggerInfo.BasePath)
+	assert.Equal(t, "/api/v2", SwaggerInfo.BasePath)
 	assert.NotEmpty(t, SwaggerInfo.Version, "version 为空")
 }
 
@@ -118,5 +118,19 @@ func TestSpec_NoVideoOrKlingPaths(t *testing.T) {
 	for p := range paths {
 		assert.Falsef(t, strings.Contains(p, "video") || strings.Contains(p, "kling"),
 			"spec 含超出范围的 video/kling 路径 %s", p)
+	}
+}
+
+// TestSpec_NoInternalUserPaths asserts that internal self-service user endpoints
+// (login/register/reset/2fa/passkey/checkin/topup/setting/oauth bindings, all under
+// the singular /user prefix) do not leak into the public spec. The aggregated API
+// under /users (plural) + /plans is the only public third-party surface; internal
+// controllers carry no annotations (the makefile swag target no longer filters by tag).
+func TestSpec_NoInternalUserPaths(t *testing.T) {
+	paths, ok := loadSpec(t)["paths"].(map[string]interface{})
+	require.True(t, ok, "spec.paths 必须是对象")
+	for p := range paths {
+		assert.Falsef(t, p == "/user" || strings.HasPrefix(p, "/user/"),
+			"spec 含内部用户路径 %s", p)
 	}
 }

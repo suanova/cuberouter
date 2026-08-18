@@ -101,6 +101,71 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	return helper.ObjectData(c, lastStreamResponse)
 }
 
+const statusClientClosedRequest = 499
+
+// openAIStreamResultError 把流式扫描器的异常结束原因映射为对外的 OpenAI 错误。
+// 客户端断开/空闲超时/扫描器或数据处理错误均返回错误——调用方据此跳过计费。
+func openAIStreamResultError(st *relaycommon.StreamStatus) *types.NewAPIError {
+	underlyingErr := st.EndError
+	if underlyingErr == nil {
+		underlyingErr = fmt.Errorf("stream ended with reason %s", st.EndReason)
+	}
+	switch st.EndReason {
+	case relaycommon.StreamEndReasonTimeout:
+		return types.NewOpenAIError(underlyingErr, types.ErrorCodeStreamIdleTimeout, http.StatusGatewayTimeout, types.ErrOptionWithSkipRetry())
+	case relaycommon.StreamEndReasonClientGone, relaycommon.StreamEndReasonPingFail:
+		return types.NewOpenAIError(underlyingErr, types.ErrorCodeStreamClientClosed, statusClientClosedRequest, types.ErrOptionWithSkipRetry())
+	case relaycommon.StreamEndReasonHandlerStop:
+		return types.NewOpenAIError(underlyingErr, types.ErrorCodeStreamDataHandler, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
+	default:
+		return types.NewOpenAIError(underlyingErr, types.ErrorCodeStreamScannerFailed, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+	}
+}
+
+// incompleteOpenAIStreamError 上游流在 [DONE] 或完整结束响应之前就关闭。
+func incompleteOpenAIStreamError() *types.NewAPIError {
+	return types.NewOpenAIError(
+		fmt.Errorf("upstream stream ended before [DONE] or a complete finish response"),
+		types.ErrorCodeStreamIncomplete,
+		http.StatusBadGateway,
+		types.ErrOptionWithSkipRetry(),
+	)
+}
+
+// lastOpenAIStreamResponseFinished 判断最后一条 SSE 数据是否表示完整结束
+// （含 finish_reason 的 choices）。
+func lastOpenAIStreamResponseFinished(lastStreamData string) bool {
+	if lastStreamData == "" {
+		return false
+	}
+	var streamResponse dto.ChatCompletionsStreamResponse
+	if err := common.UnmarshalJsonStr(lastStreamData, &streamResponse); err != nil {
+		return false
+	}
+	return streamResponse.IsFinished()
+}
+
+// returnOpenAIStreamError 处理流错误响应：客户端已断开则直接返回；尚未写出任何
+// 数据则清掉 SSE 头并返回普通 HTTP 错误；否则在流里发一个 OpenAI 兼容的错误事件。
+func returnOpenAIStreamError(c *gin.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError, clientDisconnected bool) (*dto.Usage, *types.NewAPIError) {
+	if clientDisconnected {
+		helper.MarkStreamErrorResponseHandled(c)
+		return nil, apiErr
+	}
+	if c == nil || c.Writer == nil || !c.Writer.Written() {
+		helper.ClearEventStreamHeaders(c)
+		return nil, apiErr
+	}
+	if info == nil || info.RelayFormat != types.RelayFormatOpenAI {
+		helper.MarkStreamErrorResponseHandled(c)
+		return nil, apiErr
+	}
+	if err := helper.OpenAIStreamError(c, apiErr); err != nil {
+		logger.LogError(c, "failed to send stream error event: "+err.Error())
+	}
+	return nil, apiErr
+}
+
 func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.NewAPIError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
@@ -143,6 +208,19 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 			}
 		}
 	})
+
+	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
+	// 不产出合成 usage 计费，返回对应错误并跳过计费与消费日志。
+	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
+		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
+			st.EndReason == relaycommon.StreamEndReasonPingFail
+		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
+	}
+	// 干净 EOF 但未收到完整结束响应（无 [DONE] / finish_reason）：视为不完整流。
+	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF &&
+		!lastOpenAIStreamResponseFinished(lastStreamData) {
+		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {

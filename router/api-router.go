@@ -14,11 +14,12 @@ import (
 func SetApiRouter(router *gin.Engine) {
 	registerApiRoutes(router.Group("/api"))
 	registerApiRoutes(router.Group("/api/v1"))
+	registerApiRoutes(router.Group("/api/v2"))
 }
 
 // registerApiRoutes 注册 /api 前缀下的全部内部路由。SetApiRouter 将其挂到
-// /api 与 /api/v1 双前缀（对外第三方收敛接口的稳定契约前缀，见
-// controller/aggregated_api.go）。两套前缀共享同一组 handler 与中间件。
+// /api、/api/v1 与 /api/v2 三前缀（对外第三方收敛接口的稳定契约前缀，见
+// controller/aggregated_api.go）。三套前缀共享同一组 handler 与中间件。
 func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -320,6 +321,13 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 			opsUserRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchOpsInvitees)
 			opsUserRoute.POST("/export", middleware.CriticalRateLimit(), controller.ExportOpsInvitees)
 		}
+
+		// User billing report (ops — read-only, filtered by inviter_id = current user for ops role)
+		opsDataRoute := apiRouter.Group("/ops/data")
+		opsDataRoute.Use(middleware.OpsAuth())
+		{
+			opsDataRoute.GET("/billing", controller.GetOpsBillingReport)
+		}
 		logRoute := apiRouter.Group("/log")
 		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
 		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
@@ -351,6 +359,8 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
+		dataRoute.GET("/billing", middleware.AdminAuth(), controller.GetUserBillingReport)
+		dataRoute.GET("/reconciliation", middleware.AdminAuth(), controller.GetReconciliationReport)
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
@@ -459,6 +469,10 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 			aggregatedUserRoute.POST("/:user_id/suspend", controller.AggregatedSuspendUser)
 			aggregatedUserRoute.POST("/:user_id/reactivate", controller.AggregatedReactivateUser)
 			aggregatedUserRoute.POST("/:user_id/reset-password", controller.AggregatedResetUserPassword)
+			aggregatedUserRoute.POST("/:user_id/adjust-quota", controller.AggregatedAdjustQuota)
+			aggregatedUserRoute.GET("/:user_id/status", controller.AggregatedGetUserStatus)
+			aggregatedUserRoute.POST("/:user_id/bind-subscription", controller.AggregatedBindSubscription)
+			aggregatedUserRoute.POST("/:user_id/delete", controller.AggregatedDeleteUser)
 		}
 		aggregatedPlanRoute := apiRouter.Group("/plans")
 		aggregatedPlanRoute.Use(middleware.AdminAuth())

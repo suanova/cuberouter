@@ -21,12 +21,6 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-// @Summary  获取充值信息
-// @Tags     用户-充值
-// @Security ApiKeyAuth
-// @Produce  json
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/topup/info [get]
 func GetTopUpInfo(c *gin.Context) {
 	// 获取支付方式：只保留对应网关已启用的方式（stripe/waffo_pancake/alipay_official 由各自
 	// 网关判定，其余为 EPay 透传类型，仅在 EPay 已配置时展示）
@@ -219,14 +213,6 @@ func getMinTopup() int64 {
 	}
 	return int64(minTopup)
 }
-
-// @Summary  EPay 充值下单
-// @Tags     用户-充值
-// @Security ApiKeyAuth
-// @Produce  json
-// @Param    body body EpayRequest true "充值金额与支付方式"
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/pay [post]
 func RequestEpay(c *gin.Context) {
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
@@ -451,14 +437,6 @@ func EpayNotify(c *gin.Context) {
 		logger.LogInfo(c.Request.Context(), fmt.Sprintf("易支付 webhook 忽略事件 trade_no=%s callback_type=%s trade_status=%s client_ip=%s verify_info=%q", verifyInfo.ServiceTradeNo, verifyInfo.Type, verifyInfo.TradeStatus, c.ClientIP(), common.GetJsonString(verifyInfo)))
 	}
 }
-
-// @Summary  计算充值应付金额
-// @Tags     用户-充值
-// @Security ApiKeyAuth
-// @Produce  json
-// @Param    body body AmountRequest true "充值数量"
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/amount [post]
 func RequestAmount(c *gin.Context) {
 	var req AmountRequest
 	err := c.ShouldBindJSON(&req)
@@ -484,13 +462,6 @@ func RequestAmount(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
 }
-
-// @Summary  获取我的充值记录
-// @Tags     用户-充值
-// @Security ApiKeyAuth
-// @Produce  json
-// @Success  200 {object} dto.APIResponse
-// @Router   /user/topup/self [get]
 func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
