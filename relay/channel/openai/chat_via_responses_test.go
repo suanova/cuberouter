@@ -12,6 +12,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -189,8 +190,8 @@ func TestOaiResponsesToChatStreamHandler_EOFFromPartialStreamReturnsIncomplete(t
 
 	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
 	require.NotNil(t, err, "EOF 未完成应返回错误")
-	require.Equal(t, types.ErrorCodeStreamIncomplete, err.GetErrorCode())
-	require.Nil(t, usage, "EOF 未完成不应返回 usage")
+	assert.Equal(t, types.ErrorCodeStreamIncomplete, err.GetErrorCode())
+	assert.Nil(t, usage, "EOF 未完成不应返回 usage")
 }
 
 func requireOrderedSubstrings(t *testing.T, s string, parts ...string) {

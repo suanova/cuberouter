@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"html"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -557,10 +558,10 @@ func AggregatedAdjustQuota(c *gin.Context) {
 	}
 
 	// 充值前金额（原生额度对应的 USD 金额）。
-	// QuotaPerUnit 为可配置项（strconv.ParseFloat 丢弃错误），为 0 时
-	// decimal.Div 会 panic；退化为 1 仅影响展示金额，不影响计费。
+	// QuotaPerUnit 为可配置项（strconv.ParseFloat 丢弃错误），为 0/NaN/±Inf 时
+	// decimal.Div/NewFromFloat 会 panic；退化为 1 仅影响展示金额，不影响计费。
 	quotaPerUnit := common.QuotaPerUnit
-	if quotaPerUnit <= 0 {
+	if quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
 		quotaPerUnit = 1
 	}
 	dQuotaPerUnit := decimal.NewFromFloat(quotaPerUnit)
@@ -746,7 +747,7 @@ func AggregatedGetUserStatus(c *gin.Context) {
 
 	// 当前总额度和总额
 	quotaPerUnit := common.QuotaPerUnit
-	if quotaPerUnit <= 0 {
+	if quotaPerUnit <= 0 || math.IsNaN(quotaPerUnit) || math.IsInf(quotaPerUnit, 0) {
 		quotaPerUnit = 1
 	}
 	dQuotaPerUnit := decimal.NewFromFloat(quotaPerUnit)
