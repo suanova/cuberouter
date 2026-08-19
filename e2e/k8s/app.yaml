@@ -47,6 +47,12 @@ spec:
             # blows through the default 120 requests / 3 min per-IP web cap.
             - name: GLOBAL_WEB_RATE_LIMIT_ENABLE
               value: "false"
+            # Every spec's beforeAll signs in as root, and the suite is
+            # re-runnable against the same deployment, so root accumulates
+            # active sessions quickly and would hit the default 50-session
+            # cap (login 409 AUTH_SESSION_LIMIT) after a few full runs.
+            - name: USER_SESSION_ACTIVE_LIMIT
+              value: "500"
           volumeMounts:
             - name: data
               mountPath: /data

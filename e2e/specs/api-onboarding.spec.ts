@@ -331,6 +331,109 @@ test.describe('API onboarding (v4.5 deck)', () => {
     // reactivate users only — an operational note, not a product field.
   })
 
+  test('API#7/API#5 — the operator API_KEY stays valid through suspend and reactivate', async ({
+    request,
+  }) => {
+    // Support scenario: the latest operator API key is valid (not expired)
+    // and remains usable through user suspend -> reactivate cycles. The
+    // dashboard access token is issued with a fixed TTL (15 minutes), so
+    // "not expired" here means: freshly issued, valid for its lifetime, and
+    // — critically — never revoked or invalidated by these operations.
+    const loginRes = await request.post('/api/user/login', {
+      data: { username: ADMIN.username, password: ADMIN.password },
+    })
+    const loginBody = await loginRes.json()
+    expect(loginBody.success).toBe(true)
+    const apiKey = loginBody.data.access_token as string
+    const expiresAt = loginBody.data.access_expires_at as number
+    expect(expiresAt).toBeGreaterThan(Math.floor(Date.now() / 1000))
+
+    // Create a relay API key (sk- token) for the user BEFORE suspending them,
+    // so we can prove it becomes unusable while suspended and usable again
+    // after reactivation.
+    const userToken = await login(request, USERNAME, userPassword)
+    const tokenCreate = await request.post('/api/token/', {
+      headers: { Authorization: `Bearer ${userToken}` },
+      data: { name: 'suspend-cycle-key', unlimited_quota: true },
+    })
+    expect((await tokenCreate.json()).success).toBe(true)
+    const tokens = await request.get('/api/token/', {
+      headers: { Authorization: `Bearer ${userToken}` },
+    })
+    const tokenItems = (await tokens.json()).data.items as {
+      id: number
+      name: string
+    }[]
+    const userTokenId = tokenItems.find((t) => t.name === 'suspend-cycle-key')!.id
+    const keyRes = await request.post(`/api/token/${userTokenId}/key`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+    })
+    const userApiKey = (await keyRes.json()).data.key as string
+
+    // Suspend the user with the operator API key.
+    const suspend = await request.post('/api/user/manage', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      data: { id: userId, action: 'disable' },
+    })
+    const suspendBody = await suspend.json()
+    expect(suspendBody.success).toBe(true)
+    expect(suspendBody.data.status).toBe(2) // common.UserStatusDisabled
+
+    // The suspended user cannot sign in.
+    const suspendedLogin = await request.post('/api/user/login', {
+      data: { username: USERNAME, password: userPassword },
+    })
+    expect((await suspendedLogin.json()).success).toBe(false)
+
+    // The suspended user's relay API key is rejected too: TokenAuth checks
+    // userCache.Status and returns 403 "user banned" before any channel
+    // distribution happens.
+    const blockedRelay = await request.post('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${userApiKey}` },
+      data: {
+        model: 'mock-llm',
+        messages: [{ role: 'user', content: 'ping' }],
+      },
+    })
+    expect(blockedRelay.status()).toBe(403)
+
+    // Reactivate the user with the SAME API key.
+    const reactivate = await request.post('/api/user/manage', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      data: { id: userId, action: 'enable' },
+    })
+    const reactivateBody = await reactivate.json()
+    expect(reactivateBody.success).toBe(true)
+    expect(reactivateBody.data.status).toBe(1) // common.UserStatusEnabled
+
+    // The same API key still authenticates after both operations.
+    const self = await request.get('/api/user/self', {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    const selfBody = await self.json()
+    expect(selfBody.success).toBe(true)
+    expect(selfBody.data.username).toBe(ADMIN.username)
+
+    // The reactivated user can sign in again.
+    const reactivatedLogin = await request.post('/api/user/login', {
+      data: { username: USERNAME, password: userPassword },
+    })
+    expect((await reactivatedLogin.json()).success).toBe(true)
+
+    // And the user's relay key works again after reactivation: it is no
+    // longer rejected at auth time (this spec configures no channel, so the
+    // request fails later with a routing error — any status other than the
+    // auth 403 proves the key is usable again).
+    const restoredRelay = await request.post('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${userApiKey}` },
+      data: {
+        model: 'mock-llm',
+        messages: [{ role: 'user', content: 'ping' }],
+      },
+    })
+    expect(restoredRelay.status()).not.toBe(403)
+  })
+
   test('API#4 — admin resets the user password (deck slide 7)', async ({
     request,
   }) => {
