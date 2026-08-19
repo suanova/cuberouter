@@ -381,6 +381,15 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 	if !exist {
+		// 调用方可能只持有上游（如 BoosterAI）返回的 task ID，回退按
+		// upstream_task_id 匹配经网关提交的任务。
+		originTask, exist, err = model.GetByUpstreamTaskId(userId, taskId)
+		if err != nil {
+			taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
+			return
+		}
+	}
+	if !exist {
 		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 		return
 	}

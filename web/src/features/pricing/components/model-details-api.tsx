@@ -109,7 +109,7 @@ function buildChatSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${bodyJson.replace(/\n/g, '\n     ')}'`,
+      `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
 
@@ -177,7 +177,7 @@ function buildAnthropicSample(lang: Lang, ctx: SampleContext): string {
       `  -H "x-api-key: $${ctx.apiKeyEnv}" \\`,
       `  -H "anthropic-version: 2023-06-01" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -249,7 +249,7 @@ function buildGeminiSample(lang: Lang, ctx: SampleContext): string {
     return [
       `curl '${url}' \\`,
       `  -H 'Content-Type: application/json' \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -299,7 +299,7 @@ function buildEmbeddingSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -365,7 +365,7 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
   }
   if (lang === 'python') {
@@ -423,6 +423,124 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
   ].join('\n')
 }
 
+function buildVideoSample(lang: Lang, ctx: SampleContext): string {
+  // OpenAI-compatible video generation. Three-step flow:
+  //   1) POST {endpointPath}           -> {"id": "task_...", "status": "queued"}
+  //   2) GET  {endpointPath}/{id}      -> poll until status is "completed"
+  //   3) GET  {endpointPath}/{id}/content -> download the video file
+  // The submit body uses the gateway's task fields (prompt/images/duration/
+  // size); each channel adaptor converts them to its upstream format.
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const prompt =
+    'A golden cat running across a sunlit meadow, cinematic, slow motion.'
+  const body = {
+    model: ctx.modelName,
+    prompt,
+    images: ['https://example.com/reference.jpg'],
+    duration: 10,
+    size: '16:9',
+  }
+  const bodyJson = JSON.stringify(body, null, 2)
+
+  if (lang === 'curl') {
+    return [
+      `# 1. Submit a video generation task. Save the returned id.`,
+      `curl -X POST ${url} \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
+      `# => {"id": "task_xxxx", "status": "queued", ...}`,
+      '',
+      `# 2. Poll the task status with the id from step 1.`,
+      `curl ${url}/task_xxxx \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}"`,
+      `# => {"id":"task_xxxx","status":"queued|in_progress|completed|failed","progress":"50%"}`,
+      '',
+      `# 3. Once status is "completed", download the video.`,
+      `curl -L ${url}/task_xxxx/content \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" -o video.mp4`,
+    ].join('\n')
+  }
+
+  if (lang === 'python') {
+    return [
+      'import time',
+      '',
+      'import requests',
+      '',
+      `url = "${url}"`,
+      'headers = {',
+      '    "Authorization": "Bearer <YOUR_API_KEY>",',
+      '    "Content-Type": "application/json",',
+      '}',
+      '',
+      `payload = ${bodyJson.replaceAll('\n', '\n    ')}`,
+      '',
+      '# 1. Submit the task and keep the returned id.',
+      'task = requests.post(url, headers=headers, json=payload).json()',
+      'task_id = task["id"]',
+      '',
+      '# 2. Poll until the status is "completed" (or "failed").',
+      'while task["status"] not in ("completed", "failed"):',
+      '    time.sleep(2)',
+      '    task = requests.get(f"{url}/{task_id}", headers=headers).json()',
+      '',
+      '# 3. Download the generated video.',
+      'video = requests.get(f"{url}/{task_id}/content", headers=headers)',
+      'with open("video.mp4", "wb") as f:',
+      '    f.write(video.content)',
+    ].join('\n')
+  }
+
+  if (lang === 'typescript') {
+    return [
+      `import { writeFile } from 'node:fs/promises'`,
+      '',
+      `const headers = {`,
+      `  Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+      `  'Content-Type': 'application/json',`,
+      `}`,
+      '',
+      `// 1. Submit a task and keep the returned id.`,
+      `const created = await fetch('${url}', {`,
+      `  method: 'POST',`,
+      `  headers,`,
+      `  body: JSON.stringify(${bodyJson.replaceAll('\n', '\n  ')}),`,
+      `})`,
+      `const { id: taskId } = await created.json()`,
+      '',
+      `// 2. Poll until status is "completed" or "failed".`,
+      `let status = 'queued'`,
+      `while (status !== 'completed' && status !== 'failed') {`,
+      `  const task = await (`,
+      `    await fetch(\`${url}/\${taskId}\`, { headers })`,
+      `  ).json()`,
+      `  status = task.status`,
+      `}`,
+      '',
+      `// 3. Download the generated video.`,
+      `const video = await fetch(\`${url}/\${taskId}/content\`, { headers })`,
+      `await writeFile('video.mp4', Buffer.from(await video.arrayBuffer()))`,
+    ].join('\n')
+  }
+
+  return [
+    `// 1. Submit a task and keep the returned id.`,
+    `const created = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers: {`,
+    `    Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+    `    'Content-Type': 'application/json',`,
+    `  },`,
+    `  body: JSON.stringify(${bodyJson.replaceAll('\n', '\n  ')}),`,
+    `})`,
+    `const { id: taskId } = await created.json()`,
+    ``,
+    `// 2. Poll GET \`${url}/\${taskId}\` until status is "completed".`,
+    `// 3. Then download the video from \`${url}/\${taskId}/content\`.`,
+  ].join('\n')
+}
+
 function buildSample(
   lang: Lang,
   endpointType: string,
@@ -430,9 +548,11 @@ function buildSample(
 ): string {
   if (endpointType === 'anthropic') return buildAnthropicSample(lang, ctx)
   if (endpointType === 'gemini') return buildGeminiSample(lang, ctx)
-  if (endpointType === 'embeddings' || endpointType === 'jina-rerank')
+  if (endpointType === 'embeddings' || endpointType === 'jina-rerank') {
     return buildEmbeddingSample(lang, ctx)
+  }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
+  if (endpointType === 'openai-video') return buildVideoSample(lang, ctx)
   return buildChatSample(lang, ctx)
 }
 

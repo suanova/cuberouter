@@ -403,6 +403,31 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 	return task, exist, err
 }
 
+// GetByUpstreamTaskId 按上游真实 task ID 查找本地任务。调用方（如视频任务
+// 状态轮询）可能只持有上游返回的 task ID（例如 BoosterAI 的 task_xxx），
+// 该 ID 保存在任务的 private_data（JSON）upstream_task_id 字段中。
+func GetByUpstreamTaskId(userId int, upstreamTaskId string) (*Task, bool, error) {
+	if upstreamTaskId == "" {
+		return nil, false, nil
+	}
+	query := DB.Where("user_id = ?", userId)
+	switch {
+	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
+		query = query.Where("private_data->>'upstream_task_id' = ?", upstreamTaskId)
+	case common.UsingMainDatabase(common.DatabaseTypeSQLite):
+		query = query.Where("json_extract(private_data, '$.upstream_task_id') = ?", upstreamTaskId)
+	default: // MySQL and others
+		query = query.Where("JSON_EXTRACT(private_data, '$.upstream_task_id') = ?", upstreamTaskId)
+	}
+	var task *Task
+	err := query.First(&task).Error
+	exist, err := RecordExist(err)
+	if err != nil {
+		return nil, false, err
+	}
+	return task, exist, err
+}
+
 func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	if len(taskIds) == 0 {
 		return nil, nil

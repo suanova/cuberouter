@@ -153,8 +153,10 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 
 	ov := dto.NewOpenAIVideo()
-	ov.ID = sResp.ID
-	ov.TaskID = sResp.ID
+	// 与其他 task 适配器保持一致：对外返回网关预生成的公开 task ID，
+	// 上游原始 ID 由提交流程存入 PrivateData.UpstreamTaskID。
+	ov.ID = info.PublicTaskID
+	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
 	c.JSON(http.StatusOK, ov)

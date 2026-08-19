@@ -229,7 +229,8 @@ const APP_TEMPLATES: Array<
 const PROFILE_BY_NAME = (name: string) => {
   const n = name.toLowerCase()
   if (/embed|rerank/.test(n)) return 'embedding'
-  if (/image|sora|veo|kling|pika|jimeng|dalle|imagen/.test(n)) return 'image'
+  if (/image|sora|veo|kling|pika|jimeng|dalle|imagen|seedance/.test(n))
+    return 'image'
   if (/whisper|tts|voice|audio/.test(n)) return 'audio'
   if (/o1|o3|o4|reasoning|thinking|deepseek-r/.test(n)) return 'reasoning'
   if (/flash|haiku|mini|small|nano|fast/.test(n)) return 'fast'
@@ -736,30 +737,32 @@ const IMAGE_PARAMS: SupportedParameter[] = [
 
 const VIDEO_PARAMS: SupportedParameter[] = [
   {
-    name: 'prompt',
+    name: 'model',
     type: 'string',
     required: true,
-    descriptionKey: 'Text description of the desired video',
+    descriptionKey: 'Model name',
+  },
+  {
+    name: 'content',
+    type: 'array',
+    required: true,
+    descriptionKey:
+      'Input content: exactly one type=text prompt plus optional image/video/audio references',
   },
   {
     name: 'duration',
     type: 'integer',
-    range: '1 ~ 60',
+    required: true,
+    range: '4 ~ 15',
+    defaultValue: 15,
     descriptionKey: 'Video length in seconds',
   },
   {
-    name: 'aspect_ratio',
+    name: 'ratio',
     type: 'enum',
-    enumValues: ['16:9', '9:16', '1:1'],
-    defaultValue: '16:9',
+    required: true,
+    enumValues: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'],
     descriptionKey: 'Output aspect ratio',
-  },
-  {
-    name: 'fps',
-    type: 'integer',
-    range: '8 ~ 60',
-    defaultValue: 24,
-    descriptionKey: 'Frames per second',
   },
 ]
 
@@ -775,7 +778,9 @@ function apiCategoryOf(model: PricingModel): ApiCategory {
   const profile = PROFILE_BY_NAME(model.model_name)
   if (profile === 'embedding' || profile === 'reasoning') return profile
   if (profile === 'image') {
-    return /sora|veo|kling|pika|video|wan-|hunyuanvideo/i.test(model.model_name)
+    return /sora|veo|kling|pika|video|wan-|hunyuanvideo|seedance/i.test(
+      model.model_name
+    )
       ? 'video'
       : 'image'
   }
