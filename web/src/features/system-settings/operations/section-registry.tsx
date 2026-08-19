@@ -74,6 +74,18 @@ const OPERATIONS_SECTIONS = [
           SMTPStartTLSEnabled: settings.SMTPStartTLSEnabled,
           SMTPInsecureSkipVerify: settings.SMTPInsecureSkipVerify,
           SMTPForceAuthLogin: settings.SMTPForceAuthLogin,
+          PasswordResetEmailSubjectEn: settings.PasswordResetEmailSubjectEn,
+          PasswordResetEmailSubjectZh: settings.PasswordResetEmailSubjectZh,
+          PasswordResetEmailContentEn: settings.PasswordResetEmailContentEn,
+          PasswordResetEmailContentZh: settings.PasswordResetEmailContentZh,
+          PasswordResetSuccessEmailSubjectEn:
+            settings.PasswordResetSuccessEmailSubjectEn,
+          PasswordResetSuccessEmailSubjectZh:
+            settings.PasswordResetSuccessEmailSubjectZh,
+          PasswordResetSuccessEmailContentEn:
+            settings.PasswordResetSuccessEmailContentEn,
+          PasswordResetSuccessEmailContentZh:
+            settings.PasswordResetSuccessEmailContentZh,
         }}
       />
     ),

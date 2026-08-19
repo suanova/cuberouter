@@ -34,6 +34,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 
 import {
   SettingsForm,
@@ -64,6 +65,14 @@ const createEmailSchema = (t: (key: string) => string) =>
     SMTPStartTLSEnabled: z.boolean(),
     SMTPInsecureSkipVerify: z.boolean(),
     SMTPForceAuthLogin: z.boolean(),
+    PasswordResetEmailSubjectEn: z.string(),
+    PasswordResetEmailSubjectZh: z.string(),
+    PasswordResetEmailContentEn: z.string(),
+    PasswordResetEmailContentZh: z.string(),
+    PasswordResetSuccessEmailSubjectEn: z.string(),
+    PasswordResetSuccessEmailSubjectZh: z.string(),
+    PasswordResetSuccessEmailContentEn: z.string(),
+    PasswordResetSuccessEmailContentZh: z.string(),
   })
 
 type EmailFormValues = z.infer<ReturnType<typeof createEmailSchema>>
@@ -83,6 +92,19 @@ function getSmtpSecurityMode(values: {
   return 'none'
 }
 
+// 密码重置邮件模板字段（对应后端 model/option.go 的 8 个可配置项）。
+// 留空表示回退到 common/email_template.go 的内置默认模板。
+const passwordResetTemplateFieldNames = [
+  'PasswordResetEmailSubjectEn',
+  'PasswordResetEmailSubjectZh',
+  'PasswordResetEmailContentEn',
+  'PasswordResetEmailContentZh',
+  'PasswordResetSuccessEmailSubjectEn',
+  'PasswordResetSuccessEmailSubjectZh',
+  'PasswordResetSuccessEmailContentEn',
+  'PasswordResetSuccessEmailContentZh',
+] as const
+
 export function EmailSettingsSection({
   defaultValues,
 }: EmailSettingsSectionProps) {
@@ -96,6 +118,49 @@ export function EmailSettingsSection({
   })
 
   useResetForm(form, defaultValues)
+
+  const templateFieldDefs = [
+    {
+      name: 'PasswordResetEmailSubjectEn',
+      label: t('Reset Link Subject (English)'),
+      textarea: false,
+    },
+    {
+      name: 'PasswordResetEmailSubjectZh',
+      label: t('Reset Link Subject (Chinese)'),
+      textarea: false,
+    },
+    {
+      name: 'PasswordResetEmailContentEn',
+      label: t('Reset Link Body (English)'),
+      textarea: true,
+    },
+    {
+      name: 'PasswordResetEmailContentZh',
+      label: t('Reset Link Body (Chinese)'),
+      textarea: true,
+    },
+    {
+      name: 'PasswordResetSuccessEmailSubjectEn',
+      label: t('Reset Success Subject (English)'),
+      textarea: false,
+    },
+    {
+      name: 'PasswordResetSuccessEmailSubjectZh',
+      label: t('Reset Success Subject (Chinese)'),
+      textarea: false,
+    },
+    {
+      name: 'PasswordResetSuccessEmailContentEn',
+      label: t('Reset Success Body (English)'),
+      textarea: true,
+    },
+    {
+      name: 'PasswordResetSuccessEmailContentZh',
+      label: t('Reset Success Body (Chinese)'),
+      textarea: true,
+    },
+  ] as const
 
   const onSubmit = async (values: EmailFormValues) => {
     const securityMode = getSmtpSecurityMode(values)
@@ -171,6 +236,13 @@ export function EmailSettingsSection({
         key: 'SMTPForceAuthLogin',
         value: sanitized.SMTPForceAuthLogin,
       })
+    }
+
+    for (const key of passwordResetTemplateFieldNames) {
+      const value = values[key].trim()
+      if (value !== defaultValues[key].trim()) {
+        updates.push({ key, value })
+      }
     }
 
     for (const update of updates) {
@@ -405,6 +477,55 @@ export function EmailSettingsSection({
               </FormItem>
             )}
           />
+
+          <SettingsSection title={t('Password Reset Email Templates')}>
+            <div className='text-muted-foreground rounded-md border p-3 text-xs'>
+              <p>
+                {t(
+                  'Customize the password reset emails. Leave a field blank to use the built-in default.'
+                )}
+              </p>
+              <p className='mt-1'>
+                {t('Available variables')}:{' '}
+                <code>{'{{.SystemName}}'}</code>, <code>{'{{.Link}}'}</code>,{' '}
+                <code>{'{{.ValidMinutes}}'}</code> — {t('reset link email')};{' '}
+                <code>{'{{.SystemName}}'}</code>, <code>{'{{.NewPassword}}'}</code>{' '}
+                — {t('reset success email')}
+              </p>
+            </div>
+            <div className='grid gap-4 md:grid-cols-2'>
+              {templateFieldDefs.map((def) => (
+                <FormField
+                  key={def.name}
+                  control={form.control}
+                  name={def.name}
+                  render={({ field }) => (
+                    <FormItem
+                      className={def.textarea ? 'md:col-span-2' : undefined}
+                    >
+                      <FormLabel>{def.label}</FormLabel>
+                      <FormControl>
+                        {def.textarea ? (
+                          <Textarea
+                            rows={5}
+                            className='font-mono text-xs'
+                            placeholder={t('Leave blank to use default')}
+                            {...field}
+                          />
+                        ) : (
+                          <Input
+                            placeholder={t('Leave blank to use default')}
+                            {...field}
+                          />
+                        )}
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ))}
+            </div>
+          </SettingsSection>
         </SettingsForm>
       </Form>
     </SettingsSection>
