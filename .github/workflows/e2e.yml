@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  kind-journey:
+  e2e-test:
     name: E2E (KinD)
     runs-on: ubuntu-latest
     timeout-minutes: 25

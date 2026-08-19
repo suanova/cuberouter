@@ -3,8 +3,9 @@ pull_request_rules:
     conditions:
       - base = main
       - "#approved-reviews-by >= 1"
-      - check-success = "Tests"
-      - check-success = "E2E"
+      - check-success=go-test
+      - check-success=web-test
+      - check-success=e2e-test
     actions:
       merge:
         method: squash
