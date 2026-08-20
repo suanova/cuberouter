@@ -417,7 +417,7 @@ func GetByUpstreamTaskId(userId int, upstreamTaskId string) (*Task, bool, error)
 	case common.UsingMainDatabase(common.DatabaseTypeSQLite):
 		query = query.Where("json_extract(private_data, '$.upstream_task_id') = ?", upstreamTaskId)
 	default: // MySQL and others
-		query = query.Where("JSON_EXTRACT(private_data, '$.upstream_task_id') = ?", upstreamTaskId)
+		query = query.Where("JSON_UNQUOTE(JSON_EXTRACT(private_data, '$.upstream_task_id')) = ?", upstreamTaskId)
 	}
 	var task *Task
 	err := query.First(&task).Error

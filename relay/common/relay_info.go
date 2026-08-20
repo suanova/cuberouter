@@ -688,20 +688,22 @@ type TaskRelayInfo struct {
 }
 
 // TaskMediaURL 是 Ark 风格 content 项中的媒体载荷，形如 {"url": "..."}。
+// URL 使用指针类型：显式空值与缺失字段在 JSON 往返后仍可区分（配合 omitempty）。
 type TaskMediaURL struct {
-	URL string `json:"url,omitempty"`
+	URL *string `json:"url,omitempty"`
 }
 
 // TaskContentItem 是 Ark 风格 content 数组的单个元素，按 Type 路由媒体
 // （text / image_url / video_url / audio_url）。Role 为可选的角色标注
 // （first_frame / last_frame / reference_image 等），仅在渠道上游支持时生效。
+// Text 与 Role 使用指针类型，保证客户端显式给定的空字符串不会在透传时丢失。
 type TaskContentItem struct {
 	Type     string        `json:"type"`
-	Text     string        `json:"text,omitempty"`
+	Text     *string       `json:"text,omitempty"`
 	ImageURL *TaskMediaURL `json:"image_url,omitempty"`
 	VideoURL *TaskMediaURL `json:"video_url,omitempty"`
 	AudioURL *TaskMediaURL `json:"audio_url,omitempty"`
-	Role     string        `json:"role,omitempty"`
+	Role     *string       `json:"role,omitempty"`
 }
 
 type TaskSubmitReq struct {

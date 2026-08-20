@@ -163,7 +163,7 @@ func TestValidateBasicTaskRequestArkContentGating(t *testing.T) {
 		storedReq, err := GetTaskRequest(context)
 		require.NoError(t, err)
 		require.Len(t, storedReq.Content, 2)
-		assert.Equal(t, "reference_video", storedReq.Content[1].Role)
+		assert.Equal(t, "reference_video", *storedReq.Content[1].Role)
 		assert.Equal(t, "dance like this", storedReq.Prompt)
 		assert.Equal(t, 10, storedReq.Duration)
 	})

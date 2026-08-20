@@ -314,7 +314,7 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		for _, imgURL := range req.Images {
 			r.Input.Content = append(r.Input.Content, ContentItem{
 				Type:     "image_url",
-				ImageURL: &MediaURL{URL: imgURL},
+				ImageURL: &MediaURL{URL: lo.ToPtr(imgURL)},
 			})
 		}
 	}
@@ -351,23 +351,34 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	if contentFromClient {
-		// content 直传时其中的 text 项即提示词；仅在完全缺失且顶层
-		// prompt 非空时才补一项，避免改写客户端给定的提示词。
+		// content 直传时其中的 text 项即提示词；仅在非空 text 缺失且顶层
+		// prompt 非空时才补齐，避免改写客户端给定的提示词。空的 text 项
+		// 不视为已携带提示词，直接用顶层 prompt 覆盖或追加。
 		hasText := false
-		for _, c := range r.Input.Content {
+		emptyTextIdx := -1
+		for i, c := range r.Input.Content {
 			if c.Type == "text" {
-				hasText = true
-				break
+				if c.Text != nil && strings.TrimSpace(*c.Text) != "" {
+					hasText = true
+					break
+				}
+				if emptyTextIdx == -1 {
+					emptyTextIdx = i
+				}
 			}
 		}
 		if !hasText && strings.TrimSpace(req.Prompt) != "" {
-			r.Input.Content = append(r.Input.Content, ContentItem{Type: "text", Text: req.Prompt})
+			if emptyTextIdx >= 0 {
+				r.Input.Content[emptyTextIdx].Text = lo.ToPtr(req.Prompt)
+			} else {
+				r.Input.Content = append(r.Input.Content, ContentItem{Type: "text", Text: lo.ToPtr(req.Prompt)})
+			}
 		}
 	} else {
 		r.Input.Content = lo.Reject(r.Input.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
 		r.Input.Content = append(r.Input.Content, ContentItem{
 			Type: "text",
-			Text: req.Prompt,
+			Text: lo.ToPtr(req.Prompt),
 		})
 	}
 

@@ -292,7 +292,7 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
 				ImageURL: &MediaURL{
-					URL: imgURL,
+					URL: lo.ToPtr(imgURL),
 				},
 			})
 		}
@@ -320,23 +320,34 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	if contentFromClient {
-		// content 直传时其中的 text 项即提示词；仅在完全缺失且顶层
-		// prompt 非空时才补一项，避免改写客户端给定的提示词。
+		// content 直传时其中的 text 项即提示词；仅在非空 text 缺失且顶层
+		// prompt 非空时才补齐，避免改写客户端给定的提示词。空的 text 项
+		// 不视为已携带提示词，直接用顶层 prompt 覆盖或追加。
 		hasText := false
-		for _, c := range r.Content {
+		emptyTextIdx := -1
+		for i, c := range r.Content {
 			if c.Type == "text" {
-				hasText = true
-				break
+				if c.Text != nil && strings.TrimSpace(*c.Text) != "" {
+					hasText = true
+					break
+				}
+				if emptyTextIdx == -1 {
+					emptyTextIdx = i
+				}
 			}
 		}
 		if !hasText && strings.TrimSpace(req.Prompt) != "" {
-			r.Content = append(r.Content, ContentItem{Type: "text", Text: req.Prompt})
+			if emptyTextIdx >= 0 {
+				r.Content[emptyTextIdx].Text = lo.ToPtr(req.Prompt)
+			} else {
+				r.Content = append(r.Content, ContentItem{Type: "text", Text: lo.ToPtr(req.Prompt)})
+			}
 		}
 	} else {
 		r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
 		r.Content = append(r.Content, ContentItem{
 			Type: "text",
-			Text: req.Prompt,
+			Text: lo.ToPtr(req.Prompt),
 		})
 	}
 
@@ -407,9 +418,16 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName
 
-	if dResp.Status == "failed" {
+	if originTask.Status == model.TaskStatusFailure {
+		// 失败/过期/取消等终态映射为失败后，转换结果必须携带 terminal error，
+		// 否则客户端会把失败任务当成成功处理。优先用上游错误信息，
+		// 为空时退回状态文案（与 ParseTaskResult 保持一致）。
+		message := dResp.Error.Message
+		if message == "" {
+			message = fmt.Sprintf("task %s", dResp.Status)
+		}
 		openAIVideo.Error = &dto.OpenAIVideoError{
-			Message: dResp.Error.Message,
+			Message: message,
 			Code:    dResp.Error.Code,
 		}
 	}

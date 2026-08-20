@@ -56,7 +56,7 @@ const (
 	ChannelTypeReplicate      = 56
 	ChannelTypeCodex          = 57
 	ChannelTypeAdvancedCustom = 58
-	ChannelTypeBoosterAI      = 59
+	ChannelTypeAstraFlow      = 59
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -180,7 +180,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeReplicate:      "Replicate",
 	ChannelTypeCodex:          "ChatGPT Subscription (Codex)",
 	ChannelTypeAdvancedCustom: "Advanced Custom",
-	ChannelTypeBoosterAI:      "BoosterAI",
+	ChannelTypeAstraFlow:      "AstraFlow",
 }
 
 func GetChannelTypeName(channelType int) string {

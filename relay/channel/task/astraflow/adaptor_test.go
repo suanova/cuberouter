@@ -12,6 +12,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -26,10 +27,10 @@ func TestConvertToRequestPayloadContentPassthrough(t *testing.T) {
 		Resolution: "720p",
 		Duration:   10,
 		Content: []relaycommon.TaskContentItem{
-			{Type: "text", Text: "跟随参考风格的舞蹈表演"},
-			{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: "https://example.com/style_ref.jpg"}, Role: "reference_image"},
-			{Type: "video_url", VideoURL: &relaycommon.TaskMediaURL{URL: "https://example.com/motion_ref.mp4"}, Role: "reference_video"},
-			{Type: "audio_url", AudioURL: &relaycommon.TaskMediaURL{URL: "https://example.com/music_ref.mp3"}, Role: "reference_audio"},
+			{Type: "text", Text: lo.ToPtr("跟随参考风格的舞蹈表演")},
+			{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr("https://example.com/style_ref.jpg")}, Role: lo.ToPtr("reference_image")},
+			{Type: "video_url", VideoURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr("https://example.com/motion_ref.mp4")}, Role: lo.ToPtr("reference_video")},
+			{Type: "audio_url", AudioURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr("https://example.com/music_ref.mp3")}, Role: lo.ToPtr("reference_audio")},
 		},
 	}
 
@@ -52,7 +53,7 @@ func TestConvertToRequestPayloadContentWithoutText(t *testing.T) {
 		Model:  "doubao-seedance-2-0-260128",
 		Prompt: "一只猫在晒太阳",
 		Content: []relaycommon.TaskContentItem{
-			{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: "https://example.com/a.jpg"}, Role: "first_frame"},
+			{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr("https://example.com/a.jpg")}, Role: lo.ToPtr("first_frame")},
 		},
 	}
 
@@ -61,9 +62,9 @@ func TestConvertToRequestPayloadContentWithoutText(t *testing.T) {
 
 	require.Len(t, body.Input.Content, 2)
 	assert.Equal(t, "image_url", body.Input.Content[0].Type)
-	assert.Equal(t, "first_frame", body.Input.Content[0].Role)
+	assert.Equal(t, "first_frame", *body.Input.Content[0].Role)
 	assert.Equal(t, "text", body.Input.Content[1].Type)
-	assert.Equal(t, "一只猫在晒太阳", body.Input.Content[1].Text)
+	assert.Equal(t, "一只猫在晒太阳", *body.Input.Content[1].Text)
 }
 
 // TestConvertToRequestPayloadLegacyFields 锁定旧式字段契约：prompt/images/
@@ -83,9 +84,9 @@ func TestConvertToRequestPayloadLegacyFields(t *testing.T) {
 	require.Len(t, body.Input.Content, 2)
 	assert.Equal(t, "image_url", body.Input.Content[0].Type)
 	require.NotNil(t, body.Input.Content[0].ImageURL)
-	assert.Equal(t, "https://example.com/first.png", body.Input.Content[0].ImageURL.URL)
+	assert.Equal(t, "https://example.com/first.png", *body.Input.Content[0].ImageURL.URL)
 	assert.Equal(t, "text", body.Input.Content[1].Type)
-	assert.Equal(t, "animate the first frame", body.Input.Content[1].Text)
+	assert.Equal(t, "animate the first frame", *body.Input.Content[1].Text)
 	require.NotNil(t, body.Parameters.Duration)
 	assert.Equal(t, 8, int(*body.Parameters.Duration))
 }
@@ -118,9 +119,9 @@ func TestConvertToRequestPayloadMetadataOverlay(t *testing.T) {
 
 	require.Len(t, body.Input.Content, 2)
 	assert.Equal(t, "text", body.Input.Content[0].Type)
-	assert.Equal(t, "metadata prompt", body.Input.Content[0].Text)
+	assert.Equal(t, "metadata prompt", *body.Input.Content[0].Text)
 	assert.Equal(t, "image_url", body.Input.Content[1].Type)
-	assert.Equal(t, "first_frame", body.Input.Content[1].Role)
+	assert.Equal(t, "first_frame", *body.Input.Content[1].Role)
 	assert.Equal(t, "flex", body.Parameters.ServiceTier)
 	require.NotNil(t, body.Parameters.Duration)
 	// metadata 覆盖优先于顶层 duration。

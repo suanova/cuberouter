@@ -750,18 +750,24 @@ const VIDEO_PARAMS: SupportedParameter[] = [
       'Input content: exactly one type=text prompt plus optional image/video/audio references',
   },
   {
+    name: 'resolution',
+    type: 'enum',
+    required: true,
+    enumValues: ['480p', '720p', '1080p', '4K'],
+    descriptionKey: 'Output video resolution',
+  },
+  {
     name: 'duration',
     type: 'integer',
     required: true,
     range: '4 ~ 15',
-    defaultValue: 15,
+    defaultValue: 5,
     descriptionKey: 'Video length in seconds',
   },
   {
     name: 'ratio',
     type: 'enum',
-    required: true,
-    enumValues: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16'],
+    enumValues: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'],
     descriptionKey: 'Output aspect ratio',
   },
 ]

@@ -322,8 +322,8 @@ func validateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string, al
 			// content 数组直传时不一定有顶层 prompt，content 中的 text 项
 			// 即提示词，回填供校验及下游日志使用。
 			for _, item := range req.Content {
-				if item.Type == "text" && strings.TrimSpace(item.Text) != "" {
-					req.Prompt = item.Text
+				if item.Type == "text" && item.Text != nil && strings.TrimSpace(*item.Text) != "" {
+					req.Prompt = *item.Text
 					break
 				}
 			}
