@@ -429,7 +429,13 @@ test.describe('MockLLM relay (v4.5 demo flows)', () => {
     await page.goto('/playground')
     const input = page.getByPlaceholder('Ask anything')
     await expect(input).toBeVisible()
-    // Only one model is available, so the playground selects it automatically.
+    // The playground auto-selects a model, but other spec files leave
+    // channels behind (e.g. the AstraFlow spec's type-59 channel), so the
+    // auto-selected model may route to a non-MockLLM upstream. Explicitly
+    // pick the per-run mock model to keep the reply deterministic.
+    await page.getByRole('combobox').first().click()
+    await page.getByPlaceholder('Search models...').fill(MODEL)
+    await page.getByRole('option', { name: MODEL, exact: true }).click()
     await input.fill('Hello from the playground')
     await page.getByRole('button', { name: 'Send' }).click()
     await expect(page.getByText(PLAYGROUND_REPLY)).toBeVisible()
