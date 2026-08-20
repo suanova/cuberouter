@@ -326,6 +326,15 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		r.Resolution = req.Resolution
 	}
 
+	// ratio 与 Ark 规范一致默认 "adaptive"：上游在字段缺失时报
+	// "ratio is required"，因此显式下发规范默认值。
+	if r.Ratio == "" {
+		r.Ratio = req.Ratio
+	}
+	if r.Ratio == "" {
+		r.Ratio = "adaptive"
+	}
+
 	if contentFromClient {
 		// content 直传时其中的 text 项即提示词；仅在非空 text 缺失且顶层
 		// prompt 非空时才补齐，避免改写客户端给定的提示词。空的 text 项

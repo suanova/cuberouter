@@ -157,6 +157,30 @@ func TestConvertToRequestPayloadDurationPriority(t *testing.T) {
 	assert.Equal(t, 4, int(*body.Parameters.Duration))
 }
 
+// TestConvertToRequestPayloadRatioDefault 锁定 ratio 转发契约：客户端显式
+// 传 ratio 时原样落到 parameters；缺失时按 Ark 规范默认 "adaptive"，避免
+// 上游报 "ratio is required"。
+func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	explicit := relaycommon.TaskSubmitReq{
+		Model:  "doubao-seedance-2-0-260128",
+		Prompt: "p",
+		Ratio:  "16:9",
+	}
+	body, err := adaptor.convertToRequestPayload(&explicit)
+	require.NoError(t, err)
+	assert.Equal(t, "16:9", body.Parameters.Ratio)
+
+	absent := relaycommon.TaskSubmitReq{
+		Model:  "doubao-seedance-2-0-260128",
+		Prompt: "p",
+	}
+	body, err = adaptor.convertToRequestPayload(&absent)
+	require.NoError(t, err)
+	assert.Equal(t, "adaptive", body.Parameters.Ratio)
+}
+
 // TestParseTaskResult 锁定上游任务状态映射：成功携带视频地址与 token 用量，
 // 失败/过期映射为失败终态，未知状态按进行中处理避免任务卡死轮询。
 func TestParseTaskResult(t *testing.T) {

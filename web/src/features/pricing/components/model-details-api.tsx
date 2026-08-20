@@ -430,9 +430,9 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
   //   3) download content.video_url from the succeeded response
   // The submit body follows the Ark-style content array accepted by video
   // channels: exactly one text item as the prompt, plus image/video/audio
-  // reference items (each with a role annotation). The legacy
-  // prompt/images/seconds/size fields are still accepted when content is
-  // absent.
+  // reference items (each with a role annotation). ratio is required;
+  // duration and resolution are optional. The legacy prompt/images/seconds/
+  // size fields are still accepted when content is absent.
   const url = `${ctx.baseUrl}/v1/videos/generations/tasks`
   const body = {
     model: ctx.modelName,
@@ -458,7 +458,7 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
       },
     ],
     duration: 10,
-    resolution: '720p',
+    ratio: '16:9',
   }
   const bodyJson = JSON.stringify(body, null, 2)
 

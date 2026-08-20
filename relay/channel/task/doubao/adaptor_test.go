@@ -94,6 +94,30 @@ func TestConvertToRequestPayloadLegacyPromptOwnsText(t *testing.T) {
 	assert.Equal(t, 8, int(*r.Duration))
 }
 
+// TestConvertToRequestPayloadRatioDefault 锁定 ratio 转发契约：客户端显式
+// 传 ratio 时原样下发；缺失时按 Ark 规范默认 "adaptive"，避免上游报
+// "ratio is required"。
+func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	explicit := relaycommon.TaskSubmitReq{
+		Model:  "doubao-seedance-2-0-260128",
+		Prompt: "p",
+		Ratio:  "16:9",
+	}
+	r, err := adaptor.convertToRequestPayload(&explicit)
+	require.NoError(t, err)
+	assert.Equal(t, "16:9", r.Ratio)
+
+	absent := relaycommon.TaskSubmitReq{
+		Model:  "doubao-seedance-2-0-260128",
+		Prompt: "p",
+	}
+	r, err = adaptor.convertToRequestPayload(&absent)
+	require.NoError(t, err)
+	assert.Equal(t, "adaptive", r.Ratio)
+}
+
 // TestParseTaskResultExpiredIsFailure 是回归测试：上游 expired/cancelled
 // 是终态，必须映射为失败，否则 default 分支会让任务永远按 IN_PROGRESS 轮询。
 func TestParseTaskResultExpiredIsFailure(t *testing.T) {
