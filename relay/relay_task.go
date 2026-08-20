@@ -30,6 +30,13 @@ type TaskSubmitResult struct {
 	//PerCallPrice   types.PriceData
 }
 
+// isArkVideoChannelType 判断渠道类型是否属于 Ark 风格视频渠道（doubao /
+// astraflow）。这些渠道才允许通过 /v1/videos/generations/tasks 端点提交与
+// 查询 Seedance 视频任务，其余渠道命中该端点直接拒绝。
+func isArkVideoChannelType(channelType int) bool {
+	return channelType == constant.ChannelTypeDoubaoVideo || channelType == constant.ChannelTypeAstraFlow
+}
+
 // ResolveOriginTask 处理基于已有任务的提交（remix / continuation）：
 // 查找原始任务、从中提取模型名称、将渠道锁定到原始任务的渠道
 // （通过 info.LockedChannel，重试时复用同一渠道并轮换 key），
@@ -144,6 +151,12 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 // 控制器负责 defer Refund 和成功后 Settle。
 func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitResult, *dto.TaskError) {
 	info.InitChannelMeta(c)
+
+	// Ark 风格视频端点（/v1/videos/generations/tasks）仅对 doubao/astraflow
+	// 渠道开放；其余渠道命中该路径在验证与计费之前直接拒绝。
+	if relaycommon.IsArkVideoPath(c) && !isArkVideoChannelType(info.ChannelType) {
+		return nil, service.TaskErrorWrapperLocal(errors.New("the Ark-style video endpoint is only served by doubao/astraflow channels"), "invalid_request", http.StatusBadRequest)
+	}
 
 	// 1. 确定 platform → 创建适配器 → 验证请求
 	platform := constant.TaskPlatform(c.GetString("platform"))
@@ -394,6 +407,17 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
+	// Ark 风格视频查询端点（/v1/videos/generations/tasks/{task_id}）仅对
+	// doubao/astraflow 渠道创建的任务开放，其余渠道的任务在此拒绝。
+	isArkVideoAPI := relaycommon.IsArkVideoPath(c)
+	if isArkVideoAPI {
+		platformType, _ := strconv.Atoi(string(originTask.Platform))
+		if !isArkVideoChannelType(platformType) {
+			taskResp = service.TaskErrorWrapperLocal(errors.New("the Ark-style video endpoint is only served by doubao/astraflow channels"), "invalid_request", http.StatusBadRequest)
+			return
+		}
+	}
+
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
 	// Gemini/Vertex 支持实时查询：用户 fetch 时直接从上游拉取最新状态
@@ -402,11 +426,26 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
-	// OpenAI Video API 格式: 走各 adaptor 的 ConvertToOpenAIVideo
+	// OpenAI Video API 格式: 走各 adaptor 的 ConvertToOpenAIVideo；
+	// Ark 风格端点（/v1/videos/generations/tasks）改走 ConvertToArkVideo。
 	if isOpenAIVideoAPI {
 		adaptor := GetTaskAdaptor(originTask.Platform)
 		if adaptor == nil {
 			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
+			return
+		}
+		if isArkVideoAPI {
+			converter, ok := adaptor.(channel.ArkVideoConverter)
+			if !ok {
+				taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
+				return
+			}
+			arkVideoData, err := converter.ConvertToArkVideo(originTask)
+			if err != nil {
+				taskResp = service.TaskErrorWrapper(err, "convert_to_ark_video_failed", http.StatusInternalServerError)
+				return
+			}
+			respBody = arkVideoData
 			return
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {

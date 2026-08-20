@@ -1,6 +1,7 @@
 package astraflow
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 
@@ -346,4 +348,149 @@ func TestBuildRequestBodyWireShape(t *testing.T) {
 	assert.Equal(t, "text", item["type"])
 	assert.Equal(t, "a castle in the sky", item["text"])
 	assert.Equal(t, float64(5), envelope.Parameters["duration"])
+}
+
+// TestConvertToArkVideo 锁定 Ark 风格视频端点（/v1/videos/generations/tasks）
+// 查询响应的返回契约：任何状态都携带 id/status/model/created_at/updated_at；
+// 成功态补充 content.video_url/output.duration/usage.completion_tokens；
+// 终态失败按原始上游状态区分 expired 与 failed，并携带对应的 error code。
+func TestConvertToArkVideo(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	newTask := func(data string, status model.TaskStatus) *model.Task {
+		return &model.Task{
+			TaskID:     "vt_123",
+			Status:     status,
+			Progress:   "100%",
+			CreatedAt:  1000,
+			UpdatedAt:  2000,
+			Properties: model.Properties{OriginModelName: "doubao-seedance-2-0-260128"},
+			Data:       json.RawMessage(data),
+		}
+	}
+
+	tests := []struct {
+		name           string
+		task           *model.Task
+		wantStatus     string
+		wantVideoURL   string
+		wantDuration   int
+		wantCompletion int
+		wantErrorCode  string
+		wantErrorMsg   string
+	}{
+		{
+			name:       "pending maps to queued",
+			task:       newTask(`{"output":{"task_id":"t1","task_status":"Pending"}}`, model.TaskStatusQueued),
+			wantStatus: dto.ArkVideoStatusQueued,
+		},
+		{
+			name:       "running maps to running",
+			task:       newTask(`{"output":{"task_id":"t1","task_status":"Running"}}`, model.TaskStatusInProgress),
+			wantStatus: dto.ArkVideoStatusRunning,
+		},
+		{
+			name:           "success carries url/duration/usage",
+			task:           newTask(`{"output":{"task_id":"t1","task_status":"Success","urls":["https://cdn.example.com/v.mp4"]},"usage":{"duration":5,"completion_tokens":109431}}`, model.TaskStatusSuccess),
+			wantStatus:     dto.ArkVideoStatusSucceeded,
+			wantVideoURL:   "https://cdn.example.com/v.mp4",
+			wantDuration:   5,
+			wantCompletion: 109431,
+		},
+		{
+			name:          "failure carries video_task_failed",
+			task:          newTask(`{"output":{"task_id":"t1","task_status":"Failure","error_message":"内容审核失败"}}`, model.TaskStatusFailure),
+			wantStatus:    dto.ArkVideoStatusFailed,
+			wantErrorCode: dto.ArkVideoErrorFailed,
+			wantErrorMsg:  "内容审核失败",
+		},
+		{
+			name:          "expired maps to expired with dedicated code",
+			task:          newTask(`{"output":{"task_id":"t1","task_status":"Expired"}}`, model.TaskStatusFailure),
+			wantStatus:    dto.ArkVideoStatusExpired,
+			wantErrorCode: dto.ArkVideoErrorExpired,
+			wantErrorMsg:  "task expired",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data, err := adaptor.ConvertToArkVideo(tt.task)
+			require.NoError(t, err)
+
+			var task dto.ArkVideoTask
+			require.NoError(t, common.Unmarshal(data, &task))
+
+			// 必含字段：id/status/model/created_at/updated_at
+			assert.Equal(t, "vt_123", task.ID)
+			assert.Equal(t, "doubao-seedance-2-0-260128", task.Model)
+			assert.Equal(t, int64(1000), task.CreatedAt)
+			assert.Equal(t, int64(2000), task.UpdatedAt)
+			assert.Equal(t, tt.wantStatus, task.Status)
+
+			if tt.wantVideoURL != "" {
+				require.NotNil(t, task.Content)
+				assert.Equal(t, tt.wantVideoURL, task.Content.VideoURL)
+			} else {
+				assert.Nil(t, task.Content)
+			}
+			if tt.wantDuration != 0 {
+				require.NotNil(t, task.Output)
+				assert.Equal(t, tt.wantDuration, task.Output.Duration)
+			} else {
+				assert.Nil(t, task.Output)
+			}
+			if tt.wantCompletion != 0 {
+				require.NotNil(t, task.Usage)
+				assert.Equal(t, tt.wantCompletion, task.Usage.CompletionTokens)
+			} else {
+				assert.Nil(t, task.Usage)
+			}
+			if tt.wantErrorCode != "" {
+				require.NotNil(t, task.Error)
+				assert.Equal(t, tt.wantErrorCode, task.Error.Code)
+				assert.Equal(t, tt.wantErrorMsg, task.Error.Message)
+			} else {
+				assert.Nil(t, task.Error)
+			}
+		})
+	}
+}
+
+// TestDoResponseArkSubmitShape 锁定 Ark 风格端点提交响应形态：
+// /v1/videos/generations/tasks 返回 {id, model, status:"queued", created_at}，
+// 不携带 OpenAI 视频字段（object/progress/task_id）与上游原始 task ID。
+func TestDoResponseArkSubmitShape(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations/tasks", nil)
+
+	adaptor := &TaskAdaptor{}
+	info := &relaycommon.RelayInfo{
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{PublicTaskID: "vt_123"},
+		OriginModelName: "doubao-seedance-2-0-260128",
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(`{"output":{"task_id":"upstream_456"}}`)),
+	}
+
+	taskID, _, taskErr := adaptor.DoResponse(context, resp, info)
+
+	require.Nil(t, taskErr)
+	assert.Equal(t, "upstream_456", taskID)
+	var task dto.ArkVideoTask
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &task))
+	assert.Equal(t, "vt_123", task.ID)
+	assert.Equal(t, "doubao-seedance-2-0-260128", task.Model)
+	assert.Equal(t, dto.ArkVideoStatusQueued, task.Status)
+	assert.Greater(t, task.CreatedAt, int64(0))
+	// 提交响应只含 id/model/status/created_at，无 OpenAI 视频字段。
+	assert.Empty(t, task.UpdatedAt)
+	assert.Nil(t, task.Content)
+	assert.Nil(t, task.Error)
+	assert.NotContains(t, recorder.Body.String(), `"object"`)
+	assert.NotContains(t, recorder.Body.String(), `"progress"`)
+	assert.NotContains(t, recorder.Body.String(), "upstream_456")
 }

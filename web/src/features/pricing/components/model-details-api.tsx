@@ -424,16 +424,16 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
 }
 
 function buildVideoSample(lang: Lang, ctx: SampleContext): string {
-  // OpenAI-compatible video generation. Three-step flow:
-  //   1) POST {endpointPath}           -> {"id": "task_...", "status": "queued"}
-  //   2) GET  {endpointPath}/{id}      -> poll until status is "completed"
-  //   3) GET  {endpointPath}/{id}/content -> download the video file
+  // Async video generation (Seedance). Three-step flow:
+  //   1) POST {submitUrl}            -> {"id": "vt_...", "status": "queued"}
+  //   2) GET  {submitUrl}/{id}       -> poll until status is "succeeded"
+  //   3) download content.video_url from the succeeded response
   // The submit body follows the Ark-style content array accepted by video
   // channels: exactly one text item as the prompt, plus image/video/audio
   // reference items (each with a role annotation). The legacy
   // prompt/images/seconds/size fields are still accepted when content is
   // absent.
-  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const url = `${ctx.baseUrl}/v1/videos/generations/tasks`
   const body = {
     model: ctx.modelName,
     content: [
@@ -451,6 +451,11 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
         video_url: { url: 'https://example.com/motion_ref.mp4' },
         role: 'reference_video',
       },
+      {
+        type: 'audio_url',
+        audio_url: { url: 'https://example.com/music_ref.mp3' },
+        role: 'reference_audio',
+      },
     ],
     duration: 10,
     resolution: '720p',
@@ -464,16 +469,16 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
       `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
-      `# => {"id": "task_xxxx", "status": "queued", ...}`,
+      `# => {"id": "vt_xxxx", "status": "queued", ...}`,
       '',
       `# 2. Poll the task status with the id from step 1.`,
-      `curl ${url}/task_xxxx \\`,
+      `curl ${url}/vt_xxxx \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}"`,
-      `# => {"id":"task_xxxx","status":"queued|in_progress|completed|failed","progress":"50%"}`,
+      `# => {"id":"vt_xxxx","status":"queued|running|succeeded|failed|expired",...}`,
       '',
-      `# 3. Once status is "completed", download the video.`,
-      `curl -L ${url}/task_xxxx/content \\`,
-      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" -o video.mp4`,
+      `# 3. Once status is "succeeded", download the video. VIDEO_URL is the`,
+      `#    value of content.video_url in the step 2 response.`,
+      `curl -L -o video.mp4 "VIDEO_URL"`,
     ].join('\n')
   }
 
@@ -495,13 +500,13 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
       'task = requests.post(url, headers=headers, json=payload).json()',
       'task_id = task["id"]',
       '',
-      '# 2. Poll until the status is "completed" (or "failed").',
-      'while task["status"] not in ("completed", "failed"):',
+      '# 2. Poll until the status is "succeeded" (or a terminal failure).',
+      'while task["status"] not in ("succeeded", "failed", "expired"):',
       '    time.sleep(2)',
       '    task = requests.get(f"{url}/{task_id}", headers=headers).json()',
       '',
-      '# 3. Download the generated video.',
-      'video = requests.get(f"{url}/{task_id}/content", headers=headers)',
+      '# 3. Download the generated video from content.video_url.',
+      'video = requests.get(task["content"]["video_url"], headers=headers)',
       'with open("video.mp4", "wb") as f:',
       '    f.write(video.content)',
     ].join('\n')
@@ -524,17 +529,18 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
       `})`,
       `const { id: taskId } = await created.json()`,
       '',
-      `// 2. Poll until status is "completed" or "failed".`,
+      `// 2. Poll until status is "succeeded", "failed" or "expired".`,
       `let status = 'queued'`,
-      `while (status !== 'completed' && status !== 'failed') {`,
-      `  const task = await (`,
+      `let task: Record<string, any> = { status: 'queued' }`,
+      `while (!['succeeded', 'failed', 'expired'].includes(status)) {`,
+      `  task = await (`,
       `    await fetch(\`${url}/\${taskId}\`, { headers })`,
       `  ).json()`,
       `  status = task.status`,
       `}`,
       '',
-      `// 3. Download the generated video.`,
-      `const video = await fetch(\`${url}/\${taskId}/content\`, { headers })`,
+      `// 3. Download the generated video from content.video_url.`,
+      `const video = await fetch(task.content.video_url, { headers })`,
       `await writeFile('video.mp4', Buffer.from(await video.arrayBuffer()))`,
     ].join('\n')
   }
@@ -551,8 +557,8 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
     `})`,
     `const { id: taskId } = await created.json()`,
     ``,
-    `// 2. Poll GET \`${url}/\${taskId}\` until status is "completed".`,
-    `// 3. Then download the video from \`${url}/\${taskId}/content\`.`,
+    `// 2. Poll GET \`${url}/\${taskId}\` until status is "succeeded".`,
+    `// 3. Then download the video from \`task.content.video_url\`.`,
   ].join('\n')
 }
 

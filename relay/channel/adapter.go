@@ -81,3 +81,9 @@ type TaskAdaptor interface {
 type OpenAIVideoConverter interface {
 	ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error)
 }
+
+// ArkVideoConverter 将任务转换为 Ark 风格视频响应（/v1/videos/generations/tasks
+// 查询端点的对外返回），仅由 doubao/astraflow 渠道实现。
+type ArkVideoConverter interface {
+	ConvertToArkVideo(originTask *model.Task) ([]byte, error)
+}

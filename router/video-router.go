@@ -23,6 +23,10 @@ func SetVideoRouter(router *gin.Engine) {
 		videoV1Router.POST("/video/generations", controller.RelayTask)
 		videoV1Router.GET("/video/generations/:task_id", controller.RelayTaskFetch)
 		videoV1Router.POST("/videos/:video_id/remix", controller.RelayTask)
+		// Ark 风格视频端点（Seedance），仅 doubao/astraflow 渠道开放，渠道类型
+		// 在 RelayTaskSubmit / videoFetchByIDRespBodyBuilder 中校验。
+		videoV1Router.POST("/videos/generations/tasks", controller.RelayTask)
+		videoV1Router.GET("/videos/generations/tasks/:task_id", controller.RelayTaskFetch)
 	}
 	// openai compatible API video routes
 	// docs: https://platform.openai.com/docs/api-reference/videos/create

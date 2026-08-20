@@ -172,6 +172,13 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
+	// Ark 风格端点（/v1/videos/generations/tasks）直接返回 Ark 提交形态，
+	// 其余路径保持 OpenAI 视频格式。
+	if relaycommon.IsArkVideoPath(c) {
+		c.JSON(http.StatusOK, dto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix()))
+		return sResp.Output.TaskID, responseBody, nil
+	}
+
 	ov := dto.NewOpenAIVideo()
 	// 与其他 task 适配器保持一致：对外返回网关预生成的公开 task ID，
 	// 上游原始 ID 由提交流程存入 PrivateData.UpstreamTaskID。
@@ -294,6 +301,57 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	}
 
 	return common.Marshal(openAIVideo)
+}
+
+// ConvertToArkVideo 将任务转换为 Ark 风格视频响应（/v1/videos/generations/tasks
+// 查询端点的对外返回）。与 ConvertToOpenAIVideo 共用 originTask.Data 中缓存的
+// 上游任务快照；终态失败时按原始上游状态区分 expired / failed。
+func (a *TaskAdaptor) ConvertToArkVideo(originTask *model.Task) ([]byte, error) {
+	var afResp queryTaskResponseBody
+	if err := common.Unmarshal(originTask.Data, &afResp); err != nil {
+		return nil, errors.Wrap(err, "unmarshal task data failed")
+	}
+
+	task := dto.ArkVideoTask{
+		ID:        originTask.TaskID,
+		Model:     originTask.Properties.OriginModelName,
+		CreatedAt: originTask.CreatedAt,
+		UpdatedAt: originTask.UpdatedAt,
+	}
+
+	switch originTask.Status {
+	case model.TaskStatusQueued, model.TaskStatusSubmitted:
+		task.Status = dto.ArkVideoStatusQueued
+	case model.TaskStatusInProgress:
+		task.Status = dto.ArkVideoStatusRunning
+	case model.TaskStatusSuccess:
+		task.Status = dto.ArkVideoStatusSucceeded
+		if len(afResp.Output.URLs) > 0 {
+			task.Content = &dto.ArkVideoContent{VideoURL: afResp.Output.URLs[0]}
+		}
+		if afResp.Usage.Duration > 0 {
+			task.Output = &dto.ArkVideoOutput{Duration: afResp.Usage.Duration}
+		}
+		if afResp.Usage.CompletionTokens > 0 {
+			task.Usage = &dto.ArkVideoUsage{CompletionTokens: afResp.Usage.CompletionTokens}
+		}
+	case model.TaskStatusFailure:
+		// Expired 终态在 ParseTaskResult 阶段与 Failure 一并折叠为 FAILURE，
+		// 这里依据缓存的原始上游状态区分 expired 与 failed。
+		task.Status = dto.ArkVideoStatusFailed
+		errorCode := dto.ArkVideoErrorFailed
+		if afResp.Output.TaskStatus == "Expired" {
+			task.Status = dto.ArkVideoStatusExpired
+			errorCode = dto.ArkVideoErrorExpired
+		}
+		message := afResp.Output.ErrorMessage
+		if message == "" {
+			message = fmt.Sprintf("task %s", strings.ToLower(afResp.Output.TaskStatus))
+		}
+		task.Error = &dto.ArkVideoError{Code: errorCode, Message: message}
+	}
+
+	return common.Marshal(&task)
 }
 
 // ============================

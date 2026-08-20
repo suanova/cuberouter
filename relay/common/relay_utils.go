@@ -23,6 +23,19 @@ type HasImage interface {
 	HasImage() bool
 }
 
+// ArkVideoPathPrefix 是 Ark 风格视频端点（/v1/videos/generations/tasks）的
+// 路径前缀。该端点仅对 doubao/astraflow 渠道开放，渠道准入由 relay 层校验。
+const ArkVideoPathPrefix = "/v1/videos/generations/tasks"
+
+// IsArkVideoPath 判断请求路径是否命中 Ark 风格视频端点（含其子路径）。
+// gin.Context 在测试/构造场景下可能没有挂载 Request，此时按非 Ark 路径处理。
+func IsArkVideoPath(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
+		return false
+	}
+	return strings.HasPrefix(c.Request.URL.Path, ArkVideoPathPrefix)
+}
+
 func GetFullRequestURL(baseURL string, requestURL string, channelType int) string {
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
 
