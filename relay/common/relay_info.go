@@ -687,13 +687,32 @@ type TaskRelayInfo struct {
 	LockedChannel any
 }
 
+// TaskMediaURL 是 Ark 风格 content 项中的媒体载荷，形如 {"url": "..."}。
+type TaskMediaURL struct {
+	URL string `json:"url,omitempty"`
+}
+
+// TaskContentItem 是 Ark 风格 content 数组的单个元素，按 Type 路由媒体
+// （text / image_url / video_url / audio_url）。Role 为可选的角色标注
+// （first_frame / last_frame / reference_image 等），仅在渠道上游支持时生效。
+type TaskContentItem struct {
+	Type     string        `json:"type"`
+	Text     string        `json:"text,omitempty"`
+	ImageURL *TaskMediaURL `json:"image_url,omitempty"`
+	VideoURL *TaskMediaURL `json:"video_url,omitempty"`
+	AudioURL *TaskMediaURL `json:"audio_url,omitempty"`
+	Role     string        `json:"role,omitempty"`
+}
+
 type TaskSubmitReq struct {
 	Prompt         string                 `json:"prompt"`
 	Model          string                 `json:"model,omitempty"`
 	Mode           string                 `json:"mode,omitempty"`
 	Image          string                 `json:"image,omitempty"`
 	Images         []string               `json:"images,omitempty"`
+	Content        []TaskContentItem      `json:"content,omitempty"`
 	Size           string                 `json:"size,omitempty"`
+	Resolution     string                 `json:"resolution,omitempty"`
 	Duration       int                    `json:"duration,omitempty"`
 	Seconds        string                 `json:"seconds,omitempty"`
 	InputReference string                 `json:"input_reference,omitempty"`

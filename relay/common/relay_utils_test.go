@@ -140,3 +140,55 @@ func TestTaskDurationBounds(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateBasicTaskRequestArkContentGating 保护 content 字段的按渠道
+// 准入契约：Ark 风格渠道（doubao/astraflow）接受 content 数组并从 text 项
+// 回填 prompt；其余渠道必须显式拒绝，避免参考视频/音频被静默丢弃却照常计费。
+func TestValidateBasicTaskRequestArkContentGating(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newContext := func(body string) (*gin.Context, *RelayInfo) {
+		request := httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		context, _ := gin.CreateTestContext(httptest.NewRecorder())
+		context.Request = request
+		return context, &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+	}
+
+	t.Run("content accepted and prompt backfilled on ark channel", func(t *testing.T) {
+		context, info := newContext(`{"model":"doubao-seedance-2-0-260128","duration":10,"content":[{"type":"text","text":"dance like this"},{"type":"video_url","video_url":{"url":"https://example.com/ref.mp4"},"role":"reference_video"}]}`)
+		taskErr := ValidateBasicTaskRequestWithArkContent(context, info, constant.TaskActionGenerate)
+		require.Nil(t, taskErr)
+
+		storedReq, err := GetTaskRequest(context)
+		require.NoError(t, err)
+		require.Len(t, storedReq.Content, 2)
+		assert.Equal(t, "reference_video", storedReq.Content[1].Role)
+		assert.Equal(t, "dance like this", storedReq.Prompt)
+		assert.Equal(t, 10, storedReq.Duration)
+	})
+
+	t.Run("explicit prompt is not overwritten by content text", func(t *testing.T) {
+		context, info := newContext(`{"model":"doubao-seedance-2-0-260128","prompt":"keep me","content":[{"type":"text","text":"other prompt"}]}`)
+		taskErr := ValidateBasicTaskRequestWithArkContent(context, info, constant.TaskActionGenerate)
+		require.Nil(t, taskErr)
+
+		storedReq, err := GetTaskRequest(context)
+		require.NoError(t, err)
+		assert.Equal(t, "keep me", storedReq.Prompt)
+	})
+
+	t.Run("content rejected on non-ark channel", func(t *testing.T) {
+		context, info := newContext(`{"model":"sora-2","prompt":"a cat","content":[{"type":"text","text":"a cat"}]}`)
+		taskErr := ValidateBasicTaskRequest(context, info, constant.TaskActionGenerate)
+		require.NotNil(t, taskErr)
+		assert.Equal(t, "invalid_request", taskErr.Code)
+	})
+
+	t.Run("content rejected on multipart direct channels", func(t *testing.T) {
+		context, info := newContext(`{"model":"sora-2","prompt":"a cat","content":[{"type":"text","text":"a cat"}]}`)
+		taskErr := ValidateMultipartDirect(context, info)
+		require.NotNil(t, taskErr)
+		assert.Equal(t, "invalid_request", taskErr.Code)
+	})
+}

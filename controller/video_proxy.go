@@ -45,7 +45,7 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 	if !exists || task == nil {
-		// 兼容只持有上游 task ID（如 BoosterAI 的 task_xxx）的调用方
+		// 兼容只持有上游 task ID 的调用方
 		task, exists, err = model.GetByUpstreamTaskId(userID, taskID)
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))

@@ -77,7 +77,7 @@ export const CHANNEL_TYPES = {
   56: 'Replicate',
   57: 'ChatGPT Subscription (Codex)',
   58: 'Advanced Custom',
-  59: 'BoosterAI (Seedance)',
+  59: 'AstraFlow (Seedance)',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [

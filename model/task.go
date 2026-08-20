@@ -404,7 +404,7 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 }
 
 // GetByUpstreamTaskId 按上游真实 task ID 查找本地任务。调用方（如视频任务
-// 状态轮询）可能只持有上游返回的 task ID（例如 BoosterAI 的 task_xxx），
+// 状态轮询）可能只持有上游返回的 task ID，
 // 该 ID 保存在任务的 private_data（JSON）upstream_task_id 字段中。
 func GetByUpstreamTaskId(userId int, upstreamTaskId string) (*Task, bool, error) {
 	if upstreamTaskId == "" {

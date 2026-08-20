@@ -208,6 +208,12 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		return createTaskError(err, "invalid_json", http.StatusBadRequest, true)
 	}
 
+	if len(req.Content) > 0 {
+		// 与 ValidateBasicTaskRequest 的 restrict 一致：非 Ark 渠道 reject，
+		// 避免参考视频/音频被静默丢弃却照常计费。
+		return createTaskError(fmt.Errorf("content field is not supported by this channel"), "invalid_request", http.StatusBadRequest, true)
+	}
+
 	prompt = req.Prompt
 	model = req.Model
 	size = req.Size
@@ -281,6 +287,17 @@ func isKnownTaskField(field string) bool {
 }
 
 func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *dto.TaskError {
+	return validateBasicTaskRequest(c, info, action, false)
+}
+
+// ValidateBasicTaskRequestWithArkContent 与 ValidateBasicTaskRequest 一致，
+// 但额外接受 Ark 风格 content 数组请求（仅 doubao/astraflow 等 Ark 协议渠道
+// 使用）；其余渠道收到 content 时必须显式拒绝。
+func ValidateBasicTaskRequestWithArkContent(c *gin.Context, info *RelayInfo, action string) *dto.TaskError {
+	return validateBasicTaskRequest(c, info, action, true)
+}
+
+func validateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string, allowArkContent bool) *dto.TaskError {
 	var err error
 	contentType := c.GetHeader("Content-Type")
 	var req TaskSubmitReq
@@ -293,6 +310,24 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 	// 为了metadata字段的兼容性，统一UnmarshalBodyReusable
 	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
 		return createTaskError(err, "invalid_request", http.StatusBadRequest, true)
+	}
+
+	if len(req.Content) > 0 {
+		if !allowArkContent {
+			// content 数组是 Ark 风格渠道（doubao/astraflow）的请求格式，
+			// 其余渠道不接受，避免参考视频/音频被静默丢弃却照常计费。
+			return createTaskError(fmt.Errorf("content field is not supported by this channel"), "invalid_request", http.StatusBadRequest, true)
+		}
+		if strings.TrimSpace(req.Prompt) == "" {
+			// content 数组直传时不一定有顶层 prompt，content 中的 text 项
+			// 即提示词，回填供校验及下游日志使用。
+			for _, item := range req.Content {
+				if item.Type == "text" && strings.TrimSpace(item.Text) != "" {
+					req.Prompt = item.Text
+					break
+				}
+			}
+		}
 	}
 
 	if taskErr := validatePrompt(req.Prompt); taskErr != nil {

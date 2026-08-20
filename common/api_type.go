@@ -75,8 +75,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeReplicate
 	case constant.ChannelTypeCodex:
 		apiType = constant.APITypeCodex
-	case constant.ChannelTypeBoosterAI:
-		apiType = constant.APITypeBoosterAI
+	case constant.ChannelTypeAstraFlow:
+		apiType = constant.APITypeAstraFlow
 	case constant.ChannelTypeAdvancedCustom:
 		apiType = constant.APITypeAdvancedCustom
 	}

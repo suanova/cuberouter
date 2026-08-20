@@ -10,7 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/aws"
 	"github.com/QuantumNous/new-api/relay/channel/baidu"
 	"github.com/QuantumNous/new-api/relay/channel/baidu_v2"
-	"github.com/QuantumNous/new-api/relay/channel/boosterai"
+	"github.com/QuantumNous/new-api/relay/channel/astraflow"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/cloudflare"
 	"github.com/QuantumNous/new-api/relay/channel/codex"
@@ -33,7 +33,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/siliconflow"
 	"github.com/QuantumNous/new-api/relay/channel/submodel"
 	taskali "github.com/QuantumNous/new-api/relay/channel/task/ali"
-	taskboosterai "github.com/QuantumNous/new-api/relay/channel/task/boosterai"
+	taskastraflow "github.com/QuantumNous/new-api/relay/channel/task/astraflow"
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	taskGemini "github.com/QuantumNous/new-api/relay/channel/task/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/task/hailuo"
@@ -123,8 +123,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &replicate.Adaptor{}
 	case constant.APITypeCodex:
 		return &codex.Adaptor{}
-	case constant.APITypeBoosterAI:
-		return &boosterai.Adaptor{}
+	case constant.APITypeAstraFlow:
+		return &astraflow.Adaptor{}
 	case constant.APITypeAdvancedCustom:
 		return &advancedcustom.Adaptor{}
 	}
@@ -164,8 +164,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 			return &tasksora.TaskAdaptor{}
 		case constant.ChannelTypeGemini:
 			return &taskGemini.TaskAdaptor{}
-		case constant.ChannelTypeBoosterAI:
-			return &taskboosterai.TaskAdaptor{}
+		case constant.ChannelTypeAstraFlow:
+			return &taskastraflow.TaskAdaptor{}
 		case constant.ChannelTypeMiniMax:
 			return &hailuo.TaskAdaptor{}
 		}

@@ -106,7 +106,7 @@ function buildChatSample(lang: Lang, ctx: SampleContext): string {
 
   if (lang === 'curl') {
     return [
-      `curl ${url} \\`,
+      `curl -X POST ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
       `  -d '${bodyJson.replaceAll('\n', '\n     ')}'`,
@@ -173,7 +173,7 @@ function buildAnthropicSample(lang: Lang, ctx: SampleContext): string {
       2
     )
     return [
-      `curl ${url} \\`,
+      `curl -X POST ${url} \\`,
       `  -H "x-api-key: $${ctx.apiKeyEnv}" \\`,
       `  -H "anthropic-version: 2023-06-01" \\`,
       `  -H "Content-Type: application/json" \\`,
@@ -247,7 +247,7 @@ function buildGeminiSample(lang: Lang, ctx: SampleContext): string {
       2
     )
     return [
-      `curl '${url}' \\`,
+      `curl -X POST '${url}' \\`,
       `  -H 'Content-Type: application/json' \\`,
       `  -d '${body.replaceAll('\n', '\n     ')}'`,
     ].join('\n')
@@ -296,7 +296,7 @@ function buildEmbeddingSample(lang: Lang, ctx: SampleContext): string {
   if (lang === 'curl') {
     const body = JSON.stringify({ model: ctx.modelName, input: text }, null, 2)
     return [
-      `curl ${url} \\`,
+      `curl -X POST ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
       `  -d '${body.replaceAll('\n', '\n     ')}'`,
@@ -362,7 +362,7 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
       2
     )
     return [
-      `curl ${url} \\`,
+      `curl -X POST ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
       `  -d '${body.replaceAll('\n', '\n     ')}'`,
@@ -428,17 +428,32 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
   //   1) POST {endpointPath}           -> {"id": "task_...", "status": "queued"}
   //   2) GET  {endpointPath}/{id}      -> poll until status is "completed"
   //   3) GET  {endpointPath}/{id}/content -> download the video file
-  // The submit body uses the gateway's task fields (prompt/images/duration/
-  // size); each channel adaptor converts them to its upstream format.
+  // The submit body follows the Ark-style content array accepted by video
+  // channels: exactly one text item as the prompt, plus image/video/audio
+  // reference items (each with a role annotation). The legacy
+  // prompt/images/seconds/size fields are still accepted when content is
+  // absent.
   const url = `${ctx.baseUrl}${ctx.endpointPath}`
-  const prompt =
-    'A golden cat running across a sunlit meadow, cinematic, slow motion.'
   const body = {
     model: ctx.modelName,
-    prompt,
-    images: ['https://example.com/reference.jpg'],
+    content: [
+      {
+        type: 'text',
+        text: 'Dance performance following the reference style.',
+      },
+      {
+        type: 'image_url',
+        image_url: { url: 'https://example.com/style_ref.jpg' },
+        role: 'reference_image',
+      },
+      {
+        type: 'video_url',
+        video_url: { url: 'https://example.com/motion_ref.mp4' },
+        role: 'reference_video',
+      },
+    ],
     duration: 10,
-    size: '16:9',
+    resolution: '720p',
   }
   const bodyJson = JSON.stringify(body, null, 2)
 

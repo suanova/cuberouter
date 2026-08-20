@@ -1,4 +1,4 @@
-package boosterai
+package astraflow
 
 import (
 	"errors"
@@ -22,10 +22,10 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if info == nil {
-		return "", errors.New("boosterai adaptor: relay info is nil")
+		return "", errors.New("astraflow adaptor: relay info is nil")
 	}
 	if info.ChannelBaseUrl == "" {
-		return "", errors.New("boosterai adaptor: channel base url is empty")
+		return "", errors.New("astraflow adaptor: channel base url is empty")
 	}
 	requestPath := info.RequestURLPath
 	if requestPath == "" {

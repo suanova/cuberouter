@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -27,18 +28,11 @@ import (
 // Request / Response structures
 // ============================
 
-type ContentItem struct {
-	Type     string    `json:"type,omitempty"`
-	Text     string    `json:"text,omitempty"`
-	ImageURL *MediaURL `json:"image_url,omitempty"`
-	VideoURL *MediaURL `json:"video_url,omitempty"`
-	AudioURL *MediaURL `json:"audio_url,omitempty"`
-	Role     string    `json:"role,omitempty"`
-}
+// ContentItem、MediaURL 与网关统一的 Ark 内容项类型一致，
+// 客户端直传的 content 数组可零拷贝透传。
+type ContentItem = relaycommon.TaskContentItem
 
-type MediaURL struct {
-	URL string `json:"url,omitempty"`
-}
+type MediaURL = relaycommon.TaskMediaURL
 
 type requestPayload struct {
 	Model                 string         `json:"model"`
@@ -118,7 +112,8 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
 	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	// Ark 风格 content 数组请求由本渠道接受。
+	return relaycommon.ValidateBasicTaskRequestWithArkContent(c, info, constant.TaskActionGenerate)
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -134,14 +129,17 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling 根据请求 metadata 中的输出分辨率与是否包含视频输入，返回相对基准价的计费 OtherRatio。
+// EstimateBilling 根据请求的输出分辨率与是否包含视频输入，返回相对基准价的计费 OtherRatio。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
 	}
-	hasVideo := hasVideoInMetadata(req.Metadata)
-	resolution, _ := req.Metadata["resolution"].(string)
+	hasVideo := hasVideoReference(&req)
+	resolution := req.Resolution
+	if resolution == "" {
+		resolution, _ = req.Metadata["resolution"].(string)
+	}
 	ratio, ok := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
 	if !ok || ratio == 1.0 {
 		return nil
@@ -149,13 +147,18 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 	return map[string]float64{"video_input": ratio}
 }
 
-// hasVideoInMetadata 直接检查 metadata 的 content 数组是否包含 video_url 条目，
-// 避免构建完整的上游 requestPayload。
-func hasVideoInMetadata(metadata map[string]interface{}) bool {
-	if metadata == nil {
+// hasVideoReference 检查请求的顶层 content 数组或 metadata.content 是否包含
+// video_url 条目，避免构建完整的上游 requestPayload。
+func hasVideoReference(req *relaycommon.TaskSubmitReq) bool {
+	for _, item := range req.Content {
+		if item.Type == "video_url" || (item.Type == "" && item.VideoURL != nil) {
+			return true
+		}
+	}
+	if req.Metadata == nil {
 		return false
 	}
-	contentRaw, ok := metadata["content"]
+	contentRaw, ok := req.Metadata["content"]
 	if !ok {
 		return false
 	}
@@ -270,14 +273,21 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return ChannelName
 }
 
+// convertToRequestPayload 将网关统一请求转换为上游 Ark 内容协议：
+//   - 客户端直传 content 数组（含 role 标注）时原样透传
+//   - 否则 images 列表转换为 image_url 项，prompt 独占 text 项
+//   - metadata 作为覆盖层后可整体替换 content / duration 等字段
+//   - duration 优先级：metadata 覆盖 > 顶层 duration > OpenAI 风格 seconds
 func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*requestPayload, error) {
 	r := requestPayload{
 		Model:   req.Model,
 		Content: []ContentItem{},
 	}
 
-	// Add images if present
-	if req.HasImage() {
+	if len(req.Content) > 0 {
+		r.Content = append(r.Content, req.Content...)
+	} else if req.HasImage() {
+		// Add images if present
 		for _, imgURL := range req.Images {
 			r.Content = append(r.Content, ContentItem{
 				Type: "image_url",
@@ -292,16 +302,43 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	if err := taskcommon.UnmarshalMetadata(metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	// 顶层 content 与 metadata.content 都是客户端直接给定的内容数组，
+	// 其中的 text 项（即客户端提示词）都必须原样保留。
+	_, contentFromClient := metadata["content"]
+	contentFromClient = contentFromClient || len(req.Content) > 0
 
-	if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
-		r.Duration = lo.ToPtr(dto.IntValue(sec))
+	if r.Duration == nil {
+		if req.Duration > 0 {
+			r.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+		} else if sec, _ := strconv.Atoi(req.Seconds); sec > 0 {
+			r.Duration = lo.ToPtr(dto.IntValue(sec))
+		}
 	}
 
-	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
-	r.Content = append(r.Content, ContentItem{
-		Type: "text",
-		Text: req.Prompt,
-	})
+	if r.Resolution == "" {
+		r.Resolution = req.Resolution
+	}
+
+	if contentFromClient {
+		// content 直传时其中的 text 项即提示词；仅在完全缺失且顶层
+		// prompt 非空时才补一项，避免改写客户端给定的提示词。
+		hasText := false
+		for _, c := range r.Content {
+			if c.Type == "text" {
+				hasText = true
+				break
+			}
+		}
+		if !hasText && strings.TrimSpace(req.Prompt) != "" {
+			r.Content = append(r.Content, ContentItem{Type: "text", Text: req.Prompt})
+		}
+	} else {
+		r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
+		r.Content = append(r.Content, ContentItem{
+			Type: "text",
+			Text: req.Prompt,
+		})
+	}
 
 	return &r, nil
 }
@@ -335,6 +372,16 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
 		taskResult.Reason = resTask.Error.Message
+	case "expired", "cancelled":
+		// 上游任务存在过期/取消终态，落到 default 会被当成
+		// in_progress 永远轮询，统一映射为失败态。
+		taskResult.Status = model.TaskStatusFailure
+		taskResult.Progress = "100%"
+		if resTask.Error.Message != "" {
+			taskResult.Reason = resTask.Error.Message
+		} else {
+			taskResult.Reason = fmt.Sprintf("task %s", resTask.Status)
+		}
 	default:
 		// Unknown status, treat as processing
 		taskResult.Status = model.TaskStatusInProgress
