@@ -1,0 +1,45 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    - cron: '0 22 * * 0'    # every Monday at 6am UTC
+  workflow_dispatch:         # trigger manually to test
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - uses: suanova/upstream-semantic-sync@v1
+        id: sync
+        with:
+          anthropic_auth_token: ${{ secrets.ANTHROPIC_AUTH_TOKEN }}
+          anthropic_base_url: ${{ secrets.ANTHROPIC_BASE_URL }}
+          model: ${{ secrets.ANTHROPIC_MODEL }}
+          github_token: ${{ secrets.PAT_TOKEN }}
+          upstream_repo: 'https://github.com/QuantumNous/new-api'
+          upstream_branch: 'main'
+          max_risk: 'medium'
+          verbose: 'true'
+          limit: 10
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+
+      - name: Upload sync artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-artifacts-${{ github.run_number }}
+          path: knowledge/.sync-artifacts/
+          retention-days: 30
