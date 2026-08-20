@@ -327,9 +327,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	// ratio 与 Ark 规范一致默认 "adaptive"：上游在字段缺失时报
-	// "ratio is required"，因此显式下发规范默认值。
-	if r.Ratio == "" {
-		r.Ratio = req.Ratio
+	// "ratio is required"，因此显式下发规范默认值。req.Ratio 为指针，
+	// 以区分客户端缺省（nil）与显式空串；两者都落到 adaptive，空串
+	// 不是合法 ratio。
+	if r.Ratio == "" && req.Ratio != nil {
+		r.Ratio = *req.Ratio
 	}
 	if r.Ratio == "" {
 		r.Ratio = "adaptive"

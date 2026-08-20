@@ -103,7 +103,7 @@ func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
 	explicit := relaycommon.TaskSubmitReq{
 		Model:  "doubao-seedance-2-0-260128",
 		Prompt: "p",
-		Ratio:  "16:9",
+		Ratio:  lo.ToPtr("16:9"),
 	}
 	r, err := adaptor.convertToRequestPayload(&explicit)
 	require.NoError(t, err)
@@ -114,6 +114,16 @@ func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
 		Prompt: "p",
 	}
 	r, err = adaptor.convertToRequestPayload(&absent)
+	require.NoError(t, err)
+	assert.Equal(t, "adaptive", r.Ratio)
+
+	// 显式空串不是合法 ratio，与缺省一样按 Ark 规范落到 adaptive。
+	explicitEmpty := relaycommon.TaskSubmitReq{
+		Model:  "doubao-seedance-2-0-260128",
+		Prompt: "p",
+		Ratio:  lo.ToPtr(""),
+	}
+	r, err = adaptor.convertToRequestPayload(&explicitEmpty)
 	require.NoError(t, err)
 	assert.Equal(t, "adaptive", r.Ratio)
 }

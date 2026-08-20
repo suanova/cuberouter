@@ -166,7 +166,7 @@ func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
 	explicit := relaycommon.TaskSubmitReq{
 		Model:  "doubao-seedance-2-0-260128",
 		Prompt: "p",
-		Ratio:  "16:9",
+		Ratio:  lo.ToPtr("16:9"),
 	}
 	body, err := adaptor.convertToRequestPayload(&explicit)
 	require.NoError(t, err)
@@ -177,6 +177,16 @@ func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
 		Prompt: "p",
 	}
 	body, err = adaptor.convertToRequestPayload(&absent)
+	require.NoError(t, err)
+	assert.Equal(t, "adaptive", body.Parameters.Ratio)
+
+	// 显式空串不是合法 ratio，与缺省一样按 Ark 规范落到 adaptive。
+	explicitEmpty := relaycommon.TaskSubmitReq{
+		Model:  "doubao-seedance-2-0-260128",
+		Prompt: "p",
+		Ratio:  lo.ToPtr(""),
+	}
+	body, err = adaptor.convertToRequestPayload(&explicitEmpty)
 	require.NoError(t, err)
 	assert.Equal(t, "adaptive", body.Parameters.Ratio)
 }
@@ -194,6 +204,7 @@ func TestParseTaskResult(t *testing.T) {
 		wantURL        string
 		wantReason     string
 		wantCompletion int
+		wantTotal      int
 	}{
 		{
 			name:         "pending maps to queued",
@@ -214,6 +225,7 @@ func TestParseTaskResult(t *testing.T) {
 			wantProgress:   "100%",
 			wantURL:        "https://cdn.example.com/v.mp4",
 			wantCompletion: 109431,
+			wantTotal:      109431,
 		},
 		{
 			name:         "success without urls stays url-less",
@@ -253,6 +265,7 @@ func TestParseTaskResult(t *testing.T) {
 			assert.Equal(t, tt.wantURL, taskInfo.Url)
 			assert.Equal(t, tt.wantReason, taskInfo.Reason)
 			assert.Equal(t, tt.wantCompletion, taskInfo.CompletionTokens)
+			assert.Equal(t, tt.wantTotal, taskInfo.TotalTokens)
 		})
 	}
 }
@@ -476,6 +489,65 @@ func TestConvertToArkVideo(t *testing.T) {
 				assert.Equal(t, tt.wantErrorMsg, task.Error.Message)
 			} else {
 				assert.Nil(t, task.Error)
+			}
+		})
+	}
+}
+
+// TestConvertToOpenAIVideoFailureStatuses 是回归测试：失败/过期等终态
+// 映射为 FAILURE 后，转换出的视频必须携带 terminal error（优先上游错误信息，
+// 为空时退回状态文案，与 ParseTaskResult 一致）；成功任务不得携带 error。
+func TestConvertToOpenAIVideoFailureStatuses(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	tests := []struct {
+		name        string
+		data        string
+		status      model.TaskStatus
+		wantMessage string
+	}{
+		{
+			name:        "failed carries upstream error",
+			data:        `{"output":{"task_id":"t1","task_status":"Failure","error_message":"内容审核失败"}}`,
+			status:      model.TaskStatusFailure,
+			wantMessage: "内容审核失败",
+		},
+		{
+			name:        "expired without message falls back to status text",
+			data:        `{"output":{"task_id":"t1","task_status":"Expired"}}`,
+			status:      model.TaskStatusFailure,
+			wantMessage: "task expired",
+		},
+		{
+			name:        "success has no error",
+			data:        `{"output":{"task_id":"t1","task_status":"Success","urls":["https://cdn.example.com/v.mp4"]}}`,
+			status:      model.TaskStatusSuccess,
+			wantMessage: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originTask := &model.Task{
+				TaskID:     "vt_123",
+				Status:     tt.status,
+				Progress:   "100%",
+				CreatedAt:  1000,
+				UpdatedAt:  2000,
+				Properties: model.Properties{OriginModelName: "doubao-seedance-2-0-260128"},
+				Data:       json.RawMessage(tt.data),
+			}
+
+			data, err := adaptor.ConvertToOpenAIVideo(originTask)
+			require.NoError(t, err)
+
+			var ov dto.OpenAIVideo
+			require.NoError(t, common.Unmarshal(data, &ov))
+			if tt.wantMessage == "" {
+				assert.Nil(t, ov.Error)
+			} else {
+				require.NotNil(t, ov.Error)
+				assert.Equal(t, tt.wantMessage, ov.Error.Message)
 			}
 		})
 	}

@@ -253,8 +253,12 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		if len(resTask.Output.URLs) > 0 {
 			taskResult.Url = resTask.Output.URLs[0]
 		}
-		// 解析 usage 信息用于按倍率计费
+		// 解析 usage 信息用于按倍率计费。上游仅返回 completion_tokens，
+		// 视频生成没有 prompt 用量，因此把它同时作为 total_tokens 参与
+		// token 结算（与 doubao 适配器一致：成功时按 token 差额结算，
+		// 而非一直保留预扣额度）。
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
+		taskResult.TotalTokens = resTask.Usage.CompletionTokens
 	case "Failure", "Expired":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
@@ -293,9 +297,16 @@ func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, erro
 	openAIVideo.CompletedAt = originTask.UpdatedAt
 	openAIVideo.Model = originTask.Properties.OriginModelName
 
-	if afResp.Output.ErrorMessage != "" {
+	if originTask.Status == model.TaskStatusFailure {
+		// 失败/过期等终态折叠为失败后必须携带 terminal error，否则客户端会把
+		// 失败任务当成成功处理。优先用上游错误信息，为空时退回状态文案
+		// （与 ParseTaskResult 保持一致）。
+		message := afResp.Output.ErrorMessage
+		if message == "" {
+			message = fmt.Sprintf("task %s", strings.ToLower(afResp.Output.TaskStatus))
+		}
 		openAIVideo.Error = &dto.OpenAIVideoError{
-			Message: afResp.Output.ErrorMessage,
+			Message: message,
 			Code:    "task_failed",
 		}
 	}
@@ -409,9 +420,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	// ratio 与 Ark 规范一致默认 "adaptive"：上游在字段缺失时报
-	// "ratio is required"，因此显式下发规范默认值。
-	if r.Parameters.Ratio == "" {
-		r.Parameters.Ratio = req.Ratio
+	// "ratio is required"，因此显式下发规范默认值。req.Ratio 为指针，
+	// 以区分客户端缺省（nil）与显式空串；两者都落到 adaptive，空串
+	// 不是合法 ratio。
+	if r.Parameters.Ratio == "" && req.Ratio != nil {
+		r.Parameters.Ratio = *req.Ratio
 	}
 	if r.Parameters.Ratio == "" {
 		r.Parameters.Ratio = "adaptive"
