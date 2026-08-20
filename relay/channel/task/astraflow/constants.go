@@ -4,7 +4,5 @@ const (
 	ChannelName = "astraflow"
 )
 
-var ModelList = []string{
-	"doubao-seedance-1-5-pro",
-	"doubao-seedance-2-0-260128",
-}
+// ModelList 留空：模型不在此硬编码，按渠道配置（可通过上游 /v1/models 获取）提供。
+var ModelList = []string{}

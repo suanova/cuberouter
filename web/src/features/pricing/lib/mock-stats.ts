@@ -752,9 +752,8 @@ const VIDEO_PARAMS: SupportedParameter[] = [
   {
     name: 'resolution',
     type: 'enum',
-    required: true,
     enumValues: ['480p', '720p', '1080p', '4K'],
-    descriptionKey: 'Output video resolution',
+    descriptionKey: 'Output video resolution (optional; model-fixed upstream when omitted)',
   },
   {
     name: 'duration',
@@ -767,6 +766,7 @@ const VIDEO_PARAMS: SupportedParameter[] = [
   {
     name: 'ratio',
     type: 'enum',
+    required: true,
     enumValues: ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16', 'adaptive'],
     descriptionKey: 'Output aspect ratio',
   },

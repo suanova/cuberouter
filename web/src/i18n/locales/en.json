@@ -3333,6 +3333,7 @@
     "Output tokens": "Output tokens",
     "Output Tokens": "Output Tokens",
     "Output video resolution": "Output video resolution",
+    "Output video resolution (optional; model-fixed upstream when omitted)": "Output video resolution (optional; model-fixed upstream when omitted)",
     "Overage limited": "Overage limited",
     "overall": "overall",
     "Overflow": "Overflow",

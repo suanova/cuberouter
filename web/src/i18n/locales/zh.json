@@ -3333,6 +3333,7 @@
     "Output tokens": "输出 token",
     "Output Tokens": "输出 Token",
     "Output video resolution": "输出视频分辨率",
+    "Output video resolution (optional; model-fixed upstream when omitted)": "输出视频分辨率（可选；未指定时由模型决定）",
     "Overage limited": "超额受限",
     "overall": "总体",
     "Overflow": "上溢",
