@@ -44,7 +44,7 @@ interface BrandLogoProps {
 function BrandLogo({ homeUrl, displaySiteName, onClick }: BrandLogoProps) {
   return (
     <Link to={homeUrl} className='flex items-center' onClick={onClick}>
-      <img src='/head.png' alt={displaySiteName} className='h-6 w-auto' />
+      <img src='/head.png' alt={displaySiteName} className='h-6 w-auto dark:brightness-0 dark:invert' />
     </Link>
   )
 }

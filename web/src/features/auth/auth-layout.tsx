@@ -55,7 +55,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           <img
             src='/head.png'
             alt={systemName || t('CubeRouter')}
-            className='h-10 w-auto sm:h-12'
+            className='h-10 w-auto dark:brightness-0 dark:invert sm:h-12'
           />
         </Link>
 

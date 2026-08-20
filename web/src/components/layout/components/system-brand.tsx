@@ -63,7 +63,7 @@ export function SystemBrand(props: SystemBrandProps) {
           'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2'
         )}
       >
-        <img src='/head.png' alt={name} className='h-8 w-auto' />
+        <img src='/head.png' alt={name} className='h-8 w-auto dark:brightness-0 dark:invert' />
       </Link>
     )
   }
@@ -79,7 +79,7 @@ export function SystemBrand(props: SystemBrandProps) {
           <img
             src='/head.png'
             alt={name}
-            className='h-8 w-auto group-data-[collapsible=icon]:hidden'
+            className='h-8 w-auto group-data-[collapsible=icon]:hidden dark:brightness-0 dark:invert'
           />
           <div className='grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
             <span className='truncate text-xs'>{version}</span>

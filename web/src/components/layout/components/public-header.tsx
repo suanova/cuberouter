@@ -191,7 +191,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               <img
                 src='/head.png'
                 alt={displaySiteName || t('CubeRouter')}
-                className='h-8 w-auto transition-all duration-300 group-hover:scale-105'
+                className='h-8 w-auto transition-all duration-300 group-hover:scale-105 dark:brightness-0 dark:invert'
               />
             </Link>
 

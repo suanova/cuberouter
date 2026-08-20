@@ -359,7 +359,7 @@ export function Landing() {
           <div className='cr-footer__grid'>
             <div>
               <div className='cr-footer__brand'>
-                <img src='/head.png' alt='CubeRouter' />
+                <img src='/head.png' alt='CubeRouter' className='dark:brightness-0 dark:invert' />
               </div>
               <p className='cr-footer__desc'>{t('oneSuanova is a leading AI service provider. Through its proprietary Token-as-a-Service (TaaS) platform, it provides stable and efficient AI Token cloud services for enterprises and institutions across industries. The brand is wholly owned and operated by Suanova Technology, dedicated to building high-standard, scalable next-generation AI computing infrastructure.')}</p>
             </div>
