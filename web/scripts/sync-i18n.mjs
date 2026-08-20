@@ -39,7 +39,7 @@ const BRAND_AND_LITERAL_KEYS = new Set([
   'AccessKey / SecretAccessKey',
   'AZURE_OPENAI_ENDPOINT *',
   'Baidu V2',
-  'BoosterAI (Seedance)',
+  'AstraFlow',
   'CC Switch',
   'ChatGPT',
   'ChatGPT Subscription (Codex)',

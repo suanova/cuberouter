@@ -164,7 +164,7 @@ export function MultiSelect(props: MultiSelectProps) {
     if (canCreate) {
       set.add(trimmedInput)
     }
-    return Array.from(set)
+    return [...set]
   }, [props.options, props.selected, canCreate, trimmedInput])
 
   const addValues = React.useCallback(
@@ -228,8 +228,16 @@ export function MultiSelect(props: MultiSelectProps) {
   )
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    // Enter without a highlighted option commits the typed value.
-    if (event.key === 'Enter' && props.allowCreate && canCreate) {
+    // Enter without a highlighted option commits the typed value. This covers
+    // both brand-new custom values and values that already exist in the option
+    // list: Base UI's autoHighlight is off here, so without this the popup
+    // would just close on Enter and an in-list value typed by the user would
+    // be silently dropped (never added as a chip).
+    const canCommit =
+      props.allowCreate === true &&
+      trimmedInput.length > 0 &&
+      !selectedSet.has(trimmedInput)
+    if (event.key === 'Enter' && canCommit) {
       // Only fire when Base UI has no highlighted item to select. We rely on
       // the highlighted item's data attribute on the popup. If the popup is
       // closed or empty, manually commit the typed value.

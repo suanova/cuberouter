@@ -1,5 +1,5 @@
 /*
-Aggregated (onboarding) API tests for the /api/v2 prefix — the HKBN
+Aggregated (onboarding) API tests for the /api/v2 prefix — the
 CubeRouter onboarding surface from the deck "API Onboarding Specification
 v4.5" (POST /api/v2/plans, /api/v2/users, .../suspend, .../reactivate,
 .../adjust-quota, .../bind-subscription, .../delete, GET .../status).

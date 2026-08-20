@@ -19,6 +19,7 @@ npx playwright test                 # 全量 48 个
 npx playwright test api-onboarding  # 指定文件
 npx playwright test api-v1 api-v2   # 聚合 API v1+v2
 npx playwright test channel.spec.ts # MockLLM 渠道/relay 套件
+npx playwright test astraflow-channel.spec.ts # AstraFlow 渠道 UI
 ```
 
 ## 用例清单
@@ -90,12 +91,18 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 | 13 | UI — usage logs show the responding channel and model | 管理员日志页显示响应的**渠道名 + #id** 与**模型名** |
 | 14 | UI — add a model on the models page and verify it is listed | 模型管理页 Add Model → 表格显示该模型 |
 
+### 6. `specs/astraflow-channel.spec.ts` — AstraFlow 渠道 UI（1 个）
+
+| # | 用例 | 覆盖点 |
+|---|---|---|
+| 1 | UI — create an AstraFlow channel and see its Seedance models | 建 AstraFlow 渠道：type 59、base_url 留空走内置默认 `https://api.modelverse.cn`；MultiSelect 录入 Seedance 模型；落库校验（type=59、base_url 空、models 含 doubao-seedance-1-5-pro / doubao-seedance-2-0-260128、status=1） |
+
 ## 覆盖汇总
 
 | 维度 | 用例数 |
 |---|---|
 | 部署旅程冒烟 | 2 |
-| HKBN 对接（套餐/用户/订阅/配额/挂起/恢复/改密 + UI 流程） | 14 |
+| 对接（套餐/用户/订阅/配额/挂起/恢复/改密 + UI 流程） | 14 |
 | 聚合 API v1 | 9 |
 | 聚合 API v2 | 9 |
 | MockLLM 渠道/API Key/relay/UI | 14 |

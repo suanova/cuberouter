@@ -57,7 +57,7 @@ test.describe('AstraFlow channel (UI)', () => {
     await typeInput.click()
     await typeInput.fill('AstraFlow')
     await drawer
-      .getByRole('option', { name: 'AstraFlow (Seedance)' })
+      .getByRole('option', { name: 'AstraFlow' })
       .click()
 
     await drawer
@@ -73,7 +73,12 @@ test.describe('AstraFlow channel (UI)', () => {
 
     // The model list is a chip MultiSelect with inline custom creation: type
     // the model name and press Enter to turn each Seedance model into a chip.
-    const modelsInput = drawer.getByPlaceholder('Select models or add custom ones')
+    // Locate it by its stable accessible name (aria-label): the placeholder
+    // attribute disappears once the first chip exists, so getByPlaceholder
+    // would go stale after the first model is added.
+    const modelsInput = drawer.getByRole('combobox', {
+      name: 'Select models or add custom ones',
+    })
     for (const model of SEEDANCE_MODELS) {
       await modelsInput.click()
       await modelsInput.fill(model)
@@ -94,12 +99,23 @@ test.describe('AstraFlow channel (UI)', () => {
       .getByPlaceholder('Filter by name, ID, or key...')
       .fill(CHANNEL_NAME)
 
+    // The channels list defaults to card view (card rows don't expose
+    // role="row" or the model chips), so switch to the table view before
+    // asserting on the row. The "Table view" toggle is the second icon button
+    // in the "View mode" group; only click it when table view isn't active.
+    const viewModeGroup = page.getByRole('group', { name: 'View mode' })
+    const tableViewToggle = viewModeGroup.getByRole('button').nth(1)
+    if ((await tableViewToggle.getAttribute('aria-pressed')) !== 'true') {
+      await tableViewToggle.click()
+    }
+
     const row = page.getByRole('row', { name: new RegExp(CHANNEL_NAME) })
     await expect(row).toBeVisible()
-    await expect(row.getByText('AstraFlow (Seedance)')).toBeVisible()
-    for (const model of SEEDANCE_MODELS) {
-      await expect(row.getByText(model, { exact: true })).toBeVisible()
-    }
+    await expect(
+      row.getByText('AstraFlow (Seedance)', { exact: true })
+    ).toBeVisible()
+    // The channels table has no Models column; the model list is verified
+    // above via the drawer chips and below via the persisted channel record.
 
     // Cross-check via the dashboard API: type 59 persisted, base_url empty
     // (built-in default applies), models stored, channel enabled.
