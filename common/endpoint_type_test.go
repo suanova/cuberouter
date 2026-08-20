@@ -20,3 +20,11 @@ func TestAstraFlowChannelRegistration(t *testing.T) {
 	endpointTypes := GetEndpointTypesByChannelType(constant.ChannelTypeAstraFlow, "doubao-seedance-2-0-260128")
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, endpointTypes)
 }
+
+// TestDoubaoVideoChannelRegistration 锁定 doubao-video 渠道（54）的端点类型
+// 映射：与 AstraFlow 一样必须是 OpenAI video 任务端点。此前遗漏该渠道导致
+// 定价页对 doubao 视频模型展示聊天示例而非视频示例。
+func TestDoubaoVideoChannelRegistration(t *testing.T) {
+	endpointTypes := GetEndpointTypesByChannelType(constant.ChannelTypeDoubaoVideo, "doubao-seedance-2-0-260128")
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, endpointTypes)
+}
