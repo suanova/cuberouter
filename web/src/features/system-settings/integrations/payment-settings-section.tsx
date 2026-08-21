@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
 
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Alert,
   AlertDescription,
@@ -894,15 +895,19 @@ export function PaymentSettingsSection({
                             onChange={field.onChange}
                           />
                         ) : (
-                          <Textarea
-                            rows={4}
+                          <JsonCodeEditor
+                            value={field.value}
+                            onChange={field.onChange}
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            textareaRef={field.ref}
                             placeholder={t(
                               '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
                             )}
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
+                            heightClassName='h-40 min-h-40 max-h-40'
+                            aria-invalid={Boolean(
+                              form.formState.errors.PayMethods
+                            )}
                           />
                         )}
                       </FormControl>
@@ -955,13 +960,17 @@ export function PaymentSettingsSection({
                               onChange={field.onChange}
                             />
                           ) : (
-                            <Textarea
-                              rows={4}
+                            <JsonCodeEditor
+                              value={field.value}
+                              onChange={field.onChange}
+                              name={field.name}
+                              onBlur={field.onBlur}
+                              textareaRef={field.ref}
                               placeholder='[10, 20, 50, 100]'
-                              {...field}
-                              onChange={(event) =>
-                                field.onChange(event.target.value)
-                              }
+                              heightClassName='h-40 min-h-40 max-h-40'
+                              aria-invalid={Boolean(
+                                form.formState.errors.AmountOptions
+                              )}
                             />
                           )}
                         </FormControl>
@@ -1011,13 +1020,17 @@ export function PaymentSettingsSection({
                               onChange={field.onChange}
                             />
                           ) : (
-                            <Textarea
-                              rows={4}
+                            <JsonCodeEditor
+                              value={field.value}
+                              onChange={field.onChange}
+                              name={field.name}
+                              onBlur={field.onBlur}
+                              textareaRef={field.ref}
                               placeholder='{"100":0.95,"200":0.9}'
-                              {...field}
-                              onChange={(event) =>
-                                field.onChange(event.target.value)
-                              }
+                              heightClassName='h-40 min-h-40 max-h-40'
+                              aria-invalid={Boolean(
+                                form.formState.errors.AmountDiscount
+                              )}
                             />
                           )}
                         </FormControl>
