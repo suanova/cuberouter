@@ -20,8 +20,8 @@
     <img src="https://img.shields.io/github/v/release/suanova/cuberouter?color=brightgreen&include_prereleases" alt="release">
   </a>
 
-  <a href="https://goreportcard.com/report/github.com/suanova/cuberouter">
-    <img src="https://goreportcard.com/badge/github.com/suanova/cuberouter" alt="GoReportCard">
+  <a href="https://atomgit.com/suanova/cuberouter" target="_blank">
+    <img alt="AtomGit G-Star" src="https://atomgit.com/suanova/cuberouter/star/badge.svg"/>
   </a>
 </p>
 
