@@ -20,9 +20,9 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
-  CHANNEL_PRIORITY_UPDATE_DELAY_MS,
-  createChannelPriorityUpdateScheduler,
-} from './channel-priority-update'
+  CHANNEL_FIELD_UPDATE_DELAY_MS,
+  createChannelFieldUpdateScheduler,
+} from '../channel-field-update'
 
 function createFakeTimers() {
   const pending = new Map<number, () => void>()
@@ -31,7 +31,7 @@ function createFakeTimers() {
   return {
     timers: {
       setTimeout: (callback: () => void, delay: number) => {
-        assert.equal(delay, CHANNEL_PRIORITY_UPDATE_DELAY_MS)
+        assert.equal(delay, CHANNEL_FIELD_UPDATE_DELAY_MS)
         const id = nextId++
         pending.set(id, callback)
         return id
@@ -51,11 +51,11 @@ function createFakeTimers() {
   }
 }
 
-describe('channel priority update scheduler', () => {
+describe('channel field update scheduler', () => {
   test('coalesces rapid schedules into one update with the latest value', () => {
     const fake = createFakeTimers()
     const updates: number[] = []
-    const scheduler = createChannelPriorityUpdateScheduler(
+    const scheduler = createChannelFieldUpdateScheduler(
       (value) => updates.push(value),
       fake.timers
     )
@@ -73,7 +73,7 @@ describe('channel priority update scheduler', () => {
   test('flush commits the pending value immediately and cancels the timer', () => {
     const fake = createFakeTimers()
     const updates: number[] = []
-    const scheduler = createChannelPriorityUpdateScheduler(
+    const scheduler = createChannelFieldUpdateScheduler(
       (value) => updates.push(value),
       fake.timers
     )
@@ -90,7 +90,7 @@ describe('channel priority update scheduler', () => {
   test('flush without a pending value does nothing', () => {
     const fake = createFakeTimers()
     const updates: number[] = []
-    const scheduler = createChannelPriorityUpdateScheduler(
+    const scheduler = createChannelFieldUpdateScheduler(
       (value) => updates.push(value),
       fake.timers
     )
@@ -105,7 +105,7 @@ describe('channel priority update scheduler', () => {
   test('preserves a pending value of 0', () => {
     const fake = createFakeTimers()
     const updates: number[] = []
-    const scheduler = createChannelPriorityUpdateScheduler(
+    const scheduler = createChannelFieldUpdateScheduler(
       (value) => updates.push(value),
       fake.timers
     )

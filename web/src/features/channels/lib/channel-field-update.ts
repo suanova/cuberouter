@@ -17,21 +17,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-export const CHANNEL_PRIORITY_UPDATE_DELAY_MS = 800
+export const CHANNEL_FIELD_UPDATE_DELAY_MS = 800
 
-interface ChannelPriorityUpdateTimers {
+interface ChannelFieldUpdateTimers {
   setTimeout: (callback: () => void, delay: number) => number
   clearTimeout: (id: number) => void
 }
 
-const browserTimers: ChannelPriorityUpdateTimers = {
+const browserTimers: ChannelFieldUpdateTimers = {
   setTimeout: (callback, delay) => window.setTimeout(callback, delay),
   clearTimeout: (id) => window.clearTimeout(id),
 }
 
-export function createChannelPriorityUpdateScheduler(
+export function createChannelFieldUpdateScheduler(
   onUpdate: (value: number) => void,
-  timers: ChannelPriorityUpdateTimers = browserTimers
+  timers: ChannelFieldUpdateTimers = browserTimers
 ) {
   let timeoutId: number | undefined
   let pendingValue: number | undefined
@@ -57,7 +57,7 @@ export function createChannelPriorityUpdateScheduler(
       pendingValue = value
       timeoutId = timers.setTimeout(
         commitPendingValue,
-        CHANNEL_PRIORITY_UPDATE_DELAY_MS
+        CHANNEL_FIELD_UPDATE_DELAY_MS
       )
     },
     flush: commitPendingValue,

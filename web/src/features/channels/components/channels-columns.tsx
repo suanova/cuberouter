@@ -71,7 +71,7 @@ import {
   handleUpdateChannelField,
   handleUpdateTagField,
   handleUpdateChannelBalance,
-  createChannelPriorityUpdateScheduler,
+  createChannelFieldUpdateScheduler,
   isTagAggregateRow,
   type TagRow,
 } from '../lib'
@@ -177,7 +177,14 @@ function PriorityCell({ channel }: { channel: Channel }) {
     return <TagPriorityCell channel={channel} />
   }
 
-  return <ChannelPriorityCell channel={channel} />
+  return (
+    <ChannelFieldCell
+      channelId={channel.id}
+      value={channel.priority}
+      field='priority'
+      min={-999}
+    />
+  )
 }
 
 function TagPriorityCell({ channel }: { channel: TagRow }) {
@@ -219,32 +226,34 @@ function TagPriorityCell({ channel }: { channel: TagRow }) {
   )
 }
 
-function ChannelPriorityCell({ channel }: { channel: Channel }) {
+function ChannelFieldCell({
+  channelId,
+  value,
+  field,
+  min,
+}: {
+  channelId: number
+  value: number | null | undefined
+  field: 'priority' | 'weight'
+  min: number
+}) {
   const queryClient = useQueryClient()
-  const priorityUpdateScheduler = useMemo(
+  const fieldUpdateScheduler = useMemo(
     () =>
-      createChannelPriorityUpdateScheduler((value) => {
-        void handleUpdateChannelField(
-          channel.id,
-          'priority',
-          value,
-          queryClient
-        )
+      createChannelFieldUpdateScheduler((nextValue) => {
+        void handleUpdateChannelField(channelId, field, nextValue, queryClient)
       }),
-    [channel.id, queryClient]
+    [channelId, field, queryClient]
   )
 
-  useEffect(
-    () => () => priorityUpdateScheduler.flush(),
-    [priorityUpdateScheduler]
-  )
+  useEffect(() => () => fieldUpdateScheduler.flush(), [fieldUpdateScheduler])
 
   return (
     <NumericSpinnerInput
-      value={channel.priority ?? 0}
-      onChange={priorityUpdateScheduler.schedule}
-      onCommit={priorityUpdateScheduler.flush}
-      min={-999}
+      value={value ?? 0}
+      onChange={fieldUpdateScheduler.schedule}
+      onCommit={fieldUpdateScheduler.flush}
+      min={min}
     />
   )
 }
@@ -253,57 +262,56 @@ function ChannelPriorityCell({ channel }: { channel: Channel }) {
  * Weight cell component with inline editing
  */
 function WeightCell({ channel }: { channel: Channel }) {
+  if (isTagAggregateRow(channel)) {
+    return <TagWeightCell channel={channel} />
+  }
+
+  return (
+    <ChannelFieldCell
+      channelId={channel.id}
+      value={channel.weight}
+      field='weight'
+      min={0}
+    />
+  )
+}
+
+function TagWeightCell({ channel }: { channel: TagRow }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const isTagRow = isTagAggregateRow(channel)
   const weight = channel.weight
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pendingValue, setPendingValue] = useState<number | null>(null)
+  const tag = channel.tag || ''
+  const channelCount = channel.children?.length || 0
 
-  // Tag row - editable with confirmation for all tag channels
-  if (isTagRow) {
-    const tag = channel.tag || ''
-    const channelCount = channel.children?.length || 0
-
-    return (
-      <>
-        <NumericSpinnerInput
-          value={weight ?? 0}
-          onChange={(value) => {
-            setPendingValue(value)
-            setConfirmOpen(true)
-          }}
-          min={0}
-        />
-        <ConfirmDialog
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          title={t('Confirm Batch Update')}
-          desc={t(
-            'This will update the weight to {{value}} for all {{count}} channel(s) with tag "{{tag}}". Continue?',
-            { value: pendingValue, count: channelCount, tag }
-          )}
-          confirmText={t('Update')}
-          handleConfirm={() => {
-            if (pendingValue !== null) {
-              handleUpdateTagField(tag, 'weight', pendingValue, queryClient)
-            }
-            setConfirmOpen(false)
-          }}
-        />
-      </>
-    )
-  }
-
-  // Regular channel row - editable
   return (
-    <NumericSpinnerInput
-      value={weight ?? 0}
-      onChange={(value) => {
-        handleUpdateChannelField(channel.id, 'weight', value, queryClient)
-      }}
-      min={0}
-    />
+    <>
+      <NumericSpinnerInput
+        value={weight ?? 0}
+        onChange={(value) => {
+          setPendingValue(value)
+          setConfirmOpen(true)
+        }}
+        min={0}
+      />
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={t('Confirm Batch Update')}
+        desc={t(
+          'This will update the weight to {{value}} for all {{count}} channel(s) with tag "{{tag}}". Continue?',
+          { value: pendingValue, count: channelCount, tag }
+        )}
+        confirmText={t('Update')}
+        handleConfirm={() => {
+          if (pendingValue !== null) {
+            handleUpdateTagField(tag, 'weight', pendingValue, queryClient)
+          }
+          setConfirmOpen(false)
+        }}
+      />
+    </>
   )
 }
 

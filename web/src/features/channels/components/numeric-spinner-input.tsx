@@ -122,8 +122,10 @@ export function NumericSpinnerInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
-      commitValue()
-      onCommit?.()
+      // Blurring routes Enter through the same focusout path as clicking
+      // away (input onBlur -> commitValue, container onBlur -> onCommit),
+      // so commit and onCommit each fire exactly once.
+      inputRef.current?.blur()
     } else if (e.key === 'Escape') {
       setEditing(false)
       setLocalValue(String(value ?? 0))
