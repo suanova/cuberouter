@@ -1,5 +1,11 @@
 # Fork Conventions: cuberouter vs. upstream (new-api)
 
+> **⚠️ Keep in mind**: this repository is **`suanova/cuberouter`** — do not
+> treat it as `QuantumNous/new-api` and do not try to modify it into one. It
+> is a fork that deliberately keeps its own identity, branding, and ported
+> features (below). Upstream `new-api` is only ever *synced in*, never
+> adopted or renamed to.
+
 This document explains how the **cuberouter** fork diverges from its upstream
 ([QuantumNous/new-api](https://github.com/QuantumNous/new-api)) and the
 conventions that govern that divergence.

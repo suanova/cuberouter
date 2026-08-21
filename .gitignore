@@ -47,3 +47,7 @@ e2e/node_modules/
 e2e/test-results/
 e2e/playwright-report/
 e2e/blob-report/
+
+# Sync ignore
+knowledge/.sync-artifacts/
+knowledge/.upstream-cache/
