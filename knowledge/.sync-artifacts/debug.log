@@ -37,3 +37,13 @@
 [sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request.yml → .github/ISSUE_TEMPLATE/feature_request.yml
 [sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request_en.yml → .github/ISSUE_TEMPLATE/feature_request_en.yml
 [sync.runtime] INFO: Commit cbd9b30aa487: all 4 files applied cleanly
+[sync.create_pr] INFO: Committed cbd9b30aa487 (Remove empty `title` and `assignees` fields from GitHub issu)
+[sync.runtime] INFO: Fetching upstream https://github.com/QuantumNous/new-api
+[sync.runtime] INFO: Analyzing upstream commit 84a79b6807ac1a679ca86f34c8c6f39175c294d8
+[sync.executor] INFO: Running skill analyze_commit (version 1.0)
+[httpx2] INFO: HTTP Request: POST https://cuberouter.cn/v1/messages "HTTP/1.1 200 OK"
+[sync.runtime] INFO: Mapping architecture for Log the raw upstream response body when an error response parses as valid JSON but yields an empty error message, so the failure remains diagnosable instead of surfacing a bare status-code error.
+[sync.executor] INFO: Running skill architecture_mapping (version 1.0)
+[sync.runtime] INFO: Applying upstream diffs directly for 1 targets (no LLM)
+[sync.runtime] INFO: Applied service/error.go → service/error.go
+[sync.runtime] INFO: Commit 84a79b6807ac: all 1 files applied cleanly
