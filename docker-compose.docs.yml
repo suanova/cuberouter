@@ -1,0 +1,12 @@
+services:
+  cuberouter-docs-user:
+    build:
+      context: ./docs-site/user
+      dockerfile: Dockerfile
+    image: cuberouter-docs-user:${CUBEROUTER_IMAGE_TAG:-latest}
+    container_name: cuberouter-docs-user
+    restart: always
+    ports:
+      - "4080:80"
+    environment:
+      - TZ=Asia/Shanghai

@@ -1,0 +1,52 @@
+/* Medium Zoom 样式配置 */
+.medium-zoom-overlay {
+  z-index: 999 !important;
+}
+
+.medium-zoom-image--opened {
+  z-index: 1000 !important;
+}
+
+/* 图片样式优化 */
+.main img {
+  cursor: zoom-in;
+  transition: transform 0.3s cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+.main img:hover {
+  transform: scale(1.02);
+}
+
+.medium-zoom-image--opened {
+  cursor: zoom-out;
+}
+
+/* 图片容器样式 */
+.vp-doc img {
+  border-radius: 8px;
+  margin: 16px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* 暗色模式适配 */
+.dark .vp-doc img {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* 图片说明文字样式 */
+.vp-doc p > img + em {
+  display: block;
+  text-align: center;
+  color: var(--vp-c-text-2);
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+/* 首页 hero 标语不折行，使用完整容器宽度 */
+.VPHero .tagline {
+  max-width: none;
+}
