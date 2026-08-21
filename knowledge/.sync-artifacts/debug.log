@@ -24,3 +24,16 @@
 [sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request_en.md → .github/ISSUE_TEMPLATE/feature_request_en.md
 [sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request_en.yml → .github/ISSUE_TEMPLATE/feature_request_en.yml
 [sync.runtime] INFO: Commit cb96ab0208bc: all 8 files applied cleanly
+[sync.create_pr] INFO: Committed cb96ab0208bc (Migrate GitHub issue templates (bug report and feature reque)
+[sync.runtime] INFO: Fetching upstream https://github.com/QuantumNous/new-api
+[sync.runtime] INFO: Analyzing upstream commit cbd9b30aa487d628fd369dd8f8f1f292a6f137af
+[sync.executor] INFO: Running skill analyze_commit (version 1.0)
+[httpx2] INFO: HTTP Request: POST https://cuberouter.cn/v1/messages "HTTP/1.1 200 OK"
+[sync.runtime] INFO: Mapping architecture for Remove empty `title` and `assignees` fields from GitHub issue form templates, whose empty values invalidated the forms and hid them from the issue chooser
+[sync.executor] INFO: Running skill architecture_mapping (version 1.0)
+[sync.runtime] INFO: Applying upstream diffs directly for 4 targets (no LLM)
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/bug_report.yml → .github/ISSUE_TEMPLATE/bug_report.yml
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/bug_report_en.yml → .github/ISSUE_TEMPLATE/bug_report_en.yml
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request.yml → .github/ISSUE_TEMPLATE/feature_request.yml
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request_en.yml → .github/ISSUE_TEMPLATE/feature_request_en.yml
+[sync.runtime] INFO: Commit cbd9b30aa487: all 4 files applied cleanly
