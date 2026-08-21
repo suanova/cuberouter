@@ -2395,6 +2395,7 @@
     "Include Model": "Include Model",
     "Include Rule Name": "Include Rule Name",
     "Includes request rules": "Includes request rules",
+    "Includes tool-call surcharge": "Includes tool-call surcharge",
     "Including failed requests, 0 = unlimited": "Including failed requests, 0 = unlimited",
     "Incoming path": "Incoming path",
     "Incoming path is required": "Incoming path is required",

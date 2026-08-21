@@ -79,6 +79,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeAstraFlow
 	case constant.ChannelTypeAdvancedCustom:
 		apiType = constant.APITypeAdvancedCustom
+	case constant.ChannelTypeSub2API:
+		apiType = constant.APITypeSub2API
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false
