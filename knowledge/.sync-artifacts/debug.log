@@ -57,3 +57,13 @@
 [sync.runtime] INFO: Applying upstream diffs directly for 1 targets (no LLM)
 [sync.runtime] INFO: Applied web/src/features/models/components/drawers/model-mutate-drawer.tsx → web/src/features/models/components/drawers/model-mutate-drawer.tsx
 [sync.runtime] INFO: Commit 27235a277a0f: all 1 files applied cleanly
+[sync.create_pr] INFO: Committed 27235a277a0f (Fix the model create/edit drawer so submitting the form no l)
+[sync.runtime] INFO: Fetching upstream https://github.com/QuantumNous/new-api
+[sync.runtime] INFO: Analyzing upstream commit bf8cfcc5126762393d03a0ca1b65da93f969d150
+[sync.executor] INFO: Running skill analyze_commit (version 1.0)
+[httpx2] INFO: HTTP Request: POST https://cuberouter.cn/v1/messages "HTTP/1.1 200 OK"
+[sync.runtime] INFO: Mapping architecture for Fix model-mutate drawer so react-query refetches of system options don't reset the form mid-edit, by keying the load effect off a boolean and reading modelSettings via a ref instead of depending on its unstable object identity.
+[sync.executor] INFO: Running skill architecture_mapping (version 1.0)
+[sync.runtime] INFO: Applying upstream diffs directly for 1 targets (no LLM)
+[sync.runtime] INFO: Applied web/src/features/models/components/drawers/model-mutate-drawer.tsx → web/src/features/models/components/drawers/model-mutate-drawer.tsx
+[sync.runtime] INFO: Commit bf8cfcc51267: all 1 files applied cleanly

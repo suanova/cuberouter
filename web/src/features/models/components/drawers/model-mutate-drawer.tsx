@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Loader2 } from 'lucide-react'
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -252,6 +252,10 @@ export function ModelMutateDrawer({
   // Submit may only rewrite pricing for this name, or for a name the user
   // explicitly priced; anything else it never saw and must leave alone.
   const [loadedPricingName, setLoadedPricingName] = useState<string>('')
+  // Keep a ref so the load effect can read the latest modelSettings without
+  // depending on it: modelSettings is a fresh object on every system-options
+  // refetch, and including it in the deps would reset the form under the user.
+  const modelSettingsRef = useRef<ModelSettings | null>(null)
 
   // Fetch vendors for dropdown
   const { data: vendorsData } = useQuery({
@@ -343,6 +347,15 @@ export function ModelMutateDrawer({
     return getOptionValue(systemOptionsData.data, defaultModelSettings)
   }, [systemOptionsData])
 
+  // The load effect keys off this boolean, not the object: it re-runs once
+  // when the settings first arrive (so a drawer opened before that still gets
+  // its pricing prefilled), while later refetches only produce a new object
+  // reference and must not reset a form the user may be editing.
+  const hasModelSettings = modelSettings !== null
+  useEffect(() => {
+    modelSettingsRef.current = modelSettings
+  })
+
   const form = useForm<ExtendedModelFormValues>({
     resolver: zodResolver(extendedModelFormSchema),
     defaultValues: {
@@ -403,7 +416,10 @@ export function ModelMutateDrawer({
       const model = modelData.data
       setOldModelName(model.model_name)
 
-      const pricing = readPricingConfig(modelSettings, model.model_name)
+      const pricing = readPricingConfig(
+        modelSettingsRef.current,
+        model.model_name
+      )
       setLoadedPricingName(model.model_name)
       setPricingMode(pricing.mode)
       setPromptPrice(pricing.promptPrice)
@@ -427,7 +443,7 @@ export function ModelMutateDrawer({
       // pricing that name already has, so the user edits it instead of being
       // shown an empty form that hides existing configuration.
       const modelName = currentRow?.model_name || ''
-      const pricing = readPricingConfig(modelSettings, modelName)
+      const pricing = readPricingConfig(modelSettingsRef.current, modelName)
       setOldModelName('')
       setLoadedPricingName(modelName)
       setPricingSubMode('ratio')
@@ -448,7 +464,7 @@ export function ModelMutateDrawer({
         ...pricing.fields,
       })
     }
-  }, [open, isEditing, modelData, currentRow, form, modelSettings])
+  }, [open, isEditing, modelData, currentRow, form, hasModelSettings])
 
   const onSubmit = useCallback(
     async (values: ExtendedModelFormValues): Promise<void> => {
