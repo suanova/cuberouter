@@ -1,0 +1,26 @@
+[sync.runtime] INFO: Verbose debug log → /github/workspace/knowledge/.sync-artifacts/debug.log
+[sync.runtime] INFO: Using knowledge dir from downstream repo: /github/workspace/knowledge
+[sync.planner] INFO: Last synced SHA for https://github.com/QuantumNous/new-api#main: 1721144221ec5c94dd87891a7ae1bee228e7bb63
+[sync.planner] INFO: Cloning upstream https://github.com/QuantumNous/new-api
+[sync.planner] INFO: Found 96 upstream commits since 1721144221ec
+[sync.runtime] INFO: 96 new commits — running 10 batches of up to 10 commits each (one PR per batch, stacked)
+[sync.runtime] INFO: ── Batch 1/10: 10 commits ──
+[sync.runtime] INFO: Using knowledge dir from downstream repo: /github/workspace/knowledge
+[sync.runtime] INFO: Loaded conventions from /github/workspace/knowledge/conventions.md (19331 chars)
+[sync.create_pr] INFO: Base branch (from caller): main
+[sync.runtime] INFO: Fetching upstream https://github.com/QuantumNous/new-api
+[sync.runtime] INFO: Analyzing upstream commit cb96ab0208bc13e7418bd883bca10a5b511bdebc
+[sync.executor] INFO: Running skill analyze_commit (version 1.0)
+[httpx2] INFO: HTTP Request: POST https://cuberouter.cn/v1/messages "HTTP/1.1 200 OK"
+[sync.runtime] INFO: Mapping architecture for Migrate GitHub issue templates (bug report and feature request, in both Chinese and English) from Markdown templates to structured YAML issue forms with required fields, while also updating the pre-submission guidance text.
+[sync.executor] INFO: Running skill architecture_mapping (version 1.0)
+[sync.runtime] INFO: Applying upstream diffs directly for 8 targets (no LLM)
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/bug_report.md → .github/ISSUE_TEMPLATE/bug_report.md
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/bug_report.yml → .github/ISSUE_TEMPLATE/bug_report.yml
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/bug_report_en.md → .github/ISSUE_TEMPLATE/bug_report_en.md
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/bug_report_en.yml → .github/ISSUE_TEMPLATE/bug_report_en.yml
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request.md → .github/ISSUE_TEMPLATE/feature_request.md
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request.yml → .github/ISSUE_TEMPLATE/feature_request.yml
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request_en.md → .github/ISSUE_TEMPLATE/feature_request_en.md
+[sync.runtime] INFO: Applied .github/ISSUE_TEMPLATE/feature_request_en.yml → .github/ISSUE_TEMPLATE/feature_request_en.yml
+[sync.runtime] INFO: Commit cb96ab0208bc: all 8 files applied cleanly
