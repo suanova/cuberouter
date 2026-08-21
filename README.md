@@ -18,9 +18,9 @@
   </a><!--
   --><a href="https://github.com/suanova/cuberouter/releases/latest">
     <img src="https://img.shields.io/github/v/release/suanova/cuberouter?color=brightgreen&include_prereleases" alt="release">
-  </a><!--
-  --><a href="https://goreportcard.com/report/github.com/suanova/cuberouter">
-    <img src="https://goreportcard.com/badge/github.com/suanova/cuberouter" alt="GoReportCard">
+  </a>
+  <a href="https://atomgit.com/QuantumNous/new-api" target="_blank">
+    <img alt="AtomGit G-Star" src="https://atomgit.com/QuantumNous/new-api/star/badge.svg"/>
   </a>
 </p>
 
