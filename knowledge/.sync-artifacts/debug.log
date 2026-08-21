@@ -47,3 +47,13 @@
 [sync.runtime] INFO: Applying upstream diffs directly for 1 targets (no LLM)
 [sync.runtime] INFO: Applied service/error.go → service/error.go
 [sync.runtime] INFO: Commit 84a79b6807ac: all 1 files applied cleanly
+[sync.create_pr] INFO: Committed 84a79b6807ac (Log the raw upstream response body when an error response pa)
+[sync.runtime] INFO: Fetching upstream https://github.com/QuantumNous/new-api
+[sync.runtime] INFO: Analyzing upstream commit 27235a277a0fb6cb6729e0aecdeb821c5814cf29
+[sync.executor] INFO: Running skill analyze_commit (version 1.0)
+[httpx2] INFO: HTTP Request: POST https://cuberouter.cn/v1/messages "HTTP/1.1 200 OK"
+[sync.runtime] INFO: Mapping architecture for Fix the model create/edit drawer so submitting the form no longer deletes existing pricing entries for model names whose pricing was never loaded into the form, by tracking the actually-prefilled model name and scoping the delete-then-readd to it via a shared readPricingConfig helper.
+[sync.executor] INFO: Running skill architecture_mapping (version 1.0)
+[sync.runtime] INFO: Applying upstream diffs directly for 1 targets (no LLM)
+[sync.runtime] INFO: Applied web/src/features/models/components/drawers/model-mutate-drawer.tsx → web/src/features/models/components/drawers/model-mutate-drawer.tsx
+[sync.runtime] INFO: Commit 27235a277a0f: all 1 files applied cleanly
