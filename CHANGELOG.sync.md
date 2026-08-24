@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `ffeb1b24ef85` | Fix stale single-use Cloudflare Turnstile tokens on failed login by clearing the token and remounting the widget (via a key bump) before each submit, and clearing the token when it expires, so retry attempts always present a fresh token. | bugfix | medium |
+| `3d5dc36f1d85` | Fix Gemini-style model listing on /v1/models: accept key via query param for the exact /v1/models path in TokenAuth, and route Gemini-authenticated list requests to ListModels instead of RetrieveModel. | bugfix | medium |
+| `d7992672a606` | Fix a race in OAuth/WeChat account binding where persisting the provider user ID rewrote the entire user row, clobbering concurrent changes to role/status/group; binding now updates only the provider-ID column via model.UpdateUserBindColumn, keyed by a new ProviderUserIDColumn method on the oauth.Provider interface. | bugfix | medium |
+| `50e5377ea5fe` | Make recharge/topup order settlement atomic by wrapping order status update, quota crediting, and user-cache refresh in a single transaction (with quota reservation and a strict int32-boundary check), preventing partial or duplicate settlement from concurrent payment webhooks. | bugfix | medium |
+| `ccd535ef8e50` | Harden concurrent quota reservation and channel status persistence (narrow status-only updates, removed whole-row SaveWithoutKey, safer quota reservation flow) and fix float-to-int quota conversions. | bugfix | medium |
+| `58d4e9bd3bb0` | Fix async-task refund accounting so refunds decrement user (and channel) used_quota in addition to restoring quota, preventing total quota (quota + used_quota) from inflating with each refund; consolidates Midjourney failure refunds into a shared service helper with billing channel/token tracking on tasks. | bugfix | medium |
+| `15cfdeddef46` | Fix fetched-models dialog drifting out of sync with the channel form by always passing the current parsed models array, and enforce at the type level that onModelsSelected and existingModelsOverride are provided together via a discriminated union. | bugfix | medium |
+| `93d2df85f824` | Fix Ali (DashScope) channel to select image endpoints/protocols and async headers based on the mapped upstream model name (e.g. Qwen Image 3) instead of the original pre-mapping request model name. | bugfix | medium |
+| `626058075524` | Dependabot bump of electron-builder (26.7.0 → 26.15.3) and its transitive builder-util-runtime (9.5.1 → 9.7.0) in the electron packaging toolchain | internal | low |
+| `f250f3b589c8` | Dependabot bumps the dompurify dependency (both the direct dependency pin and the npm override) from 3.4.11 to 3.4.13 in the web workspace, pulling in upstream patch fixes for the HTML/XSS sanitizer. | internal | low |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `7dd1000a190d` | Debounce search inputs across admin tables, dialogs, and data hooks (via a searchDebounceMs prop and useDebounce) to reduce server round-trips and improve large-list search performance. | feature | low |
 | `eab18a835791` | Centralize reasoning-effort capture through a new RelayInfo.SetReasoningEffort setter (plus override/normalization logic) so the effective reasoning effort is recorded consistently in usage logs across DeepSeek/OpenAI/xAI adaptors and the Claude handler, and displayed in the web usage-log details UI. | bugfix | medium |
 | `85feb7a345d2` | Expose authenticated user identity and group context (user_id, user_group, token_group, using_group) as built-in variables for parameter override conditions, enabling user/group-conditional request param overrides. | feature | medium |
