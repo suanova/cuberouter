@@ -32,6 +32,8 @@ jobs:
       release_prerelease: ${{ steps.release.outputs.prerelease }}
       bootstrap_asset: ${{ steps.release.outputs.bootstrap_asset }}
       release_asset_matrix: ${{ steps.release.outputs.asset_matrix }}
+      has_bootstrap_asset: ${{ steps.release.outputs.has_bootstrap_asset }}
+      has_matrix_assets: ${{ steps.release.outputs.has_matrix_assets }}
     steps:
       - name: Wait for GitHub release workflows
         if: ${{ github.event_name == 'push' }}
@@ -90,6 +92,8 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITCODE_REPOSITORY: ${{ vars.GITCODE_REPOSITORY }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
           RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
         run: |
           set -euo pipefail
@@ -124,24 +128,70 @@ jobs:
 
           find release-assets -maxdepth 1 -type f -print | sort
 
-          bootstrap_asset="$(
+          local_assets="$(
             find release-assets -maxdepth 1 -type f -printf '%s\t%f\n' \
               | sort -n -k1,1 \
-              | head -n 1 \
-              | cut -f2-
+              | cut -f2- \
+              | jq -Rsc 'split("\n") | map(select(length > 0))'
           )"
-          asset_matrix="$(
-            find release-assets -maxdepth 1 -type f -printf '%f\n' \
-              | sort \
-              | jq -Rsc --arg bootstrap "$bootstrap_asset" \
-                'split("\n") | map(select(length > 0 and . != $bootstrap))'
+
+          gitcode_release_json="$(mktemp)"
+          gitcode_release_status="$(
+            curl -L -sS -o "$gitcode_release_json" -w "%{http_code}" \
+              -H "PRIVATE-TOKEN: $GITCODE_TOKEN" \
+              -H "Accept: application/json" \
+              "https://api.gitcode.com/api/v5/repos/$GITCODE_REPOSITORY/releases/tags/$RELEASE_TAG"
           )"
+
+          case "$gitcode_release_status" in
+            200)
+              release_exists=true
+              existing_assets="$(jq -c '[.assets[]?.name]' "$gitcode_release_json")"
+              ;;
+            404)
+              release_exists=false
+              existing_assets='[]'
+              ;;
+            *)
+              echo "::error::Failed to inspect GitCode release. Response code: $gitcode_release_status"
+              cat "$gitcode_release_json"
+              exit 1
+              ;;
+          esac
+
+          missing_assets="$(
+            jq -cn \
+              --argjson local_assets "$local_assets" \
+              --argjson existing_assets "$existing_assets" \
+              '$local_assets - $existing_assets'
+          )"
+          jq -rn \
+            --argjson local_assets "$local_assets" \
+            --argjson missing_assets "$missing_assets" \
+            '$local_assets - $missing_assets | .[] | "Skipping existing GitCode asset: \(.)"'
+
+          if [[ "$release_exists" == "false" ]]; then
+            bootstrap_asset="$(jq -r '.[0] // ""' <<< "$missing_assets")"
+            asset_matrix="$(jq -c '.[1:]' <<< "$missing_assets")"
+          else
+            bootstrap_asset=""
+            asset_matrix="$missing_assets"
+          fi
+
+          if [[ -n "$bootstrap_asset" ]]; then
+            has_bootstrap_asset=true
+          else
+            has_bootstrap_asset=false
+          fi
+          has_matrix_assets="$(jq -r 'length > 0' <<< "$asset_matrix")"
 
           delimiter="release-body-$(openssl rand -hex 16)"
           {
             echo "tag=$RELEASE_TAG"
             echo "bootstrap_asset=$bootstrap_asset"
             echo "asset_matrix=$asset_matrix"
+            echo "has_bootstrap_asset=$has_bootstrap_asset"
+            echo "has_matrix_assets=$has_matrix_assets"
             echo "body<<$delimiter"
             # sync_to_gitcode embeds this input in a single-quoted shell string.
             # Replace ASCII apostrophes so release notes cannot break its script.
@@ -158,10 +208,10 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  gitcode-release-metadata:
-    name: Publish GitCode release metadata
+  gitcode-release-bootstrap:
+    name: Create GitCode release
     needs: prepare-release-assets
-    if: ${{ vars.GITCODE_REPOSITORY != '' }}
+    if: ${{ vars.GITCODE_REPOSITORY != '' && needs.prepare-release-assets.outputs.has_bootstrap_asset == 'true' }}
     uses: nvdacn/sync_to_gitcode/.github/workflows/CreateReleaseOnGitCode.yaml@18b70112d0e62260bc54085028e5510bbc6323b2
     with:
       artifact_name: gitcode-release-assets
@@ -178,8 +228,8 @@ jobs:
     name: Publish GitCode asset (${{ matrix.file_name }})
     needs:
       - prepare-release-assets
-      - gitcode-release-metadata
-    if: ${{ vars.GITCODE_REPOSITORY != '' }}
+      - gitcode-release-bootstrap
+    if: ${{ always() && vars.GITCODE_REPOSITORY != '' && needs.prepare-release-assets.result == 'success' && (needs.gitcode-release-bootstrap.result == 'success' || needs.gitcode-release-bootstrap.result == 'skipped') && needs.prepare-release-assets.outputs.has_matrix_assets == 'true' }}
     strategy:
       fail-fast: false
       max-parallel: 4
