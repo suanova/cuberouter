@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { expect, describe, it } from 'vitest'
 
 import { createInstance } from 'i18next'
 
@@ -57,8 +56,8 @@ describe('campaign status toast', () => {
     ])
     for (const [labelKey] of actions) {
       const toast = await campaignStatusToast(zh.translation, 'zh', labelKey)
-      assert.equal(toast, expected.get(labelKey))
-      assert.equal(toast.split('已').length - 1, 1)
+      expect(toast).toBe(expected.get(labelKey))
+      expect(toast.split('已').length - 1).toBe(1)
     }
   })
 
@@ -74,8 +73,8 @@ describe('campaign status toast', () => {
         'zh-TW',
         labelKey
       )
-      assert.equal(toast, expected.get(labelKey))
-      assert.equal(toast.split('已').length - 1, 1)
+      expect(toast).toBe(expected.get(labelKey))
+      expect(toast.split('已').length - 1).toBe(1)
     }
   })
 })

@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { expect, describe, test } from 'vitest'
 
 import {
   parsePluginEventPayload,
@@ -41,13 +40,13 @@ describe('parseStreamMessageUpdates', () => {
         },
       })
     )
-    assert.equal(updates.length, 1)
-    assert.equal(updates[0]?.type, 'plugin_event')
+    expect(updates.length).toBe(1)
+    expect(updates[0]?.type).toBe('plugin_event')
     const event = JSON.parse(updates[0]?.chunk ?? '') as Record<string, unknown>
-    assert.equal(event.type, 'tool_call')
-    assert.equal(event.plugin, 'search')
-    assert.equal(event.tool, 'web')
-    assert.equal(event.durationMs, 3200)
+    expect(event.type).toBe('tool_call')
+    expect(event.plugin).toBe('search')
+    expect(event.tool).toBe('web')
+    expect(event.durationMs).toBe(3200)
   })
 
   test('extracts an interim plugin_event and keeps content updates', () => {
@@ -57,52 +56,40 @@ describe('parseStreamMessageUpdates', () => {
         plugin_event: { type: 'interim', text: 'Let me search for that.' },
       })
     )
-    assert.deepEqual(
-      updates.map((update) => update.type),
-      ['content', 'plugin_event']
-    )
+    expect(updates.map((update) => update.type)).toEqual(['content', 'plugin_event'])
     const event = JSON.parse(updates[1]?.chunk ?? '') as Record<string, unknown>
-    assert.equal(event.type, 'interim')
-    assert.equal(event.text, 'Let me search for that.')
+    expect(event.type).toBe('interim')
+    expect(event.text).toBe('Let me search for that.')
   })
 
   test('returns no updates for chunks without a delta', () => {
-    assert.deepEqual(parseStreamMessageUpdates(JSON.stringify({})), [])
-    assert.deepEqual(
-      parseStreamMessageUpdates(JSON.stringify({ choices: [] })),
-      []
-    )
+    expect(parseStreamMessageUpdates(JSON.stringify({}))).toEqual([])
+    expect(parseStreamMessageUpdates(JSON.stringify({ choices: [] }))).toEqual([])
   })
 })
 
 describe('parsePluginEventPayload', () => {
   test('accepts a valid interim event', () => {
-    assert.deepEqual(
-      parsePluginEventPayload({ type: 'interim', text: 'searching' }),
-      {
+    expect(parsePluginEventPayload({ type: 'interim', text: 'searching' })).toEqual({
         type: 'interim',
         text: 'searching',
-      }
-    )
+      })
   })
 
   test('accepts a valid tool_call event with optional fields', () => {
-    assert.deepEqual(
-      parsePluginEventPayload({
+    expect(parsePluginEventPayload({
         type: 'tool_call',
         plugin: 'search',
         tool: 'web',
         args: '{"query":"x"}',
         durationMs: 3200,
-      }),
-      {
+      })).toEqual({
         type: 'tool_call',
         plugin: 'search',
         tool: 'web',
         args: '{"query":"x"}',
         durationMs: 3200,
-      }
-    )
+      })
   })
 
   test('keeps a zero durationMs instead of dropping it', () => {
@@ -112,7 +99,7 @@ describe('parsePluginEventPayload', () => {
       tool: 'web',
       durationMs: 0,
     })
-    assert.deepEqual(event, {
+    expect(event).toEqual({
       type: 'tool_call',
       plugin: 'search',
       tool: 'web',
@@ -121,43 +108,31 @@ describe('parsePluginEventPayload', () => {
   })
 
   test('rejects payloads that are not objects or lack a valid type', () => {
-    assert.equal(parsePluginEventPayload(null), null)
-    assert.equal(parsePluginEventPayload('tool_call'), null)
-    assert.equal(parsePluginEventPayload({ type: 'unknown' }), null)
-    assert.equal(parsePluginEventPayload({}), null)
+    expect(parsePluginEventPayload(null)).toBe(null)
+    expect(parsePluginEventPayload('tool_call')).toBe(null)
+    expect(parsePluginEventPayload({ type: 'unknown' })).toBe(null)
+    expect(parsePluginEventPayload({})).toBe(null)
   })
 
   test('rejects variants missing required fields', () => {
-    assert.equal(parsePluginEventPayload({ type: 'interim' }), null)
-    assert.equal(parsePluginEventPayload({ type: 'interim', text: 42 }), null)
-    assert.equal(
-      parsePluginEventPayload({ type: 'tool_call', tool: 'web' }),
-      null
-    )
-    assert.equal(
-      parsePluginEventPayload({ type: 'tool_call', plugin: 'search' }),
-      null
-    )
+    expect(parsePluginEventPayload({ type: 'interim' })).toBe(null)
+    expect(parsePluginEventPayload({ type: 'interim', text: 42 })).toBe(null)
+    expect(parsePluginEventPayload({ type: 'tool_call', tool: 'web' })).toBe(null)
+    expect(parsePluginEventPayload({ type: 'tool_call', plugin: 'search' })).toBe(null)
   })
 
   test('drops malformed optional fields', () => {
-    assert.deepEqual(
-      parsePluginEventPayload({
+    expect(parsePluginEventPayload({
         type: 'tool_call',
         plugin: 'search',
         tool: 'web',
         args: 7,
-      }),
-      { type: 'tool_call', plugin: 'search', tool: 'web' }
-    )
-    assert.deepEqual(
-      parsePluginEventPayload({
+      })).toEqual({ type: 'tool_call', plugin: 'search', tool: 'web' })
+    expect(parsePluginEventPayload({
         type: 'tool_call',
         plugin: 'search',
         tool: 'web',
         durationMs: 'fast',
-      }),
-      { type: 'tool_call', plugin: 'search', tool: 'web' }
-    )
+      })).toEqual({ type: 'tool_call', plugin: 'search', tool: 'web' })
   })
 })

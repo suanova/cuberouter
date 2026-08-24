@@ -16,26 +16,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { expect, describe, test } from 'vitest'
 
 import { buildExportPayload } from '../export-utils'
 
 describe('buildExportPayload', () => {
   test('selected ids win over the current filter', () => {
-    assert.deepEqual(buildExportPayload([1, 2], { keyword: 'alice', group: 'vip' }), {
+    expect(buildExportPayload([1, 2], { keyword: 'alice', group: 'vip' })).toEqual({
       ids: [1, 2],
     })
   })
 
   test('falls back to the keyword/group filter', () => {
-    assert.deepEqual(buildExportPayload([], { keyword: 'alice', group: 'vip' }), {
+    expect(buildExportPayload([], { keyword: 'alice', group: 'vip' })).toEqual({
       keyword: 'alice',
       group: 'vip',
     })
   })
 
   test('omits empty filter fields (empty payload = export all)', () => {
-    assert.deepEqual(buildExportPayload([], { keyword: '', group: '' }), {})
+    expect(buildExportPayload([], { keyword: '', group: '' })).toEqual({})
   })
 })

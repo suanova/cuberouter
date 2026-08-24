@@ -77,6 +77,11 @@ const (
 	ErrorCodeAwsInvokeError         ErrorCode = "aws_invoke_error"
 	ErrorCodeModelNotFound          ErrorCode = "model_not_found"
 	ErrorCodePromptBlocked          ErrorCode = "prompt_blocked"
+	ErrorCodeStreamIdleTimeout      ErrorCode = "stream_idle_timeout"
+	ErrorCodeStreamClientClosed     ErrorCode = "stream_client_disconnected"
+	ErrorCodeStreamScannerFailed    ErrorCode = "stream_scanner_error"
+	ErrorCodeStreamDataHandler      ErrorCode = "stream_data_handler_error"
+	ErrorCodeStreamIncomplete       ErrorCode = "stream_incomplete"
 
 	// sql error
 	ErrorCodeQueryDataError  ErrorCode = "query_data_error"

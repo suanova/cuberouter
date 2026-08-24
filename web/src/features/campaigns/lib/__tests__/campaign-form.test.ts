@@ -16,8 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { expect, describe, it } from 'vitest'
 
 import { CAMPAIGN_STATUS, CAMPAIGN_TYPE } from '../../constants'
 import type { Campaign } from '../../types'
@@ -50,14 +49,14 @@ const baseForm: CampaignFormData = {
 
 describe('datetime-local conversion', () => {
   it('converts 0 to empty string and back', () => {
-    assert.equal(toDatetimeLocalValue(0), '')
-    assert.equal(fromDatetimeLocalValue(''), 0)
-    assert.equal(fromDatetimeLocalValue('not-a-date'), 0)
+    expect(toDatetimeLocalValue(0)).toBe('')
+    expect(fromDatetimeLocalValue('')).toBe(0)
+    expect(fromDatetimeLocalValue('not-a-date')).toBe(0)
   })
 
   it('round-trips minute-precision timestamps in local time', () => {
     const ts = 1754496000 // divisible by 60; timezone-independent round trip
-    assert.equal(fromDatetimeLocalValue(toDatetimeLocalValue(ts)), ts)
+    expect(fromDatetimeLocalValue(toDatetimeLocalValue(ts))).toBe(ts)
   })
 })
 
@@ -65,10 +64,10 @@ describe('parseCampaignConfig', () => {
   it('returns defaulted zero values for empty or invalid JSON', () => {
     for (const raw of ['', '{bogus', '{"quota":"nope"}']) {
       const config = parseCampaignConfig(raw)
-      assert.equal(config.quota, 0)
-      assert.equal(config.redemption_count, 0)
-      assert.equal(config.code_count, 0)
-      assert.equal(config.invitee_username, '')
+      expect(config.quota).toBe(0)
+      expect(config.redemption_count).toBe(0)
+      expect(config.code_count).toBe(0)
+      expect(config.invitee_username).toBe('')
     }
   })
 
@@ -76,9 +75,9 @@ describe('parseCampaignConfig', () => {
     const config = parseCampaignConfig(
       '{"quota":500,"redemption_name":"X","redemption_count":1,"max_participants":10,"max_rewards_per_user":2,"expire_days":7,"invitee_user_id":42,"invitee_username":"boss","code_count":100}'
     )
-    assert.equal(config.quota, 500)
-    assert.equal(config.invitee_user_id, 42)
-    assert.equal(config.code_count, 100)
+    expect(config.quota).toBe(500)
+    expect(config.invitee_user_id).toBe(42)
+    expect(config.code_count).toBe(100)
   })
 })
 
@@ -92,10 +91,10 @@ describe('buildCampaignConfigJson', () => {
       code_count: 250,
     })
     const config = JSON.parse(json)
-    assert.equal(config.redemption_count, 1)
-    assert.equal(config.invitee_user_id, 42)
-    assert.equal(config.invitee_username, 'boss')
-    assert.equal(config.code_count, 250)
+    expect(config.redemption_count).toBe(1)
+    expect(config.invitee_user_id).toBe(42)
+    expect(config.invitee_username).toBe('boss')
+    expect(config.code_count).toBe(250)
   })
 
   it('zeroes invitee-only fields for phone_filled', () => {
@@ -106,20 +105,20 @@ describe('buildCampaignConfigJson', () => {
       code_count: 250,
     })
     const config = JSON.parse(json)
-    assert.equal(config.invitee_user_id, 0)
-    assert.equal(config.invitee_username, '')
-    assert.equal(config.code_count, 0)
-    assert.equal(config.redemption_count, 0)
+    expect(config.invitee_user_id).toBe(0)
+    expect(config.invitee_username).toBe('')
+    expect(config.code_count).toBe(0)
+    expect(config.redemption_count).toBe(0)
   })
 })
 
 describe('campaignToFormDefaults', () => {
   it('returns create defaults without a campaign', () => {
     const defaults = campaignToFormDefaults(null)
-    assert.equal(defaults.type, CAMPAIGN_TYPE.PHONE_FILLED)
-    assert.equal(defaults.status, CAMPAIGN_STATUS.DRAFT)
-    assert.equal(defaults.code_count, 100)
-    assert.equal(defaults.start_at, '')
+    expect(defaults.type).toBe(CAMPAIGN_TYPE.PHONE_FILLED)
+    expect(defaults.status).toBe(CAMPAIGN_STATUS.DRAFT)
+    expect(defaults.code_count).toBe(100)
+    expect(defaults.start_at).toBe('')
   })
 
   it('maps an invitation campaign back to form values', () => {
@@ -138,30 +137,26 @@ describe('campaignToFormDefaults', () => {
       updated_at: 1,
     }
     const form = campaignToFormDefaults(campaign)
-    assert.equal(form.type, CAMPAIGN_TYPE.INVITATION)
-    assert.equal(form.quota, 300)
-    assert.equal(form.invitee_user_id, 42)
-    assert.equal(form.code_count, 77)
-    assert.equal(
-      form.end_at,
-      '',
-      'end_at 0 (never expires) maps to an empty input'
-    )
-    assert.equal(form.start_at, toDatetimeLocalValue(1754496000))
+    expect(form.type).toBe(CAMPAIGN_TYPE.INVITATION)
+    expect(form.quota).toBe(300)
+    expect(form.invitee_user_id).toBe(42)
+    expect(form.code_count).toBe(77)
+    expect(form.end_at).toBe('')
+    expect(form.start_at).toBe(toDatetimeLocalValue(1754496000))
   })
 })
 
 describe('buildCampaignPayload', () => {
   it('converts datetime-local to unix seconds and embeds config_json', () => {
     const payload = buildCampaignPayload(baseForm, 12)
-    assert.equal(payload.id, 12)
-    assert.equal(payload.start_at, fromDatetimeLocalValue('2026-08-01T10:00'))
-    assert.equal(payload.end_at, fromDatetimeLocalValue('2026-09-01T10:00'))
-    assert.equal(JSON.parse(payload.config_json as string).quota, 200)
+    expect(payload.id).toBe(12)
+    expect(payload.start_at).toBe(fromDatetimeLocalValue('2026-08-01T10:00'))
+    expect(payload.end_at).toBe(fromDatetimeLocalValue('2026-09-01T10:00'))
+    expect(JSON.parse(payload.config_json as string).quota).toBe(200)
   })
 
   it('omits id for creates', () => {
     const payload = buildCampaignPayload(baseForm)
-    assert.equal('id' in payload, false)
+    expect('id' in payload).toBe(false)
   })
 })

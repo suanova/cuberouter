@@ -9,9 +9,10 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -241,17 +242,17 @@ func TestConvertToArkVideo(t *testing.T) {
 		{
 			name:       "queued maps to queued",
 			task:       newTask(`{"id":"t1","status":"queued"}`, model.TaskStatusQueued),
-			wantStatus: dto.ArkVideoStatusQueued,
+			wantStatus: taskdto.ArkVideoStatusQueued,
 		},
 		{
 			name:       "running maps to running",
 			task:       newTask(`{"id":"t1","status":"processing"}`, model.TaskStatusInProgress),
-			wantStatus: dto.ArkVideoStatusRunning,
+			wantStatus: taskdto.ArkVideoStatusRunning,
 		},
 		{
 			name:           "succeeded carries url/duration/usage",
 			task:           newTask(`{"id":"t1","status":"succeeded","content":{"video_url":"https://cdn.example.com/v.mp4"},"duration":5,"usage":{"completion_tokens":109431}}`, model.TaskStatusSuccess),
-			wantStatus:     dto.ArkVideoStatusSucceeded,
+			wantStatus:     taskdto.ArkVideoStatusSucceeded,
 			wantVideoURL:   "https://cdn.example.com/v.mp4",
 			wantDuration:   5,
 			wantCompletion: 109431,
@@ -259,22 +260,22 @@ func TestConvertToArkVideo(t *testing.T) {
 		{
 			name:          "failed carries video_task_failed",
 			task:          newTask(`{"id":"t1","status":"failed","error":{"code":"content_filter","message":"内容审核失败"}}`, model.TaskStatusFailure),
-			wantStatus:    dto.ArkVideoStatusFailed,
-			wantErrorCode: dto.ArkVideoErrorFailed,
+			wantStatus:    taskdto.ArkVideoStatusFailed,
+			wantErrorCode: taskdto.ArkVideoErrorFailed,
 			wantErrorMsg:  "内容审核失败",
 		},
 		{
 			name:          "expired maps to expired with dedicated code",
 			task:          newTask(`{"id":"t1","status":"expired"}`, model.TaskStatusFailure),
-			wantStatus:    dto.ArkVideoStatusExpired,
-			wantErrorCode: dto.ArkVideoErrorExpired,
+			wantStatus:    taskdto.ArkVideoStatusExpired,
+			wantErrorCode: taskdto.ArkVideoErrorExpired,
 			wantErrorMsg:  "task expired",
 		},
 		{
 			name:          "cancelled maps to failed",
 			task:          newTask(`{"id":"t1","status":"cancelled","error":{"code":"user_cancel","message":"cancelled by user"}}`, model.TaskStatusFailure),
-			wantStatus:    dto.ArkVideoStatusFailed,
-			wantErrorCode: dto.ArkVideoErrorFailed,
+			wantStatus:    taskdto.ArkVideoStatusFailed,
+			wantErrorCode: taskdto.ArkVideoErrorFailed,
 			wantErrorMsg:  "cancelled by user",
 		},
 	}
@@ -284,7 +285,7 @@ func TestConvertToArkVideo(t *testing.T) {
 			data, err := adaptor.ConvertToArkVideo(tt.task)
 			require.NoError(t, err)
 
-			var task dto.ArkVideoTask
+			var task taskdto.ArkVideoTask
 			require.NoError(t, common.Unmarshal(data, &task))
 
 			// 必含字段：id/status/model/created_at/updated_at
@@ -346,11 +347,11 @@ func TestDoResponseArkSubmitShape(t *testing.T) {
 
 	require.Nil(t, taskErr)
 	assert.Equal(t, "upstream_456", taskID)
-	var task dto.ArkVideoTask
+	var task taskdto.ArkVideoTask
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &task))
 	assert.Equal(t, "vt_123", task.ID)
 	assert.Equal(t, "doubao-seedance-2-0-260128", task.Model)
-	assert.Equal(t, dto.ArkVideoStatusQueued, task.Status)
+	assert.Equal(t, taskdto.ArkVideoStatusQueued, task.Status)
 	assert.Greater(t, task.CreatedAt, int64(0))
 	// 提交响应只含 id/model/status/created_at，无 OpenAI 视频字段。
 	assert.Empty(t, task.UpdatedAt)
