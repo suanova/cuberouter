@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `84834eee859f` | Expose the stream_status field (stream end status/reason) to regular log owners instead of admins only, by no longer stripping it from user log serialization and removing the admin-only check in the web details dialog. | feature | medium |
+| `8461e5339d48` | Fix New API channel image edits by delegating ConvertImageRequest to the embedded OpenAI adaptor instead of passing the request through unchanged, so multipart image-edit payloads are correctly converted/preserved. | bugfix | medium |
+| `e78e1db1e4ed` | Fix OAuth callback misclassifying plain logins as account-bind flows when the tab has a foreign window.opener, by requiring a sessionStorage stamp that only the same-origin bind popup can carry (ambiguity now resolves to 'login'). | bugfix | medium |
+| `aa7d0d39a4a7` | Replace hardcoded text-[13px] with standard text-sm Tailwind class on public header nav links for visual consistency with other nav components | refactor | low |
+| `9724ef1b248a` | Add DeepSeek channel support for the OpenAI Responses API: route RelayModeResponses to the /responses endpoint and implement ConvertOpenAIResponsesRequest to parse DeepSeek V4 thinking suffixes into reasoning effort settings. | feature | medium |
+| `df43f801536b` | Fix tiered-expression billing so that when an auto-group retry switches groups, the frozen BillingSnapshot's group-dependent fields are refreshed from the final selected group—creating a billing session if the initial free group skipped pre-consume, raising the reservation for pricier groups, and settling actual usage against the final group. | bugfix | medium |
+| `cfaba1dd6754` | Harden billing consistency for tiered auto-group retries: wallet reserve deltas are deducted unconditionally in arrears, FreeModel is cleared when switching to a paid group, and channel bookkeeping (use_channel, GroupRatioInfo) is reordered around billing preparation. | bugfix | medium |
+| `bd585d78efd4` | Propagate the client request context into AWS Bedrock invocations so client disconnects cancel in-flight requests and skip retries, plus log the effective usage billing path in the billing service | bugfix | medium |
+| `0ab02020603d` | Add per-token customizable auto-group ordering end-to-end: backend token auto-group storage with inheritance semantics, middleware context propagation (new ContextKeyTokenAutoGroups), auto-group-aware channel selection and model listing, plus a redesigned frontend Auto group order editor with compact inherited-order chips and border-flow highlight visuals. | feature | medium |
+| `d6b5ce99de49` | Wire replayable Request.GetBody from BodyStorage into outbound relay requests so the HTTP/2 transport can transparently retry after upstream REFUSED_STREAM/GOAWAY resets; also stop following upstream redirects. | bugfix | medium |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `2cf3c8d71e92` | Adds a documentation rule to AGENTS.md requiring the relaykit Go module touch remain independently buildable (no imports from the root new-api module) and mandating verification via 'cd relaykit && GOWORK=off go build ./...'. | internal | low |
 | `f01c13b0863f` | Adds a GitHub Actions CI workflow that builds and tests the Go backend (root and relaykit modules) and typechecks/tests the Bun frontend on every pull request. | internal | low |
 | `c3db41407dd1` | Security fix: log slow/error SQL in parameterized form and sanitize driver error messages to prevent credentials/sensitive values leaking into logs, adding a validated SQL_SLOW_THRESHOLD_MS config for the slow-query threshold. | bugfix | medium |
