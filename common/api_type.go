@@ -94,6 +94,7 @@ func IsResponsesCompactAPIType(apiType int) bool {
 	switch apiType {
 	case constant.APITypeOpenAI,
 		constant.APITypeCodex,
+		constant.APITypeAdvancedCustom,
 		constant.APITypeSub2API,
 		constant.APITypeNewAPI:
 		return true
