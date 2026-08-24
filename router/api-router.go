@@ -254,6 +254,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
+			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
 			tokenRoute.GET("/:id", controller.GetToken)
 			tokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKey)
 			tokenRoute.POST("/", controller.AddToken)
