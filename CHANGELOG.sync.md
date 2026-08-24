@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `60a1acb703a6` | Update import paths in the newapi channel adaptor to use dto and types packages relocated under the relaykit module | refactor | low |
+| `b8bb3f40ac9d` | Move shared generic types (PriceData, RWMap, Set) out of relaykit/types into the host repo's top-level types package and update all importers, decoupling the relaykit submodule from the host module | refactor | low |
+| `8aa5e754a86b` | Move trusted-proxy configuration logic from the main package into the middleware package, exporting it as ConfigureTrustedProxies with no behavioral change | refactor | low |
+| `8a7a49072ab0` | Add a GitHub Actions workflow that mirrors GitHub releases (on non-alpha tags or manual dispatch) to GitCode, waiting for other release workflows before syncing assets. | internal | low |
+| `2ec6171faa74` | Sanitize release note bodies in the GitHub release-sync workflow by replacing ASCII apostrophes with Unicode right single quotes so they cannot break the downstream single-quoted shell script in sync_to_gitcode. | internal | low |
+| `6d57d250f88e` | Extend the GitCode release-sync workflow by normalizing asset filenames and publishing a bootstrap asset plus an asset matrix as workflow job outputs | internal | low |
+| `f3ab2cff36b3` | Enhance the GitCode release-sync workflow to query the GitCode API (using GITCODE_TOKEN/GITCODE_REPOSITORY) and expose has_bootstrap_asset/has_matrix_assets job outputs so bootstrap and matrix asset handling can be driven by what already exists on GitCode rather than purely local file inspection. | internal | low |
+| `a043eef559a9` | Add Gemini-to-OpenAI chat streaming response conversion and ensure converted SSE streams emit proper terminal events (finish_reason/[DONE] for OpenAI, message_start/content_block_stop/message_delta/message_stop for Claude) with usage propagation across Gemini→OpenAI, Gemini→Claude, and OpenAI Responses→Claude paths. | feature | medium |
+| `b27b2b1d6f72` | Fix iPad login sessions being misidentified as macOS by prioritizing iPad detection in the user-agent parsing of sessionDevice (iPad Safari UAs contain 'Mac OS X'), and relocate the utility tests into a __tests__ directory. | bugfix | low |
+| `e99a9bd86fb2` | Introduces per-channel HTTP transport controls (protocol selection and HTTP/2 connection sharding) with validation, a sharded transport implementation in the HTTP client layer, relay adapters passing channel settings through, and corresponding web UI/i18n support. | feature | medium |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `ae17f2749d16` | Revert opaque background/z-index on the JSON code editor's line-number layer that was overlaying and hiding highlighted editor content, accepting the prior horizontal-scroll gutter overlap as a known cosmetic tradeoff | bugfix | low |
 | `8b41defbe0d9` | Register the new Gemini GA image models 'gemini-3-pro-image' and 'gemini-3.1-flash-image' in the channel model list and mark them as image-generation models in default Gemini settings | feature | medium |
 | `08f88d25e588` | Add key-format-based dispatch for the Tencent channel so single-segment TokenHub API keys are routed through the OpenAI-compatible adaptor (with the TokenHub base URL) while legacy three-segment ak/sk keys continue using the native TC3 adaptor. | feature | medium |
