@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `7dd1000a190d` | Debounce search inputs across admin tables, dialogs, and data hooks (via a searchDebounceMs prop and useDebounce) to reduce server round-trips and improve large-list search performance. | feature | low |
+| `eab18a835791` | Centralize reasoning-effort capture through a new RelayInfo.SetReasoningEffort setter (plus override/normalization logic) so the effective reasoning effort is recorded consistently in usage logs across DeepSeek/OpenAI/xAI adaptors and the Claude handler, and displayed in the web usage-log details UI. | bugfix | medium |
+| `85feb7a345d2` | Expose authenticated user identity and group context (user_id, user_group, token_group, using_group) as built-in variables for parameter override conditions, enabling user/group-conditional request param overrides. | feature | medium |
+| `8ad159a3bbc2` | Fix Ollama relay to preserve thinking/reasoning content and tool-call IDs across message conversions, and always emit the 'stream' field in requests. | bugfix | medium |
+| `d49160f0e543` | Fix backend console-settings length validation to count UTF-16 code units (matching frontend/JS character semantics) instead of raw bytes, so multi-byte (e.g., CJK/emoji) content is no longer falsely rejected; also switch JSON parsing to common.UnmarshalJsonStr. | bugfix | low |
+| `4cf9107f0437` | Trace which conditional request-based multipliers matched during billing expression evaluation and surface that trace (condition, multiplier, matched) in usage logs and the web UI so applied price adjustments are highlighted. | feature | medium |
+| `9c97e78aced5` | Require explicit user confirmation before generating/rotating an access token, stopping automatic token generation when the dialog opens and clearing the token on close. | bugfix | medium |
+| `253a74dd1b47` | Wire presence_penalty and frequency_penalty through the OpenAI Responses request DTO and the Chat↔Responses request converters so the values survive format conversion, while the Codex adaptor explicitly strips them because the Codex backend rejects those fields. | bugfix | medium |
+| `bb234ff41861` | Removes the '-compact' model-name suffix convention that auto-routed suffixed models to the /v1/responses/compact endpoint, consolidating compact support detection into a channel-aware SupportsResponsesCompact(channelType, apiType) check. | breaking | high |
+| `4eaeefbdf5b9` | Fix mobile sidebar UX by disabling TanStack Router link preloading on mobile and removing/adjusting touch-event handling in the shared sidebar components so iOS taps on sidebar items are no longer swallowed. | bugfix | medium |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `ea4f021012cd` | Move transport retry/replay metadata off RelayInfo and onto outbound request bodies via a new ReplayableBody interface, replacing the ReaderOnly wrapper. | refactor | medium |
 | `0cd9dc85e334` | Fix lost-update race in access token generation by replacing read-modify-write of the full user record with a targeted single-column UPDATE (new UpdateUserAccessToken), and harden User.Update semantics with expanded tests. | bugfix | medium |
 | `c9bc038649d1` | Extract fetched-model categorization logic from the fetch-models dialog into a new dedicated model-categories lib module with refined grouping rules (including edge-case fixes such as hy3 models), and tidy dialog code (null-safe channel guard, simplified name normalization). | feature | medium |
