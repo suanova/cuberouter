@@ -1,0 +1,143 @@
+name: Sync Release to GitCode
+
+permissions:
+  actions: read
+  contents: read
+
+on:
+  push:
+    tags:
+      - '*'
+      - '!*-alpha*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: GitHub release tag to sync
+        required: true
+        type: string
+
+concurrency:
+  group: gitcode-release-${{ inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  prepare-release-assets:
+    name: Prepare GitHub release assets
+    if: ${{ vars.GITCODE_REPOSITORY != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
+      release_body: ${{ steps.release.outputs.body }}
+      release_prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - name: Wait for GitHub release workflows
+        if: ${{ github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          wait_for_workflow() {
+            local workflow="$1"
+            local label="$2"
+            local last_state=""
+
+            for attempt in $(seq 1 180); do
+              run_json="$(
+                gh run list \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --workflow "$workflow" \
+                  --event push \
+                  --commit "$GITHUB_SHA" \
+                  --limit 1 \
+                  --json conclusion,status,url \
+                  --jq '.[0] // {}'
+              )"
+              status="$(jq -r '.status // empty' <<< "$run_json")"
+              conclusion="$(jq -r '.conclusion // empty' <<< "$run_json")"
+              state="${status:-not-found}/${conclusion:-pending}"
+
+              if [[ "$state" != "$last_state" ]]; then
+                echo "$label: $state"
+                last_state="$state"
+              fi
+
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" == "success" ]]; then
+                  return 0
+                fi
+                echo "::error::$label finished with conclusion: $conclusion"
+                return 1
+              fi
+
+              sleep 20
+            done
+
+            echo "::error::Timed out waiting for $label"
+            return 1
+          }
+
+          wait_for_workflow release.yml "Backend release"
+
+          if [[ "$GITHUB_REF_NAME" != *-* ]]; then
+            wait_for_workflow electron-build.yml "Electron release"
+          fi
+
+      - name: Download GitHub release assets
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          mkdir release-assets
+          release_json="$(
+            gh release view "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json body,isPrerelease
+          )"
+          gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir release-assets
+
+          if ! find release-assets -maxdepth 1 -type f -print -quit | grep -q .; then
+            echo "::error::GitHub release has no downloadable assets"
+            exit 1
+          fi
+
+          find release-assets -maxdepth 1 -type f -print | sort
+
+          delimiter="release-body-$(openssl rand -hex 16)"
+          {
+            echo "tag=$RELEASE_TAG"
+            echo "body<<$delimiter"
+            jq -r '.body // ""' <<< "$release_json"
+            echo "$delimiter"
+            echo "prerelease=$(jq -r '.isPrerelease' <<< "$release_json")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload release assets for GitCode
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gitcode-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  gitcode-release:
+    name: Publish GitCode release
+    needs: prepare-release-assets
+    if: ${{ vars.GITCODE_REPOSITORY != '' }}
+    uses: nvdacn/sync_to_gitcode/.github/workflows/CreateReleaseOnGitCode.yaml@18b70112d0e62260bc54085028e5510bbc6323b2
+    with:
+      artifact_name: gitcode-release-assets
+      gitcode_repository: ${{ vars.GITCODE_REPOSITORY }}
+      default_branch: main
+      tag_name: ${{ needs.prepare-release-assets.outputs.release_tag }}
+      body: ${{ needs.prepare-release-assets.outputs.release_body }}
+      prerelease: ${{ needs.prepare-release-assets.outputs.release_prerelease == 'true' }}
+      file_name: '*'
+    secrets:
+      GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
