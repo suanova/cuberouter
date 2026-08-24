@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `53a8739eedbf` | Dependabot-бот обновляет косвенную dev-зависимость fast-uri с 3.1.4 до 3.1.5, обновляя только записи версии/integrity в electron/package-lock.json без изменений кода. | internal | low |
+| `e5efc73cdb49` | Dependabot bump of the indirect dev dependency tar from 7.5.16 to 7.5.22 in the electron workspace (lockfile-only refresh, picking up upstream bug/security fixes in node-tar). | internal | low |
+| `2a0ce3475c2d` | Add pre-payment validation that rejects top-up orders whose amount would credit zero or unrepresentable quota, applied consistently across all payment providers (epay, Stripe, Creem, Waffo, Waffo-pancake) instead of failing after payment | bugfix | medium |
+| `cf38105a9946` | Dependabot lockfile-only bump of the indirect dev dependency js-yaml from 4.3.0 to 4.3.1 in the electron package | internal | low |
+| `bbf67df0499c` | Dependabot bump of the Electron devDependency from 39.8.5 to 39.8.10 (patch-level update pulling in upstream Electron runtime fixes) | internal | low |
+| `47ba9d2c63d6` | Add wallet quota capacity validation across all top-up payment flows so recharges that would exceed the user's quota limit are rejected before payment, with validation helpers now returning the credited quota amount for capacity checks. | bugfix | medium |
+| `7d09c6954ef3` | Forward the prompt_cache_key field when converting OpenAI Chat Completions requests to OpenAI Responses requests, so prompt caching hints are no longer silently dropped during protocol conversion. | bugfix | medium |
+| `e90a7c48e5e4` | Adds field passthrough controls for gateway channels by generalizing hardcoded channel-type checks into exported sets of passthrough-capable channel types (OpenAI-compatible and Claude) used by the channel mutation drawer and form logic. | feature | medium |
+| `4442bb302898` | Fix the OpenAI-chat-to-Claude-messages converter to omit the `tools` field entirely (instead of serializing an empty array) when the incoming request has no tools, since Claude rejects/behaves badly on empty tools arrays. | bugfix | medium |
+| `116255f076a3` | Align frontend custom OAuth binding types with backend responses (provider_id as number, shared CustomOAuthBinding type moved to lib/oauth with an indexer helper) and restore access-policy guidance/templates in the OAuth provider form dialog. | bugfix | medium |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `ffeb1b24ef85` | Fix stale single-use Cloudflare Turnstile tokens on failed login by clearing the token and remounting the widget (via a key bump) before each submit, and clearing the token when it expires, so retry attempts always present a fresh token. | bugfix | medium |
 | `3d5dc36f1d85` | Fix Gemini-style model listing on /v1/models: accept key via query param for the exact /v1/models path in TokenAuth, and route Gemini-authenticated list requests to ListModels instead of RetrieveModel. | bugfix | medium |
 | `d7992672a606` | Fix a race in OAuth/WeChat account binding where persisting the provider user ID rewrote the entire user row, clobbering concurrent changes to role/status/group; binding now updates only the provider-ID column via model.UpdateUserBindColumn, keyed by a new ProviderUserIDColumn method on the oauth.Provider interface. | bugfix | medium |
