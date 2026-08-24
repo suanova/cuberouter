@@ -113,7 +113,9 @@ jobs:
           {
             echo "tag=$RELEASE_TAG"
             echo "body<<$delimiter"
-            jq -r '.body // ""' <<< "$release_json"
+            # sync_to_gitcode embeds this input in a single-quoted shell string.
+            # Replace ASCII apostrophes so release notes cannot break its script.
+            jq -r '.body // ""' <<< "$release_json" | sed "s/'/’/g"
             echo "$delimiter"
             echo "prerelease=$(jq -r '.isPrerelease' <<< "$release_json")"
           } >> "$GITHUB_OUTPUT"
