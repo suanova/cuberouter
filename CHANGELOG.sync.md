@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `2cf3c8d71e92` | Adds a documentation rule to AGENTS.md requiring the relaykit Go module touch remain independently buildable (no imports from the root new-api module) and mandating verification via 'cd relaykit && GOWORK=off go build ./...'. | internal | low |
+| `f01c13b0863f` | Adds a GitHub Actions CI workflow that builds and tests the Go backend (root and relaykit modules) and typechecks/tests the Bun frontend on every pull request. | internal | low |
+| `c3db41407dd1` | Security fix: log slow/error SQL in parameterized form and sanitize driver error messages to prevent credentials/sensitive values leaking into logs, adding a validated SQL_SLOW_THRESHOLD_MS config for the slow-query threshold. | bugfix | medium |
+| `8e2bfe278b86` | Removes the ineffective exported Mutex field from CustomEvent (a no-op since Render/WriteContentType use value receivers that copy the lock) and documents that streaming callers must serialize SSE writes themselves; also makes an SMTP test dial IPv6-safe via net.JoinHostPort. | refactor | medium |
+| `1db6ae19576d` | Add `go vet` checks for the root Go module and the relaykit submodule to the backend CI job, and pin checkout to the PR base repo/ref so merged-PR workflow runs analyze the target branch. | internal | low |
+| `afe16c64cd73` | Add README.md documentation for the standalone RelayKit Go module, describing its cross-protocol conversion capabilities (OpenAI Chat/Responses, Claude, Gemini), quality-level support matrix, installation, packages, and usage examples. | internal | low |
+| `c27d1ef651c6` | Tune GitHub Linguist language detection: exclude TSX view files, mark electron/ as vendored, and mark the generated routeTree as generated so stats reflect the Go service. | internal | low |
+| `cb4c8c02f81d` | Adds a configurable OIDC display name setting (falling back to "OIDC" when empty/whitespace) that is exposed via the status API, used as the OAuth provider name, and shown on login buttons and settings UIs in both web themes. | feature | medium |
+| `66ee6b8f9889` | Fix Qwen thinking_budget passthrough so the parameter is preserved (including explicit zero values) when the upstream model supports it, and stripped when the upstream model does not; also removes dead adaptor code across channels. | bugfix | medium |
+| `0f9f668c6076` | Add zstd (Content-Encoding: zstd) request-body decompression to DecompressRequestMiddleware, alongside existing gzip and brotli support | feature | medium |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `60a1acb703a6` | Update import paths in the newapi channel adaptor to use dto and types packages relocated under the relaykit module | refactor | low |
 | `b8bb3f40ac9d` | Move shared generic types (PriceData, RWMap, Set) out of relaykit/types into the host repo's top-level types package and update all importers, decoupling the relaykit submodule from the host module | refactor | low |
 | `8aa5e754a86b` | Move trusted-proxy configuration logic from the main package into the middleware package, exporting it as ConfigureTrustedProxies with no behavioral change | refactor | low |
