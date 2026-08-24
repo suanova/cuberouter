@@ -2395,6 +2395,7 @@
     "Include Model": "包含模型",
     "Include Rule Name": "包含規則名",
     "Includes request rules": "包含請求規則",
+    "Includes tool-call surcharge": "包含工具呼叫附加費",
     "Including failed requests, 0 = unlimited": "包括失敗的請求，0 = 無限制",
     "Incoming path": "入口路徑",
     "Incoming path is required": "入口路徑不能為空",

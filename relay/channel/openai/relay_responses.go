@@ -34,12 +34,6 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	if responsesResponse.HasImageGenerationCall() {
-		c.Set("image_generation_call", true)
-		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
-		c.Set("image_generation_call_size", responsesResponse.GetSize())
-	}
-
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
@@ -54,18 +48,27 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 			usage.PromptTokensDetails.CacheWriteTokens = responsesResponse.Usage.InputTokensDetails.CacheWriteTokens
 		}
 	}
-	if info == nil || info.ResponsesUsageInfo == nil || info.ResponsesUsageInfo.BuiltInTools == nil {
-		return &usage, nil
-	}
-	// 解析 Tools 用量
-	for _, tool := range responsesResponse.Tools {
-		buildToolinfo, ok := info.ResponsesUsageInfo.BuiltInTools[common.Interface2String(tool["type"])]
-		if !ok || buildToolinfo == nil {
-			logger.LogError(c, fmt.Sprintf("BuiltInTools not found for tool type: %v", tool["type"]))
-			continue
+	// Count actual tool invocations from Output (not tool declarations).
+	for _, output := range responsesResponse.Output {
+		switch output.Type {
+		case dto.BuildInCallWebSearchCall:
+			info.CountBillableToolCall(dto.BuildInCallWebSearchCall, "")
+		case dto.BuildInCallFileSearchCall:
+			info.CountBillableToolCall(dto.BuildInCallFileSearchCall, "")
+		case dto.BuildInCallFunctionCall:
+			info.CountBillableToolCall(dto.BuildInCallFunctionCall, output.Name)
 		}
-		buildToolinfo.CallCount++
 	}
+
+	imageCounter := &relaycommon.ImageGenerationCallCounter{}
+	if !relaycommon.IsNonBillableResponsesStatus(responsesResponse.Status) {
+		for i := range responsesResponse.Output {
+			idx := i
+			imageCounter.Observe(&responsesResponse.Output[i], &idx)
+		}
+	}
+	imageCounter.Commit(info)
+
 	return &usage, nil
 }
 
@@ -80,6 +83,8 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
 	var sawCompleted bool
+	imageCounter := &relaycommon.ImageGenerationCallCounter{}
+	imageCommitted := false
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -92,7 +97,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
-		case "response.completed":
+		case "response.completed", "response.done":
 			sawCompleted = true
 			if streamResponse.Response != nil {
 				if streamResponse.Response.Usage != nil {
@@ -110,11 +115,29 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 						usage.PromptTokensDetails.CacheWriteTokens = streamResponse.Response.Usage.InputTokensDetails.CacheWriteTokens
 					}
 				}
-				if streamResponse.Response.HasImageGenerationCall() {
-					c.Set("image_generation_call", true)
-					c.Set("image_generation_call_quality", streamResponse.Response.GetQuality())
-					c.Set("image_generation_call_size", streamResponse.Response.GetSize())
+				if !imageCommitted {
+					if relaycommon.IsNonBillableResponsesStatus(streamResponse.Response.Status) {
+						imageCounter.Reset()
+						imageCounter.Commit(info)
+						imageCommitted = true
+					} else {
+						for i := range streamResponse.Response.Output {
+							idx := i
+							imageCounter.Observe(&streamResponse.Response.Output[i], &idx)
+						}
+						imageCounter.Commit(info)
+						imageCommitted = true
+					}
 				}
+			} else if !imageCommitted {
+				imageCounter.Commit(info)
+				imageCommitted = true
+			}
+		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+			if !imageCommitted {
+				imageCounter.Reset()
+				imageCounter.Commit(info)
+				imageCommitted = true
 			}
 		case "response.output_text.delta":
 			// 处理输出文本
