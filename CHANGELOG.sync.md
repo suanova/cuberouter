@@ -4,6 +4,20 @@
 
 | SHA | Intent | Type | Risk |
 |-----|--------|------|------|
+| `ea4f021012cd` | Move transport retry/replay metadata off RelayInfo and onto outbound request bodies via a new ReplayableBody interface, replacing the ReaderOnly wrapper. | refactor | medium |
+| `0cd9dc85e334` | Fix lost-update race in access token generation by replacing read-modify-write of the full user record with a targeted single-column UPDATE (new UpdateUserAccessToken), and harden User.Update semantics with expanded tests. | bugfix | medium |
+| `c9bc038649d1` | Extract fetched-model categorization logic from the fetch-models dialog into a new dedicated model-categories lib module with refined grouping rules (including edge-case fixes such as hy3 models), and tidy dialog code (null-safe channel guard, simplified name normalization). | feature | medium |
+| `b941253aea6b` | Fix channel connectivity testing to dispatch Claude and Gemini endpoint channels using their native request formats (including Gemini streaming via the :streamGenerateContent URL action) instead of only OpenAI-format requests | bugfix | medium |
+| `1da23d6b3342` | Add a per-user critical rate-limit middleware (UserCriticalRateLimit with a 'UC:' scope prefix) and apply it to the access-token generation and affiliate quota transfer routes, complementing the existing global critical rate limit to curb abuse by authenticated users. | feature | medium |
+| `e926e5cacee2` | Fix precision loss when entering/displaying redemption code quota amounts by hardening shared currency/format helpers and reworking the redemption mutate drawer form, with new tests guarding update-data integrity. | bugfix | medium |
+| `5c3abffe8572` | Convert the GitCode release-sync workflow to manual dispatch only (dropping automatic tag-push triggers) and add an optional `sync_files` input, merging asset preparation into the create/update-release job. | internal | low |
+| `2399de97daf6` | Ali (DashScope) adaptor no longer injects a near-greedy top_p into requests that omit it, and clamps explicit top_p boundary values to two decimals (0.99/0.01) for platform compatibility | bugfix | medium |
+| `823e26304a39` | Fix model categorization so Qwen TTS models (e.g., qwen-tts-*) are no longer misclassified as OpenAI by moving 'tts-' from a loose substring keyword into the anchored regex that only matches at the start or after a '/', '.', or ':' delimiter. | bugfix | low |
+| `5d3423bec13f` | Adds a new 'auto-ban-only' automatic channel test mode that restricts scheduled channel testing to channels with auto-disable (AutoBan) enabled, with settings validation, UI option, and i18n support. | feature | medium |
+## 2026-08-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
 | `84834eee859f` | Expose the stream_status field (stream end status/reason) to regular log owners instead of admins only, by no longer stripping it from user log serialization and removing the admin-only check in the web details dialog. | feature | medium |
 | `8461e5339d48` | Fix New API channel image edits by delegating ConvertImageRequest to the embedded OpenAI adaptor instead of passing the request through unchanged, so multipart image-edit payloads are correctly converted/preserved. | bugfix | medium |
 | `e78e1db1e4ed` | Fix OAuth callback misclassifying plain logins as account-bind flows when the tab has a foreign window.opener, by requiring a sessionStorage stamp that only the same-origin bind popup can carry (ambiguity now resolves to 'login'). | bugfix | medium |
