@@ -83,9 +83,8 @@ After setting a quantity, the system generates that many codes:
 | **Expired** | 🔴 | Past the expiry date | Delete |
 
 ::: tip Automatic status changes
-- Status changes to **Used** automatically after a successful redemption
-- Status changes to **Expired** automatically when the expiry time passes
-- Used or expired codes cannot be restored
+- Status changes to **Used** automatically after a successful redemption; used codes cannot be restored
+- Status changes to **Expired** automatically when the expiry time passes; expired codes can be reactivated by changing their expiry
 :::
 
 ---
@@ -234,7 +233,7 @@ The top of the code list shows a statistics overview:
 | Scenario | Configuration suggestion |
 |------|----------|
 | Feature testing | Name: `Test`, small quota |
-| Development/debug | No expiry, reusable |
+| Development/debug | No expiry, generate fresh codes for testing (each code is still single-use) |
 
 ---
 

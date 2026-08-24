@@ -87,7 +87,7 @@ Status code mapping lets you customize upstream API error responses, converting 
 }
 ```
 
-```json [Redirect]
+```json [Notice]
 {
   "401": "Please go to the settings page and update your API Key"
 }
@@ -175,10 +175,10 @@ When a channel fails consecutively, the system automatically disables it to prev
 
 ### Manual Recovery
 
-An auto-disabled channel can be:
+An auto-disabled channel can be recovered by:
 
-1. **Manually enabled**: click **Enable** in the channel details
-2. **Auto-recovered**: the system retries after the recovery interval
+1. **Manually enabling it**: click **Enable** in the channel details
+2. **Automatic recovery**: the system retries after the recovery interval
 
 ::: tip Best practice
 Configure multiple channels for critical models and enable auto-disable to achieve automatic failover.
@@ -259,7 +259,13 @@ The `operations` array defines complex parameter operations, supporting conditio
       "path": "temperature",
       "mode": "set",
       "value": 0.8,
-      "conditions": [...],
+      "conditions": [
+        {
+          "path": "model",
+          "mode": "contains",
+          "value": "gpt-4"
+        }
+      ],
       "logic": "AND"
     }
   ]

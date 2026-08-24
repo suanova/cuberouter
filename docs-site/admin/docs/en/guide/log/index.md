@@ -6,7 +6,7 @@ Logs & Statistics lets you review platform-wide API call records and quota consu
 
 | Action | Description |
 |------|------|
-| [Log list](#log-list) | Review platform-wide call records |
+| [Log list](#overview) | Review platform-wide call records |
 | [Search & filter](#search--filter) | Multi-dimensional log filtering |
 | [Statistics panel](#statistics-panel) | Platform-wide call summaries |
 | [Consumption trends](#platform-wide-consumption-trends) | Trends and user distribution |

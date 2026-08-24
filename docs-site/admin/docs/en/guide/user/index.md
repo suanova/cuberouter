@@ -176,10 +176,14 @@ Admins can view and manage a user's subscription status.
 
 | Field | Description |
 |------|------|
-| **Role** | Common user / Admin / Ops; takes effect immediately |
+| **Role** | Common user / Ops / Admin; takes effect immediately |
 | **Group** | The channel group the user belongs to |
 | **Quota balance** | Set the user's quota value directly |
 | **Status** | Enable or disable the account; a disabled user cannot log in |
+
+::: info Super admin note
+**Super Admin (Root)** is outside the scope of this dialog: Root accounts cannot be assigned or demoted by other admins and can only manage themselves.
+:::
 
 3. Click **Save** to confirm
 
@@ -286,7 +290,7 @@ Users can invite new users via invite links:
 
 ### How Invite Rewards Work
 
-```
+```text
 Inviter shares invite link → New user registers → Both parties receive reward quota
 ```
 

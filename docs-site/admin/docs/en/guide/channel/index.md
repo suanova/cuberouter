@@ -77,6 +77,7 @@ Expand the advanced configuration section as needed and fill in the optional fie
 CubeRouter supports **40+** AI service providers:
 
 ::: details International providers
+
 | Provider | Representative models | Highlights |
 |--------|----------|------|
 | **OpenAI** | GPT-4, GPT-4o, GPT-3.5 | Industry benchmark, full-featured |
@@ -85,9 +86,11 @@ CubeRouter supports **40+** AI service providers:
 | **Azure OpenAI** | GPT-4, GPT-3.5 | Enterprise SLA, strong compliance |
 | **AWS Bedrock** | Claude, Llama, Titan | AWS ecosystem integration |
 | **OpenRouter** | Unified access to 1000+ models | Transparent pricing, one-stop gateway |
+
 :::
 
 ::: details Chinese providers
+
 | Provider | Representative models | Highlights |
 |--------|----------|------|
 | **Alibaba Cloud** | Qwen (Tongyi Qianwen) | Strong Chinese language capability |
@@ -96,9 +99,11 @@ CubeRouter supports **40+** AI service providers:
 | **Moonshot** | Kimi | Ultra-long context |
 | **MiniMax** | abab6.5 | Multimodal generation |
 | **DeepSeek** | DeepSeek Chat | High cost-performance |
+
 :::
 
 ::: details Private deployments
+
 Open-source models deployed locally or on private clouds:
 
 - **Llama** series
@@ -106,6 +111,7 @@ Open-source models deployed locally or on private clouds:
 - **ChatGLM** series
 - **Mistral** series
 - Other models compatible with the OpenAI API format
+
 :::
 
 ### Submit and Save
@@ -218,7 +224,7 @@ See [Advanced Settings - Model Mapping](./advanced#model-mapping)
 
 ### Create a Channel
 
-1. Click the **New Channel** button in the top-right corner of the page
+1. Click the **Add Channel** button in the top-right corner of the page
 2. Select the channel type
 3. Fill in the required information:
    - Channel name

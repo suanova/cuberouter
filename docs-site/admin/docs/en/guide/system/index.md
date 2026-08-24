@@ -93,19 +93,19 @@ Ratios are the key parameter in calculating quota consumption. Quota is the inte
 
 #### Per-Token Models (Token-Based)
 
-```
+```text
 Quota consumed = (input tokens + output tokens × completion ratio) × model ratio × group ratio
 ```
 
 #### Per-Request Models (Fixed Price)
 
-```
+```text
 Quota consumed = model fixed price × group ratio × quota unit (500,000)
 ```
 
 #### Audio Models (handled internally)
 
-```
+```text
 Quota consumed = (text input tokens + text output tokens × completion ratio + audio input tokens × audio ratio + audio output tokens × audio ratio × audio completion ratio) × model ratio × group ratio
 ```
 
@@ -117,7 +117,7 @@ The platform bills in two phases:
 2. **Post-billing**: after the call, quota is recalculated based on actual tokens
 3. **Settlement**: if actual consumption differs from the pre-deduction, the balance is adjusted automatically
 
-```
+```text
 Pre-deducted quota = estimated tokens × model ratio × group ratio
 Actual quota = actual tokens × model ratio × group ratio
 Adjustment = actual quota - pre-deducted quota
@@ -171,7 +171,7 @@ The completion ratio adds an extra charge for output tokens, mainly to balance i
 | Model | Official price (input) | Official price (output) | Completion ratio | Description |
 | ------------- | ---------------- | ---------------- | -------- | --------------- |
 | gpt-4o | $2.5/1M tokens | $10/1M tokens | 4 | Output is 4x input |
-| gpt-3.5-turbo | $0.5/1M tokens | $1/1M tokens | 2 | Output is 2x input |
+| gpt-3.5-turbo | $0.5/1M tokens | $1.5/1M tokens | 1.33 | Output tokens billed at 1.33x the input rate |
 | gpt-image-1 | $5/1M tokens | $40/1M tokens | 8 | Output is 8x input |
 | gpt-4o-mini | $0.15/1M tokens | $0.6/1M tokens | 4 | Output is 4x input |
 | Other models | 1 | 1 | 1 | Output is 1x input |
@@ -217,7 +217,7 @@ Steps:
 
 Group ratios multiply with model ratios:
 
-```
+```text
 Final cost = Token count × model ratio × group ratio
 ```
 
@@ -843,7 +843,8 @@ Configures platform operation parameters.
 5. Click **Save**
 
 ::: info Invite reward example
-```
+
+```text
 Initial quota: 10,000
 Inviter reward: 5,000
 Invitee reward: 5,000
@@ -852,6 +853,7 @@ User A invites new user B:
 - User A receives 5,000 quota
 - User B registers with 10,000 + 5,000 = 15,000 quota
 ```
+
 :::
 
 ---
@@ -986,7 +988,7 @@ Root can customize both the **Docs** button in the left navigation and the **Abo
 
 #### Configuring the Docs Link
 
-1. Click the **Operation** tab on the system settings page
+1. Click the **General** tab on the system settings page
 2. Find the **Docs URL** field
 
 ![Docs URL field](/imgs/setting-docs-url.png)
@@ -1027,12 +1029,14 @@ When the docs URL is empty, the **Docs** button is hidden.
 5. Follow the prompt to determine whether a service restart is needed
 
 ::: warning How changes take effect
+
 | Configuration type | Effect |
 |----------|----------|
 | Operation settings | Immediate |
 | Performance settings | Service restart required |
 | Payment settings | Immediate |
 | Security settings | Immediate |
+
 :::
 
 ### Resetting Configuration

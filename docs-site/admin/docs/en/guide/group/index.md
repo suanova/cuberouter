@@ -35,7 +35,7 @@ When a token's group is set to `auto`, the system automatically picks an availab
 
 The user group determines which channels a user can access:
 
-```
+```text
 User group ──linked to──▶ Channel ──contains──▶ Models
 ```
 
@@ -79,7 +79,7 @@ Group ratios let you set differentiated billing multipliers per user group for f
 
 Group ratios multiply with model ratios:
 
-```
+```text
 Final cost = Token count × Model ratio × Group ratio
 ```
 
@@ -89,7 +89,7 @@ Final cost = Token count × Model ratio × Group ratio
 2. Group ratio: the ratio of the user's group
 3. Default ratio: the system default (usually 1.0)
 
-See [System Settings - Ratios](../system/index#ratios) for configuration details.
+See [System Settings - Billing & Ratios](../system/index#billing-ratios) for configuration details.
 
 ## Automatic Grouping
 

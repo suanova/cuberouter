@@ -77,6 +77,7 @@
 CubeRouter 支持 **40+** 种 AI 服务提供商：
 
 ::: details 国际主流服务
+
 | 提供商 | 代表模型 | 特点 |
 |--------|----------|------|
 | **OpenAI** | GPT-4, GPT-4o, GPT-3.5 | 行业标杆，功能全面 |
@@ -85,9 +86,11 @@ CubeRouter 支持 **40+** 种 AI 服务提供商：
 | **Azure OpenAI** | GPT-4, GPT-3.5 | 企业级 SLA，合规性强 |
 | **AWS Bedrock** | Claude, Llama, Titan | AWS 生态集成 |
 | **OpenRouter** | 统一接入 1000+ 模型 | 价格透明，一站式网关 |
+
 :::
 
 ::: details 国内主流服务
+
 | 提供商 | 代表模型 | 特点 |
 |--------|----------|------|
 | **阿里云** | 通义千问 Qwen | 中文能力强 |
@@ -96,9 +99,11 @@ CubeRouter 支持 **40+** 种 AI 服务提供商：
 | **月之暗面** | Kimi | 超长上下文 |
 | **MiniMax** | abab6.5 | 多模态生成 |
 | **DeepSeek** | DeepSeek Chat | 高性价比 |
+
 :::
 
 ::: details 私有化部署
+
 支持部署在本地或私有云的开源模型：
 
 - **Llama** 系列
@@ -106,6 +111,7 @@ CubeRouter 支持 **40+** 种 AI 服务提供商：
 - **ChatGLM** 系列
 - **Mistral** 系列
 - 其他兼容 OpenAI API 格式的模型
+
 :::
 
 ### 提交保存

@@ -12,7 +12,7 @@ To configure real model invocation behavior (API integration, load balancing, fa
 
 | Action | Description |
 |------|------|
-| [Add / Edit Models](#add--edit-models) | Configure model metadata and pricing |
+| [Add / Edit Models](#add-edit-models) | Configure model metadata and pricing |
 | [Sync Upstream Models](#sync-upstream-models) | Sync the latest model list from providers |
 | [Display Permissions](#display-permissions) | Control Model Square visibility |
 | [Billing Types](#billing-types) | Per-request and per-token billing |
