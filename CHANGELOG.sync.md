@@ -1,5 +1,16 @@
 # Upstream Sync Changelog
 
+## 2026-08-24 — 7 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `e2c7aa7b102c` | Standardize the web frontend test suites on Vitest (with jsdom and React Testing Library), migrating away from bun:test/node:test and happy-dom, and updating CI to run the new test script. | internal | low |
+| `3dda1d50c6d4` | Fix OpenAI-to-Claude request conversion silently dropping function tools that have no parameters, by extracting a shared FunctionParametersToInputSchema helper that also handles nil/parameterless schemas | bugfix | medium |
+| `2b0efd8484cc` | Rework the advanced custom channel route editor across UI and backend, and enrich channel balance queries to surface the raw upstream response for debugging. | feature | medium |
+| `4add708ebe3b` | Adds configurable channel health-check/testing support: refactors the channel test loop into a per-channel helper with concurrency, introduces new monitor/routing-reliability settings on the backend, and exposes a new 'routing reliability' section in the system settings UI with i18n. | feature | medium |
+| `137d1171f2b4` | Add word-level fade-in animation for streaming markdown responses (with per-parser markdown-it caching), fix CodeMirror editor being torn down on every re-render, and add an unsaved-changes confirmation guard to the playground message editor. | feature | medium |
+| `f11641428416` | Fix billing/quota settlement to backfill cached and prompt token detail fields from Responses-style input_tokens_details (and PromptCacheHitTokens) so cached token usage is correctly counted. | bugfix | medium |
+| `2d8e50bf36e9` | Replace type="password" with plain text inputs masked via CSS (-webkit-text-security:disc) in usage log filter bars so browsers/password managers no longer offer credential autofill while sensitive values stay visually hidden. | bugfix | low |
 ## 2026-08-24 — 10 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
