@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/tooltip'
 
 import {
-  // AutoGroupBadge,
+  AutoGroupBadge,
   GroupRatioBadge,
   type GroupRatio,
 } from './auto-group-visuals'
@@ -71,7 +71,7 @@ export function ApiKeyGroupCell(props: ApiKeyGroupCellProps) {
           variant='info'
           copyable={false}
         />
-        {/*<AutoGroupBadge shouldReduceMotion={props.shouldReduceMotion} />*/}
+        <AutoGroupBadge shouldReduceMotion={props.shouldReduceMotion} />
         <GroupRatioBadge
           ratio={props.ratio}
           isAuto

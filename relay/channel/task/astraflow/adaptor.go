@@ -11,11 +11,12 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -107,7 +108,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 // Ark 风格 content 数组请求由本渠道接受。
-func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
+func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *taskdto.TaskError) {
 	return relaycommon.ValidateBasicTaskRequestWithArkContent(c, info, constant.TaskActionGenerate)
 }
 
@@ -153,7 +154,7 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 }
 
 // DoResponse handles upstream submit response, returns taskID etc.
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *dto.TaskError) {
+func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
@@ -175,7 +176,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	// Ark 风格端点（/v1/videos/generations/tasks）直接返回 Ark 提交形态，
 	// 其余路径保持 OpenAI 视频格式。
 	if relaycommon.IsArkVideoPath(c) {
-		c.JSON(http.StatusOK, dto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix()))
+		c.JSON(http.StatusOK, taskdto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix()))
 		return sResp.Output.TaskID, responseBody, nil
 	}
 
@@ -323,7 +324,7 @@ func (a *TaskAdaptor) ConvertToArkVideo(originTask *model.Task) ([]byte, error) 
 		return nil, errors.Wrap(err, "unmarshal task data failed")
 	}
 
-	task := dto.ArkVideoTask{
+	task := taskdto.ArkVideoTask{
 		ID:        originTask.TaskID,
 		Model:     originTask.Properties.OriginModelName,
 		CreatedAt: originTask.CreatedAt,
@@ -332,34 +333,34 @@ func (a *TaskAdaptor) ConvertToArkVideo(originTask *model.Task) ([]byte, error) 
 
 	switch originTask.Status {
 	case model.TaskStatusQueued, model.TaskStatusSubmitted:
-		task.Status = dto.ArkVideoStatusQueued
+		task.Status = taskdto.ArkVideoStatusQueued
 	case model.TaskStatusInProgress:
-		task.Status = dto.ArkVideoStatusRunning
+		task.Status = taskdto.ArkVideoStatusRunning
 	case model.TaskStatusSuccess:
-		task.Status = dto.ArkVideoStatusSucceeded
+		task.Status = taskdto.ArkVideoStatusSucceeded
 		if len(afResp.Output.URLs) > 0 {
-			task.Content = &dto.ArkVideoContent{VideoURL: afResp.Output.URLs[0]}
+			task.Content = &taskdto.ArkVideoContent{VideoURL: afResp.Output.URLs[0]}
 		}
 		if afResp.Usage.Duration > 0 {
-			task.Output = &dto.ArkVideoOutput{Duration: afResp.Usage.Duration}
+			task.Output = &taskdto.ArkVideoOutput{Duration: afResp.Usage.Duration}
 		}
 		if afResp.Usage.CompletionTokens > 0 {
-			task.Usage = &dto.ArkVideoUsage{CompletionTokens: afResp.Usage.CompletionTokens}
+			task.Usage = &taskdto.ArkVideoUsage{CompletionTokens: afResp.Usage.CompletionTokens}
 		}
 	case model.TaskStatusFailure:
 		// Expired 终态在 ParseTaskResult 阶段与 Failure 一并折叠为 FAILURE，
 		// 这里依据缓存的原始上游状态区分 expired 与 failed。
-		task.Status = dto.ArkVideoStatusFailed
-		errorCode := dto.ArkVideoErrorFailed
+		task.Status = taskdto.ArkVideoStatusFailed
+		errorCode := taskdto.ArkVideoErrorFailed
 		if afResp.Output.TaskStatus == "Expired" {
-			task.Status = dto.ArkVideoStatusExpired
-			errorCode = dto.ArkVideoErrorExpired
+			task.Status = taskdto.ArkVideoStatusExpired
+			errorCode = taskdto.ArkVideoErrorExpired
 		}
 		message := afResp.Output.ErrorMessage
 		if message == "" {
 			message = fmt.Sprintf("task %s", strings.ToLower(afResp.Output.TaskStatus))
 		}
-		task.Error = &dto.ArkVideoError{Code: errorCode, Message: message}
+		task.Error = &taskdto.ArkVideoError{Code: errorCode, Message: message}
 	}
 
 	return common.Marshal(&task)
