@@ -87,9 +87,10 @@ describe('New API channel', () => {
   })
 
   test('keeps Sub2API Base URL validation unchanged', () => {
+    // Fork remap: upstream Sub2API = 59, but 59 is AstraFlow here; Sub2API is 60.
     const result = channelFormSchema.safeParse({
       ...newAPIForm(''),
-      type: 59,
+      type: 60,
     })
 
     assert.equal(result.success, true)

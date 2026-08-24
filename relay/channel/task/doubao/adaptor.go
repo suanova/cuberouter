@@ -234,7 +234,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	// Ark 风格端点（/v1/videos/generations/tasks）直接返回 Ark 提交形态，
 	// 其余路径保持 OpenAI 视频格式。
 	if relaycommon.IsArkVideoPath(c) {
-		c.JSON(http.StatusOK, dto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix()))
+		c.JSON(http.StatusOK, taskdto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix()))
 		return dResp.ID, responseBody, nil
 	}
 
@@ -463,7 +463,7 @@ func (a *TaskAdaptor) ConvertToArkVideo(originTask *model.Task) ([]byte, error) 
 		return nil, errors.Wrap(err, "unmarshal doubao task data failed")
 	}
 
-	task := dto.ArkVideoTask{
+	task := taskdto.ArkVideoTask{
 		ID:        originTask.TaskID,
 		Model:     originTask.Properties.OriginModelName,
 		CreatedAt: originTask.CreatedAt,
@@ -472,34 +472,34 @@ func (a *TaskAdaptor) ConvertToArkVideo(originTask *model.Task) ([]byte, error) 
 
 	switch originTask.Status {
 	case model.TaskStatusQueued, model.TaskStatusSubmitted:
-		task.Status = dto.ArkVideoStatusQueued
+		task.Status = taskdto.ArkVideoStatusQueued
 	case model.TaskStatusInProgress:
-		task.Status = dto.ArkVideoStatusRunning
+		task.Status = taskdto.ArkVideoStatusRunning
 	case model.TaskStatusSuccess:
-		task.Status = dto.ArkVideoStatusSucceeded
+		task.Status = taskdto.ArkVideoStatusSucceeded
 		if dResp.Content.VideoURL != "" {
-			task.Content = &dto.ArkVideoContent{VideoURL: dResp.Content.VideoURL}
+			task.Content = &taskdto.ArkVideoContent{VideoURL: dResp.Content.VideoURL}
 		}
 		if dResp.Duration > 0 {
-			task.Output = &dto.ArkVideoOutput{Duration: dResp.Duration}
+			task.Output = &taskdto.ArkVideoOutput{Duration: dResp.Duration}
 		}
 		if dResp.Usage.CompletionTokens > 0 {
-			task.Usage = &dto.ArkVideoUsage{CompletionTokens: dResp.Usage.CompletionTokens}
+			task.Usage = &taskdto.ArkVideoUsage{CompletionTokens: dResp.Usage.CompletionTokens}
 		}
 	case model.TaskStatusFailure:
 		// expired/cancelled 等终态在 ParseTaskResult 阶段统一折叠为 FAILURE，
 		// 这里依据缓存的原始上游状态区分 expired 与 failed。
-		task.Status = dto.ArkVideoStatusFailed
-		errorCode := dto.ArkVideoErrorFailed
+		task.Status = taskdto.ArkVideoStatusFailed
+		errorCode := taskdto.ArkVideoErrorFailed
 		if dResp.Status == "expired" {
-			task.Status = dto.ArkVideoStatusExpired
-			errorCode = dto.ArkVideoErrorExpired
+			task.Status = taskdto.ArkVideoStatusExpired
+			errorCode = taskdto.ArkVideoErrorExpired
 		}
 		message := dResp.Error.Message
 		if message == "" {
 			message = fmt.Sprintf("task %s", dResp.Status)
 		}
-		task.Error = &dto.ArkVideoError{Code: errorCode, Message: message}
+		task.Error = &taskdto.ArkVideoError{Code: errorCode, Message: message}
 	}
 
 	return common.Marshal(&task)
