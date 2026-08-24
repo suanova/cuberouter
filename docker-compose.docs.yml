@@ -10,3 +10,15 @@ services:
       - "4080:80"
     environment:
       - TZ=Asia/Shanghai
+
+  cuberouter-docs-admin:
+    build:
+      context: ./docs-site/admin
+      dockerfile: Dockerfile
+    image: cuberouter-docs-admin:${CUBEROUTER_IMAGE_TAG:-latest}
+    container_name: cuberouter-docs-admin
+    restart: always
+    ports:
+      - "4081:80"
+    environment:
+      - TZ=Asia/Shanghai
