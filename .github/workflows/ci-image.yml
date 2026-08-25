@@ -21,6 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       image: ${{ steps.filter.outputs.image }}
+      docs_user: ${{ steps.filter.outputs.docs_user }}
+      docs_admin: ${{ steps.filter.outputs.docs_admin }}
     steps:
       - name: Clone the code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -51,6 +53,17 @@ jobs:
               - 'web/**'
               - 'common/limiter/lua/**'
               - 'i18n/locales/**'
+              - '.github/workflows/ci-image.yml'
+
+            # The docs images (docs-site/user, docs-site/admin) are two separate
+            # nginx images, so track each site independently: a change to only
+            # the admin docs rebuilds only the admin image, and vice versa. The
+            # workflow file is included so editing the build logic re-runs both.
+            docs_user:
+              - 'docs-site/user/**'
+              - '.github/workflows/ci-image.yml'
+            docs_admin:
+              - 'docs-site/admin/**'
               - '.github/workflows/ci-image.yml'
 
   build-push-image:
@@ -89,6 +102,126 @@ jobs:
           # pushing its image as `latest` would mislabel which commit is newest.
           # (docker-build.yml publishes only versioned release tags, so `latest`
           # is exclusively owned here and always tracks the head of main.)
+          CURRENT_MAIN="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/main" \
+              | jq -r .commit.sha
+          )"
+          if [ "${CURRENT_MAIN}" = "${SHA_TAG}" ]; then
+            docker tag "${IMAGE}:${SHA_TAG}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          else
+            echo "Skipping 'latest': ${SHA_TAG} is no longer the head of main (current: ${CURRENT_MAIN})"
+          fi
+
+  build-push-docs-user:
+    # Push the user-docs image only when a merge lands on main with changes to
+    # docs-site/user. Kept as its own job so each docs site is gated, built, and
+    # failed independently rather than through a combined matrix.
+    needs: changes
+    if: needs.changes.outputs.docs_user == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Log in to Harbor
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: harbor.isuanova.com
+          username: ${{ vars.CI_BOT_NAME }}
+          password: ${{ secrets.CI_BOT_PASSWORD }}
+      # The docs Dockerfiles COPY docs/.vitepress/dist straight into the nginx
+      # image, so the VitePress static build must run before docker build.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Build static docs
+        working-directory: docs-site/user
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+      - name: Build and push docs image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          IMAGE="harbor.isuanova.com/suanova/cuberouter-docs-user"
+          SHA_TAG="${GITHUB_SHA}"
+
+          # Push the immutable, commit-addressed tag. Safe for any commit that
+          # ever landed on main, even if a newer commit now exists.
+          docker build -t "${IMAGE}:${SHA_TAG}" docs-site/user
+          docker push "${IMAGE}:${SHA_TAG}"
+
+          # Only refresh the mutable `latest` tag if this run's commit is still
+          # the head of main. An older run can finish after a newer main commit;
+          # pushing its image as `latest` would mislabel which commit is newest.
+          # No other workflow publishes docs images, so `latest` is exclusively
+          # owned here and always tracks the head of main.
+          CURRENT_MAIN="$(
+            curl -fsSL \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/main" \
+              | jq -r .commit.sha
+          )"
+          if [ "${CURRENT_MAIN}" = "${SHA_TAG}" ]; then
+            docker tag "${IMAGE}:${SHA_TAG}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          else
+            echo "Skipping 'latest': ${SHA_TAG} is no longer the head of main (current: ${CURRENT_MAIN})"
+          fi
+
+  build-push-docs-admin:
+    # Push the admin-docs image only when a merge lands on main with changes to
+    # docs-site/admin. Kept as its own job so each docs site is gated, built, and
+    # failed independently rather than through a combined matrix.
+    needs: changes
+    if: needs.changes.outputs.docs_admin == 'true'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Log in to Harbor
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: harbor.isuanova.com
+          username: ${{ vars.CI_BOT_NAME }}
+          password: ${{ secrets.CI_BOT_PASSWORD }}
+      # The docs Dockerfiles COPY docs/.vitepress/dist straight into the nginx
+      # image, so the VitePress static build must run before docker build.
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+      - name: Build static docs
+        working-directory: docs-site/admin
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+      - name: Build and push docs image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          IMAGE="harbor.isuanova.com/suanova/cuberouter-docs-admin"
+          SHA_TAG="${GITHUB_SHA}"
+
+          # Push the immutable, commit-addressed tag. Safe for any commit that
+          # ever landed on main, even if a newer commit now exists.
+          docker build -t "${IMAGE}:${SHA_TAG}" docs-site/admin
+          docker push "${IMAGE}:${SHA_TAG}"
+
+          # Only refresh the mutable `latest` tag if this run's commit is still
+          # the head of main. An older run can finish after a newer main commit;
+          # pushing its image as `latest` would mislabel which commit is newest.
+          # No other workflow publishes docs images, so `latest` is exclusively
+          # owned here and always tracks the head of main.
           CURRENT_MAIN="$(
             curl -fsSL \
               -H "Authorization: Bearer ${GITHUB_TOKEN}" \
