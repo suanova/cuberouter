@@ -1,6 +1,6 @@
 # CubeRouter E2E Test Cases
 
-本文件汇总当前 e2e 测试套件的全部用例（48 个），以及它们覆盖的业务场景。
+本文件汇总当前 e2e 测试套件的全部用例（55 个），以及它们覆盖的业务场景。
 
 ## 测试基础设施
 
@@ -97,6 +97,19 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 |---|---|---|
 | 1 | UI — create an AstraFlow channel and see its Seedance models | 建 AstraFlow 渠道：type 59、base_url 留空走内置默认 `https://api.modelverse.cn`；MultiSelect 录入 Seedance 模型；落库校验（type=59、base_url 空、models 含 doubao-seedance-1-5-pro / doubao-seedance-2-0-260128、status=1） |
 
+### 7. `specs/docs-link.spec.ts` — 文档链接设置与角色分流（6 个）
+
+覆盖「Documentation Link」从计费 → 额度设置迁移到 Site & Branding → System Information，以及新增的 `general_setting.admin_docs_link` 设置与顶栏 Docs 链接按角色分流（管理员 → 管理文档，普通用户/访客 → 用户文档，管理文档为空时回落）。
+
+| # | 用例 | 覆盖点 |
+|---|---|---|
+| 1 | admin configures both docs links; /api/status exposes them | 管理员经 `PUT /api/option/` 写入 `general_setting.docs_link` / `general_setting.admin_docs_link`（与设置页扁平化 key 一致）；`/api/status` 同时暴露 `docs_link` 与 `admin_docs_link` |
+| 2 | admin creates a regular (role 1) user | 建普通用户（role=1，非管理员），作为角色分流的对照组 |
+| 3 | admin UI: top-nav Docs → admin link; both fields on System Information, gone from Billing → Quota | 管理员顶栏「Docs」→ 管理文档链接；System Information 页含「Documentation Link」「Admin Documentation Link」两字段且**预填已存值**；计费 → 额度设置不再有「Documentation Link」（Top-Up Link 仍在） |
+| 4 | regular user UI: top-nav Docs → user docs link | 普通用户顶栏「Docs」→ 用户文档链接 |
+| 5 | guest UI: top-nav Docs → user docs link | 未登录访客顶栏「Docs」→ 用户文档链接 |
+| 6 | admin UI: empty admin docs link falls back to the user docs link | `admin_docs_link` 清空后，管理员顶栏「Docs」回落用户文档链接 |
+
 ## 覆盖汇总
 
 | 维度 | 用例数 |
@@ -106,7 +119,9 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 | 聚合 API v1 | 9 |
 | 聚合 API v2 | 9 |
 | MockLLM 渠道/API Key/relay/UI | 14 |
-| **合计** | **48** |
+| AstraFlow 渠道 UI | 1 |
+| 文档链接设置与角色分流 | 6 |
+| **合计** | **55** |
 
 关键回归点（值得重点关注）：
 - **操作者 API_KEY 在 suspend/reactivate 全程有效**（不会被吊销）
