@@ -105,6 +105,8 @@ export type SiteSettings = {
   ServerAddress: string
   'legal.user_agreement': string
   'legal.privacy_policy': string
+  'general_setting.docs_link': string
+  'general_setting.admin_docs_link': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
 }
@@ -245,7 +247,6 @@ export type BillingSettings = {
   QuotaForInviter: number
   QuotaForInvitee: number
   TopUpLink: string
-  'general_setting.docs_link': string
   'quota_setting.enable_free_model_pre_consume': boolean
   QuotaPerUnit: number
   USDExchangeRate: number

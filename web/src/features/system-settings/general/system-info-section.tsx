@@ -56,6 +56,10 @@ const _systemInfoSchema = z.object({
     user_agreement: z.string().optional(),
     privacy_policy: z.string().optional(),
   }),
+  general_setting: z.object({
+    docs_link: z.string(),
+    admin_docs_link: z.string(),
+  }),
 })
 
 type SystemInfoFormValues = z.infer<typeof _systemInfoSchema>
@@ -84,6 +88,12 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
       privacy_policy: normalizeValue(defaultValues.legal?.privacy_policy),
     },
+    general_setting: {
+      docs_link: normalizeValue(defaultValues.general_setting?.docs_link),
+      admin_docs_link: normalizeValue(
+        defaultValues.general_setting?.admin_docs_link
+      ),
+    },
   }
 
   const systemInfoSchemaWithI18n = z.object({
@@ -98,6 +108,10 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     legal: z.object({
       user_agreement: z.string().optional(),
       privacy_policy: z.string().optional(),
+    }),
+    general_setting: z.object({
+      docs_link: z.string(),
+      admin_docs_link: z.string(),
     }),
   })
 
@@ -188,6 +202,46 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('URL to your logo image (optional)')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='general_setting.docs_link'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Documentation Link')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('https://docs.example.com')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Link to your documentation site')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='general_setting.admin_docs_link'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Admin Documentation Link')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('https://docs.example.com/admin')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Link to the admin documentation site')}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

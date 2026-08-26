@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
+import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
 export type TopNavLink = {
@@ -55,10 +56,13 @@ export function useTopNavLinks(): TopNavLink[] {
     )
   }, [status])
 
-  // Documentation link (may be external)
+  // Documentation links (may be external)
   const docsLink: string | undefined = status?.docs_link as string | undefined
+  const adminDocsLink: string | undefined =
+    status?.admin_docs_link as string | undefined
 
   const isAuthed = !!auth?.user
+  const isAdmin = (auth?.user?.role ?? 0) >= ROLE.ADMIN
 
   const links: TopNavLink[] = []
 
@@ -88,8 +92,11 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Docs (supports external links)
   if (modules?.docs !== false) {
-    if (docsLink) {
-      links.push({ title: t('Docs'), href: docsLink, external: true })
+    // Admins get the admin docs link, falling back to the user docs link
+    // when it is not configured.
+    const docsHref = isAdmin ? adminDocsLink || docsLink : docsLink
+    if (docsHref) {
+      links.push({ title: t('Docs'), href: docsHref, external: true })
     } else {
       links.push({ title: t('Docs'), href: '/docs' })
     }
