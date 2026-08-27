@@ -61,6 +61,15 @@ describe('New API channel', () => {
     expect(getChannelTypeConfig(CHANNEL_TYPE_NEW_API).icon).toBe('NewAPI')
   })
 
+  test('keeps AstraFlow model discovery and star icon available', () => {
+    // Fork: channel type 59 is AstraFlow (upstream Sub2API is remapped to 60).
+    // MODEL_FETCHABLE_TYPES gates "从上游获取"/"上游更新" (fetch from upstream
+    // and upstream model updates) in the channel page.
+    expect(MODEL_FETCHABLE_TYPES.has(59)).toBe(true)
+    // AstraFlow must use the official favicon star, never the OpenAI icon.
+    expect(getChannelTypeIcon(59)).toBe('Astraflow')
+  })
+
   test('requires a non-blank Base URL', () => {
     const blankResult = channelFormSchema.safeParse(newAPIForm('  '))
 

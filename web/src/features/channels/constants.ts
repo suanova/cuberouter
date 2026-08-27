@@ -393,7 +393,7 @@ export const FIELD_DESCRIPTIONS = {
 
 export const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 17, 20, 23, 24, 25, 26, 27, 31, 34, 35, 40, 42, 43, 47, 48, 57, 58,
-  60, 61,
+  59, 60, 61,
 ])
 
 // Upstream's 59 (Sub2API) is remapped to 60 in this fork; CHANNEL_TYPE_NEW_API is 61.

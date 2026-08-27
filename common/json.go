@@ -19,7 +19,17 @@ func DecodeJson(reader io.Reader, v any) error {
 }
 
 func Marshal(v any) ([]byte, error) {
-	return json.Marshal(v)
+	// Go 默认的 encoding/json 会把 &、<、> 转义为 &/</>，
+	// 这是为把 JSON 嵌入 HTML 而做的安全转义。网关 JSON 只被 API 客户端
+	// 解析、从不嵌入 HTML，关闭该转义，让 URL 查询串等值按原样输出
+	// （例如视频任务带签名的 video_url 中的 &）。
+	var buffer bytes.Buffer
+	encoder := json.NewEncoder(&buffer)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(v); err != nil {
+		return nil, err
+	}
+	return bytes.TrimRight(buffer.Bytes(), "\n"), nil
 }
 
 func IndentJson(data []byte) ([]byte, error) {

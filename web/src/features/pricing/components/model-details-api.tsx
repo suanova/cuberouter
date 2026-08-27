@@ -476,7 +476,7 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
       '',
       `# 3. Once status is "succeeded", download the video. VIDEO_URL is the`,
       `#    value of content.video_url in the step 2 response.`,
-      `curl -L -o video.mp4 "VIDEO_URL"`,
+      `curl -L -o video.mp4 "$VIDEO_URL"`,
     ].join('\n')
   }
 
@@ -603,7 +603,9 @@ function buildSample(
     return buildEmbeddingSample(lang, ctx)
   }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
-  if (endpointType === 'openai-video') return buildVideoSample(lang, ctx)
+  if (endpointType === 'openai-video' || endpointType === 'ark-video') {
+    return buildVideoSample(lang, ctx)
+  }
   return buildChatSample(lang, ctx)
 }
 
@@ -660,7 +662,7 @@ function CodeSamplesSection(props: {
 
   const code = buildSample(lang, activeEndpoint.type, {
     baseUrl,
-    apiKeyEnv: 'NEW_API_KEY',
+    apiKeyEnv: 'CR_API_KEY',
     modelName: props.model.model_name || '',
     endpointType: activeEndpoint.type,
     endpointPath: activeEndpoint.path,
