@@ -80,7 +80,7 @@ export const CHANNEL_TYPES = {
   56: 'Replicate',
   57: 'ChatGPT Subscription (Codex)',
   58: 'Advanced Custom',
-  59: 'AstraFlow (Seedance)',
+  59: 'AstraFlow',
   // Upstream assigns Sub2API = 59, but 59 is taken by AstraFlow in this fork; remapped to 60 (must match backend constant.ChannelTypeSub2API).
   60: 'Sub2API',
   // Upstream assigns New API = 60; remapped to 61 (see CHANNEL_TYPE_NEW_API).

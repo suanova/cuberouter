@@ -1,6 +1,6 @@
 # CubeRouter E2E Test Cases
 
-本文件汇总当前 e2e 测试套件的全部用例（55 个），以及它们覆盖的业务场景。
+本文件汇总当前 e2e 测试套件的全部用例（59 个），以及它们覆盖的业务场景。
 
 ## 测试基础设施
 
@@ -20,6 +20,7 @@ npx playwright test api-onboarding  # 指定文件
 npx playwright test api-v1 api-v2   # 聚合 API v1+v2
 npx playwright test channel.spec.ts # MockLLM 渠道/relay 套件
 npx playwright test astraflow-channel.spec.ts # AstraFlow 渠道 UI
+npx playwright test astraflow-multimodal.spec.ts # AstraFlow 多模态 relay
 ```
 
 ## 用例清单
@@ -97,7 +98,18 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 |---|---|---|
 | 1 | UI — create an AstraFlow channel and see its Seedance models | 建 AstraFlow 渠道：type 59、base_url 留空走内置默认 `https://api.modelverse.cn`；MultiSelect 录入 Seedance 模型；落库校验（type=59、base_url 空、models 含 doubao-seedance-1-5-pro / doubao-seedance-2-0-260128、status=1） |
 
-### 7. `specs/docs-link.spec.ts` — 文档链接设置与角色分流（6 个）
+### 7. `specs/astraflow-multimodal.spec.ts` — AstraFlow 多模态 relay（4 个）
+
+同一 type 59 渠道在视频任务之外，通过非任务适配器（OpenAI 直传）服务聊天模型，base_url 指向 MockLLM，端到端验证多模态链路。
+
+| # | 用例 | 覆盖点 |
+|---|---|---|
+| 1 | channel — create a type-59 AstraFlow channel pointing at MockLLM | 经 API 建 type 59 渠道、base_url 指向 mockllm（覆盖内置默认）、models 含 per-run 聊天模型；落库校验（type=59、base_url=mock、models、status=1） |
+| 2 | api key — create user, quota, and token for the relay call | 建用户/配额/Token，取 sk- key |
+| 3 | relay — chat completion through the AstraFlow channel returns the mock response | 非任务链路端到端：`/v1/chat/completions` 经 type 59 渠道转发到 mockllm 返回确定性响应 `pong from MockLLM`；`used_quota` 增长 |
+| 4 | relay — streaming through the AstraFlow channel returns the same content | SSE 流式拼接 delta 后内容一致（含 `data: [DONE]`） |
+
+### 8. `specs/docs-link.spec.ts` — 文档链接设置与角色分流（6 个）
 
 覆盖「Documentation Link」从计费 → 额度设置迁移到 Site & Branding → System Information，以及新增的 `general_setting.admin_docs_link` 设置与顶栏 Docs 链接按角色分流（管理员 → 管理文档，普通用户/访客 → 用户文档，管理文档为空时回落）。
 
@@ -120,8 +132,9 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 | 聚合 API v2 | 9 |
 | MockLLM 渠道/API Key/relay/UI | 14 |
 | AstraFlow 渠道 UI | 1 |
+| AstraFlow 多模态 relay | 4 |
 | 文档链接设置与角色分流 | 6 |
-| **合计** | **55** |
+| **合计** | **59** |
 
 关键回归点（值得重点关注）：
 - **操作者 API_KEY 在 suspend/reactivate 全程有效**（不会被吊销）

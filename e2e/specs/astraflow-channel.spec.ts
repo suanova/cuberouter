@@ -112,7 +112,7 @@ test.describe('AstraFlow channel (UI)', () => {
     const row = page.getByRole('row', { name: new RegExp(CHANNEL_NAME) })
     await expect(row).toBeVisible()
     await expect(
-      row.getByText('AstraFlow (Seedance)', { exact: true })
+      row.getByText('AstraFlow', { exact: true })
     ).toBeVisible()
     // The channels table has no Models column; the model list is verified
     // above via the drawer chips and below via the persisted channel record.

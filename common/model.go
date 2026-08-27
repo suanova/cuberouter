@@ -24,6 +24,10 @@ var (
 		"o4",
 		"chatgpt",
 	}
+	VideoGenerationModels = []string{
+		"seedance",
+		"sora",
+	}
 )
 
 func IsOpenAIResponseOnlyModel(modelName string) bool {
@@ -51,6 +55,18 @@ func IsImageGenerationModel(modelName string) bool {
 func IsOpenAITextModel(modelName string) bool {
 	modelName = strings.ToLower(modelName)
 	for _, m := range OpenAITextModels {
+		if strings.Contains(modelName, m) {
+			return true
+		}
+	}
+	return false
+}
+
+// IsOpenAIVideoModel 判断模型是否为 OpenAI video 任务模型（Seedance/Sora 等）。
+// 用于 AstraFlow 等多模态渠道在端点类型映射时区分视频模型与普通模型。
+func IsOpenAIVideoModel(modelName string) bool {
+	modelName = strings.ToLower(modelName)
+	for _, m := range VideoGenerationModels {
 		if strings.Contains(modelName, m) {
 			return true
 		}
