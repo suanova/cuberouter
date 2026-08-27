@@ -1,5 +1,12 @@
 # Upstream Sync Changelog
 
+## 2026-08-27 — 3 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `a073f74b38a3` | Migrate quota/billing arithmetic from int32 to int64 with saturating conversions and overflow guards (wallet bounds, rate-limit count*duration, billing rounding), and add a startup check that rejects legacy 32-bit user quota DB schemas unless SKIP_64BIT_QUOTA_SCHEMA_CHECK=true is set. | breaking | high |
+| `8c25eee71ba0` | Upgrade the Bun toolchain to 1.4.0 across CI workflows and the Docker image, and pin it (replacing 'latest') for reproducible builds. | internal | low |
+| `8f6961c67593` | Add passthrough support for vLLM's `thinking_token_budget` parameter to the OpenAI-compatible request DTO so it is forwarded verbatim to vLLM upstreams | feature | medium |
 ## 2026-08-24 — 7 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
