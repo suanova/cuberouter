@@ -2,15 +2,18 @@ package astraflow
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/security_setting"
 
 	"github.com/gin-gonic/gin"
 )
@@ -27,6 +30,11 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	if info.ChannelBaseUrl == "" {
 		return "", errors.New("astraflow adaptor: channel base url is empty")
+	}
+	// 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游，拒绝明文上游
+	// （https 或回环地址除外），避免凭证被明文传输（CWE-319）。
+	if err := common.ValidateHTTPSChannelBaseURL(info.ChannelBaseUrl, security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
+		return "", fmt.Errorf("astraflow adaptor: %w", err)
 	}
 	requestPath := info.RequestURLPath
 	if requestPath == "" {

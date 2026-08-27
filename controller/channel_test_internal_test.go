@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/security_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -80,6 +81,45 @@ func TestValidateChannelRequiresNewAPIBaseURL(t *testing.T) {
 
 			if test.wantErr {
 				require.ErrorContains(t, err, "New API channel base URL cannot be empty")
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestValidateChannelAstraFlowBaseURLRequiresHTTPS(t *testing.T) {
+	tests := []struct {
+		name          string
+		baseURL       *string
+		requireHTTPS  bool
+		wantErr       bool
+		wantErrSuffix string
+	}{
+		{name: "default fallback allowed", baseURL: common.GetPointer(""), requireHTTPS: true},
+		{name: "https allowed", baseURL: common.GetPointer("https://api.modelverse.cn"), requireHTTPS: true},
+		{name: "http rejected", baseURL: common.GetPointer("http://upstream.example.com"), requireHTTPS: true, wantErr: true, wantErrSuffix: "must use HTTPS"},
+		{name: "loopback allowed", baseURL: common.GetPointer("http://127.0.0.1:18000"), requireHTTPS: true},
+		{name: "localhost allowed", baseURL: common.GetPointer("http://localhost:18000"), requireHTTPS: true},
+		{name: "non-http scheme rejected", baseURL: common.GetPointer("ftp://upstream.example.com"), requireHTTPS: true, wantErr: true, wantErrSuffix: "must use HTTPS"},
+		{name: "enforcement disabled allows http", baseURL: common.GetPointer("http://upstream.example.com"), requireHTTPS: false},
+	}
+
+	old := security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL
+	defer func() { security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = old }()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = tt.requireHTTPS
+			channel := &model.Channel{
+				Type:    constant.ChannelTypeAstraFlow,
+				BaseURL: tt.baseURL,
+			}
+
+			err := validateChannel(channel, false)
+
+			if tt.wantErr {
+				require.ErrorContains(t, err, tt.wantErrSuffix)
 				return
 			}
 			require.NoError(t, err)

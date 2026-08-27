@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/security_setting"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -483,6 +484,14 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	if channel.Type == constant.ChannelTypeNewAPI && strings.TrimSpace(channel.GetBaseURL()) == "" {
 		return fmt.Errorf("New API channel base URL cannot be empty")
+	}
+
+	// AstraFlow 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游 base URL，
+	// 拒绝明文上游，避免凭证被明文传输（CWE-319）。
+	if channel.Type == constant.ChannelTypeAstraFlow {
+		if err := common.ValidateHTTPSChannelBaseURL(channel.GetBaseURL(), security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
+			return fmt.Errorf("AstraFlow: %w", err)
+		}
 	}
 
 	// 如果是添加操作，检查 channel 和 key 是否为空

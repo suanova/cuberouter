@@ -37,3 +37,27 @@ func ValidateRedirectURL(rawURL string) error {
 
 	return fmt.Errorf("domain %s is not in the trusted domains list", domain)
 }
+
+// ValidateHTTPSChannelBaseURL 校验渠道上游 base URL 的传输安全（CWE-319）：
+// 当 requireHTTPS 为真时，仅接受 https 上游或回环地址（本地开发/MockLLM），
+// 拒绝其余明文上游，避免渠道鉴权凭证被明文发送到公网。空值视为安全——调用方
+// 会回退到渠道内置默认 base URL（AstraFlow 默认为 https://api.modelverse.cn）。
+func ValidateHTTPSChannelBaseURL(baseURL string, requireHTTPS bool) error {
+	if !requireHTTPS {
+		return nil
+	}
+	if strings.TrimSpace(baseURL) == "" {
+		return nil
+	}
+	parsedURL, err := url.Parse(baseURL)
+	if err != nil {
+		return fmt.Errorf("channel base URL is invalid: %s", baseURL)
+	}
+	if parsedURL.Scheme == "https" {
+		return nil
+	}
+	if IsLoopbackHost(parsedURL.Hostname()) {
+		return nil
+	}
+	return fmt.Errorf("channel base URL must use HTTPS to protect the channel API key, got %q", baseURL)
+}

@@ -1,6 +1,9 @@
 package common
 
-import "net"
+import (
+	"net"
+	"strings"
+)
 
 func IsIP(s string) bool {
 	ip := net.ParseIP(s)
@@ -9,6 +12,19 @@ func IsIP(s string) bool {
 
 func ParseIP(s string) net.IP {
 	return net.ParseIP(s)
+}
+
+// IsLoopbackHost 判断 host（不含端口）是否指向回环地址。回环流量不离开本机，
+// 因此向回环上游发送渠道凭证不构成外部明文传输。
+func IsLoopbackHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(host), "."))
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 func IsPrivateIP(ip net.IP) bool {

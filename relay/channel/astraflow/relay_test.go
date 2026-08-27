@@ -12,6 +12,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/security_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -95,6 +96,34 @@ func TestRelayChainNonTaskModes(t *testing.T) {
 			runRelayChain(t, tt)
 		})
 	}
+}
+
+// TestGetRequestURLRejectsCleartextUpstream 锁定发送前防线：安全开关开启时，
+// 非回环的明文上游在 GetRequestURL 阶段即被拒绝，Bearer 凭证不会发出（CWE-319）。
+// 既有全链路用例使用 httptest 回环地址，不受影响。
+func TestGetRequestURLRejectsCleartextUpstream(t *testing.T) {
+	old := security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL
+	security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = true
+	defer func() { security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = old }()
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    "http://upstream.example.com",
+			ChannelType:       constant.ChannelTypeAstraFlow,
+			ApiKey:            "sk-test",
+			UpstreamModelName: "deepseek-v3",
+		},
+		RequestURLPath: "/v1/chat/completions",
+	}
+
+	_, err := adaptor.GetRequestURL(info)
+	require.ErrorContains(t, err, "must use HTTPS")
 }
 
 // runRelayChain 执行一次完整链路：DoRequest 打向假上游并断言请求契约，

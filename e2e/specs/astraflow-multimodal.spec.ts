@@ -66,6 +66,17 @@ test.beforeAll(async ({ request }) => {
     data: { key: 'performance_setting.monitor_enabled', value: 'false' },
   })
   expect((await perf.json()).success).toBe(true)
+
+  // The channel base_url points at MockLLM over plain HTTP (locally
+  // http://127.0.0.1:18000, in CI http://mockllm:18000). The AstraFlow
+  // HTTPS-upstream enforcement (security_setting.require_https_channel_base_url,
+  // default on) rejects cleartext non-loopback upstreams, so disable it for
+  // this test deployment; production keeps the secure default.
+  const sec = await request.put('/api/option/', {
+    headers: adminHeaders(),
+    data: { key: 'security_setting.require_https_channel_base_url', value: 'false' },
+  })
+  expect((await sec.json()).success).toBe(true)
 })
 
 test.describe('AstraFlow multi-model relay', () => {
