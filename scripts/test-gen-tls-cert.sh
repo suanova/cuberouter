@@ -104,6 +104,14 @@ expect_fail "leaf cert as --ca-cert is rejected" "$GEN" --out "$WORK/no-ca" \
   --ca-cert "$OUT_B/server.crt" --ca-key "$OUT_B/server.key" --domains "gw.corp.local"
 expect_fail "mismatched CA cert/key is rejected" "$GEN" --out "$WORK/mismatch" \
   --ca-cert "$OUT_B/ca.crt" --ca-key "$OUT_B/server.key" --domains "gw.corp.local"
+garbage_cert="$WORK/garbage.crt"
+echo "not a certificate" > "$garbage_cert"
+garbage_key="$WORK/garbage.key"
+echo "not a key" > "$garbage_key"
+expect_fail "garbage CA cert is rejected" "$GEN" --out "$WORK/garbage-cert" \
+  --ca-cert "$garbage_cert" --ca-key "$OUT_B/ca.key" --domains "gw.corp.local"
+expect_fail "garbage CA key is rejected" "$GEN" --out "$WORK/garbage-key" \
+  --ca-cert "$OUT_B/ca.crt" --ca-key "$garbage_key" --domains "gw.corp.local"
 
 # --- Real TLS handshake against a live server ---
 PORT=""

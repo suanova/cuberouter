@@ -121,8 +121,8 @@ if [ -n "$CA_CERT" ] && [ -n "$CA_KEY" ]; then
   fi
   cert_pub=$(openssl x509 -in "$CA_CERT" -noout -pubkey 2>/dev/null || true)
   key_pub=$(openssl pkey -in "$CA_KEY" -pubout 2>/dev/null || true)
-  if [ -n "$cert_pub" ] && [ -n "$key_pub" ] && [ "$cert_pub" != "$key_pub" ]; then
-    echo "错误: CA 证书与私钥不匹配 (error: CA cert and key do not match): $CA_CERT / $CA_KEY" >&2
+  if [ -z "$cert_pub" ] || [ -z "$key_pub" ] || [ "$cert_pub" != "$key_pub" ]; then
+    echo "错误: CA 证书与私钥不匹配或无法读取 (error: CA cert and key do not match or cannot be read): $CA_CERT / $CA_KEY" >&2
     exit 1
   fi
 fi
