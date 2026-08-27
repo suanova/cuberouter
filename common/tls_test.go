@@ -30,17 +30,6 @@ func clearTLSSettingsEnv(t *testing.T) {
 	t.Setenv("TLS_PORT", "")
 }
 
-// writeDummyCertPair creates two placeholder files; only existence matters to
-// GetTLSSettings, certificate content is validated later by the TLS listener.
-func writeDummyCertPair(t *testing.T) (cert, key string) {
-	dir := t.TempDir()
-	cert = filepath.Join(dir, "cert.pem")
-	key = filepath.Join(dir, "key.pem")
-	require.NoError(t, os.WriteFile(cert, []byte("dummy"), 0o600))
-	require.NoError(t, os.WriteFile(key, []byte("dummy"), 0o600))
-	return cert, key
-}
-
 // TestGetTLSSettingsDisabledWithoutEnv guards the backward-compatible default:
 // with no TLS_* env vars the server must keep running pure HTTP.
 func TestGetTLSSettingsDisabledWithoutEnv(t *testing.T) {
@@ -92,11 +81,76 @@ func TestGetTLSSettingsMissingFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestGetTLSSettingsRejectsMalformedPEM guards that non-certificate content in
+// the configured files fails startup validation instead of the listener.
+func TestGetTLSSettingsRejectsMalformedPEM(t *testing.T) {
+	clearTLSSettingsEnv(t)
+	dir := t.TempDir()
+	cert := filepath.Join(dir, "cert.pem")
+	key := filepath.Join(dir, "key.pem")
+	require.NoError(t, os.WriteFile(cert, []byte("not a certificate"), 0o600))
+	require.NoError(t, os.WriteFile(key, []byte("not a key"), 0o600))
+	t.Setenv("TLS_CERT_FILE", cert)
+	t.Setenv("TLS_KEY_FILE", key)
+
+	_, err := GetTLSSettings()
+	require.Error(t, err)
+}
+
+// TestGetTLSSettingsRejectsMismatchedPair guards that a certificate and key
+// that do not belong together fail startup validation.
+func TestGetTLSSettingsRejectsMismatchedPair(t *testing.T) {
+	clearTLSSettingsEnv(t)
+	cert, _ := generateSelfSignedCert(t)
+	_, key := generateSelfSignedCert(t)
+	t.Setenv("TLS_CERT_FILE", cert)
+	t.Setenv("TLS_KEY_FILE", key)
+
+	_, err := GetTLSSettings()
+	require.Error(t, err)
+}
+
+// TestGetTLSSettingsRejectsDirectory guards that a directory path is not
+// accepted as a cert or key file.
+func TestGetTLSSettingsRejectsDirectory(t *testing.T) {
+	clearTLSSettingsEnv(t)
+	dir := t.TempDir()
+	cert, key := generateSelfSignedCert(t)
+	t.Setenv("TLS_CERT_FILE", dir)
+	t.Setenv("TLS_KEY_FILE", key)
+	_, err := GetTLSSettings()
+	require.Error(t, err)
+
+	clearTLSSettingsEnv(t)
+	t.Setenv("TLS_CERT_FILE", cert)
+	t.Setenv("TLS_KEY_FILE", dir)
+	_, err = GetTLSSettings()
+	require.Error(t, err)
+}
+
+// TestGetTLSSettingsRejectsUnreadableFile guards that a file the process
+// cannot open fails startup validation.
+func TestGetTLSSettingsRejectsUnreadableFile(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores permission bits; cannot exercise an unreadable file")
+	}
+	clearTLSSettingsEnv(t)
+	cert, _ := generateSelfSignedCert(t)
+	key, _ := generateSelfSignedCert(t)
+	require.NoError(t, os.Chmod(key, 0o000))
+	t.Cleanup(func() { _ = os.Chmod(key, 0o600) })
+	t.Setenv("TLS_CERT_FILE", cert)
+	t.Setenv("TLS_KEY_FILE", key)
+
+	_, err := GetTLSSettings()
+	require.Error(t, err)
+}
+
 // TestGetTLSSettingsDefaultsPortToFlag guards the default HTTPS port: with no
 // TLS_PORT env var the -tls-port flag value (443) is used.
 func TestGetTLSSettingsDefaultsPortToFlag(t *testing.T) {
 	clearTLSSettingsEnv(t)
-	cert, key := writeDummyCertPair(t)
+	cert, key := generateSelfSignedCert(t)
 	t.Setenv("TLS_CERT_FILE", cert)
 	t.Setenv("TLS_KEY_FILE", key)
 
@@ -112,7 +166,7 @@ func TestGetTLSSettingsDefaultsPortToFlag(t *testing.T) {
 // that PORT already uses for the HTTP listener.
 func TestGetTLSSettingsPortEnvWinsOverFlag(t *testing.T) {
 	clearTLSSettingsEnv(t)
-	cert, key := writeDummyCertPair(t)
+	cert, key := generateSelfSignedCert(t)
 	t.Setenv("TLS_CERT_FILE", cert)
 	t.Setenv("TLS_KEY_FILE", key)
 	t.Setenv("TLS_PORT", "8443")
@@ -130,7 +184,7 @@ func TestGetTLSSettingsPortEnvWinsOverFlag(t *testing.T) {
 // out-of-range TLS_PORT fails startup loudly instead of dying in a goroutine.
 func TestGetTLSSettingsRejectsInvalidPort(t *testing.T) {
 	clearTLSSettingsEnv(t)
-	cert, key := writeDummyCertPair(t)
+	cert, key := generateSelfSignedCert(t)
 	t.Setenv("TLS_CERT_FILE", cert)
 	t.Setenv("TLS_KEY_FILE", key)
 

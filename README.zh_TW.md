@@ -309,9 +309,6 @@ HTTPS 為可選項目：設定 `TLS_CERT_FILE` + `TLS_KEY_FILE`（PEM，必須�
 
 LLM 用戶端工具（Claude Code、opencode 等）通常讀取環境變數，設定 `SSL_CERT_FILE` 或 `NODE_EXTRA_CA_CERTS` 即可。
 
-
-</details>
-
 ### 🔧 部署方式
 
 <details>

@@ -44,6 +44,14 @@ expect_fail() { # expect_fail <desc> <cmd...>
   fi
 }
 
+file_mode() { # portable stat: GNU -c %a, BSD/macOS -f %Lp
+  if stat -c %a "$1" >/dev/null 2>&1; then
+    stat -c %a "$1"
+  else
+    stat -f %Lp "$1"
+  fi
+}
+
 # --- Mode B: no CA; the script generates a root CA and signs with it ---
 OUT_B="$WORK/mode-b"
 "$GEN" --out "$OUT_B" --domains "gw.corp.local" --ips "10.0.0.5" --days 365
@@ -52,8 +60,8 @@ check "mode B: server.crt produced" test -f "$OUT_B/server.crt"
 check "mode B: server.key produced" test -f "$OUT_B/server.key"
 check "mode B: chain verifies against ca.crt" openssl verify -CAfile "$OUT_B/ca.crt" "$OUT_B/server.crt"
 check "mode B: server.crt carries full chain (server + CA)" test "$(grep -c 'BEGIN CERTIFICATE' "$OUT_B/server.crt")" -ge 2
-check "mode B: server.key mode is 600" test "$(stat -c %a "$OUT_B/server.key")" = "600"
-check "mode B: ca.key mode is 600" test "$(stat -c %a "$OUT_B/ca.key")" = "600"
+check "mode B: server.key mode is 600" test "$(file_mode "$OUT_B/server.key")" = "600"
+check "mode B: ca.key mode is 600" test "$(file_mode "$OUT_B/ca.key")" = "600"
 san=$(openssl x509 -in "$OUT_B/server.crt" -noout -ext subjectAltName 2>/dev/null || true)
 check "mode B: server.crt has DNS SAN" test "${san#*DNS:gw.corp.local}" != "$san"
 check "mode B: server.crt has IP SAN" test "${san#*IP Address:10.0.0.5}" != "$san"
@@ -78,16 +86,24 @@ check "mode A: server.crt carries full chain (server + CA)" test "$(grep -c 'BEG
 
 # --- Mode C: CA cert without private key -> self-signed server cert ---
 OUT_C="$WORK/mode-c"
-"$GEN" --out "$OUT_C" --ca-cert "$OUT_B/ca.crt" --domains "gw.corp.local"
+OUT_C_OUT=$("$GEN" --out "$OUT_C" --ca-cert "$OUT_B/ca.crt" --domains "gw.corp.local")
 check "mode C: server.crt produced" test -f "$OUT_C/server.crt"
 check "mode C: no ca.crt produced" test ! -e "$OUT_C/ca.crt"
 check "mode C: server.crt is exactly one certificate" test "$(grep -c 'BEGIN CERTIFICATE' "$OUT_C/server.crt")" -eq 1
 check "mode C: server.crt is self-signed (issuer == subject)" test \
   "$("$(command -v openssl)" x509 -in "$OUT_C/server.crt" -noout -issuer | cut -d= -f2-)" = \
   "$("$(command -v openssl)" x509 -in "$OUT_C/server.crt" -noout -subject | cut -d= -f2-)"
+check "mode C: client trust points at the generated server.crt" test \
+  "${OUT_C_OUT#*curl --cacert $OUT_C/server.crt}" != "$OUT_C_OUT"
 
 # --- SAN is mandatory: no domains/IPs must fail, even with CA args ---
 expect_fail "missing SAN is rejected" "$GEN" --out "$WORK/no-san" --ca-cert "$OUT_B/ca.crt" --ca-key "$OUT_B/ca.key"
+
+# --- Supplied CA must be a real signing CA matching its key ---
+expect_fail "leaf cert as --ca-cert is rejected" "$GEN" --out "$WORK/no-ca" \
+  --ca-cert "$OUT_B/server.crt" --ca-key "$OUT_B/server.key" --domains "gw.corp.local"
+expect_fail "mismatched CA cert/key is rejected" "$GEN" --out "$WORK/mismatch" \
+  --ca-cert "$OUT_B/ca.crt" --ca-key "$OUT_B/server.key" --domains "gw.corp.local"
 
 # --- Real TLS handshake against a live server ---
 PORT=""

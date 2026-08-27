@@ -321,8 +321,6 @@ docker run -d --name cuberouter-https -p 3000:3000 -p 443:443 \
 curl -s https://localhost/api/status --cacert ./certs/ca.crt   # verified against the generated root CA, no -k
 ```
 
-</details>
-
 ### 🔧 Deployment Methods
 
 <details>

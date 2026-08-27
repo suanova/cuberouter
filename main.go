@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -224,20 +225,34 @@ func main() {
 	// HTTPS is opt-in: only when TLS_CERT_FILE/TLS_KEY_FILE are set does a
 	// second listener share the same handler on the TLS port.
 	var srvTLS *http.Server
+	var tlsReady chan struct{}
 	if tlsSettings.Enabled {
 		srvTLS, err = common.NewTLSServer(server, tlsSettings)
 		if err != nil {
 			common.FatalLog("failed to create HTTPS server: " + err.Error())
 			return
 		}
+		// Bind synchronously so a busy port or bad certificate surfaces here,
+		// not after the startup message has already been printed.
+		tlsReady = make(chan struct{})
 		go func() {
-			if err := srvTLS.ListenAndServeTLS(tlsSettings.CertFile, tlsSettings.KeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			ln, err := net.Listen("tcp", ":"+tlsSettings.Port)
+			if err != nil {
+				common.FatalLog("failed to start HTTPS server: " + err.Error())
+				return
+			}
+			close(tlsReady)
+			if err := srvTLS.ServeTLS(ln, tlsSettings.CertFile, tlsSettings.KeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				common.FatalLog("failed to start HTTPS server: " + err.Error())
 			}
 		}()
 	}
 
 	time.Sleep(100 * time.Millisecond)
+
+	if tlsSettings.Enabled {
+		<-tlsReady
+	}
 
 	common.LogStartupSuccess(startTime, port)
 	if tlsSettings.Enabled {
@@ -257,7 +272,11 @@ func main() {
 		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
 	}
 	if srvTLS != nil {
-		if err := srvTLS.Shutdown(ctx); err != nil {
+		// The shared ctx above may already be expired after long SSE streams
+		// consumed the HTTP grace period; give HTTPS its own budget.
+		tlsCtx, tlsCancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer tlsCancel()
+		if err := srvTLS.Shutdown(tlsCtx); err != nil {
 			common.SysError(fmt.Sprintf("HTTPS server forced to shutdown: %v", err))
 		}
 	}

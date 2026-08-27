@@ -106,6 +106,26 @@ if [ -n "$CA_KEY" ] && [ ! -f "$CA_KEY" ]; then
   echo "错误: CA 私钥文件不存在 (error: CA key not found): $CA_KEY" >&2
   exit 1
 fi
+if [ -n "$CA_CERT" ] && [ -n "$CA_KEY" ]; then
+  # A leaf certificate signs happily but the chain is rejected by clients;
+  # require a real signing CA before issuing anything.
+  bc=$(openssl x509 -in "$CA_CERT" -noout -ext basicConstraints 2>/dev/null || true)
+  if ! printf '%s' "$bc" | grep -q 'CA:TRUE'; then
+    echo "错误: 提供的 CA 证书不是签发 CA (error: CA cert is not a signing CA, need basicConstraints CA:TRUE): $CA_CERT" >&2
+    exit 1
+  fi
+  ku=$(openssl x509 -in "$CA_CERT" -noout -ext keyUsage 2>/dev/null || true)
+  if ! printf '%s' "$ku" | grep -q 'Certificate Sign'; then
+    echo "错误: 提供的 CA 证书缺少 keyCertSign (error: CA cert lacks keyCertSign in keyUsage): $CA_CERT" >&2
+    exit 1
+  fi
+  cert_pub=$(openssl x509 -in "$CA_CERT" -noout -pubkey 2>/dev/null || true)
+  key_pub=$(openssl pkey -in "$CA_KEY" -pubout 2>/dev/null || true)
+  if [ -n "$cert_pub" ] && [ -n "$key_pub" ] && [ "$cert_pub" != "$key_pub" ]; then
+    echo "错误: CA 证书与私钥不匹配 (error: CA cert and key do not match): $CA_CERT / $CA_KEY" >&2
+    exit 1
+  fi
+fi
 
 CN="${domain_list[0]:-${ip_list[0]}}"
 echo "服务端证书 CN/SAN: CN=$CN domains=${domain_list[*]} ips=${ip_list[*]}"
@@ -151,9 +171,24 @@ CNF="$WORK/openssl.cnf"
 GENERATED_CA=0
 if [ -z "$CA_CERT" ]; then
   echo "模式: 生成新根 CA 并签发 (mode B: generating a new root CA and signing)"
+  # Config file (not -addext) keeps compatibility with openssl < 1.1.1 and
+  # stamps the CA with the extensions the CA validation above requires.
+  CA_CNF="$WORK/ca.cnf"
+  {
+    echo "[req]"
+    echo "distinguished_name = dn"
+    echo "x509_extensions = v3_ca"
+    echo "prompt = no"
+    echo "[dn]"
+    echo "CN = Cuberouter Local CA"
+    echo "[v3_ca]"
+    echo "basicConstraints = critical,CA:TRUE"
+    echo "keyUsage = critical,keyCertSign,cRLSign"
+    echo "subjectKeyIdentifier = hash"
+  } > "$CA_CNF"
   openssl req -x509 -newkey rsa:2048 -nodes \
     -keyout "$OUT_DIR/ca.key" -out "$OUT_DIR/ca.crt" \
-    -days 3650 -subj "/CN=Cuberouter Local CA"
+    -days 3650 -config "$CA_CNF"
   chmod 600 "$OUT_DIR/ca.key"
   CA_CERT="$OUT_DIR/ca.crt"
   CA_KEY="$OUT_DIR/ca.key"
@@ -209,9 +244,12 @@ echo ""
 TRUST_FILE=""
 if [ "$GENERATED_CA" = "1" ]; then
   TRUST_FILE="$OUT_DIR/ca.crt"
-elif [ -n "$CA_CERT" ]; then
+elif [ -n "$CA_CERT" ] && [ -n "$CA_KEY" ]; then
+  # Mode A: the server cert was signed by this CA, so clients trust it.
   TRUST_FILE="$CA_CERT"
 fi
+# Mode C (CA cert without key) falls through: the server cert is self-signed
+# and the provided CA never signed it, so clients must trust server.crt.
 if [ -n "$TRUST_FILE" ]; then
   echo "客户端信任 (Client trust):"
   echo "  将 $TRUST_FILE 导入客户端信任库(浏览器/系统/curl --cacert),"
