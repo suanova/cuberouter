@@ -827,9 +827,7 @@ export function PaymentSettingsSection({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t(
-                            'How much to charge for each US dollar of balance (Epay)'
-                          )}
+                          {t('e.g., 8 means 8 local currency per USD')}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -841,7 +839,7 @@ export function PaymentSettingsSection({
                     name='MinTopUp'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Minimum top-up (USD)')}</FormLabel>
+                        <FormLabel>{t('Minimum top-up')}</FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -851,7 +849,9 @@ export function PaymentSettingsSection({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('Smallest USD amount users can recharge (Epay)')}
+                          {t(
+                            'Minimum recharge amount for Epay online topup. Unit follows the quota display type (USD/CNY/tokens).'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

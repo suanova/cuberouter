@@ -9,15 +9,15 @@
     },
     "zh-TW": {
       "file": "zh-TW.json",
-      "missingCount": 0,
-      "extrasCount": 0,
-      "untranslatedCount": 3
+      "missingCount": 13,
+      "extrasCount": 1,
+      "untranslatedCount": 16
     },
     "zh": {
       "file": "zh.json",
-      "missingCount": 0,
-      "extrasCount": 0,
-      "untranslatedCount": 3
+      "missingCount": 13,
+      "extrasCount": 1,
+      "untranslatedCount": 16
     }
   }
 }

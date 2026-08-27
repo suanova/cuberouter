@@ -1,5 +1,18 @@
 {
   "© 2026 CubeRouter · Suanova Technology Ltd": "© 2026 CubeRouter · Suanova Technology Ltd",
+  "Access tokens are shown only once": "Access tokens are shown only once",
+  "Available variables: , , , , , and paths such as .": "Available variables: , , , , , and paths such as .",
   "CubeRouter": "CubeRouter",
-  "CubeRouter <noreply@example.com>": "CubeRouter <noreply@example.com>"
+  "CubeRouter <noreply@example.com>": "CubeRouter <noreply@example.com>",
+  "e.g. Requires level ; your current level is ": "e.g. Requires level ; your current level is ",
+  "Evaluate fields from the provider user info response. Conditions and nested groups use and/or logic.": "Evaluate fields from the provider user info response. Conditions and nested groups use and/or logic.",
+  "Fill template: level and active": "Fill template: level and active",
+  "Fill template: level message": "Fill template: level message",
+  "Fill template: organization message": "Fill template: organization message",
+  "Fill template: organization or role": "Fill template: organization or role",
+  "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.": "For security, existing access tokens cannot be displayed. Regenerate only when you need a new token.",
+  "Regenerate access token?": "Regenerate access token?",
+  "Regenerate token": "Regenerate token",
+  "Regenerating immediately invalidates any existing token.": "Regenerating immediately invalidates any existing token.",
+  "Save this token now. You won't be able to view it again after closing this dialog.": "Save this token now. You won't be able to view it again after closing this dialog."
 }
