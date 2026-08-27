@@ -101,7 +101,7 @@ docker run --name cuberouter -d --restart always \
 
 <div align="center">
 
-### 📖 [官方文档](https://docs.newapi.pro/zh/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://github.com/suanova/cuberouter)
+### 📖 [官方文档](https://docs.newapi.pro/zh/docs) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/suanova/cuberouter)
 
 </div>
 
@@ -254,6 +254,9 @@ docker run --name cuberouter -d --restart always \
 | `SESSION_SECRET` | 鉴权签名密钥；所有节点必须保持一致                                           | - |
 | `SESSION_COOKIE_SECURE` | `false`/未配置时关闭 refresh/logout OriginGuard 以兼容本地 HTTP 开发代理；`true` 时启用 Secure Cookie 和严格 Origin 校验 | `false` |
 | `SESSION_COOKIE_TRUSTED_URL` | Secure 模式必填：允许调用 refresh/logout 的精确 HTTPS Origin，多个用英文逗号分隔；不是 relay CORS 白名单 | - |
+| `TLS_CERT_FILE` | HTTPS 证书文件（PEM）；与 `TLS_KEY_FILE` 成对设置后启用 HTTPS 监听 | - |
+| `TLS_KEY_FILE` | HTTPS 私钥文件（PEM）；必须与 `TLS_CERT_FILE` 成对设置 | - |
+| `TLS_PORT` | HTTPS 监听端口 | `443` |
 | `TRUSTED_PROXIES` | 未配置/留空时信任回环、RFC1918 和 IPv6 ULA 并输出启动告警；`none` 不信任任何代理；显式代理 IP/CIDR 列表完全替代默认值 | `127.0.0.0/8, ::1, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, fc00::/7` |
 | `USER_SESSION_ACTIVE_LIMIT` | 单用户最大活跃登录 Session 数 | `50` |
 | `USER_SESSION_ISSUANCE_LIMIT` | 单用户在签发窗口内可创建的 Session 总数，包含已撤销 Session | `100` |
@@ -277,6 +280,33 @@ docker run --name cuberouter -d --restart always \
 | `HOSTNAME` | Pyroscope 标签里的主机名                                          | `new-api` |
 
 📖 **完整配置：** [环境变量文档](https://docs.newapi.pro/zh/docs/installation/config-maintenance/environment-variables)
+
+</details>
+
+### 🔒 HTTPS (TLS)
+
+HTTPS 为可选项：设置 `TLS_CERT_FILE` + `TLS_KEY_FILE`（PEM，必须成对）后，网关将在 `TLS_PORT`（默认 `443`）上额外提供 HTTPS 服务，原有 HTTP 端口不受影响；不设置则行为与之前完全一致。
+
+私有网络环境可使用 `scripts/gen-tls-cert.sh` 按你的情况生成证书：
+
+| 场景 | 命令 |
+|------|------|
+| **有私有 CA（证书+私钥）** | `scripts/gen-tls-cert.sh --ca-cert ca.pem --ca-key ca.key --domains "gw.corp.local" --ips "10.0.0.5"` |
+| **没有 CA** | `scripts/gen-tls-cert.sh --domains "gw.corp.local" --ips "10.0.0.5"`（自动生成根 CA，供客户端分发） |
+| **只有 CA 证书、无私钥** | `scripts/gen-tls-cert.sh --ca-cert ca.pem --domains "gw.corp.local"`（自签服务端证书） |
+
+- SAN（域名/IP）为必填；不带参数运行可进入交互式引导
+- 产物输出到 `./certs/`（可用 `--out` 修改）：`server.crt`（完整证书链）、`server.key`（权限 `0600`），生成 CA 时还有 `ca.crt`——将 `ca.crt` 分发给客户端导入信任库，HTTPS 访问将不再告警
+- 续期：重新执行同一条命令覆盖即可（例如每年一次）
+
+**客户端信任（二选一）：**
+
+| 方式 | 操作 | 适用 |
+|------|------|------|
+| 装系统信任库 | 将 `ca.crt`（根 CA，不是 `server.crt`）导入每台机器的系统/浏览器信任库 | 所有客户端自动受信但需要向用户分发 CA |
+| 客户端显式配置 | `curl --cacert ca.crt`、`SSL_CERT_FILE=ca.crt`（Go/curl）、`NODE_EXTRA_CA_CERTS`（Node）、`REQUESTS_CA_BUNDLE`（Python） | 每个客户端工具需分别配置 |
+
+LLM 客户端工具（Claude Code、opencode 等）通常读取环境变量，设置 `SSL_CERT_FILE` 或 `NODE_EXTRA_CA_CERTS` 即可。
 
 </details>
 

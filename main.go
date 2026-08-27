@@ -204,6 +204,12 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
+	tlsSettings, err := common.GetTLSSettings()
+	if err != nil {
+		common.FatalLog("invalid TLS configuration: " + err.Error())
+		return
+	}
+
 	srv := &http.Server{
 		Addr:    ":" + port,
 		Handler: server,
@@ -215,9 +221,28 @@ func main() {
 		}
 	}()
 
+	// HTTPS is opt-in: only when TLS_CERT_FILE/TLS_KEY_FILE are set does a
+	// second listener share the same handler on the TLS port.
+	var srvTLS *http.Server
+	if tlsSettings.Enabled {
+		srvTLS, err = common.NewTLSServer(server, tlsSettings)
+		if err != nil {
+			common.FatalLog("failed to create HTTPS server: " + err.Error())
+			return
+		}
+		go func() {
+			if err := srvTLS.ListenAndServeTLS(tlsSettings.CertFile, tlsSettings.KeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				common.FatalLog("failed to start HTTPS server: " + err.Error())
+			}
+		}()
+	}
+
 	time.Sleep(100 * time.Millisecond)
 
 	common.LogStartupSuccess(startTime, port)
+	if tlsSettings.Enabled {
+		common.SysLog(fmt.Sprintf("HTTPS server started on :%s", tlsSettings.Port))
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -230,6 +255,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
+	}
+	if srvTLS != nil {
+		if err := srvTLS.Shutdown(ctx); err != nil {
+			common.SysError(fmt.Sprintf("HTTPS server forced to shutdown: %v", err))
+		}
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {

@@ -17,6 +17,7 @@ import (
 
 var (
 	Port         = flag.Int("port", 3000, "the listening port")
+	TLSPort      = flag.Int("tls-port", 443, "the HTTPS listening port (used when TLS_CERT_FILE/TLS_KEY_FILE are set)")
 	PrintVersion = flag.Bool("version", false, "print version and exit")
 	PrintHelp    = flag.Bool("help", false, "print help and exit")
 	LogDir       = flag.String("log-dir", "./logs", "specify the log directory")
@@ -26,7 +27,7 @@ func printHelp() {
 	fmt.Println("NewAPI(Based OneAPI) " + Version + " - The next-generation LLM gateway and AI asset management system supports multiple languages.")
 	fmt.Println("Original Project: OneAPI by JustSong - https://github.com/songquanpeng/one-api")
 	fmt.Println("Maintainer: QuantumNous - https://github.com/QuantumNous/new-api")
-	fmt.Println("Usage: newapi [--port <port>] [--log-dir <log directory>] [--version] [--help]")
+	fmt.Println("Usage: newapi [--port <port>] [--tls-port <port>] [--log-dir <log directory>] [--version] [--help]")
 }
 
 func InitEnv() {

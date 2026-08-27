@@ -37,5 +37,6 @@ RUN apt-get update \
 COPY --from=builder2 /build/cube-router /
 COPY LICENSE THIRD-PARTY-LICENSES.md /licenses/
 EXPOSE 3000
+EXPOSE 443
 WORKDIR /data
 ENTRYPOINT ["/cube-router"]

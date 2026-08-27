@@ -22,6 +22,7 @@ services:
     command: --log-dir /app/logs
     ports:
       - "3000:3000"
+#      - "443:443"  # HTTPS 端口，配置 TLS_CERT_FILE/TLS_KEY_FILE 后生效 (HTTPS port; active once TLS_CERT_FILE/TLS_KEY_FILE are set)
     volumes:
       - ./data:/data
       - ./logs:/app/logs
@@ -41,6 +42,9 @@ services:
 #      - SESSION_SECRET=random_string  # 多机部署时设置，必须修改这个随机字符串！！ （multi-node deployment, set this to a random string!!!!!!!）
 #      - SESSION_COOKIE_SECURE=true  # true：启用 Secure Refresh Cookie 和严格 refresh/logout OriginGuard；false/未配置：关闭 OriginGuard，仅用于本地 HTTP (true: Secure cookie + strict refresh/logout OriginGuard; false/unset: guard disabled for local HTTP only)
 #      - SESSION_COOKIE_TRUSTED_URL=https://example.com,https://admin.example.com  # Secure=true 时必填的精确 HTTPS Origin；不是 relay CORS 白名单，不支持通配符/路径 (Required exact HTTPS origins when Secure=true; not a relay CORS allowlist, no wildcard/path)
+#      - TLS_CERT_FILE=/data/cert.pem  # HTTPS 证书文件，需同时挂载证书文件到容器内 (HTTPS certificate file; mount the file into the container as well)
+#      - TLS_KEY_FILE=/data/key.pem  # HTTPS 私钥文件，必须与 TLS_CERT_FILE 成对设置 (HTTPS private key file; must be set together with TLS_CERT_FILE)
+#      - TLS_PORT=443  # HTTPS 监听端口 (HTTPS listening port)
 #      - TRUSTED_PROXIES=172.20.0.0/16  # 未配置时信任回环/RFC1918/fc00::/7 并告警，none 为严格模式，显式列表替代默认值 (Unset trusts loopback/RFC 1918/fc00::/7 with a warning; none trusts no proxies; an explicit list replaces defaults)
 #      - USER_SESSION_ACTIVE_LIMIT=50
 #      - USER_SESSION_ISSUANCE_LIMIT=100
