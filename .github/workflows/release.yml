@@ -203,7 +203,7 @@ jobs:
           MINIO_HOSTNAME: ${{ secrets.MINIO_HOSTNAME }}
           MINIO_USERNAME: ${{ secrets.MINIO_USERNAME }}
           MINIO_PASSWORD: ${{ secrets.MINIO_PASSWORD }}
-          MINIO_BUCKET: ${{ vars.MINIO_BUCKET || 'cuberouter-releases' }}
+          MINIO_BUCKET: ${{ vars.MINIO_BUCKET || 'cuberouter' }}
         run: |
           set -euo pipefail
           aws configure set aws_access_key_id "$MINIO_USERNAME" --profile minio
