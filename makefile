@@ -84,7 +84,7 @@ reset-setup:
 # The archive is staged as temp files and atomically renamed into place, so a
 # failed docker save/gzip never leaves a partial $(OFFLINE_PACKAGE) behind.
 offline-package:
-	@images=$$(docker compose -f docker-compose.yml docker-compose.docs.yml config --images | sort -u); \
+	@images=$$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u); \
 	echo "Packaging images into $(OFFLINE_PACKAGE):"; \
 	echo "$$images"; \
 	for img in $$images; do \
