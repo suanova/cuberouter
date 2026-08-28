@@ -86,7 +86,6 @@ reset-setup:
 #   images.tar            docker save output of all stack images
 #   docker-compose.yml    core services (cuberouter / postgres / redis)
 #   docker-compose.docs.yml  documentation sites
-#   deploy.md             deployment guide
 #   scripts/gen-tls-cert.sh  HTTPS certificate generator
 # CUBEROUTER_IMAGE_TAG pins the versioned images
 # (e.g. CUBEROUTER_IMAGE_TAG=v1.0.0 make offline-package).
@@ -110,7 +109,7 @@ offline-package:
 		exit 1; \
 	fi; \
 	mkdir -p "$$tmp_dir/scripts"; \
-	cp docker-compose.yml docker-compose.docs.yml deploy.md "$$tmp_dir/"; \
+	cp docker-compose.yml docker-compose.docs.yml "$$tmp_dir/"; \
 	cp scripts/gen-tls-cert.sh "$$tmp_dir/scripts/"; \
 	sed -i "s|:\$${CUBEROUTER_IMAGE_TAG:-latest}|:$(CUBEROUTER_IMAGE_TAG)|g" \
 		"$$tmp_dir/docker-compose.yml" "$$tmp_dir/docker-compose.docs.yml"; \
