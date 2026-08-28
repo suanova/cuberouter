@@ -93,7 +93,8 @@ reset-setup:
 # The archive is staged as temp files and atomically renamed into place, so a
 # failed docker save/tar never leaves a partial $(OFFLINE_PACKAGE) behind.
 offline-package:
-	@images=$$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u); \
+	@set -e; \
+	images=$$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u); \
 	echo "Packaging images into $(OFFLINE_PACKAGE):"; \
 	echo "$$images"; \
 	for img in $$images; do \
@@ -111,10 +112,12 @@ offline-package:
 	mkdir -p "$$tmp_dir/scripts"; \
 	cp docker-compose.yml docker-compose.docs.yml deploy.md "$$tmp_dir/"; \
 	cp scripts/gen-tls-cert.sh "$$tmp_dir/scripts/"; \
+	sed -i "s|:\$${CUBEROUTER_IMAGE_TAG:-latest}|:$(CUBEROUTER_IMAGE_TAG)|g" \
+		"$$tmp_dir/docker-compose.yml" "$$tmp_dir/docker-compose.docs.yml"; \
 	if ! tar -C "$$tmp_dir" -czf "$$tmp_gz" .; then \
 		echo "packaging failed; discarding partial archive" >&2; \
 		exit 1; \
 	fi; \
 	mv "$$tmp_gz" "$(OFFLINE_PACKAGE)"; \
 	echo "Offline package ready: $(OFFLINE_PACKAGE)"; \
-	echo "On the target machine: tar xzf $(OFFLINE_PACKAGE) && docker load -i images.tar && docker compose up -d"
+	echo "On the target machine: tar xzf $(OFFLINE_PACKAGE) && docker load -i images.tar && docker compose up -d && docker compose -f docker-compose.docs.yml up -d"
