@@ -7,8 +7,11 @@ DEV_API_SERVICE = new-api
 DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= one-api.db
+CUBEROUTER_IMAGE_TAG ?= latest
+OFFLINE_COMPOSE_FILES = docker-compose.yml docker-compose.docs.yml
+OFFLINE_PACKAGE = cuberouter-$(CUBEROUTER_IMAGE_TAG).tar.gz
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup swag test
+.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup swag test offline-package
 
 all: build-all-web start-api
 
@@ -74,3 +77,19 @@ reset-setup:
 		echo "Start the dev stack with 'make dev-api', or set SQLITE_PATH/DEV_SQLITE_PATH to your local SQLite database."; \
 		exit 1; \
 	fi
+
+# Offline deployment package: pull every image referenced by the compose stack
+# (docker-compose.yml + docker-compose.docs.yml) and save them all as a single
+# gzipped tarball $(OFFLINE_PACKAGE). CUBEROUTER_IMAGE_TAG pins the versioned
+# images (e.g. CUBEROUTER_IMAGE_TAG=v1.0.0 make offline-package).
+offline-package:
+	@images=$$(docker compose -f $(OFFLINE_COMPOSE_FILES) config --images | sort -u); \
+	echo "Packaging images into $(OFFLINE_PACKAGE):"; \
+	echo "$$images"; \
+	for img in $$images; do \
+		echo "pulling $$img"; \
+		docker pull "$$img"; \
+	done; \
+	echo "saving $$images -> $(OFFLINE_PACKAGE)"; \
+	docker save $$images | gzip > "$(OFFLINE_PACKAGE)"; \
+	echo "Offline package ready: $(OFFLINE_PACKAGE)"

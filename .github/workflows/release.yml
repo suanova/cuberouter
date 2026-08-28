@@ -154,3 +154,61 @@ jobs:
             checksums-windows.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  offline-package:
+    name: Offline package (compose images)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - name: Determine Version
+        run: |
+          VERSION=$(git describe --tags)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "CUBEROUTER_IMAGE_TAG=$VERSION" >> $GITHUB_ENV
+      - name: Log in to Harbor
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: harbor.isuanova.com
+          username: ${{ vars.CI_BOT_NAME }}
+          password: ${{ secrets.CI_BOT_PASSWORD }}
+      # docker-build.yml / docker-build-docs.yml publish the versioned images in
+      # parallel with this workflow on the same tag push, so poll until every
+      # image required by the compose stack exists in Harbor before pulling it.
+      - name: Wait for required images to be ready
+        run: |
+          set -euo pipefail
+          images=$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u)
+          echo "Required images:"
+          echo "$images"
+          deadline=$(( $(date +%s) + 1800 ))
+          for img in $images; do
+            until docker manifest inspect "$img" >/dev/null 2>&1; do
+              now=$(date +%s)
+              if [ "$now" -ge "$deadline" ]; then
+                echo "::error::Timed out waiting for image $img to be ready"
+                exit 1
+              fi
+              echo "waiting for $img..."
+              sleep 30
+            done
+            echo "ready: $img"
+          done
+      - name: Build offline package
+        run: make offline-package
+      - name: Upload offline package to MinIO
+        env:
+          MINIO_HOSTNAME: ${{ secrets.MINIO_HOSTNAME }}
+          MINIO_USERNAME: ${{ secrets.MINIO_USERNAME }}
+          MINIO_PASSWORD: ${{ secrets.MINIO_PASSWORD }}
+          MINIO_BUCKET: ${{ vars.MINIO_BUCKET || 'cuberouter-releases' }}
+        run: |
+          set -euo pipefail
+          aws configure set aws_access_key_id "$MINIO_USERNAME" --profile minio
+          aws configure set aws_secret_access_key "$MINIO_PASSWORD" --profile minio
+          aws --profile minio --endpoint-url "$MINIO_HOSTNAME" \
+            s3 cp "cuberouter-$VERSION.tar.gz" \
+            "s3://$MINIO_BUCKET/releases/cuberouter-$VERSION.tar.gz"
+          echo "Uploaded to s3://$MINIO_BUCKET/releases/cuberouter-$VERSION.tar.gz"

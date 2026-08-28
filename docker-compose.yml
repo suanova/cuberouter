@@ -16,7 +16,7 @@ version: '3.4' # For compatibility with older Docker versions
 
 services:
   cuberouter:
-    image: harbor.isuanova.com/suanova/cuberouter:latest
+    image: harbor.isuanova.com/suanova/cuberouter:${CUBEROUTER_IMAGE_TAG:-latest}
     container_name: cuberouter
     restart: always
     command: --log-dir /app/logs
