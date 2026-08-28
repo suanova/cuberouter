@@ -78,11 +78,20 @@ reset-setup:
 	fi
 
 # Offline deployment package: pull every image referenced by the compose stack
-# (docker-compose.yml + docker-compose.docs.yml) and save them all as a single
-# gzipped tarball $(OFFLINE_PACKAGE). CUBEROUTER_IMAGE_TAG pins the versioned
-# images (e.g. CUBEROUTER_IMAGE_TAG=v1.0.0 make offline-package).
+# (docker-compose.yml + docker-compose.docs.yml) and bundle them together with
+# the deployment files into a single gzipped tarball $(OFFLINE_PACKAGE), so a
+# machine without any registry access can deploy by extracting the archive and
+# running `docker load -i images.tar` + `docker compose up -d`.
+# Archive layout (flat, so `tar xzf` yields a ready-to-use deploy directory):
+#   images.tar            docker save output of all stack images
+#   docker-compose.yml    core services (cuberouter / postgres / redis)
+#   docker-compose.docs.yml  documentation sites
+#   deploy.md             deployment guide
+#   scripts/gen-tls-cert.sh  HTTPS certificate generator
+# CUBEROUTER_IMAGE_TAG pins the versioned images
+# (e.g. CUBEROUTER_IMAGE_TAG=v1.0.0 make offline-package).
 # The archive is staged as temp files and atomically renamed into place, so a
-# failed docker save/gzip never leaves a partial $(OFFLINE_PACKAGE) behind.
+# failed docker save/tar never leaves a partial $(OFFLINE_PACKAGE) behind.
 offline-package:
 	@images=$$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u); \
 	echo "Packaging images into $(OFFLINE_PACKAGE):"; \
@@ -91,18 +100,21 @@ offline-package:
 		echo "pulling $$img"; \
 		docker pull "$$img"; \
 	done; \
-	echo "saving $$images -> $(OFFLINE_PACKAGE)"; \
-	tmp_tar="$(OFFLINE_PACKAGE).tmp.tar"; \
+	tmp_dir="$$(mktemp -d)"; \
 	tmp_gz="$(OFFLINE_PACKAGE).tmp.gz"; \
-	trap 'rm -f "$$tmp_tar" "$$tmp_gz"' EXIT; \
-	if ! docker save $$images > "$$tmp_tar"; then \
+	trap 'rm -rf "$$tmp_dir"; rm -f "$$tmp_gz"' EXIT; \
+	echo "saving $$images -> images.tar"; \
+	if ! docker save $$images > "$$tmp_dir/images.tar"; then \
 		echo "docker save failed; discarding partial archive" >&2; \
 		exit 1; \
 	fi; \
-	if ! gzip -c "$$tmp_tar" > "$$tmp_gz"; then \
-		echo "gzip failed; discarding partial archive" >&2; \
+	mkdir -p "$$tmp_dir/scripts"; \
+	cp docker-compose.yml docker-compose.docs.yml deploy.md "$$tmp_dir/"; \
+	cp scripts/gen-tls-cert.sh "$$tmp_dir/scripts/"; \
+	if ! tar -C "$$tmp_dir" -czf "$$tmp_gz" .; then \
+		echo "packaging failed; discarding partial archive" >&2; \
 		exit 1; \
 	fi; \
-	rm -f "$$tmp_tar"; \
 	mv "$$tmp_gz" "$(OFFLINE_PACKAGE)"; \
-	echo "Offline package ready: $(OFFLINE_PACKAGE)"
+	echo "Offline package ready: $(OFFLINE_PACKAGE)"; \
+	echo "On the target machine: tar xzf $(OFFLINE_PACKAGE) && docker load -i images.tar && docker compose up -d"
