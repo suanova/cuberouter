@@ -27,14 +27,28 @@ import (
 )
 
 type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username          string `json:"username"`
+	Password          string `json:"password"`
+	PasswordEncrypted string `json:"password_encrypted"`
+	EncryptionKeyID   string `json:"encryption_key_id"`
 }
 
 var (
 	errUserPasswordUnset    = errors.New("user password is not set")
 	errOriginalPasswordFail = errors.New("original password is incorrect")
 )
+
+func GetPasswordEncryptionKey(c *gin.Context) {
+	keyID, publicKey := common.PasswordEncryptionPublicKey()
+	if keyID == "" || publicKey == "" {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"kid":        keyID,
+		"public_key": publicKey,
+	})
+}
 
 func Login(c *gin.Context) {
 	if !common.PasswordLoginEnabled {
@@ -49,6 +63,13 @@ func Login(c *gin.Context) {
 	}
 	username := loginRequest.Username
 	password := loginRequest.Password
+	if loginRequest.PasswordEncrypted != "" {
+		password, err = common.DecryptPassword(loginRequest.PasswordEncrypted, loginRequest.EncryptionKeyID)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserUsernameOrPasswordError)
+			return
+		}
+	}
 	if username == "" || password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
