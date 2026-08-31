@@ -1,5 +1,18 @@
 # Upstream Sync Changelog
 
+## 2026-08-31 — 9 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `cae3676ec6f4` | Enable OpenAI Responses API (/v1/responses) relay mode for the Zhipu GLM channel by adding its endpoint URL and passing the request through instead of returning not-implemented | feature | medium |
+| `e468b73915e5` | Update GitHub issue/PR templates, add hidden agent-only issue and PR templates, and remove the PR Check CI workflow | internal | low |
+| `692e8d6ee6a9` | Restore admins' ability to unbind built-in OAuth providers (e.g. LinuxDo) in the user-binding dialog by aligning the admin binding provider types, backed by new tests. | bugfix | medium |
+| `ac381acf4bf4` | Fix time-based billing rule expressions that were always evaluating to true, causing multipliers to apply all day instead of only within the configured time windows; adds validation, tests, and i18n strings for the corrected behavior. | bugfix | medium |
+| `7037ac15bd8a` | Fix the dev Docker build by adding the local relaykit submodule's go.mod to the build context so `go mod download` can resolve the module graph (relaykit is referenced via a replace directive). | internal | low |
+| `eb48396d5fe9` | Replaces the hard-coded Go task adaptors (ali, doubao, gemini, hailuo, jimeng, kling, sora, suno, vertex, vidu) with a sandboxed JavaScript plugin system: a sobek-based JS engine and registry, a generic jsplugin relay adaptor, a plugin protocol/host API (v1 docs + schema), admin plugin management and marketplace UI, plus supporting channel constraints, task artifacts, and usage-based billing expressions. | feature | high |
+| `0f2a2075ab07` | Return HTTP 400 (Bad Request) with skip-retry when relay request parameter validation fails, instead of a generic error without an explicit status code | bugfix | low |
+| `98d50d5383a3` | Remove localStorage persistence of the setup-status check so setup completion is re-validated against the current server instance on every page reload, while still skipping redundant checks within the same page session | bugfix | medium |
+| `b80d633cf586` | Adds RSA-based transport encryption for password login: server generates/persists a keypair, exposes the public key via a new API route, the web client encrypts passwords before submission, and the login controller decrypts them server-side. | feature | medium |
 ## 2026-08-27 — 3 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
