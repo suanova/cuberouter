@@ -19,7 +19,10 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	SetApiRouter(router)
 	SetDashboardRouter(router)
 	SetRelayRouter(router)
+	SetTaskPluginProtocolRouter(router)
 	SetVideoRouter(router)
+	SetTaskRouter(router)
+	pluginDispatcher := SetPluginRouter(router)
 	// Swagger 仅 DEBUG=true 时挂载(生产默认关闭,避免匿名暴露完整 API 规格)。
 	if common.DebugEnabled {
 		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -30,12 +33,15 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 		common.SysLog("FRONTEND_BASE_URL is ignored on master node")
 	}
 	if frontendBaseUrl == "" {
-		SetWebRouter(router, assets)
+		SetWebRouter(router, assets, pluginDispatcher)
 	} else {
 		frontendBaseUrl = strings.TrimSuffix(frontendBaseUrl, "/")
-		router.NoRoute(func(c *gin.Context) {
-			c.Set(middleware.RouteTagKey, "web")
-			c.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, c.Request.RequestURI))
-		})
+		router.NoRoute(
+			pluginDispatcher,
+			func(c *gin.Context) {
+				c.Set(middleware.RouteTagKey, "web")
+				c.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, c.Request.RequestURI))
+			},
+		)
 	}
 }
