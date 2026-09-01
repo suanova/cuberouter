@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { getCurrencyDisplay } from '@/lib/currency'
+
 import { DEFAULT_DISCOUNT_RATE } from '../constants'
 
 // ============================================================================
@@ -44,6 +46,24 @@ export function formatQuotaShort(quota: number): string {
     return `${(quota / 1000).toFixed(1)}K`
   }
   return quota.toString()
+}
+
+/**
+ * Currency symbol for the current display type: ¥ for CNY, $ for USD,
+ * the custom symbol for CUSTOM, empty for TOKENS.
+ */
+export function getCurrencySymbol(): string {
+  const { config } = getCurrencyDisplay()
+  switch (config.quotaDisplayType) {
+    case 'CNY':
+      return '¥'
+    case 'USD':
+      return '$'
+    case 'CUSTOM':
+      return config.customCurrencySymbol || '¤'
+    default:
+      return ''
+  }
 }
 
 /**
