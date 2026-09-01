@@ -100,6 +100,8 @@ const paymentSchema = z.object({
   EpayId: z.string(),
   EpayKey: z.string(),
   Price: z.coerce.number().min(0),
+  EpayRate: z.coerce.number().min(0),
+  AlipayRate: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z
     .string()
@@ -345,6 +347,8 @@ export function PaymentSettingsSection({
       EpayId: values.EpayId.trim(),
       EpayKey: values.EpayKey.trim(),
       Price: values.Price,
+      EpayRate: values.EpayRate,
+      AlipayRate: values.AlipayRate,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       PayMethods: values.PayMethods.trim(),
@@ -393,6 +397,8 @@ export function PaymentSettingsSection({
       EpayId: initialRef.current.EpayId.trim(),
       EpayKey: initialRef.current.EpayKey.trim(),
       Price: initialRef.current.Price,
+      EpayRate: initialRef.current.EpayRate,
+      AlipayRate: initialRef.current.AlipayRate,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
         initialRef.current.CustomCallbackAddress
@@ -827,7 +833,9 @@ export function PaymentSettingsSection({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('e.g., 8 means 8 local currency per USD')}
+                          {t(
+                            'e.g., 8 means 8 local currency per USD. Used for pricing display and as the default exchange rate for Epay and Alipay payment amounts; each gateway can override its own rate.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1160,6 +1168,31 @@ export function PaymentSettingsSection({
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name='EpayRate'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Epay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            placeholder={t('Defaults to the global Price')}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Exchange rate used to compute the Epay payment amount. Empty or 0 falls back to the global Price.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -1202,6 +1235,31 @@ export function PaymentSettingsSection({
                             }
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='AlipayRate'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Alipay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            placeholder={t('Defaults to the global Price')}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Exchange rate used to compute the Alipay payment amount. Empty or 0 falls back to the global Price.'
+                          )}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

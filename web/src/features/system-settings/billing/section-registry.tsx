@@ -133,6 +133,8 @@ const BILLING_SECTIONS = [
           EpayId: settings.EpayId,
           EpayKey: settings.EpayKey,
           Price: settings.Price,
+          EpayRate: settings.EpayRate,
+          AlipayRate: settings.AlipayRate,
           MinTopUp: settings.MinTopUp,
           CustomCallbackAddress: settings.CustomCallbackAddress,
           PayMethods: settings.PayMethods,

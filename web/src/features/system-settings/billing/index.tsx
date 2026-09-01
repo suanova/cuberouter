@@ -66,6 +66,8 @@ const defaultBillingSettings: BillingSettings = {
   EpayId: '',
   EpayKey: '',
   Price: 7.3,
+  EpayRate: 0,
+  AlipayRate: 0,
   MinTopUp: 1,
   CustomCallbackAddress: '',
   PayMethods: '',

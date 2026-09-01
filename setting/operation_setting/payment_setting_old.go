@@ -17,6 +17,28 @@ var Price = 7.3
 var MinTopUp = 1
 var USDExchangeRate = 7.3
 
+// 各支付网关的独立支付汇率(USD→本地货币)。0 表示未单独配置,回退全局 Price。
+// 与 Price 的区别:Price 还用于定价展示与渠道余额换算,这两个字段只影响
+// 对应网关的支付金额。
+var EpayRate = 0.0
+var AlipayRate = 0.0
+
+// GetEpayRate 返回 Epay 支付汇率;未单独配置时回退全局 Price。
+func GetEpayRate() float64 {
+	if EpayRate > 0 {
+		return EpayRate
+	}
+	return Price
+}
+
+// GetAlipayRate 返回支付宝支付汇率;未单独配置时回退全局 Price。
+func GetAlipayRate() float64 {
+	if AlipayRate > 0 {
+		return AlipayRate
+	}
+	return Price
+}
+
 var PayMethods = []map[string]string{
 	{
 		"name": "支付宝",

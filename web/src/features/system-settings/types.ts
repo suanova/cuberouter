@@ -282,6 +282,8 @@ export type BillingSettings = {
   EpayId: string
   EpayKey: string
   Price: number
+  EpayRate: number
+  AlipayRate: number
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string
