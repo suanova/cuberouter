@@ -491,13 +491,17 @@ func updateOptionMap(key string, value string) (err error) {
 	case "EpayKey":
 		operation_setting.EpayKey = value
 	case "Price":
+		// Price 与 USDExchangeRate 是同一个汇率的两份配置(定价展示/余额显示/支付默认),
+		// 联动同步,避免一份改动另一份不同步导致显示与计费口径不一致
 		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
+		operation_setting.USDExchangeRate = operation_setting.Price
 	case "EpayRate":
 		operation_setting.EpayRate, _ = strconv.ParseFloat(value, 64)
 	case "AlipayRate":
 		operation_setting.AlipayRate, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":
 		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
+		operation_setting.Price = operation_setting.USDExchangeRate
 	case "MinTopUp":
 		operation_setting.MinTopUp, _ = strconv.Atoi(value)
 	case "StripeApiSecret":
