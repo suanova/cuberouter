@@ -417,10 +417,17 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr,
         { fallback: {}, silent: true }
       )
-      const videoPriceMap = safeJsonParse<VideoPrice>(videoPrice, {
+      const parsedVideoPrice = safeJsonParse<VideoPrice>(videoPrice, {
         fallback: {},
         silent: true,
       })
+      // 损坏的 JSON 可能解析出数组/标量,不是合法的模型→价格表映射时退化为空表
+      const videoPriceMap =
+        parsedVideoPrice &&
+        typeof parsedVideoPrice === 'object' &&
+        !Array.isArray(parsedVideoPrice)
+          ? parsedVideoPrice
+          : {}
 
       delete priceMap[name]
       delete ratioMap[name]

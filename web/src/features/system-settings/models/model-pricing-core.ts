@@ -269,7 +269,7 @@ export function buildPreviewRows(
   if (mode === 'video-per-second') {
     const rows = videoPriceTable?.rows ?? []
     return [
-      { key: 'mode', label: 'BillingMode', value: 'video-per-second' },
+      { key: 'mode', label: t('Mode'), value: t('Video per second') },
       {
         key: 'videoRows',
         label: t('Resolution'),

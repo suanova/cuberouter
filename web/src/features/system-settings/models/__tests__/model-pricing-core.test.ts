@@ -125,7 +125,7 @@ describe('buildPreviewRows video branch', () => {
     )
 
     expect(rows).toEqual([
-      { key: 'mode', label: 'BillingMode', value: 'video-per-second' },
+      { key: 'mode', label: 'Mode', value: 'Video per second' },
       { key: 'videoRows', label: 'Resolution', value: '1080p, 720p' },
     ])
   })
