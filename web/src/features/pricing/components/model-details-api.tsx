@@ -909,6 +909,27 @@ function SupportedParametersSection(props: { model: PricingModel }) {
           },
         ]}
       />
+      {props.model.video_prices && (
+        <div className='text-muted-foreground mt-3 space-y-1 text-xs leading-relaxed'>
+          <p className='text-foreground font-medium'>
+            {t('Video generation mode')}
+          </p>
+          <p>
+            {t(
+              'No image = text-to-video, 1 image = image-to-video, 2 images = first-and-last-frame, more than 2 images = reference-to-video'
+            )}
+          </p>
+          <p>{t('Pass images via image, images or input_reference')}</p>
+          <p className='text-foreground mt-2 font-medium'>
+            {t('Extra parameters via metadata')}
+          </p>
+          <p>
+            {t(
+              'Additional parameters (e.g. subjects, off_peak, audio) can be passed via the metadata object'
+            )}
+          </p>
+        </div>
+      )}
     </section>
   )
 }
