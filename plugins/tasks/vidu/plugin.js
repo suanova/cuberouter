@@ -10,7 +10,16 @@ export const meta = {
   version: "1.0.0",
   author: { name: "QuantumNous" },
   channelTypes: [52],
-  models: ["viduq2", "viduq1", "vidu2.0", "vidu1.5"],
+  models: [
+    "viduq3-mix",
+    "viduq3-turbo",
+    "viduq3",
+    "viduq2-pro",
+    "viduq2",
+    "viduq1",
+    "vidu2.0",
+    "vidu1.5",
+  ],
   fetchMode: "per_task",
   usageSchema: {
     credits: {
@@ -215,7 +224,10 @@ export function buildSubmitRequest(ctx) {
   const action = actionFor(req);
   const metadata = req.metadata || {};
   let model = ctx.upstreamModel || "viduq1";
-  if (action === "reference_to_video" && model.includes("viduq2")) model = "viduq2";
+  // 参考图生视频的模型约束已随上游文档更新(2026-04):viduq3-turbo/viduq3/
+  // viduq2-pro/viduq2 等均支持参考图,不再强制归一化为 viduq2。
+  // 参考图请求体:images 直传(非主体调用,1-7 张);subjects/off_peak/audio
+  // 等新参数由客户端经 metadata 透传(下方 Object.assign 合并)。
   const images = Array.isArray(req.images) ? req.images.map(filePlaceholder) : null;
   const body = Object.assign(
     {
