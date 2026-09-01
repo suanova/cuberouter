@@ -14,6 +14,7 @@ import (
 // 仿照 user_created_at_test.go 中的 newTestDB，但 AutoMigrate Model 而非 User。
 func newModelTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	WaitForQuotaCacheWorkers()
 	common.RedisEnabled = false
 	if commonGroupCol == "" {
 		commonGroupCol = "`group`"

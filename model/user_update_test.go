@@ -19,9 +19,11 @@ func setupUserUpdateTestState(t *testing.T) {
 
 	oldRedisEnabled := common.RedisEnabled
 	oldBatchUpdateEnabled := common.BatchUpdateEnabled
+	WaitForQuotaCacheWorkers()
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	t.Cleanup(func() {
+		WaitForQuotaCacheWorkers()
 		common.RedisEnabled = oldRedisEnabled
 		common.BatchUpdateEnabled = oldBatchUpdateEnabled
 	})

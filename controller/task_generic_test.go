@@ -28,12 +28,14 @@ func setupGenericTaskTest(t *testing.T) *model.Task {
 	t.Helper()
 	originalDB := model.DB
 	previousRedisEnabled := common.RedisEnabled
+	model.WaitForQuotaCacheWorkers()
 	common.RedisEnabled = false
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, database.AutoMigrate(&model.Task{}, &model.Channel{}, &model.User{}))
 	model.DB = database
 	t.Cleanup(func() {
+		model.WaitForQuotaCacheWorkers()
 		model.DB = originalDB
 		common.RedisEnabled = previousRedisEnabled
 	})

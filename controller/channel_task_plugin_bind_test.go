@@ -24,6 +24,7 @@ func setupTaskPluginBindChannelTest(t *testing.T) {
 	wasMaster := common.IsMasterNode
 	common.IsMasterNode = true
 	previousRedisEnabled := common.RedisEnabled
+	model.WaitForQuotaCacheWorkers()
 	common.RedisEnabled = false
 	originalDB, originalLogDB := model.DB, model.LOG_DB
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -36,6 +37,7 @@ func setupTaskPluginBindChannelTest(t *testing.T) {
 	model.LOG_DB = database
 	require.NoError(t, authz.Init(database))
 	t.Cleanup(func() {
+		model.WaitForQuotaCacheWorkers()
 		common.IsMasterNode = wasMaster
 		common.RedisEnabled = previousRedisEnabled
 		model.DB = originalDB

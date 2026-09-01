@@ -81,10 +81,12 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 	common.MemoryCacheEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = false
+	model.WaitForQuotaCacheWorkers()
 	common.RedisEnabled = false
 	previousModelRatios := ratio_setting.ModelRatio2JSONString()
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"kling-v1":1}`))
 	t.Cleanup(func() {
+		model.WaitForQuotaCacheWorkers()
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
 		common.MemoryCacheEnabled = previousMemoryCache

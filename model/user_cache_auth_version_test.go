@@ -16,6 +16,8 @@ import (
 
 func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
 	t.Helper()
+	// 清空可能仍在运行的配额缓存 worker，避免下面写全局 Redis 状态时与其读取并发。
+	WaitForQuotaCacheWorkers()
 	server := miniredis.RunT(t)
 	oldRedisEnabled := common.RedisEnabled
 	oldRDB := common.RDB
@@ -24,6 +26,7 @@ func useUserCacheMiniRedis(t *testing.T) *miniredis.Miniredis {
 	common.SyncFrequency = 2
 	common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
 	t.Cleanup(func() {
+		WaitForQuotaCacheWorkers()
 		_ = common.RDB.Close()
 		common.RedisEnabled = oldRedisEnabled
 		common.RDB = oldRDB

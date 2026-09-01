@@ -124,6 +124,7 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 	InvalidateSubscriptionPlanCache(plan.Id)
 
 	oldRedisEnabled, oldRDB := common.RedisEnabled, common.RDB
+	WaitForQuotaCacheWorkers()
 	common.RedisEnabled = true
 	common.RDB = redis.NewClient(&redis.Options{
 		Dialer: func(context.Context, string, string) (net.Conn, error) {
@@ -132,6 +133,7 @@ func TestSubscriptionGroupCacheRefreshFailureDoesNotChangeCommittedResult(t *tes
 		MaxRetries: -1,
 	})
 	t.Cleanup(func() {
+		WaitForQuotaCacheWorkers()
 		_ = common.RDB.Close()
 		common.RedisEnabled, common.RDB = oldRedisEnabled, oldRDB
 	})

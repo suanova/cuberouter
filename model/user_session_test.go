@@ -49,12 +49,14 @@ func setupUserSessionTest(t *testing.T) {
 	oldIssuanceLimit := common.UserSessionIssuanceLimit
 	oldIssuanceWindow := common.UserSessionIssuanceWindowSeconds
 	oldRevokedRetention := common.UserSessionRevokedRetentionDays
+	WaitForQuotaCacheWorkers()
 	common.RedisEnabled = false
 	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
 	common.UserSessionIssuanceLimit = common.DefaultUserSessionIssuanceLimit
 	common.UserSessionIssuanceWindowSeconds = int64(common.DefaultUserSessionIssuanceWindowSeconds)
 	common.UserSessionRevokedRetentionDays = common.DefaultUserSessionRevokedRetentionDays
 	t.Cleanup(func() {
+		WaitForQuotaCacheWorkers()
 		common.RedisEnabled = oldRedisEnabled
 		common.UserSessionActiveLimit = oldActiveLimit
 		common.UserSessionIssuanceLimit = oldIssuanceLimit
