@@ -640,6 +640,11 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateModelPriceByJSONString(value)
 	case "VideoPrice":
 		err = ratio_setting.UpdateVideoPriceByJSONString(value)
+		if err == nil {
+			// 视频价格表变了,公开定价缓存(含 video_prices)需要立即失效,
+			// 否则用户看到旧价表而计费用新价表
+			InvalidatePricingCache()
+		}
 	case "OffPeakWindow":
 		err = ratio_setting.UpdateOffPeakWindowByJSONString(value)
 	case "CacheRatio":

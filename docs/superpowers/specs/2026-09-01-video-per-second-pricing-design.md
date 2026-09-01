@@ -36,7 +36,7 @@
 - 存储:`setting/ratio_setting` 新增 `videoPriceMap`(RWMap[string, VideoPriceTable]),API 与 `modelPriceMap` 平行:
   - `UpdateVideoPriceByJSONString(jsonStr)`(option 更新路径,`model/option.go` switch 新增 `case "VideoPrice"`)
   - `GetVideoPrice(model) (*VideoPriceTable, bool)`
-  - 校验: 行数 ≥1、resolution 非空、normal_price > 0、off_peak_price ≥ 0(非法整表拒绝并报错)
+  - 校验: 行数 ≥1、resolution 非空、normal_price > 0、off_peak_price > 0(系数系统无法表达 0 比例,零价会静默按正常价计费;非法整表拒绝并报错)
 - 校验时自动同步:`anchor = normal_price 最高行`;同步写入 `modelPriceMap`(`modelPrice = anchor ¥/秒 ÷ 系统 USD 汇率`,汇率复用现有展示汇率配置,未配置默认 7.3),保证计费引擎零改动
 
 ### 2.2 全局错峰窗口

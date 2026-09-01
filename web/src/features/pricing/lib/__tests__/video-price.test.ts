@@ -78,13 +78,13 @@ describe('getOffPeakWindowLabel', () => {
     ).toEqual({ start: '09:00', end: '17:00', crossesMidnight: false })
   })
 
-  test('equal start and end hours do not count as crossing midnight', () => {
+  test('equal start and end hours mean off-peak is disabled and no label is shown', () => {
     const label = getOffPeakWindowLabel({
       start_hour: 22,
       end_hour: 22,
       timezone: 'Asia/Shanghai',
     })
-    expect(label?.crossesMidnight).toBe(false)
+    expect(label).toBe(null)
   })
 
   test('returns null when the window is missing or invalid', () => {

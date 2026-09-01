@@ -58,6 +58,8 @@ export function getOffPeakWindowLabel(
   window: OffPeakWindow | null | undefined
 ): OffPeakWindowLabel | null {
   if (!window) return null
+  // start == end 表示错峰已禁用,不展示「22:00 - 22:00」这类无意义窗口
+  if (window.start_hour === window.end_hour) return null
   const start = formatOffPeakHour(window.start_hour)
   const end = formatOffPeakHour(window.end_hour)
   if (start === MISSING_VALUE || end === MISSING_VALUE) return null

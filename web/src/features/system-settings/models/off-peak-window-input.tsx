@@ -34,7 +34,8 @@ import {
 
 export type OffPeakWindowInputProps = {
   value: OffPeakWindow
-  onChange: (window: OffPeakWindow) => void
+  /** 有效窗口回调窗口对象;草稿无效(空/越界小时)时回调 null,让表单拒绝保存 */
+  onChange: (window: OffPeakWindow | null) => void
 }
 
 /** Stable serialization used to detect externally supplied value changes. */
@@ -70,6 +71,9 @@ export function OffPeakWindowInput({
       if (nextWindow) {
         lastEmittedRef.current = serializeWindow(nextWindow)
         onChange(nextWindow)
+      } else {
+        // 草稿无效:显式上报,避免表单静默保留上一次的合法值
+        onChange(null)
       }
     },
     [drafts, onChange]

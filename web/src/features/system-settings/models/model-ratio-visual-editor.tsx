@@ -762,7 +762,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     count: modeCounts.tiered_expr,
                   },
                   {
-                    label: 'Video per second',
+                    label: t('Video per second'),
                     value: 'video-per-second',
                     count: modeCounts['video-per-second'],
                   },

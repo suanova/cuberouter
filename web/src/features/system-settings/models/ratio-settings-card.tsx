@@ -510,7 +510,8 @@ export function RatioSettingsCard({
               <OffPeakWindowInput
                 value={window}
                 onChange={(nextWindow) =>
-                  field.onChange(JSON.stringify(nextWindow))
+                  // 无效草稿写空串:zod JSON 校验失败,保存被拦截
+                  field.onChange(nextWindow ? JSON.stringify(nextWindow) : '')
                 }
               />
               <FormMessage />

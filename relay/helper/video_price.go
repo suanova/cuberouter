@@ -42,7 +42,11 @@ func ComputeVideoPriceRatios(req relaycommon.TaskSubmitReq, model string, now ti
 	}
 	ratios["seconds"] = float64(min(duration, relaycommon.MaxTaskDurationSeconds))
 
+	// 分辨率字段兼容:优先 size(OpenAI 风格),缺省时回退 resolution 字段
 	resolution := strings.ToLower(strings.TrimSpace(req.Size))
+	if resolution == "" {
+		resolution = strings.ToLower(strings.TrimSpace(req.Resolution))
+	}
 	if resolution == "" {
 		resolution = videoDefaultResolution
 	}

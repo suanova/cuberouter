@@ -37,9 +37,9 @@ func UpdateVideoPriceByJSONString(jsonStr string) error {
 			}
 		}
 	}
-	// 校验全部通过后整体替换;失败时保持旧配置不变
-	videoPriceMap.Clear()
-	videoPriceMap.AddAll(m)
+	// 校验全部通过后整体替换;失败时保持旧配置不变。
+	// ReplaceAll 单次加锁原子交换,读方不会观察到空表中间态。
+	videoPriceMap.ReplaceAll(m)
 	return nil
 }
 
@@ -69,8 +69,6 @@ type OffPeakWindow struct {
 	Timezone  string `json:"timezone"`
 }
 
-const defaultOffPeakWindow = `{"start_hour":22,"end_hour":8,"timezone":"Asia/Shanghai"}`
-
 var (
 	offPeakWindowMu sync.RWMutex
 	offPeakWindow   = OffPeakWindow{StartHour: 22, EndHour: 8, Timezone: "Asia/Shanghai"}
@@ -86,6 +84,11 @@ func UpdateOffPeakWindowByJSONString(jsonStr string) error {
 	}
 	if w.Timezone == "" {
 		w.Timezone = "Asia/Shanghai"
+	}
+	// 时区必须是可加载的 IANA 名;无法加载的配置会让 IsOffPeakHour 静默失效,
+	// 导致错峰价永不生效,这里直接拒绝
+	if _, err := time.LoadLocation(w.Timezone); err != nil {
+		return fmt.Errorf("invalid timezone %q: %w", w.Timezone, err)
 	}
 	offPeakWindowMu.Lock()
 	offPeakWindow = w

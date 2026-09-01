@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -293,9 +294,10 @@ func TestModelPriceHelperPerCallVideoTablePriority(t *testing.T) {
 
 	priceData, err := ModelPriceHelperPerCall(ctx, info)
 	require.NoError(t, err)
-	require.True(t, priceData.UsePrice)
+	// 设置断言后继续检查后续字段,任一失败不中断其余断言
+	assert.True(t, priceData.UsePrice)
 	// InDelta:常量折叠(0.75/7.3)与运行时浮点除法(锚点/7.3)存在 1 ULP 差异
-	require.InDelta(t, 0.75/ratio_setting.USD2RMB, priceData.ModelPrice, 1e-12)
+	assert.InDelta(t, 0.75/ratio_setting.USD2RMB, priceData.ModelPrice, 1e-12)
 	// 锚点 0.75 ¥/秒 ÷ 7.3 × QuotaPerUnit(500000) × groupRatio 1.0 → 51369(截断)
-	require.Equal(t, 51369, priceData.Quota)
+	assert.Equal(t, 51369, priceData.Quota)
 }

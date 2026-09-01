@@ -279,6 +279,8 @@ export const ModelPricingEditorPanel = forwardRef<
   useEffect(() => {
     if (!editData) return
     if (editData.billingMode === 'tiered_expr') return
+    // 视频按秒模型保持视频模式,不被 usage schema 自动切到表达式计费
+    if (editData.billingMode === 'video-per-second') return
     if (editData.price || editData.ratio) return
 
     const usageSchema = usageSchemaByModel.get(editData.name)
@@ -419,7 +421,8 @@ export const ModelPricingEditorPanel = forwardRef<
         promptPrice,
         lanePrices,
         laneEnabled,
-        t
+        t,
+        videoPriceTable
       ),
     [
       resolvedBillingExpr,
@@ -429,6 +432,7 @@ export const ModelPricingEditorPanel = forwardRef<
       promptPrice,
       requestRuleExpr,
       t,
+      videoPriceTable,
       watchedValues,
     ]
   )

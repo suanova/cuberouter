@@ -94,6 +94,13 @@ func TestComputeVideoPriceRatios(t *testing.T) {
 			want:  map[string]float64{"seconds": 5, "size": 5.0 / 6.0},
 		},
 		{
+			name:  "resolution_field_fallback_when_size_empty",
+			req:   relaycommon.TaskSubmitReq{Duration: 5, Resolution: "1080p"},
+			model: "viduq3-turbo",
+			now:   peak,
+			want:  map[string]float64{"seconds": 5},
+		},
+		{
 			name:  "duration_saturated_at_max",
 			req:   relaycommon.TaskSubmitReq{Duration: 99999},
 			model: "viduq3-pro",

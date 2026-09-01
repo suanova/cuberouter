@@ -735,6 +735,28 @@ const IMAGE_PARAMS: SupportedParameter[] = [
   },
 ]
 
+// 视频按秒计费模型的请求参数(与 buildPerSecondVideoSample 的请求体一致)
+const PER_SECOND_VIDEO_PARAMS: SupportedParameter[] = [
+  {
+    name: 'prompt',
+    type: 'string',
+    required: true,
+    descriptionKey: 'Text description of the desired video',
+  },
+  {
+    name: 'size',
+    type: 'string',
+    defaultValue: '720p',
+    descriptionKey: 'Output resolution',
+  },
+  {
+    name: 'duration',
+    type: 'integer',
+    range: '1 ~ 60',
+    descriptionKey: 'Video length in seconds',
+  },
+]
+
 const VIDEO_PARAMS: SupportedParameter[] = [
   {
     name: 'model',
@@ -813,7 +835,12 @@ export function buildSupportedParameters(
   if (cat === 'reasoning') return REASONING_PARAMS
   if (cat === 'embedding') return EMBEDDING_PARAMS
   if (cat === 'image') return IMAGE_PARAMS
-  if (cat === 'video') return VIDEO_PARAMS
+  if (cat === 'video') {
+    // 视频按秒计费模型走 OpenAI 风格请求(prompt/size/duration),
+    // 与 Ark 风格(content/resolution/ratio)区分开
+    if (model.video_prices) return PER_SECOND_VIDEO_PARAMS
+    return VIDEO_PARAMS
+  }
   return COMMON_CHAT_PARAMS
 }
 

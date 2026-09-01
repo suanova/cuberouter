@@ -143,7 +143,8 @@ func (a *TaskAdaptor) EstimateBillingValidated(c *gin.Context, info *relaycommon
 	if _, ok := ratio_setting.GetVideoPrice(info.OriginModelName); ok {
 		taskReq, err := relaycommon.GetTaskRequest(c)
 		if err != nil {
-			return nil, nil
+			// 请求不可解析时不能按锚点价静默预扣,交给调用方的拒绝路径处理
+			return nil, err
 		}
 		return helper.ComputeVideoPriceRatios(taskReq, info.OriginModelName, time.Now()), nil
 	}

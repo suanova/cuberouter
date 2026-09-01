@@ -112,6 +112,24 @@ export const useSystemConfigStore = create<SystemConfigState>()(
         config: state.config,
         loadedLogoUrl: state.loadedLogoUrl,
       }),
+      // 旧持久化数据缺少 videoPrice/offPeakWindow 等新字段,
+      // 浅合并会直接丢弃默认值;这里深合并保证新字段始终存在
+      merge: (persisted, current) => {
+        const persistedState = persisted as Partial<SystemConfigState> | undefined
+        const persistedConfig = persistedState?.config
+        return {
+          ...current,
+          ...persistedState,
+          config: {
+            ...current.config,
+            ...(persistedConfig ?? {}),
+            currency: {
+              ...current.config.currency,
+              ...(persistedConfig?.currency ?? {}),
+            },
+          },
+        }
+      },
     }
   )
 )
