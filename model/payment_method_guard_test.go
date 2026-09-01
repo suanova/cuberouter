@@ -203,7 +203,7 @@ func TestRechargeEpayCreditsQuotaExactlyOnce(t *testing.T) {
 	alreadyDone, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
-	assert.Equal(t, 136986, getUserQuotaForPaymentGuardTest(t, user.Id))
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 
 	reloaded := GetTopUpByTradeNo(order.TradeNo)
 	require.NotNil(t, reloaded)
@@ -213,7 +213,7 @@ func TestRechargeEpayCreditsQuotaExactlyOnce(t *testing.T) {
 	alreadyDone, err = RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.True(t, alreadyDone)
-	assert.Equal(t, 136986, getUserQuotaForPaymentGuardTest(t, user.Id))
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
 func TestRechargeEpayKeepsRedisAndDatabaseCreditInSync(t *testing.T) {
@@ -231,17 +231,17 @@ func TestRechargeEpayKeepsRedisAndDatabaseCreditInSync(t *testing.T) {
 	alreadyDone, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
-	assert.Equal(t, 8, getUserQuotaForPaymentGuardTest(t, user.Id))
+	assert.Equal(t, 17, getUserQuotaForPaymentGuardTest(t, user.Id))
 	cached, err := cacheGetUserBase(user.Id)
 	require.NoError(t, err)
-	assert.Equal(t, 8, cached.Quota)
+	assert.Equal(t, 17, cached.Quota)
 
 	alreadyDone, err = RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.True(t, alreadyDone)
 	cached, err = cacheGetUserBase(user.Id)
 	require.NoError(t, err)
-	assert.Equal(t, 8, cached.Quota)
+	assert.Equal(t, 17, cached.Quota)
 }
 
 func TestRechargeEpayUpdatesPaymentMethodToActual(t *testing.T) {
@@ -261,7 +261,7 @@ func TestRechargeEpayUpdatesPaymentMethodToActual(t *testing.T) {
 	reloaded := GetTopUpByTradeNo(order.TradeNo)
 	require.NotNil(t, reloaded)
 	assert.Equal(t, "wxpay", reloaded.PaymentMethod)
-	assert.Equal(t, 136986, getUserQuotaForPaymentGuardTest(t, user.Id))
+	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
 func TestRechargeEpayRejectsForeignAndNonPendingOrders(t *testing.T) {
@@ -297,8 +297,7 @@ func TestRechargeEpayRejectsQuotaOverflowBeforeCompletingOrder(t *testing.T) {
 	truncateTables(t)
 
 	oldQuotaPerUnit := common.QuotaPerUnit
-	// 金额会先按汇率折算(÷7.3),取更大的 QuotaPerUnit 保证折算后仍超出钱包上限
-	common.QuotaPerUnit = float64(common.MaxWalletQuota+1) * 10
+	common.QuotaPerUnit = float64(common.MaxWalletQuota + 1)
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
 	user := insertUserForPaymentGuardTest(t, 505, 3)
@@ -324,15 +323,15 @@ func TestRechargeEpayEnforcesFinalWalletQuotaLimit(t *testing.T) {
 	}{
 		{
 			name:         "allows exact highest representable wallet balance",
-			currentQuota: common.MaxWalletQuota - 136_986,
+			currentQuota: common.MaxWalletQuota - 1_000_000,
 			wantQuota:    common.MaxWalletQuota,
 			wantStatus:   common.TopUpStatusSuccess,
 		},
 		{
 			name:         "rejects balance above wallet quota domain",
-			currentQuota: common.MaxWalletQuota - 136_985,
+			currentQuota: common.MaxWalletQuota - 999_999,
 			wantErr:      true,
-			wantQuota:    common.MaxWalletQuota - 136_985,
+			wantQuota:    common.MaxWalletQuota - 999_999,
 			wantStatus:   common.TopUpStatusPending,
 		},
 	}
