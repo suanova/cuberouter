@@ -842,29 +842,6 @@ export function PaymentSettingsSection({
                     )}
                   />
 
-                  <FormField
-                    control={form.control}
-                    name='MinTopUp'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Minimum top-up')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            min={0}
-                            {...safeNumberFieldProps(field)}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Minimum recharge amount for Epay online topup. Unit follows the quota display type (USD/CNY/tokens).'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
 
                 <FormField
@@ -1187,6 +1164,30 @@ export function PaymentSettingsSection({
                         <FormDescription>
                           {t(
                             'Exchange rate used to compute the Epay payment amount. Empty or 0 falls back to the global Price.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='MinTopUp'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Epay minimum top-up')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Minimum recharge amount for Epay online topup. Unit follows the quota display type (USD/CNY/tokens).'
                           )}
                         </FormDescription>
                         <FormMessage />

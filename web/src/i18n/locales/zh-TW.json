@@ -3,6 +3,7 @@
     "360": "360",
     "1000": "1000",
     "10000": "10000",
+    "Epay minimum top-up": "Epay 最低充值",
     "Exchange rate used to compute the Epay payment amount. Empty or 0 falls back to the global Price.": "用於計算 Epay 支付金額的匯率。留空或 0 時回退全域 Price。",
     "Exchange rate used to compute the Alipay payment amount. Empty or 0 falls back to the global Price.": "用於計算支付寶支付金額的匯率。留空或 0 時回退全域 Price。",
     "Defaults to the global Price": "預設使用全域 Price",
