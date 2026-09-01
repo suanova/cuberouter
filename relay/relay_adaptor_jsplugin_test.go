@@ -8,6 +8,8 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
+	taskastraflow "github.com/QuantumNous/new-api/relay/channel/task/astraflow"
+	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	jspluginadaptor "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -18,8 +20,6 @@ func TestGetTaskAdaptorMapsMigratedPlatformsToFactoryPlugins(t *testing.T) {
 	platforms := []constant.TaskPlatform{
 		constant.TaskPlatformSuno,
 		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAli)),
-		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDoubaoVideo)),
-		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVolcEngine)),
 		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGemini)),
 		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeMiniMax)),
 		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeJimeng)),
@@ -32,6 +32,22 @@ func TestGetTaskAdaptorMapsMigratedPlatformsToFactoryPlugins(t *testing.T) {
 	for _, platform := range platforms {
 		_, isJS := GetTaskAdaptor(platform).(*jspluginadaptor.TaskAdaptor)
 		assert.True(t, isJS, "platform %s should use its factory plugin", platform)
+	}
+}
+
+// TestGetTaskAdaptorKeepsForkGoAdaptors 锁定 fork 保留的 Go 任务适配器：
+// doubao / volcengine（含 Ark 风格视频端点与 ArkVideoConverter）与 astraflow
+// 仍由本地 Go 适配器服务，而非上行的 JS 工厂插件。
+func TestGetTaskAdaptorKeepsForkGoAdaptors(t *testing.T) {
+	forkAdaptors := map[constant.TaskPlatform]any{
+		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeDoubaoVideo)): (*taskdoubao.TaskAdaptor)(nil),
+		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVolcEngine)):  (*taskdoubao.TaskAdaptor)(nil),
+		constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeAstraFlow)):   (*taskastraflow.TaskAdaptor)(nil),
+	}
+	for platform, wantType := range forkAdaptors {
+		adaptor := GetTaskAdaptor(platform)
+		require.NotNil(t, adaptor, "platform %s should resolve a Go adaptor", platform)
+		assert.IsType(t, wantType, adaptor, "platform %s should keep its fork Go adaptor", platform)
 	}
 }
 

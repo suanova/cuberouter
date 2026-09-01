@@ -8,14 +8,12 @@ import (
 )
 
 func SetVideoRouter(router *gin.Engine) {
-	// Video proxy: accepts either session auth (dashboard) or token auth (API clients)
-	videoProxyRouter := router.Group("/v1")
-	videoProxyRouter.Use(middleware.RouteTag("relay"))
-	videoProxyRouter.Use(middleware.TokenOrUserAuth())
-	{
-		videoProxyRouter.GET("/videos/:task_id/content", controller.VideoProxy)
-	}
-
+	// OpenAI 兼容的 /v1/videos* 路径（POST /v1/videos、GET /v1/videos/:task_id、
+	// GET /v1/videos/:task_id/content）由 SetTaskPluginProtocolRouter 注册的
+	// openai_video host protocol 承载：其 create 处理链在未 pin 到 JS 插件时
+	// 回退到 controller.RelayTask（RelayTaskPluginEndpoint 委托），retrieve /
+	// content 与这里曾注册的 RelayTaskFetch / VideoProxy 是同一个 controller。
+	// 因此这里不再重复注册，避免 gin 启动期 duplicate route panic。
 	videoV1Router := router.Group("/v1")
 	videoV1Router.Use(middleware.RouteTag("relay"))
 	videoV1Router.Use(middleware.TokenAuth(), middleware.Distribute())
@@ -27,12 +25,6 @@ func SetVideoRouter(router *gin.Engine) {
 		// 在 RelayTaskSubmit / videoFetchByIDRespBodyBuilder 中校验。
 		videoV1Router.POST("/videos/generations/tasks", controller.RelayTask)
 		videoV1Router.GET("/videos/generations/tasks/:task_id", controller.RelayTaskFetch)
-	}
-	// openai compatible API video routes
-	// docs: https://platform.openai.com/docs/api-reference/videos/create
-	{
-		videoV1Router.POST("/videos", controller.RelayTask)
-		videoV1Router.GET("/videos/:task_id", controller.RelayTaskFetch)
 	}
 
 	klingV1Router := router.Group("/kling/v1")

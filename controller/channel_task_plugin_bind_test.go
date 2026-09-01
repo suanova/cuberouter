@@ -70,7 +70,9 @@ export function parseTaskResult() { return {}; }
 	require.NoError(t, err)
 	t.Cleanup(func() { jsplugin.DefaultRegistry.Unregister(key) })
 
-	taskPluginBody := `{"mode":"single","channel":{"type":61,"name":"plugin-channel","key":"sk","models":"doc","group":"default","base_url":"https://example.com","setting":"{\"task_plugin_key\":\"channel-bind\"}"}}`
+	// 上游 ChannelTypeTaskPlugin=61；fork 因新增 ChannelTypeAstraFlow=59 使编号
+	// 顺延，ChannelTypeTaskPlugin 在本仓库为 62（见 constant/channel.go）。
+	taskPluginBody := `{"mode":"single","channel":{"type":62,"name":"plugin-channel","key":"sk","models":"doc","group":"default","base_url":"https://example.com","setting":"{\"task_plugin_key\":\"channel-bind\"}"}}`
 	openaiBody := `{"mode":"single","channel":{"type":1,"name":"openai-channel","key":"sk","models":"gpt","group":"default"}}`
 
 	adminDenied := postAddChannel(t, 2, common.RoleAdminUser, taskPluginBody)
@@ -115,7 +117,7 @@ export function parseTaskResult() { return {}; }
 	require.NoError(t, channel.Insert())
 
 	payload := fmt.Sprintf(
-		`{"id":%d,"type":61,"name":"existing-plugin","key":"sk","models":"doc","group":"default","base_url":"https://example.com","setting":"{\"task_plugin_key\":\"channel-bind-update\"}"}`,
+		`{"id":%d,"type":62,"name":"existing-plugin","key":"sk","models":"doc","group":"default","base_url":"https://example.com","setting":"{\"task_plugin_key\":\"channel-bind-update\"}"}`,
 		channel.Id,
 	)
 	gin.SetMode(gin.TestMode)

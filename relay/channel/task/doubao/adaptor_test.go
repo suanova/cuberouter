@@ -324,10 +324,11 @@ func TestConvertToArkVideo(t *testing.T) {
 	}
 }
 
-// TestDoResponseArkSubmitShape 锁定 Ark 风格端点提交响应形态：
+// TestParseResponseArkSubmitShape 锁定 Ark 风格端点提交响应形态：
 // /v1/videos/generations/tasks 返回 {id, model, status:"queued", created_at}，
 // 不携带 OpenAI 视频字段（object/progress/task_id）与上游原始 task ID。
-func TestDoResponseArkSubmitShape(t *testing.T) {
+// ParseResponse 不写回客户端，ClientResponse 由控制器在持久化屏障后呈现。
+func TestParseResponseArkSubmitShape(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	context, _ := gin.CreateTestContext(recorder)
@@ -343,12 +344,14 @@ func TestDoResponseArkSubmitShape(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"id":"upstream_456"}`)),
 	}
 
-	taskID, _, taskErr := adaptor.DoResponse(context, resp, info)
+	submitResp, taskErr := adaptor.ParseResponse(context, resp, info)
 
 	require.Nil(t, taskErr)
-	assert.Equal(t, "upstream_456", taskID)
-	var task taskdto.ArkVideoTask
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &task))
+	require.NotNil(t, submitResp)
+	assert.Equal(t, "upstream_456", submitResp.UpstreamTaskID)
+	require.NotNil(t, submitResp.ClientResponse)
+	task, ok := submitResp.ClientResponse.(*taskdto.ArkVideoTask)
+	require.True(t, ok)
 	assert.Equal(t, "vt_123", task.ID)
 	assert.Equal(t, "doubao-seedance-2-0-260128", task.Model)
 	assert.Equal(t, taskdto.ArkVideoStatusQueued, task.Status)
@@ -357,7 +360,7 @@ func TestDoResponseArkSubmitShape(t *testing.T) {
 	assert.Empty(t, task.UpdatedAt)
 	assert.Nil(t, task.Content)
 	assert.Nil(t, task.Error)
-	assert.NotContains(t, recorder.Body.String(), `"object"`)
-	assert.NotContains(t, recorder.Body.String(), `"progress"`)
-	assert.NotContains(t, recorder.Body.String(), "upstream_456")
+	// 原始上游响应原样缓存为 TaskData，供轮询阶段解析；客户端未收到任何写入。
+	assert.Contains(t, string(submitResp.TaskData), "upstream_456")
+	assert.Empty(t, recorder.Body.String())
 }

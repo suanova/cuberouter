@@ -94,7 +94,7 @@ export class PluginSourceFetchError extends Error {
  */
 export async function fetchPluginSourceText(
   url: string,
-  fetchImpl: typeof fetch = globalThis.fetch
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = globalThis.fetch
 ): Promise<string> {
   let response: Response
   try {

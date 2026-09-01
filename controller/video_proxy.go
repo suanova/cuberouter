@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/http/httpguts"
 )
 
 // videoProxyError returns a standardized OpenAI-style error response.
@@ -191,7 +193,14 @@ func VideoProxy(c *gin.Context) {
 	}
 }
 
+// writeVideoDataURL 采用与上游 task-media 链路一致的实现：超长 data URL 在解码前
+// 直接拒绝（复用 task_media_proxy.go 的 taskMediaDataURLMaxEncodedBytes /
+// errTaskMediaRequestRejected），流式解码并设置 Content-Length，HEAD 请求只回
+// 头不写体。fork 的 VideoProxy 与上游 proxyTaskMedia 均依赖该行为。
 func writeVideoDataURL(c *gin.Context, dataURL string) error {
+	if len(dataURL) > taskMediaDataURLMaxEncodedBytes {
+		return errTaskMediaRequestRejected
+	}
 	parts := strings.SplitN(dataURL, ",", 2)
 	if len(parts) != 2 {
 		return fmt.Errorf("invalid data url")
@@ -208,18 +217,31 @@ func writeVideoDataURL(c *gin.Context, dataURL string) error {
 	if mimeType == "" {
 		mimeType = "video/mp4"
 	}
+	if len(mimeType) > 255 || !httpguts.ValidHeaderFieldValue(mimeType) {
+		return fmt.Errorf("invalid data url media type")
+	}
 
-	videoBytes, err := base64.StdEncoding.DecodeString(payload)
-	if err != nil {
-		videoBytes, err = base64.RawStdEncoding.DecodeString(payload)
-		if err != nil {
-			return err
+	var encoding *base64.Encoding
+	var contentLength int64
+	for _, candidate := range []*base64.Encoding{base64.StdEncoding, base64.RawStdEncoding} {
+		decodedLength, err := io.Copy(io.Discard, base64.NewDecoder(candidate, strings.NewReader(payload)))
+		if err == nil {
+			encoding = candidate
+			contentLength = decodedLength
+			break
 		}
+	}
+	if encoding == nil {
+		return fmt.Errorf("invalid base64 data")
 	}
 
 	c.Writer.Header().Set("Content-Type", mimeType)
-	c.Writer.Header().Set("Cache-Control", "no-store")
+	c.Writer.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
+	setTaskMediaResponseSecurityHeaders(c.Writer.Header())
 	c.Writer.WriteHeader(http.StatusOK)
-	_, err = c.Writer.Write(videoBytes)
+	if c.Request.Method == http.MethodHead {
+		return nil
+	}
+	_, err := io.Copy(c.Writer, base64.NewDecoder(encoding, strings.NewReader(payload)))
 	return err
 }

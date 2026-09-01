@@ -59,6 +59,7 @@ const (
 	ChannelTypeAstraFlow      = 59
 	ChannelTypeSub2API        = 60
 	ChannelTypeNewAPI         = 61
+	ChannelTypeTaskPlugin     = 62
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -128,6 +129,13 @@ var ChannelBaseURLs = []string{
 	"",                                          //61
 }
 
+func GetChannelBaseURL(channelType int) string {
+	if channelType < 0 || channelType >= len(ChannelBaseURLs) {
+		return ""
+	}
+	return ChannelBaseURLs[channelType]
+}
+
 var ChannelTypeNames = map[int]string{
 	ChannelTypeUnknown:        "Unknown",
 	ChannelTypeOpenAI:         "OpenAI",
@@ -187,6 +195,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeAstraFlow:      "AstraFlow",
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
+	ChannelTypeTaskPlugin:     "Task Plugin",
 }
 
 func GetChannelTypeName(channelType int) string {

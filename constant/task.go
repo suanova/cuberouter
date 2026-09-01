@@ -8,6 +8,13 @@ const (
 )
 
 const (
+	// TaskActionGenerate 是视频生成请求的默认动作（legacy 别名 "generate"，
+	// NormalizeTaskAction 会归一到 image_to_video）。fork 保留的 Go 任务适配器
+	// （doubao/astraflow）使用该动作，上游因迁移到 JS 插件系统而移除了它。
+	TaskActionGenerate          = "generate"
+	// TaskActionTextGenerate 是 Kling/Jimeng 旧路由中间件写入的 legacy 动作
+	// 别名（NormalizeTaskAction 会归一到 text_to_video）。
+	TaskActionTextGenerate      = "textGenerate"
 	TaskActionImageToVideo     = "image_to_video"
 	TaskActionTextToVideo      = "text_to_video"
 	TaskActionFirstTailToVideo = "first_tail_to_video"

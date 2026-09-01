@@ -153,42 +153,46 @@ func (a *TaskAdaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, req
 	return channel.DoTaskApiRequest(a, c, info, requestBody)
 }
 
-// DoResponse handles upstream submit response, returns taskID etc.
-func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (taskID string, taskData []byte, taskErr *taskdto.TaskError) {
+// ParseResponse handles the upstream submit response and returns the parsed
+// task result. It never writes to the client response — the controller presents
+// ClientResponse after the durable task barrier and billing settlement.
+func (a *TaskAdaptor) ParseResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*channel.TaskSubmitResponse, *taskdto.TaskError) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		taskErr = service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
-		return
+		return nil, service.TaskErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	_ = resp.Body.Close()
 
 	var sResp submitResponseBody
 	if err := common.Unmarshal(responseBody, &sResp); err != nil {
-		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
-		return
+		return nil, service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
 	}
 
 	if sResp.Output.TaskID == "" {
-		taskErr = service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
-		return
+		return nil, service.TaskErrorWrapper(fmt.Errorf("task_id is empty"), "invalid_response", http.StatusInternalServerError)
 	}
 
-	// Ark 风格端点（/v1/videos/generations/tasks）直接返回 Ark 提交形态，
+	// Ark 风格端点（/v1/videos/generations/tasks）返回 Ark 提交形态，
 	// 其余路径保持 OpenAI 视频格式。
+	var clientResponse any
 	if relaycommon.IsArkVideoPath(c) {
-		c.JSON(http.StatusOK, taskdto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix()))
-		return sResp.Output.TaskID, responseBody, nil
+		clientResponse = taskdto.NewArkVideoSubmit(info.PublicTaskID, info.OriginModelName, time.Now().Unix())
+	} else {
+		ov := dto.NewOpenAIVideo()
+		// 与其他 task 适配器保持一致：对外返回网关预生成的公开 task ID，
+		// 上游原始 ID 由提交流程存入 PrivateData.UpstreamTaskID。
+		ov.ID = info.PublicTaskID
+		ov.TaskID = info.PublicTaskID
+		ov.CreatedAt = time.Now().Unix()
+		ov.Model = info.OriginModelName
+		clientResponse = ov
 	}
 
-	ov := dto.NewOpenAIVideo()
-	// 与其他 task 适配器保持一致：对外返回网关预生成的公开 task ID，
-	// 上游原始 ID 由提交流程存入 PrivateData.UpstreamTaskID。
-	ov.ID = info.PublicTaskID
-	ov.TaskID = info.PublicTaskID
-	ov.CreatedAt = time.Now().Unix()
-	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
-	return sResp.Output.TaskID, responseBody, nil
+	return &channel.TaskSubmitResponse{
+		UpstreamTaskID: sResp.Output.TaskID,
+		TaskData:       responseBody,
+		ClientResponse: clientResponse,
+	}, nil
 }
 
 // GetModelList returns the list of supported models.
