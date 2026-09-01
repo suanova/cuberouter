@@ -41,6 +41,7 @@ import {
   formatCurrency,
   getCurrencySymbol,
   getDiscountLabel,
+  getLocalCurrencySymbol,
   getPaymentIcon,
   getMinTopupAmount,
   calculatePresetPricing,
@@ -115,6 +116,7 @@ export function RechargeFormCard({
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const currencySymbol = getCurrencySymbol()
+  const payCurrencySymbol = getLocalCurrencySymbol()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
   useEffect(() => {
@@ -269,12 +271,12 @@ export function RechargeFormCard({
                             )}
                           </div>
                           <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            Pay {currencySymbol}
+                            Pay {payCurrencySymbol}
                             {formatCurrency(actualPrice)}
                             {hasDiscount && savedAmount > 0 && (
                               <span className='text-green-600'>
                                 {' '}
-                                • Save {currencySymbol}
+                                • Save {payCurrencySymbol}
                                 {formatCurrency(savedAmount)}
                               </span>
                             )}
@@ -321,7 +323,7 @@ export function RechargeFormCard({
                       <Skeleton className='h-5 w-16' />
                     ) : (
                       <span className='text-sm font-semibold'>
-                        {currencySymbol}
+                        {payCurrencySymbol}
                         {formatCurrency(paymentAmount)}
                       </span>
                     )}

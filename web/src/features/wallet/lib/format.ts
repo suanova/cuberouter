@@ -67,6 +67,23 @@ export function getCurrencySymbol(): string {
 }
 
 /**
+ * Local payment currency symbol for the Pay/Save amounts: those values are
+ * the payment amount converted via Price (local currency), which differs
+ * from the display currency in USD mode (e.g. $10 display → Pay ¥73).
+ */
+export function getLocalCurrencySymbol(): string {
+  const { config } = getCurrencyDisplay()
+  switch (config.quotaDisplayType) {
+    case 'TOKENS':
+      return ''
+    case 'CUSTOM':
+      return config.customCurrencySymbol || '¤'
+    default:
+      return '¥'
+  }
+}
+
+/**
  * Format currency amount that is already in local currency.
  * This is used for payment amounts that have been calculated via priceRatio.
  */
