@@ -871,7 +871,9 @@ export function PaymentSettingsSection({
                           )}
                         </FormControl>
                         <FormDescription>
-                          {t('Preset recharge amounts (JSON array)')}
+                          {t(
+                            'Preset recharge amounts (JSON array). Unit follows the quota display type: CNY mode uses yuan, USD mode uses USD.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

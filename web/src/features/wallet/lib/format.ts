@@ -73,7 +73,10 @@ export function getDiscountLabel(discount: number): string {
 }
 
 /**
- * Calculate pricing details for a preset amount
+ * Calculate pricing details for a preset amount.
+ * presetValue 的语义 = 显示货币(CNY 填元 / USD 填美元 / TOKENS 填 token 数)。
+ * 支付金额(本地货币):CNY 模式值即元(rate>1 时 value/rate×price = value);
+ * USD 模式(rate=1)为 value × priceRatio。
  */
 export function calculatePresetPricing(
   presetValue: number,
@@ -81,11 +84,14 @@ export function calculatePresetPricing(
   discount: number,
   usdExchangeRate: number = 1
 ) {
-  const originalPrice = presetValue * priceRatio
+  const originalPrice =
+    usdExchangeRate > 1
+      ? (presetValue / usdExchangeRate) * priceRatio
+      : presetValue * priceRatio
   const actualPrice = originalPrice * discount
   const savedAmount = originalPrice - actualPrice
   const hasDiscount = discount < 1.0
-  const displayValue = presetValue * usdExchangeRate
+  const displayValue = presetValue
 
   return {
     displayValue,

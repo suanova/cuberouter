@@ -58,6 +58,11 @@ func GetQuotaDisplayType() string {
 	return generalSetting.QuotaDisplayType
 }
 
+// SetQuotaDisplayTypeForTest 仅测试使用:切换额度展示类型。
+func SetQuotaDisplayTypeForTest(displayType string) {
+	generalSetting.QuotaDisplayType = displayType
+}
+
 // GetCurrencySymbol 返回当前展示类型对应符号
 func GetCurrencySymbol() string {
 	switch generalSetting.QuotaDisplayType {

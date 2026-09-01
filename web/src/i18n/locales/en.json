@@ -9,6 +9,7 @@
     "Defaults to the global Price": "Defaults to the global Price",
     "Epay exchange rate (USD to local currency)": "Epay exchange rate (USD to local currency)",
     "Alipay exchange rate (USD to local currency)": "Alipay exchange rate (USD to local currency)",
+    "Preset recharge amounts (JSON array). Unit follows the quota display type: CNY mode uses yuan, USD mode uses USD.": "Preset recharge amounts (JSON array). Unit follows the quota display type: CNY mode uses yuan, USD mode uses USD.",
     "Real exchange rate between USD and your local currency. Used for balance and consumption display, pricing page display, and as the default payment exchange rate for Epay and Alipay (each gateway can override its own rate).": "Real exchange rate between USD and your local currency. Used for balance and consumption display, pricing page display, and as the default payment exchange rate for Epay and Alipay (each gateway can override its own rate).",
     "Video generation mode": "Video generation mode",
     "Pass images via image, images or input_reference": "Pass images via image, images or input_reference",

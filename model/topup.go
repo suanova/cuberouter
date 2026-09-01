@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -208,7 +210,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		}
 		var quotaErr error
 		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
-			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+			topupAmountToQuotaDecimal(topUp.Amount),
 		)
 		if quotaErr != nil || quotaToAdd <= 0 {
 			return ErrInvalidTopUpQuota
@@ -292,8 +294,29 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	return nil
 }
 
+// topupAmountToQuotaDecimal 充值金额 → 额度(decimal,未截断)。金额语义跟随展示类型:
+// - TOKENS: 下单时 Amount 已 ÷QuotaPerUnit 存储,乘回即原 token 数
+// - CNY: Amount 为元,先 ÷Price 换成美元再 × QuotaPerUnit
+// - USD/CUSTOM: Amount 为美元,直接 × QuotaPerUnit
+func topupAmountToQuotaDecimal(amount int64) decimal.Decimal {
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+		return rmbTopupAmountToUSD(amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	return decimal.NewFromInt(amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+}
+
+// rmbTopupAmountToUSD 把人民币充值金额(元)按系统汇率折算为美元金额。
+// 汇率非法(<=0/NaN/Inf)时回退 1,仅影响换算数值,不影响计费安全。
+func rmbTopupAmountToUSD(amount int64) decimal.Decimal {
+	exchangeRate := operation_setting.Price
+	if exchangeRate <= 0 || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) {
+		exchangeRate = 1
+	}
+	return decimal.NewFromInt(amount).Div(decimal.NewFromFloat(exchangeRate))
+}
+
 // RechargeAlipay 支付宝回调充值：行级锁 + 幂等 + quota 累加。
-// 与目标端 EPay 回调一致：Amount 存的是"展示单位"的充值数量（TOKENS 模式下单时已换算），quota = Amount × QuotaPerUnit。
+// 与目标端 EPay 回调一致：Amount 存的是"展示单位"的充值数量（TOKENS 模式下单时已换算）。
 func RechargeAlipay(tradeNo string, callerIp string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
@@ -325,10 +348,8 @@ func RechargeAlipay(tradeNo string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		dAmount := decimal.NewFromInt(topUp.Amount)
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		var quotaClamp *common.QuotaClamp
-		quotaToAdd, quotaClamp = common.QuotaFromDecimalChecked(dAmount.Mul(dQuotaPerUnit))
+		quotaToAdd, quotaClamp = common.QuotaFromDecimalChecked(topupAmountToQuotaDecimal(topUp.Amount))
 		if quotaClamp != nil {
 			logger.LogWarn(context.Background(), fmt.Sprintf("支付宝充值额度溢出被截断 trade_no=%s user_id=%d clamp=%s", tradeNo, topUp.UserId, quotaClamp.Error()))
 		}
@@ -565,7 +586,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			)
 		} else {
 			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
-				decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+				topupAmountToQuotaDecimal(topUp.Amount),
 			)
 		}
 		if quotaErr != nil || quotaToAdd <= 0 {
