@@ -26,7 +26,10 @@ import {
   GITHUB_MARKETPLACE_INDEX_URL,
   indexHasIntegrityHashes,
   isDefaultMarketplaceSource,
+  isStaleFactoryOverride,
+  marketplaceBuiltInVersion,
   parseMarketplaceIndex,
+  resolveMarketplaceActionPolicy,
   resolvePluginSourceUrl,
 } from '../lib/marketplace'
 import type {
@@ -52,7 +55,23 @@ function marketplacePlugin(
   }
 }
 
-function installedPlugin(key: string, version: string): TaskPluginListItem {
+function factoryMeta(key: string, version: string) {
+  return {
+    apiVersion: 1,
+    key,
+    name: key,
+    version,
+    author: { name: 'test' as const },
+    models: null,
+    fetchMode: 'poll',
+  }
+}
+
+function installedPlugin(
+  key: string,
+  version: string,
+  overrides: Partial<TaskPluginListItem> = {}
+): TaskPluginListItem {
   return {
     meta: {
       apiVersion: 1,
@@ -71,6 +90,7 @@ function installedPlugin(key: string, version: string): TaskPluginListItem {
     runtime_status: 'registered',
     channel_count: 0,
     in_flight_count: 0,
+    ...overrides,
   }
 }
 
@@ -395,6 +415,102 @@ describe('install state derivation', () => {
         installedPlugin('kling', '1.2.0'),
       ]),
       { status: 'not_installed' }
+    )
+  })
+})
+
+describe('marketplace action policy', () => {
+  test('factory-served plugin returns the informational system-update state', () => {
+    assert.deepEqual(
+      resolveMarketplaceActionPolicy(
+        installedPlugin('doubao', '1.0.0', { source: 'factory' })
+      ),
+      { kind: 'system_update' }
+    )
+  })
+
+  test('overridden factory plugin still allows marketplace install', () => {
+    assert.deepEqual(
+      resolveMarketplaceActionPolicy(
+        installedPlugin('doubao', '1.2.0', {
+          source: 'override_over_factory',
+          factory_meta: factoryMeta('doubao', '1.0.0'),
+        })
+      ),
+      { kind: 'install' }
+    )
+  })
+
+  test('third-party plugin still allows marketplace install', () => {
+    assert.deepEqual(
+      resolveMarketplaceActionPolicy(installedPlugin('doubao', '1.0.0')),
+      { kind: 'install' }
+    )
+  })
+
+  test('uninstalled plugin still allows marketplace install', () => {
+    assert.deepEqual(resolveMarketplaceActionPolicy(undefined), {
+      kind: 'install',
+    })
+  })
+
+  test('factory-served built-in version is the installed meta version', () => {
+    assert.equal(
+      marketplaceBuiltInVersion(
+        installedPlugin('doubao', '1.0.0', { source: 'factory' })
+      ),
+      '1.0.0'
+    )
+  })
+
+  test('overridden factory built-in version comes from factory_meta', () => {
+    assert.equal(
+      marketplaceBuiltInVersion(
+        installedPlugin('doubao', '1.2.0', {
+          source: 'override_over_factory',
+          factory_meta: factoryMeta('doubao', '1.0.0'),
+        })
+      ),
+      '1.0.0'
+    )
+  })
+})
+
+describe('stale factory override', () => {
+  test('is stale when override version differs from built-in', () => {
+    assert.equal(
+      isStaleFactoryOverride(
+        installedPlugin('doubao', '1.2.0', {
+          source: 'override_over_factory',
+          factory_meta: factoryMeta('doubao', '1.0.0'),
+        })
+      ),
+      true
+    )
+  })
+
+  test('is not stale when override version matches built-in', () => {
+    assert.equal(
+      isStaleFactoryOverride(
+        installedPlugin('doubao', '1.0.0', {
+          source: 'override_over_factory',
+          factory_meta: factoryMeta('doubao', '1.0.0'),
+        })
+      ),
+      false
+    )
+  })
+
+  test('is not stale for factory-served or third-party plugins', () => {
+    assert.equal(
+      isStaleFactoryOverride(
+        installedPlugin('doubao', '1.0.0', { source: 'factory' })
+      ),
+      false
+    )
+    assert.equal(
+      isStaleFactoryOverride(installedPlugin('doubao', '1.0.0')),
+      false
     )
   })
 })
