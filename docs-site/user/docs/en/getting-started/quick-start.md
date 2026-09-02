@@ -66,7 +66,11 @@ Use the **Group** filter on the left to view the models available to your API ke
 
 ## Step 5: Make Your First Call
 
-CubeRouter supports the OpenAI-compatible API. Use the platform URL as `base_url` together with your API key to start calling:
+## Test online in the Playground
+
+The [Playground](../guide/playground.md) is a built-in online testing tool — chat with models directly without writing any code, which is perfect for a quick check that your key works.
+
+CubeRouter also supports the OpenAI-compatible API. Use the platform URL as `base_url` together with your API key to start calling:
 
 ```bash
 curl https://your-platform.com/v1/chat/completions \
@@ -78,7 +82,7 @@ curl https://your-platform.com/v1/chat/completions \
   }'
 ```
 
-The API Base URL is the current service domain. For more code examples (Python / Claude / Gemini), see [Use the API](#use-the-api).
+The API Base URL is the current service domain. For more code examples, see [Use the API](using-api.md).
 
 ## Step 6: Pick a Client Tool
 
@@ -87,67 +91,3 @@ CubeRouter supports the OpenAI-compatible API and works with a wide range of too
 - [Claude Code](./claude-code.md)
 - [OpenCode](./opencode.md)
 - [OpenClaw](./openclaw.md)
-
-## Use the API
-
-### Test online in the Playground
-
-The [Playground](../guide/playground.md) is a built-in online testing tool — chat with models directly without writing any code, which is perfect for a quick check that your key works.
-
-### Get the API Base URL
-
-
-Use the current domain as `base_url` in your client or code, and start calling with your key.
-
-### Code examples
-
-**Python (OpenAI SDK)**:
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    api_key="sk-xxxxxxxxxxxxxxxx",  # your platform-issued API key
-    base_url="https://your-platform.com/v1"
-)
-
-response = client.chat.completions.create(
-    model="your-model-id",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.choices[0].message.content)
-```
-
-**Claude native format**:
-
-```bash
-curl https://your-platform.com/v1/messages \
-  -H "x-api-key: sk-xxxxxxxx" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "content-type: application/json" \
-  -d '{"model": "claude-3-5-sonnet-20241022", "max_tokens": 1024, "messages": [{"role": "user", "content": "Hello"}]}'
-```
-
-**Gemini native format**:
-
-```bash
-curl "https://your-platform.com/v1beta/models/gemini-1.5-pro:generateContent?key=sk-xxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -d '{"contents": [{"parts": [{"text": "Hello"}]}]}'
-```
-
-### Supported endpoints
-
-| Endpoint | Path | Description |
-| --- | --- | --- |
-| Chat completions | `POST /v1/chat/completions` | Conversational generation, streaming supported |
-| Text completions | `POST /v1/completions` | Legacy completions endpoint |
-| Embeddings | `POST /v1/embeddings` | Text vectorization |
-| Image generation | `POST /v1/images/generations` | Text-to-image |
-| Image editing | `POST /v1/images/edits` | Image editing |
-| Speech-to-text | `POST /v1/audio/transcriptions` | Whisper, etc. |
-| Text-to-speech | `POST /v1/audio/speech` | TTS |
-| Reranking | `POST /v1/rerank` | Document reranking |
-| Responses API | `POST /v1/responses` | OpenAI Responses format |
-| Realtime | `GET /v1/realtime` (WebSocket) | OpenAI Realtime API |
-| Model list | `GET /v1/models` | Query available models |

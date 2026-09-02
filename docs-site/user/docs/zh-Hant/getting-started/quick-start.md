@@ -66,7 +66,9 @@ API 金鑰僅在創建時完整顯示一次，請立即複製保存。金鑰具�
 
 ## 第五步：發起第一次調用
 
-CubeRouter 支援 OpenAI 兼容的 API。將平臺地址作為 `base_url`，配合 API 金鑰即可開始調用：
+[遊樂場](../guide/playground.md)是內置的在線測試工具，無需編寫代碼即可直接與模型對話，適合快速驗證金鑰是否可用。
+
+同时 CubeRouter 支援 OpenAI 兼容的 API。將平臺地址作為 `base_url`，配合 API 金鑰即可開始調用：
 
 ```bash
 curl https://your-platform.com/v1/chat/completions \
@@ -78,7 +80,7 @@ curl https://your-platform.com/v1/chat/completions \
   }'
 ```
 
-API Base URL 為當前服務域名。更多代碼示例（Python / Claude / Gemini）見[使用 API](#使用-api)。
+API Base URL 為當前服務域名。更多代碼示例見[使用 API](using-api.md)。
 
 ## 第六步：選擇客戶端工具
 
@@ -87,67 +89,3 @@ CubeRouter 支援 OpenAI 兼容的 API，可以在多種工具中使用：
 - [Claude Code](claude-code.md)
 - [OpenCode](opencode.md)
 - [OpenClaw](openclaw.md)
-
-## 使用 API
-
-### 遊樂場在線測試
-
-[遊樂場](../guide/playground.md)是內置的在線測試工具，無需編寫代碼即可直接與模型對話，適合快速驗證金鑰是否可用。
-
-### 獲取 API 地址
-
-
-使用當前域名作為你的客戶端或代碼中作為 `base_url`，配合金鑰即可開始調用。
-
-### 代碼示例
-
-**Python（OpenAI SDK）**：
-
-```python
-from openai import OpenAI
-
-client = OpenAI(
-    api_key="sk-xxxxxxxxxxxxxxxx",  # 平臺頒發的金鑰
-    base_url="https://your-platform.com/v1"
-)
-
-response = client.chat.completions.create(
-    model="模型名稱",
-    messages=[{"role": "user", "content": "Hello!"}]
-)
-print(response.choices[0].message.content)
-```
-
-**Claude 原生格式**：
-
-```bash
-curl https://your-platform.com/v1/messages \
-  -H "x-api-key: sk-xxxxxxxx" \
-  -H "anthropic-version: 2023-06-01" \
-  -H "content-type: application/json" \
-  -d '{"model": "claude-3-5-sonnet-20241022", "max_tokens": 1024, "messages": [{"role": "user", "content": "Hello"}]}'
-```
-
-**Gemini 原生格式**：
-
-```bash
-curl "https://your-platform.com/v1beta/models/gemini-1.5-pro:generateContent?key=sk-xxxxxxxx" \
-  -H "Content-Type: application/json" \
-  -d '{"contents": [{"parts": [{"text": "Hello"}]}]}'
-```
-
-### 支援的接口端點
-
-| 接口 | 路徑 | 說明 |
-| --- | --- | --- |
-| 聊天補全 | `POST /v1/chat/completions` | 對話生成，支援流式輸出 |
-| 文本補全 | `POST /v1/completions` | 傳統補全接口 |
-| 向量嵌入 | `POST /v1/embeddings` | 文本向量化 |
-| 圖像生成 | `POST /v1/images/generations` | 文生圖 |
-| 圖像編輯 | `POST /v1/images/edits` | 圖像編輯 |
-| 語音轉文字 | `POST /v1/audio/transcriptions` | Whisper 等 |
-| 文字轉語音 | `POST /v1/audio/speech` | TTS |
-| 重排序 | `POST /v1/rerank` | 文檔重排序 |
-| Responses API | `POST /v1/responses` | OpenAI Responses 格式 |
-| 實時對話 | `GET /v1/realtime`（WebSocket） | OpenAI Realtime API |
-| 模型列表 | `GET /v1/models` | 查詢可用模型 |

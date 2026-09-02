@@ -23,6 +23,7 @@ export default defineConfig({
                 { text: '快速上手', link: '/getting-started/quick-start' },
                 { text: '注册与登录', link: '/getting-started/register-login' },
                 { text: '界面概览', link: '/getting-started/ui-overview' },
+                { text: '使用 API', link: '/getting-started/using-api' },
                 { text: 'Claude Code', link: '/getting-started/claude-code' },
                 { text: 'OpenCode', link: '/getting-started/opencode' },
                 { text: 'OpenClaw', link: '/getting-started/openclaw' }
@@ -127,6 +128,7 @@ export default defineConfig({
                 { text: 'Quick Start', link: '/en/getting-started/quick-start' },
                 { text: 'Register & Sign In', link: '/en/getting-started/register-login' },
                 { text: 'Interface Overview', link: '/en/getting-started/ui-overview' },
+                { text: 'Use the API', link: '/en/getting-started/using-api' },
                 { text: 'Claude Code', link: '/en/getting-started/claude-code' },
                 { text: 'OpenCode', link: '/en/getting-started/opencode' },
                 { text: 'OpenClaw', link: '/en/getting-started/openclaw' }
@@ -231,6 +233,7 @@ export default defineConfig({
                 { text: '快速開始', link: '/zh-Hant/getting-started/quick-start' },
                 { text: '註冊與登入', link: '/zh-Hant/getting-started/register-login' },
                 { text: '界面概覽', link: '/zh-Hant/getting-started/ui-overview' },
+                { text: '使用 API', link: '/zh-Hant/getting-started/using-api' },
                 { text: 'Claude Code', link: '/zh-Hant/getting-started/claude-code' },
                 { text: 'OpenCode', link: '/zh-Hant/getting-started/opencode' },
                 { text: 'OpenClaw', link: '/zh-Hant/getting-started/openclaw' }
