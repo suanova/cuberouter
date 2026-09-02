@@ -219,12 +219,13 @@ type PinnedRoute struct {
 // distribution may rebind it to another candidate from the same generation
 // when multiple legacy providers expose the same model.
 type PinnedEndpoint struct {
-	Generation *RoutingGeneration
-	Plugin     *LoadedPlugin
-	Protocol   string
-	Operation  HostProtocolOperation
-	Model      string
-	Candidates []ProtocolBinding
+	Generation  *RoutingGeneration
+	Plugin      *LoadedPlugin
+	Protocol    string
+	Operation   HostProtocolOperation
+	Model       string
+	MappedModel string
+	Candidates  []ProtocolBinding
 }
 
 // RouteRequestContext is the canonical request view exposed to declarative
@@ -296,7 +297,11 @@ type ProtocolRequestContext struct {
 	Protocol  string `json:"protocol"`
 	Operation string `json:"operation"`
 	Model     string `json:"model"`
-	Stream    bool   `json:"stream"`
+	// UpstreamModel is the declared machine identity when Model is a
+	// channel-mapping alias; empty otherwise. Decode hooks that key rate
+	// tables or request shaping by model must use it over Model.
+	UpstreamModel string `json:"upstreamModel,omitempty"`
+	Stream        bool   `json:"stream"`
 }
 
 func (p ProtocolRequestContext) JSValue() map[string]any {
@@ -304,6 +309,9 @@ func (p ProtocolRequestContext) JSValue() map[string]any {
 	value["protocol"] = p.Protocol
 	value["operation"] = p.Operation
 	value["model"] = p.Model
+	if p.UpstreamModel != "" {
+		value["upstreamModel"] = p.UpstreamModel
+	}
 	value["stream"] = p.Stream
 	return value
 }
@@ -318,15 +326,16 @@ type RoutingGeneration struct {
 	Number      uint64
 	PublishedAt time.Time
 
-	byKey         map[string]*LoadedPlugin
-	byModel       map[string]*LoadedPlugin
-	byChannelType map[int]*LoadedPlugin
-	routeIndex    map[string]RouteBinding
-	protocolIndex map[string][]ProtocolBinding
-	plugins       []*LoadedPlugin
-	routes        []RouteBinding
-	runtime       http.Handler
-	retainCurrent map[string]struct{}
+	byKey                map[string]*LoadedPlugin
+	byModel              map[string]*LoadedPlugin
+	canonicalModelByFold map[string]string
+	byChannelType        map[int]*LoadedPlugin
+	routeIndex           map[string]RouteBinding
+	protocolIndex        map[string][]ProtocolBinding
+	plugins              []*LoadedPlugin
+	routes               []RouteBinding
+	runtime              http.Handler
+	retainCurrent        map[string]struct{}
 }
 
 var (
@@ -407,6 +416,20 @@ func (g *RoutingGeneration) GetByModel(model string) (*LoadedPlugin, bool) {
 	}
 	plugin, ok := g.byModel[model]
 	return plugin, ok
+}
+
+// CanonicalModel returns the declared spelling for model. An exact byModel
+// hit wins and returns the input unchanged; otherwise the ASCII-folded
+// index is consulted. Miss and nil-receiver return ("", false).
+func (g *RoutingGeneration) CanonicalModel(model string) (string, bool) {
+	if g == nil || model == "" {
+		return "", false
+	}
+	if _, ok := g.byModel[model]; ok {
+		return model, true
+	}
+	declared, ok := g.canonicalModelByFold[asciiFold(model)]
+	return declared, ok
 }
 
 // LookupDeclaredRoute resolves a manifest path declaration. It does not match
@@ -721,10 +744,11 @@ func validateModelScope(models []string, subject string) error {
 		if strings.TrimSpace(model) == "" || strings.TrimSpace(model) != model {
 			return fmt.Errorf("plugin %s models must contain non-empty canonical names", subject)
 		}
-		if _, duplicate := seen[model]; duplicate {
-			return fmt.Errorf("plugin %s models must be unique", subject)
+		folded := asciiFold(model)
+		if _, duplicate := seen[folded]; duplicate {
+			return fmt.Errorf("plugin %s models must be unique case-insensitively", subject)
 		}
-		seen[model] = struct{}{}
+		seen[folded] = struct{}{}
 	}
 	return nil
 }
@@ -836,14 +860,15 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 	sort.Strings(keys)
 
 	generation := &RoutingGeneration{
-		Number:        number,
-		PublishedAt:   time.Now(),
-		byKey:         make(map[string]*LoadedPlugin, len(effective)),
-		byModel:       make(map[string]*LoadedPlugin),
-		byChannelType: make(map[int]*LoadedPlugin),
-		routeIndex:    make(map[string]RouteBinding),
-		protocolIndex: make(map[string][]ProtocolBinding),
-		plugins:       make([]*LoadedPlugin, 0, len(effective)),
+		Number:               number,
+		PublishedAt:          time.Now(),
+		byKey:                make(map[string]*LoadedPlugin, len(effective)),
+		byModel:              make(map[string]*LoadedPlugin),
+		canonicalModelByFold: make(map[string]string),
+		byChannelType:        make(map[int]*LoadedPlugin),
+		routeIndex:           make(map[string]RouteBinding),
+		protocolIndex:        make(map[string][]ProtocolBinding),
+		plugins:              make([]*LoadedPlugin, 0, len(effective)),
 	}
 	for _, key := range keys {
 		plugin := effective[key]
@@ -853,6 +878,18 @@ func buildRoutingGenerationFromPlugins(effective map[string]*LoadedPlugin, numbe
 			if _, exists := generation.byModel[model]; !exists {
 				generation.byModel[model] = plugin
 			}
+			folded := asciiFold(model)
+			if existing, exists := generation.canonicalModelByFold[folded]; exists {
+				if existing != model {
+					otherKey := plugin.Meta.Key
+					if other, ok := generation.byModel[existing]; ok {
+						otherKey = other.Meta.Key
+					}
+					return nil, fmt.Errorf("plugin %s model %q conflicts with plugin %s model %q", plugin.Meta.Key, model, otherKey, existing)
+				}
+				continue
+			}
+			generation.canonicalModelByFold[folded] = model
 		}
 
 		for _, channelType := range plugin.Meta.ChannelTypes {

@@ -1144,13 +1144,16 @@ func normalizeV1Meta(meta *Meta) error {
 		seenChannelTypes[channelType] = struct{}{}
 	}
 	models := make(map[string]struct{}, len(meta.Models))
+	seenFold := make(map[string]struct{}, len(meta.Models))
 	for _, model := range meta.Models {
 		if strings.TrimSpace(model) == "" || strings.TrimSpace(model) != model {
 			return fmt.Errorf("plugin meta models must contain non-empty canonical names")
 		}
-		if _, exists := models[model]; exists {
-			return fmt.Errorf("plugin meta models must be unique")
+		folded := asciiFold(model)
+		if _, exists := seenFold[folded]; exists {
+			return fmt.Errorf("plugin meta models must be unique case-insensitively")
 		}
+		seenFold[folded] = struct{}{}
 		models[model] = struct{}{}
 	}
 	hosts := make(map[string]struct{}, len(meta.AllowedHosts))
