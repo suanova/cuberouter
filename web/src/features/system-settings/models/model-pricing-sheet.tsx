@@ -279,8 +279,9 @@ export const ModelPricingEditorPanel = forwardRef<
   useEffect(() => {
     if (!editData) return
     if (editData.billingMode === 'tiered_expr') return
-    // 视频按秒模型保持视频模式,不被 usage schema 自动切到表达式计费
-    if (editData.billingMode === 'video-per-second') return
+    // 视频按秒模型保持视频模式,不被 usage schema 自动切到表达式计费。
+    // 用与打开时相同的模式判定:只有 video_prices 表、无显式 billingMode 时也命中
+    if (getInitialPricingMode(editData) === 'video-per-second') return
     if (editData.price || editData.ratio) return
 
     const usageSchema = usageSchemaByModel.get(editData.name)

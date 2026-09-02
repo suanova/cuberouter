@@ -57,7 +57,8 @@ func ComputeVideoPriceRatios(req relaycommon.TaskSubmitReq, model string, now ti
 	}
 	var sizeRatio, offPeakRatio float64
 	for _, row := range table.Rows {
-		if strings.ToLower(row.Resolution) != resolution {
+		// 配置行分辨率同样 trim + 小写归一,避免 " 720p " 这类值匹配不上请求的 "720p"
+		if strings.ToLower(strings.TrimSpace(row.Resolution)) != resolution {
 			continue
 		}
 		sizeRatio = row.NormalPrice / anchor

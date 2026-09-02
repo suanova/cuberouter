@@ -1,6 +1,7 @@
 package ratio_setting
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -181,17 +182,22 @@ func TestGetOffPeakWindowDefault(t *testing.T) {
 }
 
 func TestUpdateOffPeakWindowValidation(t *testing.T) {
+	// 先注册恢复:测试中途 FailNow 也不会把全局错峰窗口泄漏给同包其他测试
+	original := GetOffPeakWindow()
+	t.Cleanup(func() {
+		UpdateOffPeakWindowByJSONString(
+			fmt.Sprintf(`{"start_hour":%d,"end_hour":%d,"timezone":%q}`, original.StartHour, original.EndHour, original.Timezone),
+		)
+	})
+
 	// 空时区补默认;无法加载的时区直接拒绝(错峰价不会静默失效)
 	require.NoError(t, UpdateOffPeakWindowByJSONString(`{"start_hour":23,"end_hour":7,"timezone":""}`))
 	w := GetOffPeakWindow()
-	require.Equal(t, 23, w.StartHour)
-	require.Equal(t, "Asia/Shanghai", w.Timezone)
+	assert.Equal(t, 23, w.StartHour)
+	assert.Equal(t, "Asia/Shanghai", w.Timezone)
 
 	require.Error(t, UpdateOffPeakWindowByJSONString(`{"start_hour":22,"end_hour":8,"timezone":"Not/AZone"}`))
 	// 拒绝后保留上一次的合法配置
 	w = GetOffPeakWindow()
-	require.Equal(t, 23, w.StartHour)
-
-	// 恢复默认值,避免影响同包其他测试
-	require.NoError(t, UpdateOffPeakWindowByJSONString(`{"start_hour":22,"end_hour":8,"timezone":"Asia/Shanghai"}`))
+	assert.Equal(t, 23, w.StartHour)
 }

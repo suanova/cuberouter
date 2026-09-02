@@ -11,6 +11,7 @@
     "Alipay exchange rate (USD to local currency)": "支付寶支付匯率（美元兌本地貨幣）",
     "Preset recharge amounts (JSON array). Unit follows the quota display type: CNY mode uses yuan, USD mode uses USD.": "預設充值金額（JSON 陣列）。單位隨額度展示類型:CNY 模式為元,USD 模式為美元。",
     "Real exchange rate between USD and your local currency. Used for balance and consumption display, pricing page display, and as the default payment exchange rate for Epay and Alipay (each gateway can override its own rate).": "美元與本地貨幣的真實匯率。用於餘額/消耗顯示、定價頁展示,並作為 Epay 與支付寶支付金額的預設匯率(各閘道可單獨覆蓋)。",
+    "Video URL is in metadata.url or plugin-specific fields": "影片位址在 metadata.url 或外掛程式回傳欄位中",
     "Video generation mode": "影片生成模式",
     "Pass images via image, images or input_reference": "圖片透過 image / images / input_reference 欄位傳入",
     "No image = text-to-video, 1 image = image-to-video, 2 images = first-and-last-frame, more than 2 images = reference-to-video": "無圖 = 文生影片,1 張圖 = 圖生影片,2 張圖 = 首尾幀生影片,超過 2 張 = 參考圖生影片",

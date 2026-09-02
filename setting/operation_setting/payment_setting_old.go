@@ -6,6 +6,8 @@ This file is the old version of the payment settings file. If you need to add ne
 package operation_setting
 
 import (
+	"math"
+
 	"github.com/QuantumNous/new-api/common"
 )
 
@@ -23,17 +25,17 @@ var USDExchangeRate = 7.3
 var EpayRate = 0.0
 var AlipayRate = 0.0
 
-// GetEpayRate 返回 Epay 支付汇率;未单独配置时回退全局 Price。
+// GetEpayRate 返回 Epay 支付汇率;未单独配置或配置非法(NaN/Inf)时回退全局 Price。
 func GetEpayRate() float64 {
-	if EpayRate > 0 {
+	if EpayRate > 0 && !math.IsNaN(EpayRate) && !math.IsInf(EpayRate, 0) {
 		return EpayRate
 	}
 	return Price
 }
 
-// GetAlipayRate 返回支付宝支付汇率;未单独配置时回退全局 Price。
+// GetAlipayRate 返回支付宝支付汇率;未单独配置或配置非法(NaN/Inf)时回退全局 Price。
 func GetAlipayRate() float64 {
-	if AlipayRate > 0 {
+	if AlipayRate > 0 && !math.IsNaN(AlipayRate) && !math.IsInf(AlipayRate, 0) {
 		return AlipayRate
 	}
 	return Price

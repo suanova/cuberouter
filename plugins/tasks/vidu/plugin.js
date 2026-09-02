@@ -67,6 +67,8 @@ function defaultDuration(model) {
 function defaultResolution(model) {
   if (isQ2Model(model)) return "720p";
   if (model === "vidu2.0") return "360p";
+  // Q3 系列(viduq3/viduq3-turbo/viduq3-mix)文档默认 720p
+  if (model.indexOf("viduq3") === 0) return "720p";
   return "1080p";
 }
 
@@ -109,9 +111,14 @@ function hasViduImages(req, hasInputReferenceFile) {
   return Boolean(trimmed(req && req.input_reference) || trimmed(req && req.image));
 }
 
-function validateViduCombo(model, duration, resolution, hasImages) {
+// 模型 × 动作能力矩阵:viduq2-pro 是参考/视频编辑类模型,不支持文生视频。
+// 其余模型的动作约束按文档在下方按模型单独校验。
+function validateViduCombo(model, action, duration, resolution, hasImages) {
   if (model === "vidu2.0" && !hasImages) {
     throw new Error("vidu2.0 does not support text-to-video");
+  }
+  if (model === "viduq2-pro" && action === "text_to_video") {
+    throw new Error("viduq2-pro does not support text-to-video");
   }
   if (model === "viduq1") {
     if (duration !== undefined && Number(duration) !== 5) throw new Error("viduq1 duration must be 5");
@@ -339,7 +346,7 @@ export const protocols = {
       if (Object.prototype.hasOwnProperty.call(req, "size")) requestBody.size = req.size;
       if (Object.prototype.hasOwnProperty.call(req, "metadata")) requestBody.metadata = req.metadata;
       const duration = requestBody.duration === undefined ? undefined : Number(requestBody.duration);
-      validateViduCombo(model, duration, outboundResolution(requestBody, model), images.length > 0);
+      validateViduCombo(model, actionFor(requestBody), duration, outboundResolution(requestBody, model), images.length > 0);
       return { kind: "submit", model: model, action: actionFor(requestBody), requestBody: requestBody };
     },
     renderEvents: function (ctx, task, previousState) {
@@ -441,7 +448,7 @@ protocols.openai_video = {
     }
     req.resolution = outboundResolution(req, model);
     const hasImages = hasViduImages(req, hasInputReferenceFile);
-    validateViduCombo(model, req.duration, req.resolution, hasImages);
+    validateViduCombo(model, actionFor(req), req.duration, req.resolution, hasImages);
     return {
       kind: "submit",
       model: ctx.model,

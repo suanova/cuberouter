@@ -467,6 +467,14 @@ export function PaymentSettingsSection({
       updates.push({ key: 'Price', value: sanitized.Price })
     }
 
+    if (sanitized.EpayRate !== initial.EpayRate) {
+      updates.push({ key: 'EpayRate', value: sanitized.EpayRate })
+    }
+
+    if (sanitized.AlipayRate !== initial.AlipayRate) {
+      updates.push({ key: 'AlipayRate', value: sanitized.AlipayRate })
+    }
+
     if (sanitized.MinTopUp !== initial.MinTopUp) {
       updates.push({ key: 'MinTopUp', value: sanitized.MinTopUp })
     }

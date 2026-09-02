@@ -257,6 +257,18 @@ func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
+	// 汇率类配置:Price 与 USDExchangeRate 是同一汇率的两份持久化,
+	// 任一方变更时把两份都落库,避免重启时 loadOptionsFromDatabase 按行序
+	// 应用旧值覆盖新值(updateOptionMap 只同步内存)。
+	if key == "Price" || key == "USDExchangeRate" {
+		values := map[string]string{key: value}
+		if key == "Price" {
+			values["USDExchangeRate"] = value
+		} else {
+			values["Price"] = value
+		}
+		return UpdateOptionsBulk(values)
+	}
 	// Save to database first
 	option := Option{
 		Key: key,

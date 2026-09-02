@@ -109,6 +109,20 @@ export function getDiscountLabel(discount: number): string {
   return `${off}% OFF`
 }
 
+/** 预设金额的展示与支付定价结果。 */
+export type PresetPricing = {
+  /** 显示货币数值(顶部大号金额) */
+  displayValue: number
+  /** 支付金额(本地货币,折扣前) */
+  originalPrice: number
+  /** 支付金额(本地货币,折扣后) */
+  actualPrice: number
+  /** 折扣节省额 */
+  savedAmount: number
+  /** 是否有折扣 */
+  hasDiscount: boolean
+}
+
 /**
  * Calculate pricing details for a preset amount.
  * presetValue 的语义 = 显示货币(CNY 填元 / USD 填美元 / TOKENS 填 token 数)。
@@ -120,7 +134,7 @@ export function calculatePresetPricing(
   priceRatio: number,
   discount: number,
   usdExchangeRate: number = 1
-) {
+): PresetPricing {
   const originalPrice =
     usdExchangeRate > 1
       ? (presetValue / usdExchangeRate) * priceRatio

@@ -80,6 +80,8 @@ type SampleContext = {
   modelName: string
   endpointType: string
   endpointPath: string
+  /** 本地化后的视频结果注释(示例代码里内嵌,随语言展示) */
+  videoUrlHint?: string
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
@@ -465,7 +467,7 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       'while True:',
       `    task = requests.get("${pollUrl}".format(task_id=task_id), headers=headers).json()`,
       '    if task.get("status") == "completed":',
-      '        print(task)  # 视频地址在 metadata.url 或插件返回字段中',
+      `        print(task)  # ${ctx.videoUrlHint}`,
       '        break',
       '    if task.get("status") == "failed":',
       '        raise SystemExit("task failed: " + str(task.get("error")))',
@@ -488,13 +490,16 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `    duration: 5,`,
       `  }),`,
       `})`,
+      `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
       `const { task_id } = await resp.json()`,
       '',
       '// Poll until the task reaches a terminal status',
       `while (true) {`,
-      `  const task = await (await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })).json()`,
+      `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
+  if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
+  const task = await poll.json()`,
       `  if (task.status === 'completed') {`,
-      `    console.log(task)  // 视频地址在 metadata.url 或插件返回字段中`,
+      `    console.log(task)  // ${ctx.videoUrlHint}`,
       `    break`,
       `  }`,
       `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
@@ -517,13 +522,16 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
     `    duration: 5,`,
     `  }),`,
     `})`,
+    `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
     `const { task_id } = await resp.json()`,
     '',
     '// Poll until the task reaches a terminal status',
     `while (true) {`,
-    `  const task = await (await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })).json()`,
+    `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
+  if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
+  const task = await poll.json()`,
     `  if (task.status === 'completed') {`,
-    `    console.log(task)  // 视频地址在 metadata.url 或插件返回字段中`,
+    `    console.log(task)  // ${ctx.videoUrlHint}`,
     `    break`,
     `  }`,
     `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
