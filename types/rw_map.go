@@ -51,6 +51,14 @@ func (m *RWMap[K, V]) AddAll(other map[K]V) {
 	}
 }
 
+// ReplaceAll 在单次加锁内用 other 整体替换当前内容(原子交换),
+// 读方不会观察到 Clear+AddAll 之间的空表中间态。
+func (m *RWMap[K, V]) ReplaceAll(other map[K]V) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.data = other
+}
+
 func (m *RWMap[K, V]) Clear() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()

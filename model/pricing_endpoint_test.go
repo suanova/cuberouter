@@ -6,6 +6,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -15,14 +16,14 @@ func resetPricingEndpointTestTables(t *testing.T) {
 	t.Helper()
 	originalMemoryCacheEnabled := common.MemoryCacheEnabled
 	common.MemoryCacheEnabled = true
-	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &Model{}, &Vendor{}))
-	for _, table := range []string{"abilities", "channels", "models", "vendors"} {
+	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &Model{}, &Vendor{}, &Option{}))
+	for _, table := range []string{"abilities", "channels", "models", "vendors", "options"} {
 		require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
 	}
 	InitChannelCache()
 	InvalidatePricingCache()
 	t.Cleanup(func() {
-		for _, table := range []string{"abilities", "channels", "models", "vendors"} {
+		for _, table := range []string{"abilities", "channels", "models", "vendors", "options"} {
 			require.NoError(t, DB.Exec("DELETE FROM "+table).Error)
 		}
 		InitChannelCache()
@@ -291,4 +292,75 @@ func TestCacheUpdateChannelSyncsAdvancedCustomConfig(t *testing.T) {
 	CacheUpdateChannel(channel)
 
 	assert.Nil(t, channel2advancedCustomConfig[401])
+}
+
+func TestPricingVideoPricesPopulatedFromVideoPriceOption(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	insertPricingEndpointChannel(t, 501, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 501, "viduq3-pro")
+	insertPricingEndpointAbility(t, 501, "viduq3-turbo")
+
+	previousOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		// 恢复 OptionMap 与 ratio_setting 全局状态:本包仅此用例写入视频价格表,清空即恢复
+		require.NoError(t, ratio_setting.UpdateVideoPriceByJSONString("{}"))
+		common.OptionMap = previousOptionMap
+	})
+
+	require.NoError(t, UpdateOption("VideoPrice", `{
+		"viduq3-pro": {
+			"rows": [
+				{"resolution": "1080p", "normal_price": 0.75, "off_peak_price": 0.5},
+				{"resolution": "4k", "normal_price": 1.5, "off_peak_price": 1.0}
+			]
+		}
+	}`))
+
+	InvalidatePricingCache()
+	pricings := GetPricing()
+
+	var pro, turbo *Pricing
+	for i := range pricings {
+		switch pricings[i].ModelName {
+		case "viduq3-pro":
+			pro = &pricings[i]
+		case "viduq3-turbo":
+			turbo = &pricings[i]
+		}
+	}
+	require.NotNil(t, pro, "viduq3-pro should appear in pricing")
+	require.NotNil(t, turbo, "viduq3-turbo should appear in pricing")
+
+	require.NotNil(t, pro.VideoPrices)
+	require.Len(t, pro.VideoPrices.Rows, 2)
+	assert.Equal(t, "1080p", pro.VideoPrices.Rows[0].Resolution)
+	assert.Equal(t, 0.75, pro.VideoPrices.Rows[0].NormalPrice)
+	assert.Equal(t, 0.5, pro.VideoPrices.Rows[0].OffPeakPrice)
+	assert.Equal(t, "4k", pro.VideoPrices.Rows[1].Resolution)
+	assert.Equal(t, 1.5, pro.VideoPrices.Rows[1].NormalPrice)
+	assert.Equal(t, 1.0, pro.VideoPrices.Rows[1].OffPeakPrice)
+
+	assert.Nil(t, turbo.VideoPrices, "unconfigured model must not expose video_prices")
+}
+
+func TestOffPeakWindowOptionUpdatesWindow(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	previousOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	prev := ratio_setting.GetOffPeakWindow()
+	t.Cleanup(func() {
+		restored, err := common.Marshal(prev)
+		require.NoError(t, err)
+		require.NoError(t, ratio_setting.UpdateOffPeakWindowByJSONString(string(restored)))
+		common.OptionMap = previousOptionMap
+	})
+
+	require.NoError(t, UpdateOption("OffPeakWindow", `{"start_hour":23,"end_hour":7,"timezone":"Asia/Shanghai"}`))
+
+	w := ratio_setting.GetOffPeakWindow()
+	assert.Equal(t, 23, w.StartHour)
+	assert.Equal(t, 7, w.EndHour)
 }

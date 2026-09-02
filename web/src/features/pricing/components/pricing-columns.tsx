@@ -42,6 +42,7 @@ import {
   formatRequestPrice,
   stripTrailingZeros,
 } from '../lib/price'
+import { formatVideoPrice } from '../lib/video-price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 
@@ -116,6 +117,20 @@ export function usePricingColumns(
       ),
       cell: ({ row }) => {
         const model = row.original
+        const videoPrices = model.video_prices
+        if (videoPrices && videoPrices.rows.length > 0) {
+          return (
+            <div className='max-w-full min-w-0'>
+              <span className='font-mono text-sm tabular-nums'>
+                ¥{formatVideoPrice(videoPrices.rows[0].normal_price)}/s
+              </span>
+              <div className='text-muted-foreground/50 text-[10px]'>
+                {t('Video per second')}
+              </div>
+            </div>
+          )
+        }
+
         const dynamicSummary = getDynamicPricingSummary(model, {
           tokenUnit,
           showRechargePrice,
@@ -396,7 +411,10 @@ export function usePricingColumns(
       accessorKey: 'supported_endpoint_types',
       header: t('Endpoints'),
       cell: ({ row }) => {
-        const endpoints = row.original.supported_endpoint_types || []
+        // 视频按秒模型显示「视频」端点标签(走 OpenAI 兼容视频端点)
+        const endpoints = row.original.video_prices
+          ? [t('Video')]
+          : row.original.supported_endpoint_types || []
         return (
           <BadgeListCell
             items={endpoints.map((ep) => (

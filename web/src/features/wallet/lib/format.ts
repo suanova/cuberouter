@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { getCurrencyDisplay } from '@/lib/currency'
+
 import { DEFAULT_DISCOUNT_RATE } from '../constants'
 
 // ============================================================================
@@ -47,6 +49,41 @@ export function formatQuotaShort(quota: number): string {
 }
 
 /**
+ * Currency symbol for the current display type: ¥ for CNY, $ for USD,
+ * the custom symbol for CUSTOM, empty for TOKENS.
+ */
+export function getCurrencySymbol(): string {
+  const { config } = getCurrencyDisplay()
+  switch (config.quotaDisplayType) {
+    case 'CNY':
+      return '¥'
+    case 'USD':
+      return '$'
+    case 'CUSTOM':
+      return config.customCurrencySymbol || '¤'
+    default:
+      return ''
+  }
+}
+
+/**
+ * Local payment currency symbol for the Pay/Save amounts: those values are
+ * the payment amount converted via Price (local currency), which differs
+ * from the display currency in USD mode (e.g. $10 display → Pay ¥73).
+ */
+export function getLocalCurrencySymbol(): string {
+  const { config } = getCurrencyDisplay()
+  switch (config.quotaDisplayType) {
+    case 'TOKENS':
+      return ''
+    case 'CUSTOM':
+      return config.customCurrencySymbol || '¤'
+    default:
+      return '¥'
+  }
+}
+
+/**
  * Format currency amount that is already in local currency.
  * This is used for payment amounts that have been calculated via priceRatio.
  */
@@ -72,20 +109,40 @@ export function getDiscountLabel(discount: number): string {
   return `${off}% OFF`
 }
 
+/** 预设金额的展示与支付定价结果。 */
+export type PresetPricing = {
+  /** 显示货币数值(顶部大号金额) */
+  displayValue: number
+  /** 支付金额(本地货币,折扣前) */
+  originalPrice: number
+  /** 支付金额(本地货币,折扣后) */
+  actualPrice: number
+  /** 折扣节省额 */
+  savedAmount: number
+  /** 是否有折扣 */
+  hasDiscount: boolean
+}
+
 /**
- * Calculate pricing details for a preset amount
+ * Calculate pricing details for a preset amount.
+ * presetValue 的语义 = 显示货币(CNY 填元 / USD 填美元 / TOKENS 填 token 数)。
+ * 支付金额(本地货币):CNY 模式值即元(rate>1 时 value/rate×price = value);
+ * USD 模式(rate=1)为 value × priceRatio。
  */
 export function calculatePresetPricing(
   presetValue: number,
   priceRatio: number,
   discount: number,
   usdExchangeRate: number = 1
-) {
-  const originalPrice = presetValue * priceRatio
+): PresetPricing {
+  const originalPrice =
+    usdExchangeRate > 1
+      ? (presetValue / usdExchangeRate) * priceRatio
+      : presetValue * priceRatio
   const actualPrice = originalPrice * discount
   const savedAmount = originalPrice - actualPrice
   const hasDiscount = discount < 1.0
-  const displayValue = presetValue * usdExchangeRate
+  const displayValue = presetValue
 
   return {
     displayValue,

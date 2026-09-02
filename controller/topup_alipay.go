@@ -94,12 +94,16 @@ func RequestAlipayPay(c *gin.Context) {
 	}
 
 	id := c.GetInt("id")
+	// 下单前预检额度容量(与 Epay 一致),防止额度超出 MaxWalletQuota
+	if rejectInvalidTopUpQuota(c, id, req.Amount) {
+		return
+	}
 	group, err := model.GetUserGroup(id, true)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group) // 复用目标端 getPayMoney
+	payMoney := getPayMoney(req.Amount, group, operation_setting.GetAlipayRate())
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return
@@ -143,10 +147,16 @@ func RequestAlipayPay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 
+	// CNY 模式下快照当前汇率到订单,结算按快照换算,防止待支付期间改汇率
+	topUpRate := 0.0
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+		topUpRate = operation_setting.Price
+	}
 	topUp := &model.TopUp{
 		UserId:          id,
 		Amount:          amount,
 		Money:           payMoney,
+		Rate:            topUpRate,
 		TradeNo:         tradeNo,
 		PaymentMethod:   model.PaymentMethodAlipay,
 		PaymentProvider: model.PaymentProviderAlipay,
@@ -189,7 +199,7 @@ func RequestAlipayAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	payMoney := getPayMoney(req.Amount, group)
+	payMoney := getPayMoney(req.Amount, group, operation_setting.GetAlipayRate())
 	if payMoney < 0.01 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值金额过低"})
 		return

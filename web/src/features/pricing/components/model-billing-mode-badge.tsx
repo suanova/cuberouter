@@ -32,11 +32,14 @@ interface ModelBillingModeBadgeProps {
 export function ModelBillingModeBadge(props: ModelBillingModeBadgeProps) {
   const { t } = useTranslation()
   const labelKey = getBillingModeLabelKey(props.model)
-  const label = t(labelKey)
+  let label = t(labelKey)
   let variant: StatusVariant = 'purple'
 
   if (isDynamicPricingModel(props.model)) {
     variant = 'warning'
+  } else if (props.model.video_prices) {
+    label = t('Video per second')
+    variant = 'info'
   } else if (labelKey === 'Token-based') {
     variant = 'info'
   }

@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -23,6 +25,10 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
+	// Rate 为 CNY 模式下下单时的汇率快照(USD→CNY),结算按快照换算,
+	// 防止管理员在订单待支付期间改汇率导致同一实付金额入账不同额度。
+	// 0 表示未快照(USD/TOKENS 模式或旧订单),结算时回退当前 Price。
+	Rate float64 `json:"rate" gorm:"column:rate"`
 }
 
 const (
@@ -208,7 +214,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		}
 		var quotaErr error
 		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
-			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+			topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)),
 		)
 		if quotaErr != nil || quotaToAdd <= 0 {
 			return ErrInvalidTopUpQuota
@@ -292,8 +298,36 @@ func Recharge(referenceId string, customerId string, callerIp string) (err error
 	return nil
 }
 
+// topUpRate 返回订单的汇率快照;0(非 CNY 或旧订单)回退当前 Price。
+func topUpRate(topUp *TopUp) float64 {
+	if topUp.Rate > 0 {
+		return topUp.Rate
+	}
+	return operation_setting.Price
+}
+
+// topupAmountToQuotaDecimal 充值金额 → 额度(decimal,未截断)。金额语义跟随展示类型:
+// - TOKENS: 下单时 Amount 已 ÷QuotaPerUnit 存储,乘回即原 token 数
+// - CNY: Amount 为元,先 ÷汇率(订单快照,回退 Price)换成美元再 × QuotaPerUnit
+// - USD/CUSTOM: Amount 为美元,直接 × QuotaPerUnit
+func topupAmountToQuotaDecimal(amount int64, rate float64) decimal.Decimal {
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+		return rmbTopupAmountToUSD(amount, rate).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	}
+	return decimal.NewFromInt(amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+}
+
+// rmbTopupAmountToUSD 把人民币充值金额(元)按汇率折算为美元金额。
+// 汇率非法(<=0/NaN/Inf)时回退 1,仅影响换算数值,不影响计费安全。
+func rmbTopupAmountToUSD(amount int64, exchangeRate float64) decimal.Decimal {
+	if exchangeRate <= 0 || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) {
+		exchangeRate = 1
+	}
+	return decimal.NewFromInt(amount).Div(decimal.NewFromFloat(exchangeRate))
+}
+
 // RechargeAlipay 支付宝回调充值：行级锁 + 幂等 + quota 累加。
-// 与目标端 EPay 回调一致：Amount 存的是"展示单位"的充值数量（TOKENS 模式下单时已换算），quota = Amount × QuotaPerUnit。
+// 与目标端 EPay 回调一致：Amount 存的是"展示单位"的充值数量（TOKENS 模式下单时已换算）。
 func RechargeAlipay(tradeNo string, callerIp string) (err error) {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
@@ -325,10 +359,8 @@ func RechargeAlipay(tradeNo string, callerIp string) (err error) {
 			return errors.New("充值订单状态错误")
 		}
 
-		dAmount := decimal.NewFromInt(topUp.Amount)
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		var quotaClamp *common.QuotaClamp
-		quotaToAdd, quotaClamp = common.QuotaFromDecimalChecked(dAmount.Mul(dQuotaPerUnit))
+		quotaToAdd, quotaClamp = common.QuotaFromDecimalChecked(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
 		if quotaClamp != nil {
 			logger.LogWarn(context.Background(), fmt.Sprintf("支付宝充值额度溢出被截断 trade_no=%s user_id=%d clamp=%s", tradeNo, topUp.UserId, quotaClamp.Error()))
 		}
@@ -342,16 +374,9 @@ func RechargeAlipay(tradeNo string, callerIp string) (err error) {
 			return err
 		}
 
-		// 用户可能在下单后被删除：Update 不影响任何行时也要让事务回滚
-		result := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd))
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return errors.New("充值用户不存在")
-		}
-
-		return nil
+		// 复用 creditTopUpQuota:原子条件更新,同时强制钱包额度上限
+		// (与 Epay/补单路径一致,防止回调额度超过 MaxWalletQuota)
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 
 	if err != nil {
@@ -565,7 +590,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			)
 		} else {
 			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
-				decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
+				topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)),
 			)
 		}
 		if quotaErr != nil || quotaToAdd <= 0 {

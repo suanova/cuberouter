@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { DEFAULT_OFF_PEAK_WINDOW } from '@/stores/system-config-store'
+
 import { SettingsPage } from '../components/settings-page'
 import type { BillingSettings } from '../types'
 import {
@@ -49,6 +51,8 @@ const defaultBillingSettings: BillingSettings = {
   ExposeRatioEnabled: false,
   'billing_setting.billing_mode': '{}',
   'billing_setting.billing_expr': '{}',
+  VideoPrice: '{}',
+  OffPeakWindow: JSON.stringify(DEFAULT_OFF_PEAK_WINDOW),
   'tool_price_setting.prices': '{}',
   TopupGroupRatio: '',
   GroupRatio: '',
@@ -62,6 +66,8 @@ const defaultBillingSettings: BillingSettings = {
   EpayId: '',
   EpayKey: '',
   Price: 7.3,
+  EpayRate: 0,
+  AlipayRate: 0,
   MinTopUp: 1,
   CustomCallbackAddress: '',
   PayMethods: '',

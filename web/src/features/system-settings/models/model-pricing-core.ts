@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
+import type { VideoPriceTable } from '@/features/pricing/types'
 
 import { formatPricingNumber } from './pricing-format'
 
@@ -39,7 +40,11 @@ export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'tiered_expr'
+  | 'video-per-second'
 
 export type LaneKey =
   | 'completion'
@@ -62,6 +67,26 @@ export type ModelRatioData = {
   billingMode?: PricingMode
   billingExpr?: string
   requestRuleExpr?: string
+  /** Per-second video price table, present when the model is billed per second */
+  videoPrices?: VideoPriceTable
+}
+
+/**
+ * Initial billing mode for the editor: a model with a video price table (or an
+ * explicit video billing mode) opens in the video-per-second tab.
+ */
+export function getInitialPricingMode(
+  editData?: ModelRatioData | null
+): PricingMode {
+  if (!editData) return 'per-token'
+  if (editData.billingMode === 'tiered_expr') return 'tiered_expr'
+  if (
+    editData.billingMode === 'video-per-second' ||
+    (editData.videoPrices && editData.videoPrices.rows.length > 0)
+  ) {
+    return 'video-per-second'
+  }
+  return editData.price ? 'per-request' : 'per-token'
 }
 
 export type PreviewRow = {
@@ -215,7 +240,8 @@ export function buildPreviewRows(
   promptPrice: string,
   lanePrices: Record<LaneKey, string>,
   laneEnabled: Record<LaneKey, boolean>,
-  t: (key: string) => string
+  t: (key: string) => string,
+  videoPriceTable?: VideoPriceTable
 ): PreviewRow[] {
   if (mode === 'tiered_expr') {
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
@@ -236,6 +262,21 @@ export function buildPreviewRows(
         key: 'price',
         label: 'ModelPrice',
         value: values.price || t('Empty'),
+      },
+    ]
+  }
+
+  if (mode === 'video-per-second') {
+    const rows = videoPriceTable?.rows ?? []
+    return [
+      { key: 'mode', label: t('Mode'), value: t('Video per second') },
+      {
+        key: 'videoRows',
+        label: t('Resolution'),
+        value:
+          rows.length > 0
+            ? rows.map((row) => row.resolution).join(', ')
+            : t('Empty'),
       },
     ]
   }
@@ -295,4 +336,42 @@ export function buildPreviewRows(
           : t('Empty'),
     },
   ]
+}
+
+/**
+ * Assembles the submitted model pricing data for the current mode, including
+ * mode-specific fields (expression strings, video price table).
+ */
+export function buildPricingSubmitData(
+  values: ModelPricingFormValues,
+  mode: PricingMode,
+  extra: {
+    billingExpr: string
+    requestRuleExpr: string
+    videoPrices?: VideoPriceTable
+  }
+): ModelRatioData {
+  const data: ModelRatioData = {
+    name: values.name.trim(),
+    billingMode: mode,
+    price: values.price || '',
+    ratio: values.ratio || '',
+    cacheRatio: values.cacheRatio || '',
+    createCacheRatio: values.createCacheRatio || '',
+    completionRatio: values.completionRatio || '',
+    imageRatio: values.imageRatio || '',
+    audioRatio: values.audioRatio || '',
+    audioCompletionRatio: values.audioCompletionRatio || '',
+  }
+
+  if (mode === 'tiered_expr') {
+    data.billingExpr = extra.billingExpr
+    data.requestRuleExpr = extra.requestRuleExpr
+  }
+
+  if (mode === 'video-per-second') {
+    data.videoPrices = extra.videoPrices
+  }
+
+  return data
 }

@@ -82,6 +82,7 @@ import {
 import { getTaskMatrixDisplayTiers } from '../lib/task-matrix-display'
 import type {
   ModelCapability,
+  OffPeakWindow,
   PriceType,
   PricingModel,
   TokenUnit,
@@ -90,6 +91,7 @@ import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelDetailsApi } from './model-details-api'
 import { ModelDetailsPerformance } from './model-details-performance'
+import { VideoPriceTable } from './video-price-table'
 
 // ----------------------------------------------------------------------------
 // Local UI helpers
@@ -512,7 +514,10 @@ function ModelBackendProviderSection(props: { model: PricingModel }) {
   const { t } = useTranslation()
   const model = props.model
   const groups = normalizeCatalogItems(model.enable_groups)
-  const endpoints = normalizeCatalogItems(model.supported_endpoint_types)
+  // 视频按秒模型显示「视频」端点标签(走 OpenAI 兼容视频端点)
+  const endpoints = normalizeCatalogItems(
+    model.video_prices ? [t('Video')] : model.supported_endpoint_types
+  )
   const tags = parseTags(model.tags)
   const cells: React.ReactNode[] = []
 
@@ -637,8 +642,20 @@ function PriceSection(props: {
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice: boolean
+  offPeakWindow?: OffPeakWindow
 }) {
   const { t } = useTranslation()
+  if (props.model.video_prices) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <VideoPriceTable
+          table={props.model.video_prices}
+          offPeakWindow={props.offPeakWindow}
+        />
+      </section>
+    )
+  }
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
   const baseGroupKey = '_base'
@@ -1183,6 +1200,54 @@ function GroupPricingSection(props: {
     )
   }
 
+  if (props.model.video_prices) {
+    // 视频按秒计费:分组展示无「输入/输出」价格概念,
+    // 保留分组与倍率,价格列用占位符,避免展示与按秒计费无关的 per-call 数字
+    return (
+      <section>
+        <SectionTitle>{t('Pricing by Group')}</SectionTitle>
+        <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
+        <StaticDataTable
+          className='-mx-4 rounded-none border-0 sm:mx-0'
+          tableClassName='text-sm'
+          headerRowClassName='hover:bg-transparent'
+          data={availableGroups}
+          getRowKey={(group) => group}
+          columns={[
+            {
+              id: 'group',
+              header: t('Group'),
+              className: thClass,
+              cellClassName: 'py-2.5',
+              cell: (group) => <GroupBadge group={group} size='sm' />,
+            },
+            {
+              id: 'ratio',
+              header: t('Ratio'),
+              className: thClass,
+              cellClassName: 'text-muted-foreground py-2.5 font-mono',
+              cell: (group) => `${props.groupRatio[group] || 1}x`,
+            },
+            {
+              id: 'input',
+              header: t('Input'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: () => '-',
+            },
+            {
+              id: 'output',
+              header: t('Output'),
+              className: `${thClass} text-right`,
+              cellClassName: 'py-2.5 text-right font-mono',
+              cell: () => '-',
+            },
+          ]}
+        />
+      </section>
+    )
+  }
+
   const renderGroupPrice = (group: string, type: PriceType) =>
     formatGroupPrice(
       props.model,
@@ -1297,6 +1362,7 @@ export interface ModelDetailsContentProps {
   usdExchangeRate: number
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
+  offPeakWindow?: OffPeakWindow
 }
 
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
@@ -1339,6 +1405,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
               usdExchangeRate={props.usdExchangeRate}
               tokenUnit={props.tokenUnit}
               showRechargePrice={showRechargePrice}
+              offPeakWindow={props.offPeakWindow}
             />
             {isDynamic && (
               <DynamicPricingBreakdown
@@ -1424,6 +1491,7 @@ export function ModelDetails() {
     isLoading,
     priceRate,
     usdExchangeRate,
+    offPeakWindow,
   } = usePricingData()
 
   const tokenUnit: TokenUnit =
@@ -1509,6 +1577,7 @@ export function ModelDetails() {
               { path?: string; method?: string }
             >) || {}
           }
+          offPeakWindow={offPeakWindow}
         />
       </div>
     </PublicLayout>

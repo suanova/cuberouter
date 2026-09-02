@@ -85,6 +85,40 @@ var numericPricingSyncFields = map[string]bool{
 	"model_price":            true,
 }
 
+// pricingSyncItem 是 type2(/api/pricing)上游返回数据中的单个定价条目。
+type pricingSyncItem struct {
+	ModelName            string   `json:"model_name"`
+	QuotaType            int      `json:"quota_type"`
+	ModelRatio           float64  `json:"model_ratio"`
+	ModelPrice           float64  `json:"model_price"`
+	CompletionRatio      float64  `json:"completion_ratio"`
+	CacheRatio           *float64 `json:"cache_ratio"`
+	CreateCacheRatio     *float64 `json:"create_cache_ratio"`
+	ImageRatio           *float64 `json:"image_ratio"`
+	AudioRatio           *float64 `json:"audio_ratio"`
+	AudioCompletionRatio *float64 `json:"audio_completion_ratio"`
+	BillingMode          string   `json:"billing_mode"`
+	BillingExpr          string   `json:"billing_expr"`
+}
+
+// parsePricingSyncItems 从 /api/pricing 响应的 data 中解析定价列表，
+// 兼容两种 data 形状：新版 data 为 {pricings: [...], off_peak_window: {...}}，
+// 旧版 data 直接为 []pricingSyncItem。
+func parsePricingSyncItems(data json.RawMessage) ([]pricingSyncItem, error) {
+	var wrapped struct {
+		Pricings json.RawMessage `json:"pricings"`
+	}
+	pricingData := data
+	if err := common.Unmarshal(data, &wrapped); err == nil && wrapped.Pricings != nil {
+		pricingData = wrapped.Pricings
+	}
+	var items []pricingSyncItem
+	if err := common.Unmarshal(pricingData, &items); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 type upstreamResult struct {
 	Name string         `json:"name"`
 	Data map[string]any `json:"data,omitempty"`
@@ -378,21 +412,8 @@ func FetchUpstreamRatios(c *gin.Context) {
 			}
 
 			// 如果不是 type1，则尝试按 type2 (/api/pricing) 解析
-			var pricingItems []struct {
-				ModelName            string   `json:"model_name"`
-				QuotaType            int      `json:"quota_type"`
-				ModelRatio           float64  `json:"model_ratio"`
-				ModelPrice           float64  `json:"model_price"`
-				CompletionRatio      float64  `json:"completion_ratio"`
-				CacheRatio           *float64 `json:"cache_ratio"`
-				CreateCacheRatio     *float64 `json:"create_cache_ratio"`
-				ImageRatio           *float64 `json:"image_ratio"`
-				AudioRatio           *float64 `json:"audio_ratio"`
-				AudioCompletionRatio *float64 `json:"audio_completion_ratio"`
-				BillingMode          string   `json:"billing_mode"`
-				BillingExpr          string   `json:"billing_expr"`
-			}
-			if err := common.Unmarshal(body.Data, &pricingItems); err != nil {
+			pricingItems, err := parsePricingSyncItems(body.Data)
+			if err != nil {
 				logger.LogWarn(c.Request.Context(), "unrecognized data format from "+chItem.Name+": "+err.Error())
 				ch <- upstreamResult{Name: uniqueName, Err: "无法解析上游返回数据"}
 				return

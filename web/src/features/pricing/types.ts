@@ -70,6 +70,8 @@ export type PricingModel = {
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
   billing_expr?: string
+  /** Per-second video price table, present when the model is billed per second */
+  video_prices?: VideoPriceTable
   /** Task-plugin usage facts and their billing units. */
   billing_usage_schema?: BillingUsageSchema
   /** Display-only labeled usage vectors for pricing examples. */
@@ -108,10 +110,38 @@ export type ModelCapability =
   | 'caching'
   | 'embeddings'
 
+/** One resolution tier of a per-second video price table. */
+export type VideoPriceRow = {
+  resolution: string
+  normal_price: number
+  off_peak_price: number
+}
+
+/** Per-second video price table for a model (backend json field `video_prices`). */
+export type VideoPriceTable = {
+  rows: VideoPriceRow[]
+}
+
+/** Admin option `VideoPrice`: map of model name -> video price table. */
+export type VideoPrice = Record<string, VideoPriceTable>
+
+/** Admin option `OffPeakWindow`: window during which off-peak prices apply. */
+export type OffPeakWindow = {
+  start_hour: number
+  end_hour: number
+  timezone: string
+}
+
+/** Top-level payload of `GET /api/pricing`. */
+export type PricingResponse = {
+  pricings: PricingModel[]
+  off_peak_window: OffPeakWindow
+}
+
 export type PricingData = {
   success: boolean
   message?: string
-  data: PricingModel[]
+  data: PricingResponse
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
   usable_group: Record<string, { desc: string; ratio: number }>

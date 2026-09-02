@@ -267,6 +267,8 @@ export type BillingSettings = {
   ExposeRatioEnabled: boolean
   'billing_setting.billing_mode': string
   'billing_setting.billing_expr': string
+  VideoPrice: string
+  OffPeakWindow: string
   'tool_price_setting.prices': string
   TopupGroupRatio: string
   GroupRatio: string
@@ -280,6 +282,8 @@ export type BillingSettings = {
   EpayId: string
   EpayKey: string
   Price: number
+  EpayRate: number
+  AlipayRate: number
   MinTopUp: number
   CustomCallbackAddress: string
   PayMethods: string

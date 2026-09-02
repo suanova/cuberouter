@@ -22,6 +22,13 @@ type Option struct {
 	Value string `json:"value"`
 }
 
+// 视频按秒定价相关 option 的默认值,与 ratio_setting 内默认状态一致;
+// 数据库中存在对应 option 时以数据库为准(loadOptionsFromDatabase 覆盖)。
+const (
+	defaultVideoPriceOption    = "{}"
+	defaultOffPeakWindowOption = `{"start_hour":22,"end_hour":8,"timezone":"Asia/Shanghai"}`
+)
+
 func AllOption() ([]*Option, error) {
 	var options []*Option
 	var err error
@@ -99,6 +106,8 @@ func InitOptionMap() {
 	common.OptionMap["EpayId"] = ""
 	common.OptionMap["EpayKey"] = ""
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
+	common.OptionMap["EpayRate"] = strconv.FormatFloat(operation_setting.EpayRate, 'f', -1, 64)
+	common.OptionMap["AlipayRate"] = strconv.FormatFloat(operation_setting.AlipayRate, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
 	common.OptionMap["StripeMinTopUp"] = strconv.Itoa(setting.StripeMinTopUp)
@@ -166,6 +175,8 @@ func InitOptionMap() {
 	common.OptionMap["ModelRequestRateLimitGroup"] = setting.ModelRequestRateLimitGroup2JSONString()
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
+	common.OptionMap["VideoPrice"] = defaultVideoPriceOption
+	common.OptionMap["OffPeakWindow"] = defaultOffPeakWindowOption
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
 	common.OptionMap["GroupRatio"] = ratio_setting.GroupRatio2JSONString()
@@ -245,6 +256,18 @@ func validateOptionValue(key string, value string) error {
 func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
+	}
+	// 汇率类配置:Price 与 USDExchangeRate 是同一汇率的两份持久化,
+	// 任一方变更时把两份都落库,避免重启时 loadOptionsFromDatabase 按行序
+	// 应用旧值覆盖新值(updateOptionMap 只同步内存)。
+	if key == "Price" || key == "USDExchangeRate" {
+		values := map[string]string{key: value}
+		if key == "Price" {
+			values["USDExchangeRate"] = value
+		} else {
+			values["Price"] = value
+		}
+		return UpdateOptionsBulk(values)
 	}
 	// Save to database first
 	option := Option{
@@ -480,9 +503,17 @@ func updateOptionMap(key string, value string) (err error) {
 	case "EpayKey":
 		operation_setting.EpayKey = value
 	case "Price":
+		// Price 与 USDExchangeRate 是同一个汇率的两份配置(定价展示/余额显示/支付默认),
+		// 联动同步,避免一份改动另一份不同步导致显示与计费口径不一致
 		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
+		operation_setting.USDExchangeRate = operation_setting.Price
+	case "EpayRate":
+		operation_setting.EpayRate, _ = strconv.ParseFloat(value, 64)
+	case "AlipayRate":
+		operation_setting.AlipayRate, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":
 		operation_setting.USDExchangeRate, _ = strconv.ParseFloat(value, 64)
+		operation_setting.Price = operation_setting.USDExchangeRate
 	case "MinTopUp":
 		operation_setting.MinTopUp, _ = strconv.Atoi(value)
 	case "StripeApiSecret":
@@ -629,6 +660,15 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateCompletionRatioByJSONString(value)
 	case "ModelPrice":
 		err = ratio_setting.UpdateModelPriceByJSONString(value)
+	case "VideoPrice":
+		err = ratio_setting.UpdateVideoPriceByJSONString(value)
+		if err == nil {
+			// 视频价格表变了,公开定价缓存(含 video_prices)需要立即失效,
+			// 否则用户看到旧价表而计费用新价表
+			InvalidatePricingCache()
+		}
+	case "OffPeakWindow":
+		err = ratio_setting.UpdateOffPeakWindowByJSONString(value)
 	case "CacheRatio":
 		err = ratio_setting.UpdateCacheRatioByJSONString(value)
 	case "CreateCacheRatio":

@@ -65,8 +65,11 @@ func GetPricing(c *gin.Context) {
 	}
 
 	c.JSON(200, gin.H{
-		"success":            true,
-		"data":               pricing,
+		"success": true,
+		"data": gin.H{
+			"pricings":        pricing,
+			"off_peak_window": ratio_setting.GetOffPeakWindow(),
+		},
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
 		"usable_group":       usableGroup,

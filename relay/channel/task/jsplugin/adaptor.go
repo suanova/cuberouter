@@ -28,6 +28,8 @@ import (
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -136,6 +138,16 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) EstimateBillingValidated(c *gin.Context, info *relaycommon.RelayInfo) (map[string]float64, error) {
+	// 视频按秒定价:模型配置了视频价格表时,系数由网关按请求 + 配置推导
+	// (分辨率 × 正常价/错峰价,锚点 = 最高正常价),不走插件的 billing_ratios 钩子。
+	if _, ok := ratio_setting.GetVideoPrice(info.OriginModelName); ok {
+		taskReq, err := relaycommon.GetTaskRequest(c)
+		if err != nil {
+			// 请求不可解析时不能按锚点价静默预扣,交给调用方的拒绝路径处理
+			return nil, err
+		}
+		return helper.ComputeVideoPriceRatios(taskReq, info.OriginModelName, time.Now()), nil
+	}
 	usageContext := a.submitContext(c, info)
 	usageContext["usagePurpose"] = "billing_ratios"
 	return a.usageRatios(c.Request.Context(), "extractUsage", usageContext)

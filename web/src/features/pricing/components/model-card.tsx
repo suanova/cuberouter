@@ -36,7 +36,8 @@ import { getTaskNumberFields } from '../lib/task-expr'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
-import type { PricingModel, TokenUnit } from '../types'
+import { formatVideoPrice, getOffPeakWindowLabel } from '../lib/video-price'
+import type { OffPeakWindow, PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 
@@ -49,6 +50,7 @@ export interface ModelCardProps {
   showRechargePrice?: boolean
   selectedGroup?: string
   perf?: ModelPerfBadgeData
+  offPeakWindow?: OffPeakWindow
 }
 
 export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
@@ -62,7 +64,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
   const groups = props.model.enable_groups || []
-  const endpoints = props.model.supported_endpoint_types || []
+  // 视频按秒计费的模型走 OpenAI 兼容视频端点,但标签显示「视频」更直观
+  const endpoints = props.model.video_prices
+    ? [t('Video')]
+    : props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
   const initial = props.model.model_name?.charAt(0).toUpperCase() || '?'
@@ -104,7 +109,42 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
 
   let priceSummary: ReactNode
-  if (dynamicSummary) {
+  if (props.model.video_prices) {
+    // 卡片左侧价格区很窄(约 180px),三列表格会横向溢出被截断,
+    // 这里按分辨率逐行堆叠:分辨率 + ¥正常/¥错峰,保持 177px 内可读。
+    const { rows } = props.model.video_prices
+    const windowLabel = getOffPeakWindowLabel(props.offPeakWindow)
+    priceSummary = (
+      <div className='mt-2 w-full min-w-0'>
+        <div className='space-y-1'>
+          {rows.map((row) => (
+            <div
+              key={row.resolution || row.normal_price}
+              className='flex items-baseline justify-between gap-x-2 whitespace-nowrap text-xs'
+            >
+              <span className='text-muted-foreground'>{row.resolution}</span>
+              <span className='text-foreground font-mono tabular-nums'>
+                ¥{formatVideoPrice(row.normal_price)}/s
+                <span className='text-muted-foreground/70'>
+                  {' '}/ ¥{formatVideoPrice(row.off_peak_price)}/s
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+        {windowLabel && (
+          <p className='text-muted-foreground/70 mt-1 text-[11px] leading-relaxed'>
+            {t('Off-peak window: {{start}} - {{end}}', {
+              start: windowLabel.start,
+              end: windowLabel.crossesMidnight
+                ? `${t('Next day')} ${windowLabel.end}`
+                : windowLabel.end,
+            })}
+          </p>
+        )}
+      </div>
+    )
+  } else if (dynamicSummary) {
     if (dynamicSummary.isSpecialExpression) {
       priceSummary = (
         <span className='min-w-0'>

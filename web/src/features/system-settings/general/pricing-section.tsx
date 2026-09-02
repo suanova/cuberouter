@@ -251,7 +251,7 @@ export function PricingSection({ defaultValues }: PricingSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t(
-                        'Real exchange rate between USD and your payment gateway currency'
+                        'Real exchange rate between USD and your local currency. Used for balance and consumption display, pricing page display, and as the default payment exchange rate for Epay and Alipay (each gateway can override its own rate).'
                       )}
                     </FormDescription>
                     <FormMessage />

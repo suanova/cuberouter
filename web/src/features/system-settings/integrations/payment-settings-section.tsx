@@ -100,6 +100,8 @@ const paymentSchema = z.object({
   EpayId: z.string(),
   EpayKey: z.string(),
   Price: z.coerce.number().min(0),
+  EpayRate: z.coerce.number().min(0),
+  AlipayRate: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z
     .string()
@@ -345,6 +347,8 @@ export function PaymentSettingsSection({
       EpayId: values.EpayId.trim(),
       EpayKey: values.EpayKey.trim(),
       Price: values.Price,
+      EpayRate: values.EpayRate,
+      AlipayRate: values.AlipayRate,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
       PayMethods: values.PayMethods.trim(),
@@ -393,6 +397,8 @@ export function PaymentSettingsSection({
       EpayId: initialRef.current.EpayId.trim(),
       EpayKey: initialRef.current.EpayKey.trim(),
       Price: initialRef.current.Price,
+      EpayRate: initialRef.current.EpayRate,
+      AlipayRate: initialRef.current.AlipayRate,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
         initialRef.current.CustomCallbackAddress
@@ -459,6 +465,14 @@ export function PaymentSettingsSection({
 
     if (sanitized.Price !== initial.Price) {
       updates.push({ key: 'Price', value: sanitized.Price })
+    }
+
+    if (sanitized.EpayRate !== initial.EpayRate) {
+      updates.push({ key: 'EpayRate', value: sanitized.EpayRate })
+    }
+
+    if (sanitized.AlipayRate !== initial.AlipayRate) {
+      updates.push({ key: 'AlipayRate', value: sanitized.AlipayRate })
     }
 
     if (sanitized.MinTopUp !== initial.MinTopUp) {
@@ -810,118 +824,8 @@ export function PaymentSettingsSection({
                 </div>
 
                 <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='Price'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {t('Price (local currency / USD)')}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            min={0}
-                            {...safeNumberFieldProps(field)}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('e.g., 8 means 8 local currency per USD')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
 
-                  <FormField
-                    control={form.control}
-                    name='MinTopUp'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Minimum top-up')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            step='0.01'
-                            min={0}
-                            {...safeNumberFieldProps(field)}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Minimum recharge amount for Epay online topup. Unit follows the quota display type (USD/CNY/tokens).'
-                          )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
 
-                <FormField
-                  control={form.control}
-                  name='PayMethods'
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                        <FormLabel>{t('Payment methods')}</FormLabel>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          size='sm'
-                          onClick={() =>
-                            setPayMethodsVisualMode(!payMethodsVisualMode)
-                          }
-                          className='w-full sm:w-auto'
-                        >
-                          {payMethodsVisualMode ? (
-                            <>
-                              <Code2 className='mr-2 h-3 w-3' />
-                              {t('JSON Editor')}
-                            </>
-                          ) : (
-                            <>
-                              <Eye className='mr-2 h-3 w-3' />
-                              {t('Visual Editor')}
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      <FormControl>
-                        {payMethodsVisualMode ? (
-                          <PaymentMethodsVisualEditor
-                            value={field.value}
-                            onChange={field.onChange}
-                          />
-                        ) : (
-                          <JsonCodeEditor
-                            value={field.value}
-                            onChange={field.onChange}
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            textareaRef={field.ref}
-                            placeholder={t(
-                              '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
-                            )}
-                            heightClassName='h-40 min-h-40 max-h-40'
-                            aria-invalid={Boolean(
-                              form.formState.errors.PayMethods
-                            )}
-                          />
-                        )}
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <div className='grid gap-6 md:grid-cols-2 md:items-start'>
                   <FormField
                     control={form.control}
                     name='AmountOptions'
@@ -975,7 +879,9 @@ export function PaymentSettingsSection({
                           )}
                         </FormControl>
                         <FormDescription>
-                          {t('Preset recharge amounts (JSON array)')}
+                          {t(
+                            'Preset recharge amounts (JSON array). Unit follows the quota display type: CNY mode uses yuan, USD mode uses USD.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1160,6 +1066,116 @@ export function PaymentSettingsSection({
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name='EpayRate'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Epay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            placeholder={t('Defaults to the global Price')}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Exchange rate used to compute the Epay payment amount. Empty or 0 falls back to the global Price.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='MinTopUp'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Epay minimum top-up')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Minimum recharge amount for Epay online topup. Unit follows the quota display type (USD/CNY/tokens).'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                <FormField
+                  control={form.control}
+                  name='PayMethods'
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                        <FormLabel>{t('Payment methods')}</FormLabel>
+                        <Button
+                          type='button'
+                          variant='outline'
+                          size='sm'
+                          onClick={() =>
+                            setPayMethodsVisualMode(!payMethodsVisualMode)
+                          }
+                          className='w-full sm:w-auto'
+                        >
+                          {payMethodsVisualMode ? (
+                            <>
+                              <Code2 className='mr-2 h-3 w-3' />
+                              {t('JSON Editor')}
+                            </>
+                          ) : (
+                            <>
+                              <Eye className='mr-2 h-3 w-3' />
+                              {t('Visual Editor')}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <FormControl>
+                        {payMethodsVisualMode ? (
+                          <PaymentMethodsVisualEditor
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                        ) : (
+                          <JsonCodeEditor
+                            value={field.value}
+                            onChange={field.onChange}
+                            name={field.name}
+                            onBlur={field.onBlur}
+                            textareaRef={field.ref}
+                            placeholder={t(
+                              '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
+                            )}
+                            heightClassName='h-40 min-h-40 max-h-40'
+                            aria-invalid={Boolean(
+                              form.formState.errors.PayMethods
+                            )}
+                          />
+                        )}
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 </div>
               </div>
             </TabsContent>
@@ -1202,6 +1218,31 @@ export function PaymentSettingsSection({
                             }
                           />
                         </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name='AlipayRate'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Alipay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            step='0.01'
+                            min={0}
+                            placeholder={t('Defaults to the global Price')}
+                            {...safeNumberFieldProps(field)}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Exchange rate used to compute the Alipay payment amount. Empty or 0 falls back to the global Price.'
+                          )}
+                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

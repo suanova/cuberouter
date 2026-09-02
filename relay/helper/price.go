@@ -187,25 +187,36 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hosttypes.PriceData, error) {
 	groupRatioInfo := HandleGroupRatio(c, info)
 
-	modelPrice, success := ratio_setting.GetModelPrice(info.OriginModelName, true)
-	usePrice := success
+	var modelPrice float64
+	var usePrice bool
 	var modelRatio float64
 
-	if !success {
-		defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
-		if ok {
-			modelPrice = defaultPrice
-			usePrice = true
-		} else {
-			var ratioSuccess bool
-			var matchName string
-			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
-			acceptUnsetRatio := false
-			if info.UserSetting.AcceptUnsetRatioModel {
-				acceptUnsetRatio = true
-			}
-			if !ratioSuccess && !acceptUnsetRatio {
-				return hosttypes.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
+	// 视频按秒定价:模型配置了视频价格表时,锚点(最高 normal 价 ¥/秒)转为
+	// USD per-call 价格,系数(分辨率/错峰)由适配器按表推导。
+	if table, ok := ratio_setting.GetVideoPrice(info.OriginModelName); ok {
+		modelPrice = ratio_setting.VideoPriceModelPrice(table)
+		usePrice = true
+		// 走下面的 usePrice 分支(quota = modelPrice × QuotaPerUnit × groupRatio)
+	} else {
+		var success bool
+		modelPrice, success = ratio_setting.GetModelPrice(info.OriginModelName, true)
+		usePrice = success
+		if !success {
+			defaultPrice, ok := ratio_setting.GetDefaultModelPriceMap()[info.OriginModelName]
+			if ok {
+				modelPrice = defaultPrice
+				usePrice = true
+			} else {
+				var ratioSuccess bool
+				var matchName string
+				modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+				acceptUnsetRatio := false
+				if info.UserSetting.AcceptUnsetRatioModel {
+					acceptUnsetRatio = true
+				}
+				if !ratioSuccess && !acceptUnsetRatio {
+					return hosttypes.PriceData{}, modelPriceNotConfiguredError(matchName, info.UserId)
+				}
 			}
 		}
 	}
@@ -253,6 +264,10 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 }
 
 func HasModelBillingConfig(modelName string) bool {
+	// 视频按秒定价:模型配置了视频价格表即有计费配置,避免无价格模型的走 ratio 路径误判
+	if _, ok := ratio_setting.GetVideoPrice(modelName); ok {
+		return true
+	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {
 		return true
 	}

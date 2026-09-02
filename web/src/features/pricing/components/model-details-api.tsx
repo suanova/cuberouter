@@ -80,6 +80,8 @@ type SampleContext = {
   modelName: string
   endpointType: string
   endpointPath: string
+  /** 本地化后的视频结果注释(示例代码里内嵌,随语言展示) */
+  videoUrlHint?: string
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
@@ -423,6 +425,121 @@ function buildImageSample(lang: Lang, ctx: SampleContext): string {
   ].join('\n')
 }
 
+// 视频按秒定价模型的示例:提交 POST /v1/video/generations,轮询
+// GET /v1/video/generations/{task_id}。请求参数 model / prompt / size(分辨率)/
+// duration(秒)与网关任务 API 一致(OpenAI 视频风格,区别于 Ark 风格示例)。
+function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
+  const url = `${ctx.baseUrl}${ctx.endpointPath}`
+  const prompt = 'A serene koi pond at sunset, ukiyo-e style.'
+  const body = JSON.stringify(
+    { model: ctx.modelName, prompt, size: '720p', duration: 5 },
+    null,
+    2
+  )
+
+  if (lang === 'curl') {
+    return [
+      '# Submit a video generation task',
+      `curl ${url} \\`,
+      `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      '',
+      '# Poll task status (returns the video URL when completed):',
+      `# curl ${ctx.baseUrl}/v1/video/generations/<task_id> \\`,
+      `#   -H "Authorization: Bearer $${ctx.apiKeyEnv}"`,
+    ].join('\n')
+  }
+  const pollUrl = `${ctx.baseUrl}/v1/video/generations/{task_id}`
+  if (lang === 'python') {
+    return [
+      'import time',
+      '',
+      'import requests',
+      '',
+      'headers = {"Authorization": "Bearer <YOUR_API_KEY>", "Content-Type": "application/json"}',
+      '',
+      `resp = requests.post("${url}", headers=headers,`,
+      `    json={"model": "${ctx.modelName}", "prompt": "${prompt}", "size": "720p", "duration": 5})`,
+      `task_id = resp.json()["task_id"]`,
+      '',
+      '# Poll until the task reaches a terminal status',
+      'while True:',
+      `    task = requests.get("${pollUrl}".format(task_id=task_id), headers=headers).json()`,
+      '    if task.get("status") == "completed":',
+      `        print(task)  # ${ctx.videoUrlHint}`,
+      '        break',
+      '    if task.get("status") == "failed":',
+      '        raise SystemExit("task failed: " + str(task.get("error")))',
+      '    time.sleep(3)',
+    ].join('\n')
+  }
+  if (lang === 'typescript') {
+    return [
+      `const headers = {`,
+      `  Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+      `  'Content-Type': 'application/json',`,
+      `}`,
+      `const resp = await fetch('${url}', {`,
+      `  method: 'POST',`,
+      `  headers,`,
+      `  body: JSON.stringify({`,
+      `    model: '${ctx.modelName}',`,
+      `    prompt: '${prompt}',`,
+      `    size: '720p',`,
+      `    duration: 5,`,
+      `  }),`,
+      `})`,
+      `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
+      `const { task_id } = await resp.json()`,
+      '',
+      '// Poll until the task reaches a terminal status',
+      `while (true) {`,
+      `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
+  if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
+  const task = await poll.json()`,
+      `  if (task.status === 'completed') {`,
+      `    console.log(task)  // ${ctx.videoUrlHint}`,
+      `    break`,
+      `  }`,
+      `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
+      `  await new Promise((resolve) => setTimeout(resolve, 3000))`,
+      `}`,
+    ].join('\n')
+  }
+  return [
+    `const headers = {`,
+    `  Authorization: \`Bearer \${process.env.${ctx.apiKeyEnv}}\`,`,
+    `  'Content-Type': 'application/json',`,
+    `}`,
+    `const resp = await fetch('${url}', {`,
+    `  method: 'POST',`,
+    `  headers,`,
+    `  body: JSON.stringify({`,
+    `    model: '${ctx.modelName}',`,
+    `    prompt: '${prompt}',`,
+    `    size: '720p',`,
+    `    duration: 5,`,
+    `  }),`,
+    `})`,
+    `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
+    `const { task_id } = await resp.json()`,
+    '',
+    '// Poll until the task reaches a terminal status',
+    `while (true) {`,
+    `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
+  if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
+  const task = await poll.json()`,
+    `  if (task.status === 'completed') {`,
+    `    console.log(task)  // ${ctx.videoUrlHint}`,
+    `    break`,
+    `  }`,
+    `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
+    `  await new Promise((resolve) => setTimeout(resolve, 3000))`,
+    `}`,
+  ].join('\n')
+}
+
 function buildVideoSample(lang: Lang, ctx: SampleContext): string {
   // Async video generation (Seedance). Three-step flow:
   //   1) POST {submitUrl}            -> {"id": "vt_...", "status": "queued"}
@@ -603,6 +720,9 @@ function buildSample(
     return buildEmbeddingSample(lang, ctx)
   }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
+  if (endpointType === 'per-second-video') {
+    return buildPerSecondVideoSample(lang, ctx)
+  }
   if (endpointType === 'openai-video' || endpointType === 'ark-video') {
     return buildVideoSample(lang, ctx)
   }
@@ -634,6 +754,10 @@ function CodeSamplesSection(props: {
   }, [status])
 
   const endpoints = useMemo(() => {
+    if (props.model.video_prices) {
+      // 视频按秒计费模型:示例固定为 OpenAI 风格视频生成端点
+      return [{ type: 'per-second-video', path: '/v1/video/generations', method: 'POST' }]
+    }
     const types = props.model.supported_endpoint_types || []
     return types
       .map((type) => {
@@ -793,6 +917,27 @@ function SupportedParametersSection(props: { model: PricingModel }) {
           },
         ]}
       />
+      {props.model.video_prices && (
+        <div className='text-muted-foreground mt-3 space-y-1 text-xs leading-relaxed'>
+          <p className='text-foreground font-medium'>
+            {t('Video generation mode')}
+          </p>
+          <p>
+            {t(
+              'No image = text-to-video, 1 image = image-to-video, 2 images = first-and-last-frame, more than 2 images = reference-to-video'
+            )}
+          </p>
+          <p>{t('Pass images via image, images or input_reference')}</p>
+          <p className='text-foreground mt-2 font-medium'>
+            {t('Extra parameters via metadata')}
+          </p>
+          <p>
+            {t(
+              'Additional parameters (e.g. subjects, off_peak, audio) can be passed via the metadata object'
+            )}
+          </p>
+        </div>
+      )}
     </section>
   )
 }

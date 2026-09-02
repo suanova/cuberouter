@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -271,4 +272,32 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 	require.Equal(t, "QuotaFromFloat", clamp.Op)
 	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 	require.Nil(t, info.Billing)
+}
+
+func TestModelPriceHelperPerCallVideoTablePriority(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// 视频按秒定价:模型配置视频价格表后,按次计费以锚点(最高 normal 价)¥/秒 → USD
+	// per-call 定价,优先于模型价格/倍率;系数(分辨率/错峰)由适配器按表推导。
+	require.NoError(t, ratio_setting.UpdateVideoPriceByJSONString(`{
+		"video-price-percall-model": {"rows": [
+			{"resolution":"1080p","normal_price":0.75,"off_peak_price":0.375},
+			{"resolution":"720p","normal_price":0.625,"off_peak_price":0.3125}]}
+	}`))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "video-price-percall-model",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	// 设置断言后继续检查后续字段,任一失败不中断其余断言
+	assert.True(t, priceData.UsePrice)
+	// InDelta:常量折叠(0.75/7.3)与运行时浮点除法(锚点/7.3)存在 1 ULP 差异
+	assert.InDelta(t, 0.75/ratio_setting.USD2RMB, priceData.ModelPrice, 1e-12)
+	// 锚点 0.75 ¥/秒 ÷ 7.3 × QuotaPerUnit(500000) × groupRatio 1.0 → 51369(截断)
+	assert.Equal(t, 51369, priceData.Quota)
 }

@@ -52,6 +52,7 @@ export function Pricing() {
     isLoading,
     priceRate,
     usdExchangeRate,
+    offPeakWindow,
   } = usePricingData()
 
   const {
@@ -131,6 +132,7 @@ export function Pricing() {
           tokenUnit={tokenUnit}
           showRechargePrice={showRechargePrice}
           selectedGroup={groupFilter}
+          offPeakWindow={offPeakWindow}
         />
       )
     }
@@ -280,6 +282,7 @@ export function Pricing() {
               usdExchangeRate={usdExchangeRate ?? 1}
               tokenUnit={tokenUnit}
               showRechargePrice={showRechargePrice}
+              offPeakWindow={offPeakWindow}
             />
           )}
         </PageTransition>
