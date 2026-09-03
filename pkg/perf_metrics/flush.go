@@ -19,6 +19,7 @@ func flushLoop() {
 			continue
 		}
 		flushCompletedBuckets()
+		flushCompletedCapacityBuckets()
 		cleanupExpiredMetrics(setting.RetentionDays)
 	}
 }
@@ -38,9 +39,18 @@ func flushCompletedBuckets() {
 			return true
 		}
 
-		err := model.UpsertPerfMetric(&model.PerfMetric{
+		var channelName string
+		if k.channelId > 0 {
+			// 经渠道缓存反查展示名（spec §3.1），查不到留空，前端回退 #<id>。
+			if channel, err := model.CacheGetChannel(k.channelId); err == nil && channel != nil {
+				channelName = channel.Name
+			}
+		}
+		metric := &model.PerfMetric{
 			ModelName:      k.model,
 			Group:          k.group,
+			ChannelId:      int64(k.channelId),
+			ChannelName:    channelName,
 			BucketTs:       k.bucketTs,
 			RequestCount:   drained.requestCount,
 			SuccessCount:   drained.successCount,
@@ -49,10 +59,13 @@ func flushCompletedBuckets() {
 			TtftCount:      drained.ttftCount,
 			OutputTokens:   drained.outputTokens,
 			GenerationMs:   drained.generationMs,
-		})
+		}
+		metric.SetLatHist(drained.latHist)
+		metric.SetTtftHist(drained.ttftHist)
+		err := model.UpsertPerfMetric(metric)
 		if err != nil {
 			bucket.addCounters(drained)
-			common.SysError(fmt.Sprintf("failed to flush perf metric bucket model=%s group=%s bucket=%d: %s", k.model, k.group, k.bucketTs, err.Error()))
+			common.SysError(fmt.Sprintf("failed to flush perf metric bucket model=%s group=%s channel=%d bucket=%d: %s", k.model, k.group, k.channelId, k.bucketTs, err.Error()))
 			return true
 		}
 
@@ -75,10 +88,14 @@ func cleanupExpiredMetrics(retentionDays int) {
 	if err := model.DeletePerfMetricsBefore(cutoff); err != nil {
 		common.SysError("failed to cleanup expired perf metrics: " + err.Error())
 	}
+	if err := model.DeleteCapacityBefore(cutoff); err != nil {
+		common.SysError("failed to cleanup expired capacity metrics: " + err.Error())
+	}
 }
 
+// redisCounters 解析 Redis 镜像 hash：直方图单元为字段 l{i}/t{i}（i=0..12）。
 func redisCounters(values map[string]string) counters {
-	return counters{
+	c := counters{
 		requestCount:   parseRedisInt(values["req"]),
 		successCount:   parseRedisInt(values["ok"]),
 		totalLatencyMs: parseRedisInt(values["lat"]),
@@ -87,6 +104,11 @@ func redisCounters(values map[string]string) counters {
 		outputTokens:   parseRedisInt(values["out"]),
 		generationMs:   parseRedisInt(values["gen_ms"]),
 	}
+	for i := 0; i < histCellCount; i++ {
+		c.latHist[i] = parseRedisInt(values["l"+strconv.Itoa(i)])
+		c.ttftHist[i] = parseRedisInt(values["t"+strconv.Itoa(i)])
+	}
+	return c
 }
 
 func parseRedisInt(value string) int64 {

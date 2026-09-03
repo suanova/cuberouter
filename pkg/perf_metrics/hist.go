@@ -21,18 +21,30 @@ func histIndex(ms int64) int {
 }
 
 // quantileMs 由单元计数累积分布估算分位数（毫秒）。
-// rank 命中单元内部（prev < rank < cum）时取单元下界（lo）作近似；
-// 恰好落在单元末尾（rank == cum）时取单元上界（hi），即边界处取值无偏。
-// total<=0 返回 -1；分位点落在尾桶时返回 240000（近似上限）。
+// 首个满足 cum >= rank 的单元为跨越单元：rank 严格落在单元内部时取单元下界
+// （lo）；恰在单元末尾（rank == cum）时取单元上界（hi），边界处取值无偏；
+// 分位点越过全部非尾单元（落在尾桶）时返回 240000（近似上限）。
+// total<=0 返回 -1；直方图全零但有计数（升级前旧行有计数无直方图列）同样按
+// 无数据返回 -1，避免把缺失的直方图错报成尾桶 240s。
 func quantileMs(q float64, hist *[histCellCount]int64, total int64) float64 {
 	if total <= 0 || q < 0 || q > 1 {
+		return -1
+	}
+	hasCells := false
+	for i := 0; i < histCellCount; i++ {
+		if hist[i] != 0 {
+			hasCells = true
+			break
+		}
+	}
+	if !hasCells {
 		return -1
 	}
 	rank := q * float64(total)
 	var cum int64
 	for i := 0; i < histCellCount; i++ {
 		cum += hist[i]
-		if float64(cum) < rank || hist[i] <= 0 {
+		if float64(cum) < rank {
 			continue
 		}
 		if i == histCellCount-1 {
@@ -46,5 +58,7 @@ func quantileMs(q float64, hist *[histCellCount]int64, total int64) float64 {
 		}
 		return float64(latencyBoundsMs[i-1])
 	}
+	// 仅当单元计数总和不足 total（调用方数据不一致，如部分写入的行）时可达；
+	// 按尾桶近似兜底，与旧行为一致。
 	return 240000
 }

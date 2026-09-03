@@ -22,7 +22,8 @@ func TestHistIndexBoundaries(t *testing.T) {
 }
 
 func TestQuantileInterpolation(t *testing.T) {
-	// 100 个样本：全部 1000ms → p50/p95/p99 均应≈1000（落在单元 4 = [1000,2000)，线性插值 0 偏移）
+	// 100 个样本：全部 1000ms → p50/p95/p99 均应=1000（跨越边界估计：rank 落在
+	// 单元 4 = [1000,2000) 内部 → 取单元下界 1000，无插值偏移）
 	var hist [histCellCount]int64
 	hist[4] = 100
 	for _, q := range []float64{0.5, 0.95, 0.99} {
@@ -51,7 +52,7 @@ func TestCountersHistAddAndMerge(t *testing.T) {
 	assert.Equal(t, int64(1), snap.latHist[4])
 	assert.Equal(t, int64(1), snap.ttftHist[2])
 	var merged counters
-	merged.merge(snap) // 见 Step 3：counters 增加 merge 方法
+	merged.merge(snap)
 	merged.merge(snap)
 	require.Equal(t, int64(2), merged.requestCount)
 	assert.Equal(t, int64(2), merged.latHist[4])

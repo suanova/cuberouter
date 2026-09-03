@@ -23,23 +23,41 @@ type QueryParams struct {
 	Model string
 	Group string
 	Hours int
+	// ChannelId 0=不过滤（含 channel_id=0 的未分渠道行）；仅当 >0 时按渠道过滤。
+	ChannelId int
 }
 
+// BucketPoint 增加字段（加法扩展，旧字段与语义不动）。success_rate 为 0..100
+// 百分数（与 GroupResult/汇总口径一致）；分位数字段无数据时为 -1。
 type BucketPoint struct {
 	Ts           int64   `json:"ts"`
 	AvgTtftMs    int64   `json:"avg_ttft_ms"`
 	AvgLatencyMs int64   `json:"avg_latency_ms"`
 	SuccessRate  float64 `json:"success_rate"`
 	AvgTps       float64 `json:"avg_tps"`
+	RequestCount int64   `json:"request_count"`
+	P50LatencyMs int64   `json:"p50_latency_ms"`
+	P95LatencyMs int64   `json:"p95_latency_ms"`
+	P99LatencyMs int64   `json:"p99_latency_ms"`
+	P95TtftMs    int64   `json:"p95_ttft_ms"`
+}
+
+// ChannelResult 是某 group 下单个渠道的逐桶明细。channel_id=0（未分渠道）不产生
+// 条目；channel_name 为空（纯热点桶尚无 DB 行）时前端回退 #<channel_id>。
+type ChannelResult struct {
+	ChannelId   int           `json:"channel_id"`
+	ChannelName string        `json:"channel_name"`
+	Series      []BucketPoint `json:"series"`
 }
 
 type GroupResult struct {
-	Group        string        `json:"group"`
-	AvgTtftMs    int64         `json:"avg_ttft_ms"`
-	AvgLatencyMs int64         `json:"avg_latency_ms"`
-	SuccessRate  float64       `json:"success_rate"`
-	AvgTps       float64       `json:"avg_tps"`
-	Series       []BucketPoint `json:"series"`
+	Group        string          `json:"group"`
+	AvgTtftMs    int64           `json:"avg_ttft_ms"`
+	AvgLatencyMs int64           `json:"avg_latency_ms"`
+	SuccessRate  float64         `json:"success_rate"`
+	AvgTps       float64         `json:"avg_tps"`
+	Series       []BucketPoint   `json:"series"`
+	Channels     []ChannelResult `json:"channels,omitempty"`
 }
 
 type QueryResult struct {
@@ -62,9 +80,10 @@ type SummaryAllResult struct {
 }
 
 type bucketKey struct {
-	model    string
-	group    string
-	bucketTs int64
+	model     string
+	group     string
+	channelId int
+	bucketTs  int64
 }
 
 type counters struct {
