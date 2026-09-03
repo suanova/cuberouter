@@ -67,6 +67,8 @@ const monitoringSchema = z.object({
     flush_interval: z.coerce.number().min(1),
     bucket_time: z.enum(['minute', '5min', 'hour']),
     retention_days: z.coerce.number().min(0),
+    export_enabled: z.boolean(),
+    export_token: z.string().max(200),
   }),
 })
 
@@ -79,6 +81,8 @@ type FlatMonitoringDefaults = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'minute' | '5min' | 'hour'
   'perf_metrics_setting.retention_days': number
+  'perf_metrics_setting.export_enabled': boolean
+  'perf_metrics_setting.export_token': string
 }
 
 type MonitoringSettingsSectionProps = {
@@ -94,6 +98,8 @@ const buildFormDefaults = (
     flush_interval: defaults['perf_metrics_setting.flush_interval'],
     bucket_time: defaults['perf_metrics_setting.bucket_time'],
     retention_days: defaults['perf_metrics_setting.retention_days'],
+    export_enabled: defaults['perf_metrics_setting.export_enabled'],
+    export_token: defaults['perf_metrics_setting.export_token'],
   },
 })
 
@@ -108,6 +114,10 @@ const normalizeDefaults = (
     defaults['perf_metrics_setting.bucket_time'],
   'perf_metrics_setting.retention_days':
     defaults['perf_metrics_setting.retention_days'],
+  'perf_metrics_setting.export_enabled':
+    defaults['perf_metrics_setting.export_enabled'],
+  'perf_metrics_setting.export_token':
+    defaults['perf_metrics_setting.export_token'],
 })
 
 const normalizeFormValues = (
@@ -120,6 +130,9 @@ const normalizeFormValues = (
   'perf_metrics_setting.bucket_time': values.perf_metrics_setting.bucket_time,
   'perf_metrics_setting.retention_days':
     values.perf_metrics_setting.retention_days,
+  'perf_metrics_setting.export_enabled':
+    values.perf_metrics_setting.export_enabled,
+  'perf_metrics_setting.export_token': values.perf_metrics_setting.export_token,
 })
 
 export function MonitoringSettingsSection({
@@ -155,6 +168,7 @@ export function MonitoringSettingsSection({
   }, [defaultValues])
 
   const perfMetricsEnabled = form.watch('perf_metrics_setting.enabled')
+  const metricsExportEnabled = form.watch('perf_metrics_setting.export_enabled')
 
   const onSubmit = async (values: MonitoringFormValues) => {
     const normalized = normalizeFormValues(values)
@@ -312,6 +326,48 @@ export function MonitoringSettingsSection({
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name='perf_metrics_setting.export_enabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Metrics Export Enabled')}</FormLabel>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      disabled={!perfMetricsEnabled}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+            {metricsExportEnabled && (
+              <FormField
+                control={form.control}
+                name='perf_metrics_setting.export_token'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Metrics Export Token')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        autoComplete='off'
+                        placeholder={t(
+                          'Leave empty to disable auth (restrict by network instead)'
+                        )}
+                        value={field.value}
+                        onChange={(event) => field.onChange(event.target.value)}
+                        disabled={!perfMetricsEnabled}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
           </div>
         </SettingsForm>
       </Form>

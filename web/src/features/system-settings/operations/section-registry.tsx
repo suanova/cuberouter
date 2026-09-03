@@ -55,6 +55,10 @@ const OPERATIONS_SECTIONS = [
             settings['perf_metrics_setting.bucket_time'] ?? 'hour',
           'perf_metrics_setting.retention_days':
             settings['perf_metrics_setting.retention_days'] ?? 0,
+          'perf_metrics_setting.export_enabled':
+            settings['perf_metrics_setting.export_enabled'] ?? false,
+          'perf_metrics_setting.export_token':
+            settings['perf_metrics_setting.export_token'] ?? '',
         }}
       />
     ),

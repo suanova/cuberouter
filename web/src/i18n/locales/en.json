@@ -5515,6 +5515,19 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Metrics Export Enabled": "Metrics Export Enabled",
+    "Metrics Export Token": "Metrics Export Token",
+    "Leave empty to disable auth (restrict by network instead)": "Leave empty to disable auth (restrict by network instead)",
+    "Capacity (24h)": "Capacity (24h)",
+    "Not enough capacity data yet": "Not enough capacity data yet",
+    "RPS": "RPS",
+    "Inflight peak": "Inflight peak",
+    "Rejected 503": "Rejected 503",
+    "Channel Breakdown": "Channel Breakdown",
+    "Avg Latency": "Avg Latency",
+    "Success Rate": "Success Rate",
+    "TPS": "TPS",
+    "No channel data for this model": "No channel data for this model"
   }
 }

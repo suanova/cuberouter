@@ -101,6 +101,18 @@ const LazyPerformanceOverview = lazy(() =>
   }))
 )
 
+const LazyCapacityOverviewCard = lazy(() =>
+  import('./components/capacity/capacity-overview-card').then((m) => ({
+    default: m.CapacityOverviewCard,
+  }))
+)
+
+const LazyChannelBreakdownCard = lazy(() =>
+  import('./components/capacity/channel-breakdown-card').then((m) => ({
+    default: m.ChannelBreakdownCard,
+  }))
+)
+
 const LazyUserCharts = lazy(() =>
   import('./components/users/user-charts').then((m) => ({
     default: m.UserCharts,
@@ -171,6 +183,22 @@ function PerformanceOverviewFallback() {
             <Skeleton key={key} className='h-5 w-28 rounded-full' />
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+function CapacityCardFallback() {
+  return (
+    <div className='overflow-hidden rounded-lg border'>
+      <div className='border-border/60 flex items-center justify-between border-b px-4 py-3 sm:px-5'>
+        <Skeleton className='h-5 w-40' />
+        <Skeleton className='h-7 w-44' />
+      </div>
+      <div className='space-y-2 p-4'>
+        {[0, 1, 2].map((key) => (
+          <Skeleton key={key} className='h-16 rounded-md sm:h-20' />
+        ))}
       </div>
     </div>
   )
@@ -360,6 +388,18 @@ export function Dashboard() {
                   <Suspense fallback={<PerformanceOverviewFallback />}>
                     <LazyPerformanceOverview />
                   </Suspense>
+                </FadeIn>
+              )}
+              {isAdmin && (
+                <FadeIn delay={0.1}>
+                  <div className='grid grid-cols-1 gap-3 sm:gap-4 xl:grid-cols-2'>
+                    <Suspense fallback={<CapacityCardFallback />}>
+                      <LazyCapacityOverviewCard />
+                    </Suspense>
+                    <Suspense fallback={<CapacityCardFallback />}>
+                      <LazyChannelBreakdownCard />
+                    </Suspense>
+                  </div>
                 </FadeIn>
               )}
               <FadeIn delay={0.1}>
