@@ -37,6 +37,13 @@ func TestQuantileInterpolation(t *testing.T) {
 	assert.Equal(t, float64(500), quantileMs(0.5, &hist2, 100))
 	// 空桶 → -1；全在尾桶 → 240000
 	assert.Equal(t, float64(-1), quantileMs(0.5, &[histCellCount]int64{}, 0))
+
+	// 升级前旧行场景：total>0 但直方图全零（迁移加列后旧行有计数无直方图）→ -1，
+	// 不得错报成尾桶近似 240000。
+	var legacy [histCellCount]int64
+	assert.Equal(t, float64(-1), quantileMs(0.5, &legacy, 100))
+	assert.Equal(t, float64(-1), quantileMs(0.95, &legacy, 100))
+	assert.Equal(t, float64(-1), quantileMs(0.99, &legacy, 100))
 	var tail [histCellCount]int64
 	tail[histCellCount-1] = 10
 	assert.Equal(t, float64(240000), quantileMs(0.5, &tail, 10))

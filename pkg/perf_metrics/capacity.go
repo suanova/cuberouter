@@ -16,6 +16,10 @@ import (
 
 var relayInflight atomic.Int64
 
+// capacityUpsert 可注入：生产指向 model.UpsertCapacityMetric；测试替换为
+// 内存记录器，避免测试依赖 DB。
+var capacityUpsert = model.UpsertCapacityMetric
+
 type capacityBucket struct {
 	ts       int64
 	attempts atomic.Int64
@@ -24,15 +28,23 @@ type capacityBucket struct {
 }
 
 var (
-	capacityMu sync.Mutex // 保护 currentCap 指针切换
+	capacityMu sync.Mutex
 	currentCap *capacityBucket
+	// pendingCaps 收纳已跨界的完结桶等待 flush drain。桶跨界即入队、不得丢弃：
+	// 否则 sampleInflightLoop 会在边界后 ≤2s 内让上一桶不可达，而 flush 只检查
+	// currentCap 时会整桶漏 drain（C1 修复）。
+	pendingCaps []*capacityBucket
 )
 
+// currentCapacityBucket 返回当前桶；跨界时把旧桶移入 pendingCaps 等待 drain。
 func currentCapacityBucket() *capacityBucket {
 	now := bucketStart(time.Now().Unix())
 	capacityMu.Lock()
 	defer capacityMu.Unlock()
 	if currentCap == nil || currentCap.ts != now {
+		if currentCap != nil {
+			pendingCaps = append(pendingCaps, currentCap)
+		}
 		currentCap = &capacityBucket{ts: now}
 	}
 	return currentCap
@@ -64,36 +76,58 @@ func sampleInflightLoop() {
 	}
 }
 
-// flushCompletedCapacityBuckets drain 并 upsert 所有早于当前桶起点的完结容量桶。
-// 由 flushLoop 在 flushCompletedBuckets 之后调用。
+// flushCompletedCapacityBuckets drain 所有早于当前桶起点的完结容量桶：
+// pendingCaps 中的跨界桶 + 可能恰在采样 tick 与 flush 之间越界的 currentCap
+// （替换成新桶）。由 flushLoop 在 flushCompletedBuckets 之后调用。
+// drain 失败（DB 错误）的桶重新入 pendingCaps，下轮 flush 重试。
+//
+// 已知残余竞态（亚微秒窗口，近似语义下可接受，见 spec §3.2）：某请求在桶
+// 被 drain 之前恰好取到旧桶指针、drain 清零之后才 Add(1)，该次计数落入已
+// 完结桶而丢失——桶一旦 drain 成功不再二次读取。
 func flushCompletedCapacityBuckets() {
 	current := bucketStart(time.Now().Unix())
-	for {
-		capacityMu.Lock()
-		b := currentCap
-		if b == nil || b.ts >= current {
-			capacityMu.Unlock()
-			return
+	capacityMu.Lock()
+	var toDrain []*capacityBucket
+	keepPending := pendingCaps[:0]
+	for _, b := range pendingCaps {
+		if b.ts < current {
+			toDrain = append(toDrain, b)
+		} else {
+			keepPending = append(keepPending, b)
 		}
+	}
+	pendingCaps = keepPending
+	if currentCap != nil && currentCap.ts < current {
+		toDrain = append(toDrain, currentCap)
 		currentCap = &capacityBucket{ts: current}
-		capacityMu.Unlock()
-		drainCapacityBucket(b)
+	}
+	capacityMu.Unlock()
+	for _, b := range toDrain {
+		if !drainCapacityBucket(b) {
+			capacityMu.Lock()
+			pendingCaps = append(pendingCaps, b) // 值未清零（见 drainCapacityBucket），下轮原值重试
+			capacityMu.Unlock()
+		}
 	}
 }
 
-// drainCapacityBucket 交换清零计数并增量 upsert；换出后的桶不再有写入方
-// （采样与计数都只写 currentCapacityBucket 返回的当前桶）。
-func drainCapacityBucket(b *capacityBucket) {
-	if b == nil {
-		return
-	}
-	attempts, rejected, peak := b.attempts.Swap(0), b.rejected.Swap(0), b.peak.Swap(0)
+// drainCapacityBucket 读取桶值并 upsert：成功（含空桶跳过）返回 true 并清零；
+// DB 失败返回 false 且不清零，桶保持原值重新入队——重试必须真正补上数据
+// （对应 perf flush 失败经 addCounters 回填的语义，见 M1）。清零与 Swap(0)
+// 一样会丢清空瞬间晚到的写，属注释中已接受的残余竞态窗口。
+func drainCapacityBucket(b *capacityBucket) bool {
+	attempts, rejected, peak := b.attempts.Load(), b.rejected.Load(), b.peak.Load()
 	if attempts == 0 && rejected == 0 && peak == 0 {
-		return
+		return true
 	}
-	if err := model.UpsertCapacityMetric(&model.CapacityMetric{
+	if err := capacityUpsert(&model.CapacityMetric{
 		BucketTs: b.ts, Attempts: attempts, Rejected503: rejected, InflightPeak: peak,
 	}); err != nil {
 		common.SysError("failed to flush capacity bucket: " + err.Error())
+		return false
 	}
+	b.attempts.Store(0)
+	b.rejected.Store(0)
+	b.peak.Store(0)
+	return true
 }
