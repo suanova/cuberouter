@@ -413,8 +413,8 @@ The gateway samples every relayed request into in-memory buckets (模型/分组/
 
 | Domain | Table | Content | Frontend |
 |------|------|------|------|
-| 性能指标 (perf metrics) | `perf_metrics` | Per model × group × channel × bucket: request/success counts, latency & TTFT latency histograms, tokens | Latency P50/P95/P99 trend lines on the model-square model detail page; per-channel breakdown on the admin dashboard |
-| 容量指标 (capacity) | `capacity_metrics` | Per bucket: relay `attempts`, `rejected_503`, in-flight peak | Admin dashboard Capacity Overview card (容量总览) + channel breakdown (渠道分解) |
+| 性能指标 (perf metrics) | `perf_metrics` | Per model × group × channel × bucket: request/success counts, latency & TTFT latency histograms, tokens | Average TTFT with P95/P99 latency trend lines on the model-square model detail page; per-channel breakdown on the admin dashboard |
+| 容量指标 (capacity) | `capacity_metrics` | Per bucket: relay `attempts`, `rejected_503`, in-flight peak | Admin dashboard Capacity Overview card (容量总览) |
 
 Channel identity is internal information: the `channels` detail of `GET /api/perf-metrics` is returned only to admins (role ≥ 10) and is stripped server-side for anonymous and regular users.
 
@@ -440,7 +440,7 @@ Channel identity is internal information: the `channels` detail of `GET /api/per
 | `rejected_503` | Subset of `attempts`: requests rejected with HTTP 503 by the overload protection (`SystemPerformanceCheck`, CPU/memory/disk thresholds). `rejected_503 ⊆ attempts` |
 | `inflight_peak` | Peak in-flight concurrency in the bucket — a **2-second sampling approximation**, not an exact maximum |
 
-Two approximations to expect: rows are written only after a bucket completes (flush loop), so the newest point can lag the current wall-clock bucket by up to one flush period; and RPS is derived client-side as `attempts` / bucket seconds.
+Two approximations to expect: rows are written only after a bucket completes (flush loop), so the newest point can lag the current wall-clock bucket by up to one flush period; and RPS is derived client-side from `attempts` over the bucket width, where the width is inferred from neighboring point timestamps (the latest point reuses the previous bucket interval).
 
 ### Prometheus export (`/api/metrics`)
 
