@@ -100,7 +100,9 @@ func TestCapacityMetricsRequiresAdmin(t *testing.T) {
 			if tc.wantStatus == http.StatusOK {
 				var payload map[string]any
 				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
-				assert.Equal(t, true, payload["success"])
+				success, ok := payload["success"].(bool)
+				require.True(t, ok, "success bool missing")
+				assert.True(t, success)
 				data, ok := payload["data"].(map[string]any)
 				require.True(t, ok, "data object missing")
 				series, ok := data["series"].([]any)
