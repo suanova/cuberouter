@@ -584,6 +584,7 @@
     "Average tokens per second sustained per group": "各分組持續輸出的平均每秒 token 數",
     "Average TPM": "平均 TPM",
     "Average TTFT": "平均首 Token 延遲",
+    "Average TTFT with P95/P99 latency": "Average TTFT with P95/P99 latency",
     "AWS": "AWS",
     "AWS Bedrock Claude Compat": "AWS Bedrock Claude 兼容模板",
     "AWS Key Format": "AWS 金鑰格式",
@@ -3488,6 +3489,8 @@
     "Path not set": "未設定路徑",
     "Path Regex (one per line)": "路徑正則（每行一個）",
     "Path:": "路徑：",
+    "P95 Latency": "P95 Latency",
+    "P99 Latency": "P99 Latency",
     "Pause": "暫停",
     "Paused": "已暫停",
     "Pay": "支付",
@@ -5512,6 +5515,19 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Metrics Export Enabled": "Metrics Export Enabled",
+    "Metrics Export Token": "Metrics Export Token",
+    "Leave empty to disable auth (restrict by network instead)": "Leave empty to disable auth (restrict by network instead)",
+    "Capacity (24h)": "Capacity (24h)",
+    "Not enough capacity data yet": "Not enough capacity data yet",
+    "RPS": "RPS",
+    "Inflight peak": "Inflight peak",
+    "Rejected 503": "Rejected 503",
+    "Channel Breakdown": "Channel Breakdown",
+    "Avg Latency": "Avg Latency",
+    "Success Rate": "Success Rate",
+    "TPS": "TPS",
+    "No channel data for this model": "No channel data for this model"
   }
 }
