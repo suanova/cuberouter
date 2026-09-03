@@ -10,6 +10,7 @@ type Store interface {
 type Sample struct {
 	Model        string
 	Group        string
+	ChannelId    int
 	LatencyMs    int64
 	TtftMs       int64
 	HasTtft      bool
@@ -74,6 +75,24 @@ type counters struct {
 	ttftCount      int64
 	outputTokens   int64
 	generationMs   int64
+	latHist        [histCellCount]int64
+	ttftHist       [histCellCount]int64
+}
+
+// merge 把 o 逐单元加和进 c（含直方图两数组），并返回合并结果。
+func (c *counters) merge(o counters) counters {
+	c.requestCount += o.requestCount
+	c.successCount += o.successCount
+	c.totalLatencyMs += o.totalLatencyMs
+	c.ttftSumMs += o.ttftSumMs
+	c.ttftCount += o.ttftCount
+	c.outputTokens += o.outputTokens
+	c.generationMs += o.generationMs
+	for i := 0; i < histCellCount; i++ {
+		c.latHist[i] += o.latHist[i]
+		c.ttftHist[i] += o.ttftHist[i]
+	}
+	return *c
 }
 
 type atomicBucket struct {
@@ -84,6 +103,8 @@ type atomicBucket struct {
 	ttftCount      atomic.Int64
 	outputTokens   atomic.Int64
 	generationMs   atomic.Int64
+	latHist        [histCellCount]atomic.Int64
+	ttftHist       [histCellCount]atomic.Int64
 }
 
 func (b *atomicBucket) add(sample Sample) {
@@ -102,30 +123,42 @@ func (b *atomicBucket) add(sample Sample) {
 		b.outputTokens.Add(sample.OutputTokens)
 		b.generationMs.Add(sample.GenerationMs)
 	}
+	b.latHist[histIndex(sample.LatencyMs)].Add(1)
+	if sample.HasTtft && sample.TtftMs >= 0 {
+		b.ttftHist[histIndex(sample.TtftMs)].Add(1)
+	}
 }
 
 func (b *atomicBucket) snapshot() counters {
-	return counters{
-		requestCount:   b.requestCount.Load(),
-		successCount:   b.successCount.Load(),
-		totalLatencyMs: b.totalLatencyMs.Load(),
-		ttftSumMs:      b.ttftSumMs.Load(),
-		ttftCount:      b.ttftCount.Load(),
-		outputTokens:   b.outputTokens.Load(),
-		generationMs:   b.generationMs.Load(),
+	var c counters
+	c.requestCount = b.requestCount.Load()
+	c.successCount = b.successCount.Load()
+	c.totalLatencyMs = b.totalLatencyMs.Load()
+	c.ttftSumMs = b.ttftSumMs.Load()
+	c.ttftCount = b.ttftCount.Load()
+	c.outputTokens = b.outputTokens.Load()
+	c.generationMs = b.generationMs.Load()
+	for i := 0; i < histCellCount; i++ {
+		c.latHist[i] = b.latHist[i].Load()
+		c.ttftHist[i] = b.ttftHist[i].Load()
 	}
+	return c
 }
 
 func (b *atomicBucket) drain() counters {
-	return counters{
-		requestCount:   b.requestCount.Swap(0),
-		successCount:   b.successCount.Swap(0),
-		totalLatencyMs: b.totalLatencyMs.Swap(0),
-		ttftSumMs:      b.ttftSumMs.Swap(0),
-		ttftCount:      b.ttftCount.Swap(0),
-		outputTokens:   b.outputTokens.Swap(0),
-		generationMs:   b.generationMs.Swap(0),
+	var c counters
+	c.requestCount = b.requestCount.Swap(0)
+	c.successCount = b.successCount.Swap(0)
+	c.totalLatencyMs = b.totalLatencyMs.Swap(0)
+	c.ttftSumMs = b.ttftSumMs.Swap(0)
+	c.ttftCount = b.ttftCount.Swap(0)
+	c.outputTokens = b.outputTokens.Swap(0)
+	c.generationMs = b.generationMs.Swap(0)
+	for i := 0; i < histCellCount; i++ {
+		c.latHist[i] = b.latHist[i].Swap(0)
+		c.ttftHist[i] = b.ttftHist[i].Swap(0)
 	}
+	return c
 }
 
 func (b *atomicBucket) addCounters(c counters) {
@@ -149,5 +182,9 @@ func (b *atomicBucket) addCounters(c counters) {
 	}
 	if c.generationMs != 0 {
 		b.generationMs.Add(c.generationMs)
+	}
+	for i := 0; i < histCellCount; i++ {
+		b.latHist[i].Add(c.latHist[i])
+		b.ttftHist[i].Add(c.ttftHist[i])
 	}
 }
