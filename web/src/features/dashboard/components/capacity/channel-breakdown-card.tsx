@@ -160,7 +160,10 @@ export function ChannelBreakdownCard() {
 
   const model = selectedModel ?? ''
   const detailQuery = useQuery({
-    queryKey: ['perf-metrics', model],
+    // The server strips channels for non-admins: this admin-only payload must
+    // not share a cache entry with the public pricing fetches under
+    // ['perf-metrics', ...].
+    queryKey: ['perf-metrics-channels', model],
     queryFn: () => getPerfMetrics(model, CHANNEL_WINDOW_HOURS),
     enabled: model !== '',
     staleTime: 60 * 1000,

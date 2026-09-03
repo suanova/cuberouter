@@ -81,7 +81,7 @@
 
 ### 5.1 既有端点加法扩展（向后兼容）
 
-- `GET /api/perf-metrics?model=&group=&channel_id=&hours=`：
+- `GET /api/perf-metrics?model=&group=&hours=`：
   - `BucketPoint` 保留旧字段，新增：`request_count`、`p50_latency_ms`、`p95_latency_ms`、`p99_latency_ms`、`p95_ttft_ms`（无数据为 -1）；
   - `GroupResult` 新增 `channels: [{ channel_id, channel_name, series: BucketPoint[] }]`。
 - `GET /api/perf-metrics/summary?hours=`：形状不变。

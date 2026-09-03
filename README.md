@@ -436,11 +436,11 @@ Channel identity is internal information: the `channels` detail of `GET /api/per
 | Field | Meaning |
 |------|------|
 | `ts` | Bucket start, Unix seconds |
-| `attempts` | Requests that entered the relay capacity groups in this bucket — **including requests later rejected by auth, rate limiting, or overload 503** (the counting middleware runs first in every relay chain, before auth and before the overload check) |
+| `attempts` | Relay requests, each attributed to the bucket in which it **completes** (end-time attribution — a stream crossing a bucket boundary lands in the later bucket). **Includes requests later rejected by auth, rate limiting, or overload 503** (the counting middleware runs first in every relay chain, before auth and before the overload check) |
 | `rejected_503` | Subset of `attempts`: requests rejected with HTTP 503 by the overload protection (`SystemPerformanceCheck`, CPU/memory/disk thresholds). `rejected_503 ⊆ attempts` |
 | `inflight_peak` | Peak in-flight concurrency in the bucket — a **2-second sampling approximation**, not an exact maximum |
 
-Two approximations to expect: rows are written only after a bucket completes (flush loop), so the newest point can lag the current wall-clock bucket by up to one flush period; and RPS is derived client-side from `attempts` over the bucket width, where the width is inferred from neighboring point timestamps (the latest point reuses the previous bucket interval).
+Two approximations to expect: rows are written only after a bucket completes (flush loop), so with the default hourly buckets the newest visible point is typically the previous completed bucket — roughly one bucket (~1 h) behind the current wall-clock bucket, plus up to one flush period of write lag after the bucket closes; and RPS is derived client-side from `attempts` over the bucket width, where the width is inferred from neighboring point timestamps (the latest point reuses the previous bucket interval).
 
 ### Prometheus export (`/api/metrics`)
 
@@ -449,7 +449,7 @@ Enable via `perf_metrics_setting.export_enabled` + `export_token` (配置见上)
 - **Reachable on all three API prefixes:** `/api/metrics`, `/api/v1/metrics`, `/api/v2/metrics`.
 - Disabled → `404` (does not reveal existence). With a token set, `Authorization: Bearer <token>` is required (constant-time comparison); otherwise `401`.
 - **Process-level export:** each instance's registry accumulates since process start and resets on restart (standard counter semantics). For multi-instance deployments, scrape **every pod/instance** as its own target — do not aggregate instances into one target.
-- **Freezing, not clearing:** when `enabled = false` while `export_enabled = true`, sampling stops and the model/group-dimensioned families stay frozen at their last values; the capacity counters (`cuberouter_relay_attempts_total`, `cuberouter_overload_rejects_total`) and the in-flight gauge keep updating (the capacity path does not depend on the sampling switch).
+- **Freezing, not clearing:** when `enabled = false` while `export_enabled = true`, sampling stops and the model/group-dimensioned families stay frozen at their last values; the same switch also pauses the `capacity_metrics` DB flush and retention cleanup (both tables). Process-level counters (`cuberouter_relay_attempts_total`, `cuberouter_overload_rejects_total`) and the in-flight gauge keep updating — the in-process capacity path does not depend on the sampling switch, only its DB persistence and cleanup do.
 - Series carry `model` and `group` labels only — the channel dimension is deliberately **not** exported (high cardinality).
 
 | Metric | Type | Meaning |

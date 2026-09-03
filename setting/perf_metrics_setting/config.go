@@ -2,6 +2,8 @@ package perf_metrics_setting
 
 import "github.com/QuantumNous/new-api/setting/config"
 
+// PerfMetricsSetting：Enabled=false 时暂停 DB flush 与保留清理（perf_metrics
+// 与 capacity_metrics 两张表）并冻结导出族，进程级计数继续运行。
 type PerfMetricsSetting struct {
 	Enabled       bool   `json:"enabled"`
 	FlushInterval int    `json:"flush_interval"`
