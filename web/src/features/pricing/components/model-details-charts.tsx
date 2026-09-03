@@ -22,12 +22,13 @@ import { useTranslation } from 'react-i18next'
 
 import { useThemeCustomization } from '@/context/theme-customization-provider'
 import { getSuccessRateColor } from '@/features/performance-metrics/lib/format'
+import { CHART_COLORS } from '@/lib/colors'
 import { useThemeRadiusPx } from '@/lib/theme-radius'
 import { useChartTheme } from '@/lib/use-chart-theme'
 import { cn } from '@/lib/utils'
 import { VCHART_OPTION } from '@/lib/vchart'
 
-import type { LatencyTimePoint, UptimeDayPoint } from '../lib/mock-stats'
+import type { UptimeDayPoint } from '../lib/mock-stats'
 
 function formatHourLabel(iso: string): string {
   const date = new Date(iso)
@@ -90,11 +91,38 @@ function stripUptimePointSuffix(value: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Latency trend chart (24h, multi-group point-line chart)
+// Latency trend chart (24h, model-level point-line chart)
 // ---------------------------------------------------------------------------
 
+/** Latency trend series: the average-TTFT line plus P95/P99 latency lines. */
+export type LatencyTrendMetric = 'ttft' | 'p95' | 'p99'
+
+export type LatencyTrendPoint = {
+  timestamp: string
+  metric: LatencyTrendMetric
+  /** Value in ms. Buckets without data (backend -1) produce no row at all. */
+  ms: number
+}
+
+// Series colors come from the shared chart palette (CHART_COLORS in
+// `@/lib/colors`): the average-TTFT line keeps the palette's leading blue
+// (close to the previous theme-default line color), P95/P99 take the next
+// two palette slots (green, amber).
+const LATENCY_SERIES_COLOR: Record<LatencyTrendMetric, string> = {
+  ttft: CHART_COLORS[0],
+  p95: CHART_COLORS[1],
+  p99: CHART_COLORS[2],
+}
+
+// i18n keys for the series labels (keys are English literals, see locales).
+const LATENCY_METRIC_I18N_KEY: Record<LatencyTrendMetric, string> = {
+  ttft: 'Average TTFT',
+  p95: 'P95 Latency',
+  p99: 'P99 Latency',
+}
+
 export function LatencyTrendChart(props: {
-  series: LatencyTimePoint[]
+  series: LatencyTrendPoint[]
   className?: string
 }) {
   const { t } = useTranslation()
@@ -103,17 +131,20 @@ export function LatencyTrendChart(props: {
 
   const spec = useMemo(() => {
     if (props.series.length === 0) return null
+    const labelOf = (metric: string): string =>
+      t(LATENCY_METRIC_I18N_KEY[metric as LatencyTrendMetric] ?? metric)
     const data = props.series.map((point) => ({
       time: formatHourLabel(point.timestamp),
-      group: point.group,
-      ttft: point.ttft_ms,
+      metric: point.metric,
+      ms: point.ms,
     }))
     return {
       type: 'line' as const,
       data: [{ id: 'latency', values: data }],
       xField: 'time',
-      yField: 'ttft',
-      seriesField: 'group',
+      yField: 'ms',
+      seriesField: 'metric',
+      color: { specified: { ...LATENCY_SERIES_COLOR } },
       smooth: true,
       point: {
         visible: true,
@@ -122,14 +153,23 @@ export function LatencyTrendChart(props: {
       line: {
         style: { lineWidth: 2 },
       },
-      legends: { visible: false },
+      legends: {
+        visible: true,
+        orient: 'top',
+        item: {
+          label: {
+            // Series codes are internal; show the localized metric label.
+            formatMethod: (text: string | number) => labelOf(String(text)),
+          },
+        },
+      },
       tooltip: {
         mark: {
           title: { value: (d: { time: string }) => d.time },
           content: [
             {
-              key: t('Average TTFT'),
-              value: (d: { ttft: number }) => `${Math.round(d.ttft)} ms`,
+              key: (d: { metric: string }) => labelOf(d.metric),
+              value: (d: { ms: number }) => `${Math.round(d.ms)} ms`,
             },
           ],
         },
