@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 )
@@ -18,6 +19,9 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/v1/messages") {
 			if err := checkSystemPerformance(); err != nil {
+				// 过载 503 计入当前容量桶 rejected_503（RelayCapacity 在
+				// 本检查之后，被拒请求不会计入 attempts，见 relay_capacity.go）。
+				perfmetrics.RecordOverloadReject()
 				c.JSON(err.StatusCode, gin.H{
 					"error": err.ToClaudeError(),
 				})
@@ -26,6 +30,7 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 			}
 		} else {
 			if err := checkSystemPerformance(); err != nil {
+				perfmetrics.RecordOverloadReject()
 				c.JSON(err.StatusCode, gin.H{
 					"error": err.ToOpenAIError(),
 				})
