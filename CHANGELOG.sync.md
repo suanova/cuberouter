@@ -1,5 +1,18 @@
 # Upstream Sync Changelog
 
+## 2026-09-03 — 9 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `74158715cde6` | Bump gorm MySQL/Postgres driver versions to fix database initialization failures | bugfix | medium |
+| `69a41eeadc81` | Add a pre-AutoMigrate step that drops legacy single-column UNIQUE constraints on prefill_groups.name (PostgreSQL) so GORM 1.25.x AutoMigrate no longer aborts with SQLSTATE 42704 when trying to drop a non-existent uni_* constraint. | bugfix | medium |
+| `2bf0820f4b89` | Revert the migration logic that dropped legacy unique constraints on the prefill_groups table prior to AutoMigrate | bugfix | medium |
+| `2b6f1dfefbe2` | Drop leftover unique constraints on prefill_groups table before AutoMigrate to prevent database migration failures across supported dialects | bugfix | medium |
+| `8c8c4153d4b8` | Fix SumUsedQuota to scan RPM/TPM into a separate struct so the second query no longer overwrites the previously computed Quota in usage statistics | bugfix | medium |
+| `27ff6a8767e7` | Add a startup DB migration that detects legacy unique constraints on the tokens.key column (e.g. Postgres 'tokens_key_key', GORM 'uni_tokens_key') and migrates them to the canonical idx_tokens_key unique index | bugfix | medium |
+| `67a0585d0f25` | Fixes incorrect/outdated Video API documentation links (now pointing to the Sora create-video page) across all six localized README files. | bugfix | low |
+| `b7017c251bad` | Avoid false lock-loss errors in UpdateSystemTaskState on MySQL, where a no-op state write reports RowsAffected==0 (changed vs matched rows); the lock is now re-verified via system_task_locks before returning ErrSystemTaskLockLost. | bugfix | medium |
+| `0ed497f066a6` | Enhance cross-provider relay conversion fidelity for hosted tools and Responses API, normalize reasoning intent, and guarantee authoritative billing usage tracking across stream and hop conversions. | feature | high |
 ## 2026-09-02 — 10 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
