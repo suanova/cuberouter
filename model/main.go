@@ -464,10 +464,29 @@ func migrateDBFast() error {
 	return nil
 }
 
+// perfIndexExists 按方言检查 perf_metrics 表上指定索引是否存在。
+// 全新库从未创建过旧索引，而 MySQL 的 DROP INDEX 不支持 IF EXISTS，
+// 删除前须先查存在性（AGENTS.md：方言分支须带跨库兜底）。
+func perfIndexExists(name string) bool {
+	var count int64
+	switch DB.Dialector.Name() {
+	case "mysql":
+		DB.Raw("SELECT count(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'perf_metrics' AND index_name = ?", name).Scan(&count)
+	case "postgres":
+		DB.Raw("SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'perf_metrics' AND indexname = ?", name).Scan(&count)
+	default: // sqlite
+		DB.Raw("SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", name).Scan(&count)
+	}
+	return count > 0
+}
+
 // dropLegacyPerfUniqueIndex 删除旧唯一索引（model,group,bucket_ts）。
 // AutoMigrate 不删已改名的索引，保留会导致同 (model,group,bucket) 多 channel
-// 行写入被旧约束拒绝。
+// 行写入被旧约束拒绝。先查存在再删，保证幂等：索引不存在时直接成功返回。
 func dropLegacyPerfUniqueIndex() error {
+	if !perfIndexExists("idx_perf_model_group_bucket") {
+		return nil
+	}
 	switch DB.Dialector.Name() {
 	case "mysql":
 		return DB.Exec("ALTER TABLE perf_metrics DROP INDEX idx_perf_model_group_bucket").Error

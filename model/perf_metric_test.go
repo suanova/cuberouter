@@ -71,6 +71,25 @@ func TestCapacityMetricUpsertPeakIsMax(t *testing.T) {
 	require.Empty(t, rows)
 }
 
+func TestDropLegacyPerfUniqueIndexIdempotent(t *testing.T) {
+	db := newPerfTestDB(t)
+	oldDB := DB
+	DB = db
+	defer func() { DB = oldDB }()
+
+	// 全新库从未创建过旧索引（新 schema 只带 idx_perf_model_group_channel_bucket），
+	// 删除须无错返回——MySQL 的 DROP INDEX 无 IF EXISTS，靠存在性检查兜底。
+	require.NoError(t, dropLegacyPerfUniqueIndex())
+
+	// 模拟旧版本残留：注入旧唯一索引后再删，须成功且索引确实消失。
+	require.NoError(t, db.Exec("CREATE INDEX idx_perf_model_group_bucket ON perf_metrics(model_name, `group`, bucket_ts)").Error)
+	require.NoError(t, dropLegacyPerfUniqueIndex())
+
+	var count int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_perf_model_group_bucket'").Scan(&count).Error)
+	assert.Zero(t, count)
+}
+
 func TestCapacityUpsertAdditiveWhenNoConflictAddsRow(t *testing.T) {
 	// 无冲突行 → 新建：跨两个不同 bucket 各成一行，互不累加。
 	db := newPerfTestDB(t)
