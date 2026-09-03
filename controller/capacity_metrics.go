@@ -31,8 +31,9 @@ func parseHoursParam(raw string, def int) int {
 // 数据来自 capacity_metrics 表（按容量桶聚合，键与 perf 桶同为 bucketStart 粒度）。
 // 注意近似语义：行由 flushLoop 在桶完结后写入，进行中的热点桶不落库，因此最新
 // 数据点可能滞后当前墙钟桶至多一个 flush 周期；inflight_peak 为 2s 采样近似峰值。
-// attempts 是进入 relay 转发链的请求数（含其后被鉴权/限流拒绝者），rejected_503
-// 是 SystemPerformanceCheck 过载拒绝数；RPS = attempts / 桶秒数由前端换算。
+// attempts 是进入 relay 子组的请求数（含被过载保护 503 拒绝、被鉴权/限流拒绝者，
+// 见 middleware.RelayCapacity）；rejected_503 是其中 SystemPerformanceCheck 过载
+// 拒绝的 503 子集；RPS = attempts / 桶秒数由前端换算。
 func GetCapacityMetrics(c *gin.Context) {
 	hours := parseHoursParam(c.Query("hours"), 24)
 	endTs := time.Now().Unix()

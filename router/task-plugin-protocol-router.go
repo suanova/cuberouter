@@ -28,7 +28,7 @@ func taskPluginProtocolHandlers(protocol, operation string) ([]gin.HandlerFunc, 
 	switch protocol + "." + operation {
 	case "openai_responses.create":
 		return []gin.HandlerFunc{
-			middleware.RouteTag("relay"), middleware.SystemPerformanceCheck(), middleware.RelayCapacity(), middleware.TokenAuth(),
+			middleware.RouteTag("relay"), middleware.RelayCapacity(), middleware.SystemPerformanceCheck(), middleware.TokenAuth(),
 			middleware.ModelRequestRateLimit(), middleware.PinTaskPluginEndpoint(), middleware.PrepareTaskPluginEndpoint(), middleware.Distribute(),
 			func(c *gin.Context) {
 				controller.RelayTaskPluginEndpoint(c, func(c *gin.Context) { controller.Relay(c, types.RelayFormatOpenAIResponses) })
@@ -36,7 +36,7 @@ func taskPluginProtocolHandlers(protocol, operation string) ([]gin.HandlerFunc, 
 		}, nil
 	case "openai_video.create":
 		return []gin.HandlerFunc{
-			middleware.RouteTag("relay"), middleware.TokenAuth(), middleware.SystemPerformanceCheck(), middleware.RelayCapacity(),
+			middleware.RouteTag("relay"), middleware.TokenAuth(), middleware.RelayCapacity(), middleware.SystemPerformanceCheck(),
 			middleware.PinTaskPluginEndpoint(), middleware.TaskPluginEndpointOnly(middleware.ModelRequestRateLimit()), middleware.PrepareTaskPluginEndpoint(), middleware.Distribute(),
 			func(c *gin.Context) { controller.RelayTaskPluginEndpoint(c, controller.RelayTask) },
 		}, nil

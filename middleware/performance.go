@@ -19,8 +19,8 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 		path := c.Request.URL.Path
 		if strings.HasPrefix(path, "/v1/messages") {
 			if err := checkSystemPerformance(); err != nil {
-				// 过载 503 计入当前容量桶 rejected_503（RelayCapacity 在
-				// 本检查之后，被拒请求不会计入 attempts，见 relay_capacity.go）。
+				// 过载 503 计入当前容量桶 rejected_503；RelayCapacity 先于本检查
+				// 执行，被拒请求同样已计入 attempts 并曾在途覆盖（见 relay_capacity.go）。
 				perfmetrics.RecordOverloadReject()
 				c.JSON(err.StatusCode, gin.H{
 					"error": err.ToClaudeError(),
@@ -30,6 +30,7 @@ func SystemPerformanceCheck() gin.HandlerFunc {
 			}
 		} else {
 			if err := checkSystemPerformance(); err != nil {
+				// 同 /v1/messages 分支：被拒请求已由 RelayCapacity 计 attempt。
 				perfmetrics.RecordOverloadReject()
 				c.JSON(err.StatusCode, gin.H{
 					"error": err.ToOpenAIError(),

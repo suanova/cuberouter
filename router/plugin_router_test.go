@@ -748,8 +748,8 @@ func TestProductionPluginNativeQueryTraversesInnerRouter(t *testing.T) {
 		binding jsplugin.RouteBinding,
 	) []gin.HandlerFunc {
 		production := productionPluginRouteHandlers(generation, binding)
-		// 生产链（0 pinRoute / 1 TokenAuth / 2 SystemPerformanceCheck /
-		// 3 RelayCapacity / 4 ModelRequestRateLimit / 5 PrepareTaskPluginRoute /
+		// 生产链（0 pinRoute / 1 TokenAuth / 2 RelayCapacity /
+		// 3 SystemPerformanceCheck / 4 ModelRequestRateLimit / 5 PrepareTaskPluginRoute /
 		// 6 Distribute / 7 RelayTask）：用用户上下文 stub 替换 TokenAuth，其余保留。
 		return []gin.HandlerFunc{
 			production[0],
