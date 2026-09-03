@@ -55,11 +55,15 @@ func RelayRequestStart() { relayInflight.Add(1) }
 func RelayRequestEnd() {
 	relayInflight.Add(-1)
 	currentCapacityBucket().attempts.Add(1)
+	procAttempts.Add(1) // 进程级导出 counter（export.go 声明），进程存活期累计
 }
 
 func RelayInflight() int64 { return relayInflight.Load() }
 
-func RecordOverloadReject() { currentCapacityBucket().rejected.Add(1) }
+func RecordOverloadReject() {
+	currentCapacityBucket().rejected.Add(1)
+	procRejects.Add(1) // 进程级导出 counter（export.go 声明）
+}
 
 // sampleInflightLoop 每 2s 把在途并发 CAS 进当前桶峰值。
 func sampleInflightLoop() {

@@ -28,6 +28,9 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
+		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据
+		// perf_metrics_setting.export_enabled/export_token 自鉴权。
+		apiRouter.GET("/metrics", controller.MetricsExport)
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)
 		apiRouter.GET("/status", controller.GetStatus)

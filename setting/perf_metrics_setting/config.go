@@ -7,6 +7,11 @@ type PerfMetricsSetting struct {
 	FlushInterval int    `json:"flush_interval"`
 	BucketTime    string `json:"bucket_time"`
 	RetentionDays int    `json:"retention_days"`
+	// ExportEnabled/ExportToken 控制 /api/metrics 的 Prometheus 薄导出
+	// （spec §6；配置 JSON 键，非表模型，无 gorm 标签）。默认 false/"" =
+	// 不暴露端点；token 非空时要求 Authorization: Bearer <token>。
+	ExportEnabled bool   `json:"export_enabled"`
+	ExportToken   string `json:"export_token"`
 }
 
 var perfMetricsSetting = PerfMetricsSetting{

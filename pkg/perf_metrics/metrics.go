@@ -69,6 +69,10 @@ func Record(sample Sample) {
 		sample.LatencyMs = 0
 	}
 
+	// 进程级注册表同步累加（Prometheus 薄导出，spec §6；Record 运行于 gopool
+	// goroutine、每请求一次，普通互斥锁粒度可接受）。
+	recordProc(sample)
+
 	key := bucketKey{
 		model:     sample.Model,
 		group:     sample.Group,
