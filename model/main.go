@@ -338,6 +338,7 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
+		&CapacityMetric{},
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
@@ -349,6 +350,9 @@ func migrateDB() error {
 		&CampaignReward{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := dropLegacyPerfUniqueIndex(); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
@@ -406,6 +410,7 @@ func migrateDBFast() error {
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
+		{&CapacityMetric{}, "CapacityMetric"},
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
@@ -437,6 +442,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := dropLegacyPerfUniqueIndex(); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}
@@ -454,6 +462,18 @@ func migrateDBFast() error {
 	}
 	common.SysLog("database migrated")
 	return nil
+}
+
+// dropLegacyPerfUniqueIndex 删除旧唯一索引（model,group,bucket_ts）。
+// AutoMigrate 不删已改名的索引，保留会导致同 (model,group,bucket) 多 channel
+// 行写入被旧约束拒绝。
+func dropLegacyPerfUniqueIndex() error {
+	switch DB.Dialector.Name() {
+	case "mysql":
+		return DB.Exec("ALTER TABLE perf_metrics DROP INDEX idx_perf_model_group_bucket").Error
+	default: // sqlite / postgres
+		return DB.Exec("DROP INDEX IF EXISTS idx_perf_model_group_bucket").Error
+	}
 }
 
 func migrateLOGDB() error {
