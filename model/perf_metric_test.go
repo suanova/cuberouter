@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -88,6 +89,59 @@ func TestDropLegacyPerfUniqueIndexIdempotent(t *testing.T) {
 	var count int64
 	require.NoError(t, db.Raw("SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_perf_model_group_bucket'").Scan(&count).Error)
 	assert.Zero(t, count)
+}
+
+// legacyPerfMetric 复刻加 channel/直方图列之前的旧版 perf_metrics 结构，
+// 用 GORM 自身 DDL 建表以真实模拟旧安装的库（含旧唯一索引 idx_perf_model_group_bucket）。
+type legacyPerfMetric struct {
+	Id             int    `gorm:"primaryKey"`
+	ModelName      string `gorm:"size:128;uniqueIndex:idx_perf_model_group_bucket,priority:1"`
+	Group          string `gorm:"column:group;size:64;uniqueIndex:idx_perf_model_group_bucket,priority:2"`
+	BucketTs       int64  `gorm:"uniqueIndex:idx_perf_model_group_bucket,priority:3;index:idx_perf_bucket_ts"`
+	RequestCount   int64  `gorm:"default:0"`
+	SuccessCount   int64  `gorm:"default:0"`
+	TotalLatencyMs int64  `gorm:"default:0"`
+	TtftSumMs      int64  `gorm:"default:0"`
+	TtftCount      int64  `gorm:"default:0"`
+	OutputTokens   int64  `gorm:"default:0"`
+	GenerationMs   int64  `gorm:"default:0"`
+}
+
+func (legacyPerfMetric) TableName() string { return "perf_metrics" }
+
+func TestUpgradeLegacyPerfRowsBackfillChannelIdZeroAndMerge(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	oldDB := DB
+	DB = db
+	defer func() { DB = oldDB }()
+
+	// (a) 旧版表结构（无 channel_id/直方图列，带旧唯一索引）
+	require.NoError(t, db.AutoMigrate(&legacyPerfMetric{}))
+	require.NoError(t, db.Create(&legacyPerfMetric{ModelName: "legacy-m", Group: "default", BucketTs: 777, RequestCount: 3, TotalLatencyMs: 4500}).Error)
+
+	// (b) 升级路径：AutoMigrate 补新列（channel_id 带 NOT NULL DEFAULT 0，回填旧行）+ 新索引，
+	// 随后删除旧索引
+	require.NoError(t, db.AutoMigrate(&PerfMetric{}, &CapacityMetric{}))
+	require.NoError(t, dropLegacyPerfUniqueIndex())
+
+	// (c) 旧行 channel_id 回填为 0（非 NULL）；旧索引已删除
+	var channelID sql.NullInt64
+	require.NoError(t, db.Raw("SELECT channel_id FROM perf_metrics WHERE model_name = 'legacy-m'").Scan(&channelID).Error)
+	require.True(t, channelID.Valid, "legacy row channel_id must be backfilled to 0, not NULL")
+	assert.Equal(t, int64(0), channelID.Int64)
+	var legacyIndexes int64
+	require.NoError(t, db.Raw("SELECT count(*) FROM sqlite_master WHERE type='index' AND name='idx_perf_model_group_bucket'").Scan(&legacyIndexes).Error)
+	assert.Zero(t, legacyIndexes)
+
+	// (d) ChannelId 0 的写入与旧行合并（request_count 累加，仍单行）
+	require.NoError(t, UpsertPerfMetric(&PerfMetric{ModelName: "legacy-m", Group: "default", BucketTs: 777, RequestCount: 5, TotalLatencyMs: 3000}))
+	rows, err := GetPerfMetrics("legacy-m", "", 0, 5000)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, int64(0), rows[0].ChannelId)
+	assert.Equal(t, int64(8), rows[0].RequestCount)
+	assert.Equal(t, int64(7500), rows[0].TotalLatencyMs)
 }
 
 func TestCapacityUpsertAdditiveWhenNoConflictAddsRow(t *testing.T) {

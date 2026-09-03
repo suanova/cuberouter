@@ -13,7 +13,7 @@ type PerfMetric struct {
 	Id             int    `json:"id" gorm:"primaryKey"`
 	ModelName      string `json:"model_name" gorm:"size:128;uniqueIndex:idx_perf_model_group_channel_bucket,priority:1"`
 	Group          string `json:"group" gorm:"column:group;size:64;uniqueIndex:idx_perf_model_group_channel_bucket,priority:2"`
-	ChannelId      int64  `json:"channel_id" gorm:"index;uniqueIndex:idx_perf_model_group_channel_bucket,priority:3"`
+	ChannelId      int64  `json:"channel_id" gorm:"not null;default:0;uniqueIndex:idx_perf_model_group_channel_bucket,priority:3"`
 	ChannelName    string `json:"channel_name" gorm:"size:128"`
 	BucketTs       int64  `json:"bucket_ts" gorm:"uniqueIndex:idx_perf_model_group_channel_bucket,priority:4;index:idx_perf_bucket_ts"`
 	RequestCount   int64  `json:"-" gorm:"default:0"`
