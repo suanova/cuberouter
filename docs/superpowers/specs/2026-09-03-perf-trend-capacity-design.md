@@ -85,7 +85,7 @@
   - `BucketPoint` 保留旧字段，新增：`request_count`、`p50_latency_ms`、`p95_latency_ms`、`p99_latency_ms`、`p95_ttft_ms`（无数据为 -1）；
   - `GroupResult` 新增 `channels: [{ channel_id, channel_name, series: BucketPoint[] }]`。
 - `GET /api/perf-metrics/summary?hours=`：形状不变。
-- 分位数由单元累积分布线性插值（`pkg/perf_metrics/quantile.go`），误差 ≤ 桶宽/2。
+- 分位数采用**单元跨越估计**（`pkg/perf_metrics/quantile.go`，落在 `pkg/perf_metrics/hist.go`）：对累积计数首次 ≥ rank 的单元，rank 严格落在单元内部 → 返回单元下界；rank 恰为单元末累计 → 返回单元上界；分位点越过全部非尾单元 → 返回 240000。误差 ≤ 单元宽（同值样本集中于单元下界时精确）。不做单元内线性插值——插值会在真实分布集中于单元边界时系统性偏移（如全 1000ms 的样本会报出 1500ms）。
 - plan 阶段核对前端对 `seriesSchema` 的缓存解码逻辑，必要时 bump。
 
 ### 5.2 新端点
