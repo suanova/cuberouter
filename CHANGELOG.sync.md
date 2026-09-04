@@ -1,5 +1,32 @@
 # Upstream Sync Changelog
 
+## 2026-09-03 — 9 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `74158715cde6` | Bump gorm MySQL/Postgres driver versions to fix database initialization failures | bugfix | medium |
+| `69a41eeadc81` | Add a pre-AutoMigrate step that drops legacy single-column UNIQUE constraints on prefill_groups.name (PostgreSQL) so GORM 1.25.x AutoMigrate no longer aborts with SQLSTATE 42704 when trying to drop a non-existent uni_* constraint. | bugfix | medium |
+| `2bf0820f4b89` | Revert the migration logic that dropped legacy unique constraints on the prefill_groups table prior to AutoMigrate | bugfix | medium |
+| `2b6f1dfefbe2` | Drop leftover unique constraints on prefill_groups table before AutoMigrate to prevent database migration failures across supported dialects | bugfix | medium |
+| `8c8c4153d4b8` | Fix SumUsedQuota to scan RPM/TPM into a separate struct so the second query no longer overwrites the previously computed Quota in usage statistics | bugfix | medium |
+| `27ff6a8767e7` | Add a startup DB migration that detects legacy unique constraints on the tokens.key column (e.g. Postgres 'tokens_key_key', GORM 'uni_tokens_key') and migrates them to the canonical idx_tokens_key unique index | bugfix | medium |
+| `67a0585d0f25` | Fixes incorrect/outdated Video API documentation links (now pointing to the Sora create-video page) across all six localized README files. | bugfix | low |
+| `b7017c251bad` | Avoid false lock-loss errors in UpdateSystemTaskState on MySQL, where a no-op state write reports RowsAffected==0 (changed vs matched rows); the lock is now re-verified via system_task_locks before returning ErrSystemTaskLockLost. | bugfix | medium |
+| `0ed497f066a6` | Enhance cross-provider relay conversion fidelity for hosted tools and Responses API, normalize reasoning intent, and guarantee authoritative billing usage tracking across stream and hop conversions. | feature | high |
+## 2026-09-02 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `8454082f930f` | Add AQBot as a new chat client preset with an aqbot:// deep-link scheme and {aqbotConfig} placeholder resolution (name/baseurl/apikey/type=openai query params). | feature | medium |
+| `918427d8ab41` | Make client-side RSA-OAEP password login encryption opt-in via a configuration flag | feature | medium |
+| `6c22550ea325` | Make channel model_mapping keys act as first-class aliases (with ASCII case folding) for task-plugin models across routing, request pinning, mapping, and billing, fixing alias requests on /v1/responses falling through to the main relay. | feature | medium |
+| `66031a09d99f` | Disable GORM named prepared statements for PostgreSQL to prevent FATAL SQLSTATE 08P01/42P05 conflicts under transaction-pooling proxies (PgBouncer/Neon/Supabase), upgrade gorm to v1.25.12 to limit MySQL/SQLite statement-cache eviction to ErrBadConn, and add a remediation hint in sanitizeDBError for affected SQLSTATEs. | bugfix | medium |
+| `0bee5d441029` | Fix the Ali (Alibaba) image generation relay to honor the request's response_format parameter — downloading and base64-encoding image results when b64_json is requested instead of always returning upstream URLs. | bugfix | medium |
+| `dc4732cfed71` | Prevent marketplace install/upgrade from shadowing factory-served task plugins; show an informational 'Updates with the system' badge instead and hint when an override lags behind the shipped built-in version. | feature | medium |
+| `b5b94bc685fd` | Stop masking the saved billing preference in the wallet UI: when a user has a subscription_first/subscription_only preference but no active subscription, show the real saved preference with an explanatory note instead of falsely displaying 'wallet_first'. | bugfix | low |
+| `1751f43ee07e` | Fix SQLite concurrent write lockouts by switching the DSN to a driver-recognized busy_timeout pragma, enabling WAL journal mode, and using _txlock=immediate so writers serialize instead of failing with SQLITE_BUSY/SQLITE_BUSY_SNAPSHOT. | bugfix | medium |
+| `6eb6f35ed211` | Make JSON-column driver.Valuers return string instead of []byte (with dual-type Scanners via a shared jsonScanBytes helper) so PostgreSQL simple-protocol writes don't fail with SQLSTATE 22P02, plus regression tests locking the contract. | bugfix | medium |
+| `b518d0033b67` | Bound upstream response header wait time in the relay transport to prevent goroutine leaks and heap exhaustion (OOM) on hung connections | bugfix | medium |
 ## 2026-08-31 — 9 commits from new-api#main
 
 | SHA | Intent | Type | Risk |

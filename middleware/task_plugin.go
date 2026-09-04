@@ -332,18 +332,50 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
 		claimedModel := modelRequest.Model
 		if strings.TrimSpace(claimedModel) == "" {
+			c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
 			c.Next()
 			return
 		}
-		binding, found := generation.LookupEndpoint(c.Request.Method, c.Request.URL.Path, claimedModel)
+		lookupModel := claimedModel
+		pinModel := claimedModel
+		mappedModel := ""
+		rewriteTo := ""
+		if declared, ok := generation.CanonicalModel(claimedModel); ok {
+			lookupModel = declared
+			pinModel = declared
+			if claimedModel != declared {
+				rewriteTo = declared
+			}
+		} else if target, ok := model.ResolveTaskModelAlias(generation, claimedModel); ok {
+			if target.Declared == "" {
+				c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
+				c.Next()
+				return
+			}
+			lookupModel = target.Declared
+			pinModel = target.Alias
+			mappedModel = target.Declared
+			if claimedModel != target.Alias {
+				rewriteTo = target.Alias
+			}
+		}
+		binding, found := generation.LookupEndpoint(c.Request.Method, c.Request.URL.Path, lookupModel)
 		if !found || binding.Plugin == nil {
+			c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
 			c.Next()
 			return
 		}
-		candidates := generation.LookupEndpointCandidates(c.Request.Method, c.Request.URL.Path, claimedModel)
+		if rewriteTo != "" {
+			if rewriteErr := rewriteTaskPluginJSONModel(c, rewriteTo); rewriteErr != nil {
+				abortWithOpenAiMessage(c, http.StatusBadRequest, "Invalid task protocol request")
+				return
+			}
+		}
+		modelRequest.Model = pinModel
+		c.Set(contextKeyTaskPluginEndpointModel, *modelRequest)
+		candidates := generation.LookupEndpointCandidates(c.Request.Method, c.Request.URL.Path, lookupModel)
 		if len(candidates) == 0 {
 			candidates = []pluginruntime.ProtocolBinding{binding}
 		}
@@ -386,12 +418,13 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 
 		pin := pluginruntime.PinnedPlugin{Generation: generation, Plugin: binding.Plugin}
 		pinnedEndpoint := pluginruntime.PinnedEndpoint{
-			Generation: generation,
-			Plugin:     binding.Plugin,
-			Protocol:   binding.Protocol,
-			Operation:  binding.Operation,
-			Model:      claimedModel,
-			Candidates: candidates,
+			Generation:  generation,
+			Plugin:      binding.Plugin,
+			Protocol:    binding.Protocol,
+			Operation:   binding.Operation,
+			Model:       pinModel,
+			MappedModel: mappedModel,
+			Candidates:  candidates,
 		}
 		c.Set(pluginruntime.ContextKeyPinnedPlugin, pin)
 		c.Set(pluginruntime.ContextKeyPinnedEndpoint, pinnedEndpoint)
@@ -403,7 +436,7 @@ func PinTaskPluginEndpoint() gin.HandlerFunc {
 			binding.Plugin.Meta.Version,
 			binding.Operation.Methods[0],
 			binding.Protocol,
-			claimedModel,
+			pinModel,
 		)
 		c.Next()
 	}
@@ -515,6 +548,13 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			abortWithOpenAiMessage(c, status, err.Error())
 			return
 		}
+		if body, ok := requestContext.Body.(map[string]any); ok {
+			if fields, ok := body["fields"].(map[string][]string); ok {
+				if values := fields["model"]; len(values) > 0 && values[0] != pinned.Model {
+					fields["model"][0] = pinned.Model
+				}
+			}
+		}
 		bodyObject, _ := requestContext.Body.(map[string]any)
 		bodyKind, _ := bodyObject["kind"].(string)
 		allowedBody := false
@@ -561,6 +601,7 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			Protocol:            pinned.Protocol,
 			Operation:           pinned.Operation.Name,
 			Model:               pinned.Model,
+			UpstreamModel:       pinned.MappedModel,
 			Stream:              stream,
 		}
 		c.Set(pluginruntime.ContextKeyProtocolRequest, protocolContext)
@@ -624,7 +665,8 @@ func PrepareTaskPluginEndpoint() gin.HandlerFunc {
 			return
 		}
 		modelOwned := slices.Contains(pinned.Plugin.Meta.Models, resolvedModel)
-		if !modelOwned || resolvedModel != pinned.Model {
+		mappedPin := pinned.MappedModel != ""
+		if resolvedModel != pinned.Model || (!modelOwned && !mappedPin) {
 			logger.LogWarn(
 				c,
 				"task_plugin subsystem=endpoint event=prepare_rejected generation=%d plugin=%q stage=parse_request reason=resolved_model_not_owned claimed_model=%q resolved_model=%q",
@@ -1379,6 +1421,27 @@ func PrepareTaskPluginSubmit() gin.HandlerFunc {
 		if strings.TrimSpace(modelName) == "" {
 			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "model is required", "type": "invalid_request_error"}})
 			return
+		}
+		exactOwned := slices.Contains(plugin.Meta.Models, modelName)
+		exactAlias := false
+		if target, resolved := model.ResolveTaskModelAlias(generation, modelName); resolved && target.Alias == modelName && target.PluginKey == plugin.Meta.Key {
+			exactAlias = true
+		}
+		if !exactOwned && !exactAlias {
+			folded := ""
+			if declared, ok := generation.CanonicalModel(modelName); ok && slices.Contains(plugin.Meta.Models, declared) && declared != modelName {
+				folded = declared
+			} else if target, resolved := model.ResolveTaskModelAlias(generation, modelName); resolved && target.PluginKey == plugin.Meta.Key && target.Alias != "" && target.Alias != modelName {
+				folded = target.Alias
+			}
+			if folded != "" {
+				if rewriteErr := rewriteTaskPluginJSONModel(c, folded); rewriteErr != nil {
+					c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": rewriteErr.Error(), "type": "invalid_request_error"}})
+					return
+				}
+				requestBody["model"] = folded
+				modelName = folded
+			}
 		}
 		c.Set("task_request", requestBody)
 		c.Set("resolved_task_model", modelName)

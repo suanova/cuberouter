@@ -219,6 +219,12 @@ func UpdateOption(c *gin.Context) {
 			expression := expressions[modelName]
 			if plugin, ok := generation.GetByModel(modelName); ok {
 				err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+			} else if target, resolved := model.ResolveTaskModelAlias(generation, modelName); resolved {
+				if plugin, ok := generation.Get(target.PluginKey); ok {
+					err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+				} else {
+					err = billing_setting.SmokeTestExpr(expression)
+				}
 			} else {
 				err = billing_setting.SmokeTestExpr(expression)
 			}

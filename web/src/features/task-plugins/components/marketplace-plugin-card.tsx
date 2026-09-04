@@ -29,7 +29,12 @@ import { Button } from '@/components/ui/button'
 import { getChannelTypeLabel } from '@/features/channels/lib'
 import { resolveLocalizedText } from '@/lib/localized-text'
 
-import { findMarketplaceVersion, type InstallState } from '../lib/marketplace'
+import {
+  findMarketplaceVersion,
+  marketplaceBuiltInVersion,
+  resolveMarketplaceActionPolicy,
+  type InstallState,
+} from '../lib/marketplace'
 import type { MarketplacePlugin, TaskPluginListItem } from '../types'
 import { PluginIcon } from './plugin-icon'
 
@@ -47,6 +52,8 @@ export function MarketplacePluginCard(props: MarketplacePluginCardProps) {
   const channelTypes = plugin.channelTypes ?? []
   const latestEntry = findMarketplaceVersion(plugin, plugin.latest)
   const labelClass = 'text-muted-foreground text-[11px] font-medium select-none'
+  const actionPolicy = resolveMarketplaceActionPolicy(props.installed)
+  const builtInVersion = marketplaceBuiltInVersion(props.installed)
 
   return (
     <div className='flex h-full flex-col gap-2.5 rounded-xl border p-3'>
@@ -90,12 +97,12 @@ export function MarketplacePluginCard(props: MarketplacePluginCardProps) {
         </div>
       </div>
 
-      {props.installed?.factory_meta && (
+      {builtInVersion && (
         <div className='text-xs'>
           <span className={labelClass}>{t('Versions')}</span>{' '}
           <span className='font-mono'>
             {t('Built-in v{{factory}} / marketplace v{{market}}', {
-              factory: props.installed.factory_meta.version,
+              factory: builtInVersion,
               market: plugin.latest,
             })}
           </span>
@@ -110,17 +117,21 @@ export function MarketplacePluginCard(props: MarketplacePluginCardProps) {
       )}
 
       <div className='mt-auto border-t pt-2'>
-        <Button
-          size='sm'
-          variant={
-            props.installState.status === 'up_to_date' ? 'outline' : 'default'
-          }
-          className='w-full'
-          onClick={props.onInstall}
-        >
-          <Download />
-          {getActionLabel(props.installState, t)}
-        </Button>
+        {actionPolicy.kind === 'system_update' ? (
+          <Badge variant='secondary'>{t('Updates with the system')}</Badge>
+        ) : (
+          <Button
+            size='sm'
+            variant={
+              props.installState.status === 'up_to_date' ? 'outline' : 'default'
+            }
+            className='w-full'
+            onClick={props.onInstall}
+          >
+            <Download />
+            {getActionLabel(props.installState, t)}
+          </Button>
+        )}
       </div>
     </div>
   )

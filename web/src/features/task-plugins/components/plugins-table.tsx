@@ -43,6 +43,7 @@ import {
   setTaskPluginStatus,
   TaskPluginUsageError,
 } from '../api'
+import { isStaleFactoryOverride } from '../lib/marketplace'
 import type { TaskPluginListItem, TaskPluginUsage } from '../types'
 import { PluginCard } from './plugin-card'
 import { PluginIcon } from './plugin-icon'
@@ -158,12 +159,26 @@ export function PluginsTable(props: PluginsTableProps) {
             return <Badge variant='secondary'>{t('Factory')}</Badge>
           }
           if (row.original.source === 'override_over_factory') {
+            const factoryVersion = row.original.factory_meta?.version
+            const staleHint = isStaleFactoryOverride(row.original)
+              ? t(
+                  'Built-in is v{{factory}}; delete the custom version to return to it',
+                  { factory: factoryVersion }
+                )
+              : undefined
             return (
-              <Badge>
-                {t('Custom (overrides factory {{version}})', {
-                  version: row.original.factory_meta?.version,
-                })}
-              </Badge>
+              <div className='flex min-w-0 flex-col gap-0.5' title={staleHint}>
+                <Badge>
+                  {t('Custom (overrides factory {{version}})', {
+                    version: factoryVersion,
+                  })}
+                </Badge>
+                {staleHint ? (
+                  <span className='text-muted-foreground text-xs'>
+                    {staleHint}
+                  </span>
+                ) : null}
+              </div>
             )
           }
           return <Badge>{t('Third-party')}</Badge>
