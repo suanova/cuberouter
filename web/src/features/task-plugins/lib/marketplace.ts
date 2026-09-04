@@ -234,6 +234,46 @@ export function deriveInstallState(
   }
 }
 
+export type MarketplaceActionPolicy =
+  | { kind: 'install' }
+  | { kind: 'system_update' }
+
+/**
+ * Factory-served plugins are compiled into the binary and must only update
+ * with a system release. Marketplace install would create a permanent override
+ * that shadows every future built-in update — that action is suppressed.
+ * Overrides and third-party plugins still install/upgrade normally.
+ */
+export function resolveMarketplaceActionPolicy(
+  installed?: TaskPluginListItem
+): MarketplaceActionPolicy {
+  if (installed?.source === 'factory') {
+    return { kind: 'system_update' }
+  }
+  return { kind: 'install' }
+}
+
+/**
+ * Built-in version shown next to the marketplace latest. Factory-served items
+ * do not carry `factory_meta` (their `meta` *is* the factory meta); overridden
+ * factory plugins expose the shadowed built-in on `factory_meta`.
+ */
+export function marketplaceBuiltInVersion(
+  installed?: TaskPluginListItem
+): string | undefined {
+  if (!installed) return undefined
+  if (installed.source === 'factory') return installed.meta.version
+  return installed.factory_meta?.version
+}
+
+export function isStaleFactoryOverride(item: TaskPluginListItem): boolean {
+  return (
+    item.source === 'override_over_factory' &&
+    item.factory_meta != null &&
+    item.factory_meta.version !== item.meta.version
+  )
+}
+
 /**
  * A source is only integrity-checked when every listed version carries a
  * sha256. Anything less and installs from it cannot be pinned, so the UI warns.

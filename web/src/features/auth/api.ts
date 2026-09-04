@@ -48,22 +48,34 @@ import type {
 export async function login(payload: LoginPayload): Promise<LoginResponse> {
   const turnstile = payload.turnstile ?? ''
   try {
-    const encryptedPassword = await encryptPassword(payload.password)
+    let passwordFields:
+      | { password: string }
+      | { password_encrypted: string; encryption_key_id: string }
+    if (payload.passwordEncryptionEnabled) {
+      const encryptedPassword = await encryptPassword(payload.password)
+      passwordFields = {
+        password_encrypted: encryptedPassword.password_encrypted,
+        encryption_key_id: encryptedPassword.encryption_key_id,
+      }
+    } else {
+      passwordFields = { password: payload.password }
+    }
     const res = await api.post<LoginResponse>(
       `/api/user/login?turnstile=${turnstile}`,
       {
         username: payload.username,
-        password_encrypted: encryptedPassword.password_encrypted,
-        encryption_key_id: encryptedPassword.encryption_key_id,
+        ...passwordFields,
       },
       { skipAuthRefresh: true }
     )
-    if (!res.data?.success) {
+    if (payload.passwordEncryptionEnabled && !res.data?.success) {
       clearPasswordEncryptionCache()
     }
     return res.data
   } catch (error: unknown) {
-    clearPasswordEncryptionCache()
+    if (payload.passwordEncryptionEnabled) {
+      clearPasswordEncryptionCache()
+    }
     throw error
   }
 }

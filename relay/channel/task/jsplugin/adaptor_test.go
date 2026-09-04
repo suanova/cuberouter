@@ -19,6 +19,7 @@ import (
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
@@ -1167,4 +1168,57 @@ func TestTaskAdaptorBatchBridge(t *testing.T) {
 	assert.Equal(t, "IN_PROGRESS", pending.TaskInfo.Status)
 	assert.Equal(t, "40%", pending.TaskInfo.Progress)
 	assert.Empty(t, pending.TaskInfo.Url)
+}
+
+const mappingOrderAdaptorPlugin = `
+export const meta = {apiVersion:1,key:"map-order-adaptor",name:"Map Order Adaptor",version:"1.0.0",author:{name:"Test"},models:["declared-model"],fetchMode:"per_task"};
+export function buildSubmitRequest(ctx) {
+  return {url: ctx.baseUrl+"/submit", method:"POST", body:{upstreamModel: ctx.upstreamModel, model: ctx.model}};
+}
+export function parseSubmitResponse(){return {taskId:"1"};}
+export function buildQueryRequest(){return {url:"https://provider.example"};}
+export function parseTaskResult(){return {status:"SUCCESS"};}
+`
+
+func mappingOrderSubmitBody(t *testing.T, origin, mapping string) []byte {
+	t.Helper()
+	plugin, err := pluginruntime.NewRegistry().Register(mappingOrderAdaptorPlugin, pluginruntime.Options{})
+	require.NoError(t, err)
+	adaptor := New(plugin)
+	info := &relaycommon.RelayInfo{
+		ChannelMeta:     &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example"},
+		TaskRelayInfo:   &relaycommon.TaskRelayInfo{},
+		OriginModelName: origin,
+	}
+	adaptor.Init(info)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	if mapping != "" {
+		c.Set("model_mapping", mapping)
+	}
+	c.Set("task_request", map[string]any{"prompt": "p"})
+	info.UpstreamModelName = info.OriginModelName
+	require.NoError(t, helper.ModelMappedHelper(c, info, nil))
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+	body, err := adaptor.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	raw, err := io.ReadAll(body)
+	require.NoError(t, err)
+	return raw
+}
+
+func TestTaskAdaptorBuildSubmitReceivesMappedUpstreamModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	mapped := mappingOrderSubmitBody(t, "alias-model", `{"alias-model":"mid-model","mid-model":"declared-model"}`)
+	var decoded map[string]any
+	require.NoError(t, common.Unmarshal(mapped, &decoded))
+	assert.Equal(t, "declared-model", decoded["upstreamModel"])
+	assert.Equal(t, "alias-model", decoded["model"])
+
+	withoutMapping := mappingOrderSubmitBody(t, "declared-model", "")
+	emptyMapping := mappingOrderSubmitBody(t, "declared-model", "{}")
+	assert.Equal(t, withoutMapping, emptyMapping)
+	require.NoError(t, common.Unmarshal(withoutMapping, &decoded))
+	assert.Equal(t, "declared-model", decoded["upstreamModel"])
+	assert.Equal(t, "declared-model", decoded["model"])
 }
