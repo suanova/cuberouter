@@ -13,7 +13,8 @@ export default defineConfig({
           { text: '首页', link: '/' },
           { text: '渠道管理', link: '/guide/channel/index' },
           { text: '订阅管理', link: '/guide/subscription/index' },
-          { text: '系统设置', link: '/guide/system/index' }
+          { text: '系统设置', link: '/guide/system/index' },
+          { text: '监控与运维', link: '/guide/monitoring/index' }
         ],
         sidebar: {
           '/guide/': [
@@ -58,6 +59,12 @@ export default defineConfig({
               text: '日志与统计',
               items: [
                 { text: '日志与统计', link: '/guide/log/index' }
+              ]
+            },
+            {
+              text: '监控与运维',
+              items: [
+                { text: '监控与运维', link: '/guide/monitoring/index' }
               ]
             },
             {
@@ -127,7 +134,8 @@ export default defineConfig({
           { text: 'Home', link: '/en/' },
           { text: 'Channels', link: '/en/guide/channel/index' },
           { text: 'Subscriptions', link: '/en/guide/subscription/index' },
-          { text: 'System Settings', link: '/en/guide/system/index' }
+          { text: 'System Settings', link: '/en/guide/system/index' },
+          { text: 'Monitoring & Operations', link: '/en/guide/monitoring/index' }
         ],
         sidebar: {
           '/en/guide/': [
@@ -172,6 +180,12 @@ export default defineConfig({
               text: 'Logs & Statistics',
               items: [
                 { text: 'Logs & Statistics', link: '/en/guide/log/index' }
+              ]
+            },
+            {
+              text: 'Monitoring & Operations',
+              items: [
+                { text: 'Monitoring & Operations', link: '/en/guide/monitoring/index' }
               ]
             },
             {
@@ -241,7 +255,8 @@ export default defineConfig({
           { text: '首頁', link: '/zh-Hant/' },
           { text: '渠道管理', link: '/zh-Hant/guide/channel/index' },
           { text: '訂閱管理', link: '/zh-Hant/guide/subscription/index' },
-          { text: '系統設置', link: '/zh-Hant/guide/system/index' }
+          { text: '系統設置', link: '/zh-Hant/guide/system/index' },
+          { text: '監控與運維', link: '/zh-Hant/guide/monitoring/index' }
         ],
         sidebar: {
           '/zh-Hant/guide/': [
@@ -286,6 +301,12 @@ export default defineConfig({
               text: '日誌與統計',
               items: [
                 { text: '日誌與統計', link: '/zh-Hant/guide/log/index' }
+              ]
+            },
+            {
+              text: '監控與運維',
+              items: [
+                { text: '監控與運維', link: '/zh-Hant/guide/monitoring/index' }
               ]
             },
             {

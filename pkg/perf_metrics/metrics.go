@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ const seriesSchema = "dbcd0a3c01b55203"
 
 func Init() {
 	go flushLoop()
+	go sampleInflightLoop()
 }
 
 func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens int64) {
@@ -45,6 +47,7 @@ func RecordRelaySample(info *relaycommon.RelayInfo, success bool, outputTokens i
 	Record(Sample{
 		Model:        info.OriginModelName,
 		Group:        info.UsingGroup,
+		ChannelId:    info.ChannelId,
 		LatencyMs:    latencyMs,
 		TtftMs:       ttftMs,
 		HasTtft:      hasTtft,
@@ -66,10 +69,15 @@ func Record(sample Sample) {
 		sample.LatencyMs = 0
 	}
 
+	// 进程级注册表同步累加（Prometheus 薄导出，spec §6；Record 运行于 gopool
+	// goroutine、每请求一次，普通互斥锁粒度可接受）。
+	recordProc(sample)
+
 	key := bucketKey{
-		model:    sample.Model,
-		group:    sample.Group,
-		bucketTs: bucketStart(time.Now().Unix()),
+		model:     sample.Model,
+		group:     sample.Group,
+		channelId: sample.ChannelId,
+		bucketTs:  bucketStart(time.Now().Unix()),
 	}
 	actual, _ := hotBuckets.LoadOrStore(key, &atomicBucket{})
 	actual.(*atomicBucket).add(sample)
@@ -87,15 +95,24 @@ func Query(params QueryParams) (QueryResult, error) {
 	startTs := endTs - int64(params.Hours)*3600
 
 	merged := map[bucketKey]counters{}
+	channelNames := map[int]string{} // channelId → flush 时经渠道缓存反查落库的名称
 	rows, err := model.GetPerfMetrics(params.Model, params.Group, startTs, endTs)
 	if err != nil {
 		return QueryResult{}, err
 	}
 	for _, row := range rows {
+		// 渠道过滤放内存合并阶段（DB 层签名保持 Task 2 不变）。
+		if params.ChannelId > 0 && row.ChannelId != int64(params.ChannelId) {
+			continue
+		}
+		if name := row.ChannelName; name != "" {
+			channelNames[int(row.ChannelId)] = name
+		}
 		mergeCounters(merged, bucketKey{
-			model:    row.ModelName,
-			group:    row.Group,
-			bucketTs: row.BucketTs,
+			model:     row.ModelName,
+			group:     row.Group,
+			channelId: int(row.ChannelId),
+			bucketTs:  row.BucketTs,
 		}, counters{
 			requestCount:   row.RequestCount,
 			successCount:   row.SuccessCount,
@@ -104,6 +121,8 @@ func Query(params QueryParams) (QueryResult, error) {
 			ttftCount:      row.TtftCount,
 			outputTokens:   row.OutputTokens,
 			generationMs:   row.GenerationMs,
+			latHist:        row.LatHist(),
+			ttftHist:       row.TtftHist(),
 		})
 	}
 
@@ -115,11 +134,14 @@ func Query(params QueryParams) (QueryResult, error) {
 		if params.Group != "" && k.group != params.Group {
 			return true
 		}
+		if params.ChannelId > 0 && k.channelId != params.ChannelId {
+			return true
+		}
 		mergeCounters(merged, k, value.(*atomicBucket).snapshot())
 		return true
 	})
 
-	return buildQueryResult(params.Model, merged), nil
+	return buildQueryResult(params.Model, merged, channelNames), nil
 }
 
 func QuerySummaryAll(hours int, groups []string) (SummaryAllResult, error) {
@@ -271,62 +293,76 @@ func bucketStart(ts int64) int64 {
 	return ts - (ts % bucketSeconds)
 }
 
+// mergeCounters 把 value 并入 merged[key]（键含 channelId）。
 func mergeCounters(merged map[bucketKey]counters, key bucketKey, value counters) {
 	if value.requestCount == 0 {
 		return
 	}
-	current := merged[key]
-	current.requestCount += value.requestCount
-	current.successCount += value.successCount
-	current.totalLatencyMs += value.totalLatencyMs
-	current.ttftSumMs += value.ttftSumMs
-	current.ttftCount += value.ttftCount
-	current.outputTokens += value.outputTokens
-	current.generationMs += value.generationMs
+	current := merged[key] // 指针接收者不可在 map 索引上调用 → 临时变量
+	current.merge(value)
 	merged[key] = current
 }
 
-func buildQueryResult(modelName string, merged map[bucketKey]counters) QueryResult {
-	groupBuckets := map[string]map[int64]counters{}
+// buildQueryResult 从合并好的桶产出对外结果：groups[].series 跨渠道汇总
+// （合并时忽略 channel），groups[].channels 为 per-channel 明细（channel_id=0
+// 的未分渠道行参与 series 汇总但不产生渠道条目）。
+func buildQueryResult(modelName string, merged map[bucketKey]counters, channelNames map[int]string) QueryResult {
+	groupBuckets := map[string]map[int64]counters{}                // group → bucketTs → 跨渠道汇总
+	groupChannelBuckets := map[string]map[int]map[int64]counters{} // group → channelId → bucketTs
 	for key, value := range merged {
 		if value.requestCount == 0 {
 			continue
 		}
-		if _, ok := groupBuckets[key.group]; !ok {
-			groupBuckets[key.group] = map[int64]counters{}
+		buckets := groupBuckets[key.group]
+		if buckets == nil {
+			buckets = map[int64]counters{}
+			groupBuckets[key.group] = buckets
 		}
-		groupBuckets[key.group][key.bucketTs] = value
+		mergeIntoBucket(buckets, key.bucketTs, value)
+		if key.channelId > 0 {
+			channels := groupChannelBuckets[key.group]
+			if channels == nil {
+				channels = map[int]map[int64]counters{}
+				groupChannelBuckets[key.group] = channels
+			}
+			channel := channels[key.channelId]
+			if channel == nil {
+				channel = map[int64]counters{}
+				channels[key.channelId] = channel
+			}
+			mergeIntoBucket(channel, key.bucketTs, value)
+		}
 	}
 
-	groups := make([]string, 0, len(groupBuckets))
-	for group := range groupBuckets {
-		groups = append(groups, group)
-	}
-	sort.Strings(groups)
-
+	groups := sortedKeys(groupBuckets)
 	results := make([]GroupResult, 0, len(groups))
 	for _, group := range groups {
 		buckets := groupBuckets[group]
-		timestamps := make([]int64, 0, len(buckets))
-		for ts := range buckets {
-			timestamps = append(timestamps, ts)
-		}
-		sort.Slice(timestamps, func(i, j int) bool {
-			return timestamps[i] < timestamps[j]
-		})
-
+		timestamps := sortedTs(buckets)
 		total := counters{}
 		series := make([]BucketPoint, 0, len(timestamps))
 		for _, ts := range timestamps {
 			value := buckets[ts]
-			total.requestCount += value.requestCount
-			total.successCount += value.successCount
-			total.totalLatencyMs += value.totalLatencyMs
-			total.ttftSumMs += value.ttftSumMs
-			total.ttftCount += value.ttftCount
-			total.outputTokens += value.outputTokens
-			total.generationMs += value.generationMs
-			series = append(series, bucketPoint(ts, value))
+			total.merge(value)
+			series = append(series, buildBucketPoint(ts, value))
+		}
+
+		var channels []ChannelResult
+		if channelIDs := sortedInts(groupChannelBuckets[group]); len(channelIDs) > 0 {
+			channels = make([]ChannelResult, 0, len(channelIDs))
+			for _, id := range channelIDs {
+				channelBuckets := groupChannelBuckets[group][id]
+				tsList := sortedTs(channelBuckets)
+				channelSeries := make([]BucketPoint, 0, len(tsList))
+				for _, ts := range tsList {
+					channelSeries = append(channelSeries, buildBucketPoint(ts, channelBuckets[ts]))
+				}
+				channels = append(channels, ChannelResult{
+					ChannelId:   id,
+					ChannelName: channelNames[id],
+					Series:      channelSeries,
+				})
+			}
 		}
 
 		results = append(results, GroupResult{
@@ -336,6 +372,7 @@ func buildQueryResult(modelName string, merged map[bucketKey]counters) QueryResu
 			SuccessRate:  successRate(total),
 			AvgTps:       avgTps(total),
 			Series:       series,
+			Channels:     channels,
 		})
 	}
 
@@ -346,14 +383,66 @@ func buildQueryResult(modelName string, merged map[bucketKey]counters) QueryResu
 	}
 }
 
-func bucketPoint(ts int64, value counters) BucketPoint {
-	return BucketPoint{
-		Ts:           ts,
-		AvgTtftMs:    avg(value.ttftSumMs, value.ttftCount),
-		AvgLatencyMs: avg(value.totalLatencyMs, value.requestCount),
-		SuccessRate:  successRate(value),
-		AvgTps:       avgTps(value),
+// mergeIntoBucket 把 value 并入按 bucketTs 索引的桶（counters.merge 为指针
+// 接收者，map 索引不可寻址，需经临时变量）。
+func mergeIntoBucket(buckets map[int64]counters, bucketTs int64, value counters) {
+	current := buckets[bucketTs]
+	current.merge(value)
+	buckets[bucketTs] = current
+}
+
+// buildBucketPoint 由合并后的 counters 产出 BucketPoint（分位数字段 -1 表示无数据）。
+// success_rate 为 0..100 百分数：与既有 series/GroupResult 口径一致（spec §5.1
+// 旧字段语义不动，前端 formatUptimePct 直接渲染百分数）。
+func buildBucketPoint(ts int64, c counters) BucketPoint {
+	p := BucketPoint{Ts: ts, RequestCount: c.requestCount}
+	if c.requestCount > 0 {
+		p.AvgLatencyMs = c.totalLatencyMs / c.requestCount
+		p.SuccessRate = float64(c.successCount) / float64(c.requestCount) * 100
+		if c.generationMs > 0 {
+			p.AvgTps = float64(c.outputTokens) * 1000 / float64(c.generationMs)
+		}
+		p.P50LatencyMs = int64(quantileMs(0.5, &c.latHist, c.requestCount))
+		p.P95LatencyMs = int64(quantileMs(0.95, &c.latHist, c.requestCount))
+		p.P99LatencyMs = int64(quantileMs(0.99, &c.latHist, c.requestCount))
+		if c.ttftCount > 0 {
+			p.AvgTtftMs = c.ttftSumMs / c.ttftCount
+			p.P95TtftMs = int64(quantileMs(0.95, &c.ttftHist, c.ttftCount))
+		} else {
+			p.P95TtftMs = -1
+		}
+	} else {
+		p.AvgLatencyMs, p.SuccessRate, p.AvgTps = 0, 0, 0
+		p.P50LatencyMs, p.P95LatencyMs, p.P99LatencyMs, p.P95TtftMs = -1, -1, -1, -1
 	}
+	return p
+}
+
+func sortedKeys(m map[string]map[int64]counters) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func sortedTs(m map[int64]counters) []int64 {
+	ts := make([]int64, 0, len(m))
+	for t := range m {
+		ts = append(ts, t)
+	}
+	sort.Slice(ts, func(i, j int) bool { return ts[i] < ts[j] })
+	return ts
+}
+
+func sortedInts(m map[int]map[int64]counters) []int {
+	ids := make([]int, 0, len(m))
+	for id := range m {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	return ids
 }
 
 func avg(sum int64, count int64) int64 {
@@ -387,6 +476,7 @@ func recordRedis(key bucketKey, sample Sample) {
 	redisKey := redisBucketKey(key)
 	pipe := common.RDB.TxPipeline()
 	pipe.HIncrBy(ctx, redisKey, "req", 1)
+	pipe.HIncrBy(ctx, redisKey, "l"+strconv.Itoa(histIndex(sample.LatencyMs)), 1)
 	if sample.Success {
 		pipe.HIncrBy(ctx, redisKey, "ok", 1)
 	}
@@ -396,6 +486,7 @@ func recordRedis(key bucketKey, sample Sample) {
 	if sample.HasTtft && sample.TtftMs >= 0 {
 		pipe.HIncrBy(ctx, redisKey, "ttft", sample.TtftMs)
 		pipe.HIncrBy(ctx, redisKey, "ttft_n", 1)
+		pipe.HIncrBy(ctx, redisKey, "t"+strconv.Itoa(histIndex(sample.TtftMs)), 1)
 	}
 	if sample.OutputTokens > 0 && sample.GenerationMs > 0 {
 		pipe.HIncrBy(ctx, redisKey, "out", sample.OutputTokens)
@@ -413,7 +504,7 @@ func mergeRedisActiveBuckets(merged map[bucketKey]counters, params QueryParams, 
 	if active < startTs || active > endTs {
 		return
 	}
-	key := bucketKey{model: params.Model, group: params.Group, bucketTs: active}
+	key := bucketKey{model: params.Model, group: params.Group, channelId: params.ChannelId, bucketTs: active}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	values, err := common.RDB.HGetAll(ctx, redisBucketKey(key)).Result()
@@ -424,5 +515,5 @@ func mergeRedisActiveBuckets(merged map[bucketKey]counters, params QueryParams, 
 }
 
 func redisBucketKey(key bucketKey) string {
-	return fmt.Sprintf("perf:%s:%s:%d", key.model, key.group, key.bucketTs)
+	return fmt.Sprintf("perf:%s:%s:%d:%d", key.model, key.group, key.bucketTs, key.channelId)
 }

@@ -64,6 +64,8 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.flush_interval': 5,
   'perf_metrics_setting.bucket_time': 'hour',
   'perf_metrics_setting.retention_days': 0,
+  'perf_metrics_setting.export_enabled': false,
+  'perf_metrics_setting.export_token': '',
 }
 
 export function OperationsSettings() {

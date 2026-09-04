@@ -48,6 +48,10 @@ features:
     title: Logs & Statistics
     details: Review platform-wide API calls and quota consumption with multi-dimensional analysis.
     link: /en/guide/log/index
+  - icon: 🛰️
+    title: Monitoring & Operations
+    details: Gateway capacity and health dashboards, model and channel performance trends, and Prometheus metrics export.
+    link: /en/guide/monitoring/index
   - icon: ⚙️
     title: System Settings
     details: Configure operation parameters, billing ratios, payment integration, performance monitoring and rate limits.

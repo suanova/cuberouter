@@ -748,19 +748,23 @@ func TestProductionPluginNativeQueryTraversesInnerRouter(t *testing.T) {
 		binding jsplugin.RouteBinding,
 	) []gin.HandlerFunc {
 		production := productionPluginRouteHandlers(generation, binding)
+		// 生产链（0 pinRoute / 1 RelayCapacity / 2 TokenAuth /
+		// 3 SystemPerformanceCheck / 4 ModelRequestRateLimit / 5 PrepareTaskPluginRoute /
+		// 6 Distribute / 7 RelayTask）：用用户上下文 stub 替换 TokenAuth，其余保留。
 		return []gin.HandlerFunc{
 			production[0],
+			production[1],
 			func(c *gin.Context) {
 				common.SetContextKey(c, constant.ContextKeyUserId, 91)
 				common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
 				common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
 				c.Next()
 			},
-			production[2],
 			production[3],
 			production[4],
 			production[5],
 			production[6],
+			production[7],
 		}
 	}
 	outer, registry := newPluginRouterTest(t, []*jsplugin.LoadedPlugin{kling}, authenticatedProductionHandlers)

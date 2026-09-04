@@ -48,6 +48,10 @@ features:
     title: 日誌與統計
     details: 查看全平臺 API 調用記錄和消耗統計，支援多維度分析。
     link: /zh-Hant/guide/log/index
+  - icon: 🛰️
+    title: 監控與運維
+    details: 查看網關容量與健康指標、模型與渠道效能趨勢，並支援 Prometheus 指標匯出。
+    link: /zh-Hant/guide/monitoring/index
   - icon: ⚙️
     title: 系統設置
     details: 配置運營參數、計費倍率、支付集成、性能監控與限流策略。

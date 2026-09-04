@@ -881,6 +881,10 @@ Find the operation buttons on the page and click one to execute immediately:
 
 After clicking a button, the page reports the result and the metrics refresh.
 
+::: tip See also
+For the performance health and capacity cards on the Dashboard, model performance trends and the Prometheus metrics export, see [Monitoring & Operations](../monitoring/index).
+:::
+
 ---
 
 ## Other Settings

@@ -18,7 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { PerformanceMetricsData, PerfSummaryAllData } from './types'
+import type {
+  CapacityMetricsData,
+  PerformanceMetricsData,
+  PerfSummaryAllData,
+} from './types'
 
 export async function getPerfMetricsSummary(
   hours = 24
@@ -38,6 +42,16 @@ export async function getPerfMetrics(
       model: modelName,
       hours,
     },
+  })
+  return res.data
+}
+
+/** Gateway capacity series over the last `hours` (admin-gated endpoint). */
+export async function getCapacityMetrics(
+  hours = 24
+): Promise<CapacityMetricsData> {
+  const res = await api.get<CapacityMetricsData>('/api/capacity-metrics', {
+    params: { hours },
   })
   return res.data
 }

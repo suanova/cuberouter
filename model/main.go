@@ -356,6 +356,7 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
+		&CapacityMetric{},
 		&SystemInstance{},
 		&SystemTask{},
 		&SystemTaskLock{},
@@ -367,6 +368,9 @@ func migrateDB() error {
 		&CampaignReward{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := dropLegacyPerfUniqueIndex(); err != nil {
 		return err
 	}
 	if err := InitializeUserAuthVersions(); err != nil {
@@ -424,6 +428,7 @@ func migrateDBFast() error {
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
+		{&CapacityMetric{}, "CapacityMetric"},
 		{&SystemInstance{}, "SystemInstance"},
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
@@ -455,6 +460,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := dropLegacyPerfUniqueIndex(); err != nil {
+		return err
+	}
 	if err := InitializeUserAuthVersions(); err != nil {
 		return err
 	}
@@ -472,6 +480,43 @@ func migrateDBFast() error {
 	}
 	common.SysLog("database migrated")
 	return nil
+}
+
+// perfIndexExists 按方言检查 perf_metrics 表上指定索引是否存在。
+// 全新库从未创建过旧索引，而 MySQL 的 DROP INDEX 不支持 IF EXISTS，
+// 删除前须先查存在性（AGENTS.md：方言分支须带跨库兜底）。
+// 探测失败时记录告警并按“不存在”处理（跳过删除是安全的失败模式）。
+func perfIndexExists(name string) bool {
+	var count int64
+	var err error
+	switch DB.Dialector.Name() {
+	case "mysql":
+		err = DB.Raw("SELECT count(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'perf_metrics' AND index_name = ?", name).Scan(&count).Error
+	case "postgres":
+		err = DB.Raw("SELECT count(*) FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'perf_metrics' AND indexname = ?", name).Scan(&count).Error
+	default: // sqlite
+		err = DB.Raw("SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", name).Scan(&count).Error
+	}
+	if err != nil {
+		common.SysLog(fmt.Sprintf("Warning: failed to probe existence of index %s: %v", name, err))
+		return false
+	}
+	return count > 0
+}
+
+// dropLegacyPerfUniqueIndex 删除旧唯一索引（model,group,bucket_ts）。
+// AutoMigrate 不删已改名的索引，保留会导致同 (model,group,bucket) 多 channel
+// 行写入被旧约束拒绝。先查存在再删，保证幂等：索引不存在时直接成功返回。
+func dropLegacyPerfUniqueIndex() error {
+	if !perfIndexExists("idx_perf_model_group_bucket") {
+		return nil
+	}
+	switch DB.Dialector.Name() {
+	case "mysql":
+		return DB.Exec("ALTER TABLE perf_metrics DROP INDEX idx_perf_model_group_bucket").Error
+	default: // sqlite / postgres
+		return DB.Exec("DROP INDEX IF EXISTS idx_perf_model_group_bucket").Error
+	}
 }
 
 func migrateLOGDB() error {

@@ -408,6 +408,91 @@ See [User authentication and login sessions](./docs/authentication.md) for the t
 
 ---
 
+## 📊 Performance Metrics and Prometheus Export (性能指标与导出)
+
+The gateway samples every relayed request into in-memory buckets (模型/分组/渠道 × 时间桶), flushes completed buckets to the database, and keeps a process-local registry for Prometheus scraping. Two data domains:
+
+| Domain | Table | Content | Frontend |
+|------|------|------|------|
+| 性能指标 (perf metrics) | `perf_metrics` | Per model × group × channel × bucket: request/success counts, latency & TTFT latency histograms, tokens | Average TTFT with P95/P99 latency trend lines on the model-square model detail page; per-channel breakdown on the admin dashboard |
+| 容量指标 (capacity) | `capacity_metrics` | Per bucket: relay `attempts`, `rejected_503`, in-flight peak | Admin dashboard Capacity Overview card (容量总览) |
+
+Channel identity is internal information: the `channels` detail of `GET /api/perf-metrics` is returned only to admins (role ≥ 10) and is stripped server-side for anonymous and regular users.
+
+### Configuration (`perf_metrics_setting`, 设置 → 运营设置 → Monitoring & Alerts)
+
+| Key | Default | Meaning |
+|------|------|------|
+| `enabled` | `true` | Master switch of perf sampling and DB flush |
+| `flush_interval` | `5` | Flush cadence (minutes): completed buckets are written to DB and retention cleanup runs on this interval |
+| `bucket_time` | `hour` | Bucket granularity: `hour` / `5min` / `minute`. `hour` is the recommended production granularity (smoother series, less rows); shorter buckets give finer-grained trend lines at more storage cost |
+| `retention_days` | `0` | Days to keep rows before cleanup. `0` = **keep forever** (default). Production is recommended to set `≥ 7`. Cleanup deletes from `perf_metrics` and `capacity_metrics` together |
+| `export_enabled` | `false` | Expose the Prometheus endpoint `GET /api/metrics` |
+| `export_token` | empty | Static Bearer token for the export endpoint. Leave empty = **no authentication** — when empty, restrict access at the network layer (firewall / reverse-proxy allow-list to the monitoring subnet only) |
+
+### Capacity API (`/api/capacity-metrics`, AdminAuth)
+
+`GET /api/capacity-metrics?hours=N` — gateway capacity trend over the last `N` hours (default `24`, capped at `720` = 30 days). Returns `data.series` of:
+
+| Field | Meaning |
+|------|------|
+| `ts` | Bucket start, Unix seconds |
+| `attempts` | Relay requests, each attributed to the bucket in which it **completes** (end-time attribution — a stream crossing a bucket boundary lands in the later bucket). **Includes requests later rejected by auth, rate limiting, or overload 503** (the counting middleware runs first in every relay chain, before auth and before the overload check) |
+| `rejected_503` | Subset of `attempts`: requests rejected with HTTP 503 by the overload protection (`SystemPerformanceCheck`, CPU/memory/disk thresholds). `rejected_503 ⊆ attempts` |
+| `inflight_peak` | Peak in-flight concurrency in the bucket — a **2-second sampling approximation**, not an exact maximum |
+
+Two approximations to expect: rows are written only after a bucket completes (flush loop), so with the default hourly buckets the newest visible point is typically the previous completed bucket — roughly one bucket (~1 h) behind the current wall-clock bucket, plus up to one flush period of write lag after the bucket closes; and RPS is derived client-side from `attempts` over the bucket width, where the width is inferred from neighboring point timestamps (the latest point reuses the previous bucket interval).
+
+### Prometheus export (`/api/metrics`)
+
+Enable via `perf_metrics_setting.export_enabled` + `export_token` (配置见上). Behavior:
+
+- **Reachable on all three API prefixes:** `/api/metrics`, `/api/v1/metrics`, `/api/v2/metrics`.
+- Disabled → `404` (does not reveal existence). With a token set, `Authorization: Bearer <token>` is required (constant-time comparison); otherwise `401`.
+- **Process-level export:** each instance's registry accumulates since process start and resets on restart (standard counter semantics). For multi-instance deployments, scrape **every pod/instance** as its own target — do not aggregate instances into one target.
+- **Freezing, not clearing:** when `enabled = false` while `export_enabled = true`, sampling stops and the model/group-dimensioned families stay frozen at their last values; the same switch also pauses the `capacity_metrics` DB flush and retention cleanup (both tables). Process-level counters (`cuberouter_relay_attempts_total`, `cuberouter_overload_rejects_total`) and the in-flight gauge keep updating — the in-process capacity path does not depend on the sampling switch, only its DB persistence and cleanup do.
+- Series carry `model` and `group` labels only — the channel dimension is deliberately **not** exported (high cardinality).
+
+| Metric | Type | Meaning |
+|------|------|------|
+| `cuberouter_relay_requests_total{model,group}` | counter | Total relay requests (incl. failures) since process start |
+| `cuberouter_relay_latency_seconds{model,group}` | histogram | Relay latency, seconds |
+| `cuberouter_relay_ttft_seconds{model,group}` | histogram | Time-to-first-token (streaming requests only), seconds |
+| `cuberouter_inflight_requests` | gauge | Requests currently in flight (process-local) |
+| `cuberouter_overload_rejects_total` | counter | Requests rejected with HTTP 503 by overload protection since process start |
+| `cuberouter_relay_attempts_total` | counter | Relay attempts (incl. auth/rate-limit/overload-rejected) since process start |
+| `go_goroutines`, `go_memstats_alloc_bytes`, `go_memstats_heap_objects` | gauge | Go runtime basics |
+
+**Histogram bucket boundaries** (identical for latency and TTFT; samples above 240 s fall into the tail cell and only appear in `le="+Inf"` / `_count`):
+
+| `le` (seconds) | 0.1 | 0.25 | 0.5 | 1 | 2 | 4 | 8 | 16 | 32 | 64 | 128 | 240 | +Inf |
+|------|------|------|------|------|------|------|------|------|------|------|------|------|------|
+| Upper bound (ms) | 100 | 250 | 500 | 1000 | 2000 | 4000 | 8000 | 16000 | 32000 | 64000 | 128000 | 240000 | — |
+
+**Prometheus scrape configuration** (scrape every instance):
+
+```yaml
+scrape_configs:
+  - job_name: cuberouter
+    metrics_path: /api/metrics          # /api/v1/metrics and /api/v2/metrics also work
+    bearer_token: "<export_token 的值>"
+    static_configs:
+      - targets:
+          - "instance-1.example.com:3000"
+          - "instance-2.example.com:3000"   # one target per gateway instance / pod
+```
+
+Example alerting queries: latency percentiles use PromQL interpolation — `histogram_quantile(0.95, sum by (le) (rate(cuberouter_relay_latency_seconds_bucket[5m])))`; overload 503 share: `rate(cuberouter_overload_rejects_total[5m]) / rate(cuberouter_relay_attempts_total[5m])`.
+
+### Value semantics (数值口径)
+
+- Percentile fields in `/api/perf-metrics` (`p50_latency_ms`, `p95_latency_ms`, `p99_latency_ms`, `p95_ttft_ms`) are **-1 when the bucket has no histogram data** — including legacy rows written before the histogram upgrade, which have counts but zero histogram cells.
+- Built-in percentiles are **histogram crossing-bound estimates, without interpolation**: the quantile is reported at a cell boundary of the histogram. A quantile that falls in the tail cell (samples > 240 s) is reported as `240000` ms (documented upper-cap approximation).
+- `success_rate` fields are **0..100 percent**, not a 0..1 fraction.
+- On startup the migration auto-extends `perf_metrics` (`channel_id`, `channel_name`, `lat_b0..12`, `ttft_b0..12`), creates `capacity_metrics`, and drops the legacy `(model, group, bucket_ts)` unique index behind a per-dialect existence check. The MySQL/PostgreSQL migration branches are currently covered by automated tests on SQLite only — run a manual smoke test against real MySQL/PostgreSQL before release.
+
+---
+
 ## 🔗 Related Projects
 
 ### Upstream Projects
