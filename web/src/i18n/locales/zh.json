@@ -5528,6 +5528,7 @@
     "Avg Latency": "平均延迟",
     "Success Rate": "成功率",
     "TPS": "TPS",
-    "No channel data for this model": "该模型暂无渠道数据"
+    "No channel data for this model": "该模型暂无渠道数据",
+    "+{{count}} Models": "+{{count}} 个模型"
   }
 }

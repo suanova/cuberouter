@@ -5528,6 +5528,7 @@
     "Avg Latency": "Avg Latency",
     "Success Rate": "Success Rate",
     "TPS": "TPS",
-    "No channel data for this model": "No channel data for this model"
+    "No channel data for this model": "No channel data for this model",
+    "+{{count}} Models": "+{{count}} Models"
   }
 }

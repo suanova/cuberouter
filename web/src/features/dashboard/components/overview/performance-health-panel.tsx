@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Gauge, HeartPulse, Timer } from 'lucide-react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
@@ -35,7 +35,7 @@ import type { PerfModelSummary } from '@/features/performance-metrics/types'
 import { cn } from '@/lib/utils'
 
 const PERFORMANCE_WINDOW_HOURS = 24
-const TOP_MODEL_LIMIT = 6
+const TOP_MODEL_LIMIT = 5
 
 type WeightedMetric = 'avg_latency_ms' | 'avg_tps' | 'success_rate'
 
@@ -88,8 +88,16 @@ export function PerformanceHealthPanel() {
   }, [models])
 
   const topModels = useMemo(() => models.slice(0, TOP_MODEL_LIMIT), [models])
+  const overflowModels = useMemo(() => models.slice(TOP_MODEL_LIMIT), [models])
+  const overflowCount = overflowModels.length
   const loading = metricsQuery.isLoading
   const hasData = models.length > 0
+  // +N 溢出展开的局部 UI 状态：模型列表由服务端按 request_count 排序，此处
+  // 保持接收顺序即可；chip 仅在 overflowCount > 0 时渲染，列表刷新后无溢出时
+  // 展开态无可见影响，故无需随查询重置。展开时剩余模型续接同一网格（三元
+  // 两侧均为已 memo 的数组，不产生新引用）。
+  const [modelsExpanded, setModelsExpanded] = useState(false)
+  const visibleModels = modelsExpanded ? models : topModels
 
   return (
     <section className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
@@ -142,7 +150,7 @@ export function PerformanceHealthPanel() {
                 {t('Top models by traffic')}
               </span>
               <div className='grid grid-cols-1 gap-x-4 sm:grid-cols-2'>
-                {topModels.map((model) => (
+                {visibleModels.map((model) => (
                   <div
                     key={model.model_name}
                     className='flex items-center justify-between gap-2 rounded px-1.5 py-1'
@@ -170,6 +178,16 @@ export function PerformanceHealthPanel() {
                   </div>
                 ))}
               </div>
+              {overflowCount > 0 && (
+                <button
+                  type='button'
+                  aria-expanded={modelsExpanded}
+                  onClick={() => setModelsExpanded((open) => !open)}
+                  className='bg-muted/50 text-muted-foreground hover:bg-muted mt-1 inline-flex items-center rounded-full px-2.5 py-1 font-mono text-[11px] transition-colors'
+                >
+                  {t('+{{count}} Models', { count: overflowCount })}
+                </button>
+              )}
             </div>
           )
         )}

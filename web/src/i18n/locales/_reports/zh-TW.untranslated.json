@@ -28,5 +28,6 @@
   "Channel Breakdown": "Channel Breakdown",
   "Avg Latency": "Avg Latency",
   "Success Rate": "Success Rate",
-  "No channel data for this model": "No channel data for this model"
+  "No channel data for this model": "No channel data for this model",
+  "+{{count}} Models": "+{{count}} Models"
 }
