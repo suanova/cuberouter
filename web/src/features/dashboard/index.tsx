@@ -188,7 +188,7 @@ function PerformanceOverviewFallback() {
   )
 }
 
-function CapacityCardFallback() {
+function CapacityCardFallback(): React.JSX.Element {
   return (
     <div className='overflow-hidden rounded-lg border'>
       <div className='border-border/60 flex items-center justify-between border-b px-4 py-3 sm:px-5'>

@@ -55,7 +55,7 @@ function simpleAverage(
   return count > 0 ? total / count : Number.NaN
 }
 
-export function PerformanceHealthPanel() {
+export function PerformanceHealthPanel(): React.JSX.Element {
   const { t } = useTranslation()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
@@ -203,7 +203,7 @@ function MetricCell(props: {
   loading: boolean
   valueClassName?: string
   tone: IconBadgeTone
-}) {
+}): React.JSX.Element {
   const Icon = props.icon
   return (
     <div className='bg-muted/40 rounded-xl px-3 py-2.5'>

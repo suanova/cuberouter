@@ -90,15 +90,23 @@ function toUptimePct(value: number): number {
   return Math.round(clamped * 100) / 100
 }
 
-// Aggregates the per-group buckets of a model into one point per time bucket
-// and metric (average TTFT, P95 latency, P99 latency). Values that signal
-// missing data (avg TTFT <= 0; percentile -1, the backend's no-data
-// sentinel) produce no row for that metric, so the chart simply omits the
-// point instead of plotting an empty value.
+type WeightedSample = { value: number; weight: number }
+
+// The model-level latency lines merge the per-group buckets of a model into
+// one point per time bucket and metric (average TTFT, P95 latency, P99
+// latency). Each bucket value is weighted by the owning group's request_count
+// in that bucket, so the merged value is a request-weighted mean of the
+// per-group values — an approximation; the exact model-level percentile
+// requires merging the per-group latency histograms server-side (future
+// work). Groups without a per-bucket request_count (older cached payloads)
+// fall back to equal weight. Values that signal missing data (avg TTFT <= 0;
+// percentile -1, the backend's no-data sentinel) produce no row for that
+// metric, so the chart simply omits the point instead of plotting an empty
+// value.
 function toLatencyTrendSeries(groups: PerformanceGroup[]): LatencyTrendPoint[] {
   const byTs = new Map<
     number,
-    { ttft: number[]; p95: number[]; p99: number[] }
+    { ttft: WeightedSample[]; p95: WeightedSample[]; p99: WeightedSample[] }
   >()
   for (const group of groups) {
     for (const point of group.series) {
@@ -107,12 +115,15 @@ function toLatencyTrendSeries(groups: PerformanceGroup[]): LatencyTrendPoint[] {
         entry = { ttft: [], p95: [], p99: [] }
         byTs.set(point.ts, entry)
       }
-      if (point.avg_ttft_ms > 0) entry.ttft.push(point.avg_ttft_ms)
+      const weight = point.request_count ?? 1
+      if (point.avg_ttft_ms > 0) {
+        entry.ttft.push({ value: point.avg_ttft_ms, weight })
+      }
       if (point.p95_latency_ms != null && point.p95_latency_ms >= 0) {
-        entry.p95.push(point.p95_latency_ms)
+        entry.p95.push({ value: point.p95_latency_ms, weight })
       }
       if (point.p99_latency_ms != null && point.p99_latency_ms >= 0) {
-        entry.p99.push(point.p99_latency_ms)
+        entry.p99.push({ value: point.p99_latency_ms, weight })
       }
     }
   }
@@ -123,18 +134,32 @@ function toLatencyTrendSeries(groups: PerformanceGroup[]): LatencyTrendPoint[] {
     if (!entry) continue
     const timestamp = new Date(ts * 1000).toISOString()
     for (const metric of ['ttft', 'p95', 'p99'] as const) {
-      const values = entry[metric]
-      if (values.length === 0) continue
+      const samples = entry[metric]
+      if (samples.length === 0) continue
       series.push({
         timestamp,
         metric,
-        ms: Math.round(
-          values.reduce((sum, value) => sum + value, 0) / values.length
-        ),
+        ms: Math.round(weightedAverage(samples)),
       })
     }
   }
   return series
+}
+
+// Weighted mean of the samples. When every sample carries a zero request
+// count the weights sum to nothing, so the samples fall back to an
+// equal-weight mean instead of dropping the point.
+function weightedAverage(samples: WeightedSample[]): number {
+  const totalWeight = samples.reduce((sum, sample) => sum + sample.weight, 0)
+  if (totalWeight <= 0) {
+    return (
+      samples.reduce((sum, sample) => sum + sample.value, 0) / samples.length
+    )
+  }
+  return (
+    samples.reduce((sum, sample) => sum + sample.value * sample.weight, 0) /
+    totalWeight
+  )
 }
 
 function toUptimeSeries(groups: PerformanceGroup[]): UptimeDayPoint[] {

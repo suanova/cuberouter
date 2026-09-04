@@ -74,39 +74,64 @@ type ChannelRow = {
   avgTps: number
 }
 
-// Each channel is aggregated over its series buckets. -1 percentile values
-// (the backend's no-data sentinel) and empty buckets (0 latency / TPS) are
-// skipped; the format helpers render a dash when nothing was collected.
-function average(values: number[]): number {
-  if (values.length === 0) return Number.NaN
-  return values.reduce((sum, value) => sum + value, 0) / values.length
+type WeightedSample = { value: number; weight: number }
+
+// Weighted mean of the collected bucket samples (buckets without a
+// request_count were collected with weight 1, reproducing a plain mean).
+// When the weights sum to zero (all-zero request counts) it falls back to an
+// equal-weight mean rather than dropping the row.
+function weightedAverage(samples: WeightedSample[]): number {
+  if (samples.length === 0) return Number.NaN
+  const totalWeight = samples.reduce((sum, sample) => sum + sample.weight, 0)
+  if (totalWeight <= 0) {
+    return (
+      samples.reduce((sum, sample) => sum + sample.value, 0) / samples.length
+    )
+  }
+  return (
+    samples.reduce((sum, sample) => sum + sample.value * sample.weight, 0) /
+    totalWeight
+  )
 }
 
+// Each channel is aggregated over its series buckets. The latency, P95,
+// success-rate and TPS columns are request-count-weighted means of the
+// matching bucket values, so buckets that carry more requests dominate. The
+// P95 column is therefore a request-weighted mean of the bucket P95 values —
+// an approximation, not a true channel P95, which would require a server-side
+// merge of the bucket latency histograms (future work). Buckets without a
+// request_count (older cached payloads) fall back to equal weight. -1
+// percentile values (the backend's no-data sentinel) and empty buckets (0
+// latency / TPS) are skipped; the format helpers render a dash when nothing
+// was collected.
 function toChannelRows(groups: PerformanceGroup[]): ChannelRow[] {
   const rows: ChannelRow[] = []
   for (const group of groups) {
     for (const channel of group.channels ?? []) {
       let totalRequests = 0
       let hasRequestCounts = false
-      const latencies: number[] = []
-      const p95Latencies: number[] = []
-      const successRates: number[] = []
-      const tpsValues: number[] = []
+      const latencies: WeightedSample[] = []
+      const p95Latencies: WeightedSample[] = []
+      const successRates: WeightedSample[] = []
+      const tpsValues: WeightedSample[] = []
 
       for (const point of channel.series) {
         if (point.request_count !== undefined) {
           hasRequestCounts = true
           totalRequests += point.request_count
         }
-        if (point.avg_latency_ms > 0) latencies.push(point.avg_latency_ms)
+        const weight = point.request_count ?? 1
+        if (point.avg_latency_ms > 0) {
+          latencies.push({ value: point.avg_latency_ms, weight })
+        }
         if (point.p95_latency_ms !== undefined && point.p95_latency_ms >= 0) {
-          p95Latencies.push(point.p95_latency_ms)
+          p95Latencies.push({ value: point.p95_latency_ms, weight })
         }
         if (Number.isFinite(point.success_rate)) {
-          successRates.push(point.success_rate)
+          successRates.push({ value: point.success_rate, weight })
         }
         if (Number.isFinite(point.avg_tps) && point.avg_tps > 0) {
-          tpsValues.push(point.avg_tps)
+          tpsValues.push({ value: point.avg_tps, weight })
         }
       }
 
@@ -116,17 +141,17 @@ function toChannelRows(groups: PerformanceGroup[]): ChannelRow[] {
         channelId: channel.channel_id,
         channelName: channel.channel_name,
         requests: hasRequestCounts ? totalRequests : null,
-        avgLatencyMs: average(latencies),
-        p95LatencyMs: average(p95Latencies),
-        successRate: average(successRates),
-        avgTps: average(tpsValues),
+        avgLatencyMs: weightedAverage(latencies),
+        p95LatencyMs: weightedAverage(p95Latencies),
+        successRate: weightedAverage(successRates),
+        avgTps: weightedAverage(tpsValues),
       })
     }
   }
   return rows
 }
 
-export function ChannelBreakdownCard() {
+export function ChannelBreakdownCard(): React.JSX.Element | null {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const [selectedModel, setSelectedModel] = useState<string | null>(null)
@@ -299,7 +324,7 @@ export function ChannelBreakdownCard() {
   )
 }
 
-function ChannelTableSkeleton() {
+function ChannelTableSkeleton(): React.JSX.Element {
   return (
     <div className='space-y-2 py-1'>
       {[0, 1, 2, 3, 4].map((key) => (

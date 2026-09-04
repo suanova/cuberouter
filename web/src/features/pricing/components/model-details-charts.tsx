@@ -121,10 +121,14 @@ const LATENCY_METRIC_I18N_KEY: Record<LatencyTrendMetric, string> = {
   p99: 'P99 Latency',
 }
 
-export function LatencyTrendChart(props: {
+export type LatencyTrendChartProps = {
   series: LatencyTrendPoint[]
   className?: string
-}) {
+}
+
+export function LatencyTrendChart(
+  props: LatencyTrendChartProps
+): React.JSX.Element {
   const { t } = useTranslation()
   const { resolvedTheme, themeReady } = useChartTheme()
   const { textColor, gridColor } = getChartThemeTokens(resolvedTheme)

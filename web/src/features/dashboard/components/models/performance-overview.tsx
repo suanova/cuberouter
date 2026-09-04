@@ -83,7 +83,7 @@ function buildPerformanceSummary(rows: PerfModelSummary[]): PerformanceSummary {
   }
 }
 
-export function PerformanceOverview() {
+export function PerformanceOverview(): React.JSX.Element {
   const { t } = useTranslation()
   const metricsQuery = useQuery({
     queryKey: ['perf-metrics-summary', PERFORMANCE_WINDOW_HOURS],
@@ -199,7 +199,7 @@ function InlineMetric(props: {
   value: string
   valueClassName?: string
   tone: IconBadgeTone
-}) {
+}): React.JSX.Element {
   const Icon = props.icon
 
   return (
@@ -220,7 +220,7 @@ function InlineMetric(props: {
   )
 }
 
-function ModelBadge(props: { model: PerfModelSummary }) {
+function ModelBadge(props: { model: PerfModelSummary }): React.JSX.Element {
   const model = props.model
 
   return (

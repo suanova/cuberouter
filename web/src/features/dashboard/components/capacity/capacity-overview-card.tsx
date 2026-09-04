@@ -46,7 +46,18 @@ type CapacityChartPoint = {
   rejected_429: number
 }
 
-type CapacityMetricKey = 'rps' | 'inflight_peak' | 'rejected_503' | 'rejected_429'
+type CapacityMetricKey =
+  | 'rps'
+  | 'inflight_peak'
+  | 'rejected_503'
+  | 'rejected_429'
+
+type CapacityMiniChartProps = {
+  label: string
+  dataKey: CapacityMetricKey
+  color: string
+  data: CapacityChartPoint[]
+}
 
 // RPS per bucket is derived from the bucket's attempt count divided by the
 // bucket width, which is inferred from the neighboring timestamps (the final
@@ -85,7 +96,7 @@ function formatAxisTick(value: unknown): string {
   return dayjs(Number.isFinite(ms) ? ms : 0).format('HH:mm')
 }
 
-export function CapacityOverviewCard() {
+export function CapacityOverviewCard(): React.JSX.Element | null {
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
 
@@ -153,12 +164,7 @@ export function CapacityOverviewCard() {
   )
 }
 
-function CapacityMiniChart(props: {
-  label: string
-  dataKey: CapacityMetricKey
-  color: string
-  data: CapacityChartPoint[]
-}) {
+function CapacityMiniChart(props: CapacityMiniChartProps): React.JSX.Element {
   const config = useMemo<ChartConfig>(
     () => ({
       [props.dataKey]: { label: props.label, color: props.color },
@@ -208,7 +214,7 @@ function CapacityMiniChart(props: {
   )
 }
 
-function CapacityChartSkeleton() {
+function CapacityChartSkeleton(): React.JSX.Element {
   return (
     <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
       {[0, 1, 2, 3].map((key) => (
