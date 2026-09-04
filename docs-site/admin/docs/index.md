@@ -48,6 +48,10 @@ features:
     title: 日志与统计
     details: 查看全平台 API 调用记录和消耗统计，支持多维度分析。
     link: /guide/log/index
+  - icon: 🛰️
+    title: 监控与运维
+    details: 查看网关容量与健康指标、模型与渠道效能趋势，并支持 Prometheus 指标导出。
+    link: /guide/monitoring/index
   - icon: ⚙️
     title: 系统设置
     details: 配置运营参数、计费倍率、支付集成、性能监控与限流策略。
