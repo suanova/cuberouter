@@ -298,19 +298,22 @@ func PerfMetricStartTime(hours int) int64 {
 	return time.Now().Add(-time.Duration(hours) * time.Hour).Unix()
 }
 
-// CapacityMetric records per-bucket gateway capacity pressure (503 rejections
-// and peak concurrent inflight requests), keyed by the flush bucket timestamp.
+// CapacityMetric records per-bucket gateway capacity pressure (503 rejections,
+// rate-limit 429 rejections and peak concurrent inflight requests), keyed by
+// the flush bucket timestamp.
 type CapacityMetric struct {
 	BucketTs     int64 `json:"bucket_ts" gorm:"primaryKey"`
 	Attempts     int64 `json:"attempts"`
 	Rejected503  int64 `json:"rejected_503" gorm:"column:rejected_503"` // GORM 默认命名会去掉 503 前的下划线（rejected503）
+	Rejected429  int64 `json:"rejected_429" gorm:"column:rejected_429"` // 同上，429 前缀同理（rejected429）
 	InflightPeak int64 `json:"inflight_peak"`
 }
 
 func (CapacityMetric) TableName() string { return "capacity_metrics" }
 
-// UpsertCapacityMetric 先以冲突累加写入 attempts/rejected_503，再以条件更新取
-// inflight_peak 最大值。不用 GREATEST/max()（方言差异，见 AGENTS.md）。
+// UpsertCapacityMetric 先以冲突累加写入 attempts/rejected_503/rejected_429，
+// 再以条件更新取 inflight_peak 最大值。不用 GREATEST/max()（方言差异，见
+// AGENTS.md）。
 func UpsertCapacityMetric(m *CapacityMetric) error {
 	if m == nil {
 		return nil
@@ -320,6 +323,7 @@ func UpsertCapacityMetric(m *CapacityMetric) error {
 		DoUpdates: clause.Assignments(map[string]interface{}{
 			"attempts":     gorm.Expr("capacity_metrics.attempts + ?", m.Attempts),
 			"rejected_503": gorm.Expr("capacity_metrics.rejected_503 + ?", m.Rejected503),
+			"rejected_429": gorm.Expr("capacity_metrics.rejected_429 + ?", m.Rejected429),
 		}),
 	}).Create(m).Error
 	if err != nil {

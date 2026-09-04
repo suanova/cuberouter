@@ -9,7 +9,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-// 网关级容量计数（middleware 与过载拒绝回调接线见 Task 4）。
+// 网关级容量计数（middleware 与过载/限流拒绝回调接线见 relay_capacity.go 与
+// performance.go、model-rate-limit.go）。
 // relayInflight 是进程内并发在途 gauge（RelayRequestStart/End 增减）；
 // 容量桶与 perf 桶同用 bucketStart 粒度，sampleInflightLoop 每 2s 把 gauge
 // CAS 进当前桶 InflightPeak（近似峰值，语义见 spec §3.2）。
@@ -21,10 +22,11 @@ var relayInflight atomic.Int64
 var capacityUpsert = model.UpsertCapacityMetric
 
 type capacityBucket struct {
-	ts       int64
-	attempts atomic.Int64
-	rejected atomic.Int64
-	peak     atomic.Int64
+	ts          int64
+	attempts    atomic.Int64
+	rejected    atomic.Int64
+	rejected429 atomic.Int64
+	peak        atomic.Int64
 }
 
 var (
@@ -63,6 +65,16 @@ func RelayInflight() int64 { return relayInflight.Load() }
 func RecordOverloadReject() {
 	currentCapacityBucket().rejected.Add(1)
 	procRejects.Add(1) // 进程级导出 counter（export.go 声明）
+}
+
+// RecordRateLimitReject 记录一次限流 429 拒绝（调用点：model-rate-limit.go 的
+// 429 分支）：当前容量桶 rejected429 +1，drain 时随 rejected_503 一并 upsert
+// 到 rejected_429 列。与 RecordOverloadReject 同口径——限流中间件在所有挂载
+// 点都位于 RelayCapacity 之后（见 relay_capacity.go 注释），被拒请求已计入
+// attempts，故 rejected429 ⊆ attempts。429 不做进程级 Prometheus counter
+// （rejected_503 已覆盖过载拒绝出口，429 属限流侧面，spec §6 不导出）。
+func RecordRateLimitReject() {
+	currentCapacityBucket().rejected429.Add(1)
 }
 
 // sampleInflightLoop 每 2s 把在途并发 CAS 进当前桶峰值。
@@ -120,18 +132,19 @@ func flushCompletedCapacityBuckets() {
 // （对应 perf flush 失败经 addCounters 回填的语义，见 M1）。清零与 Swap(0)
 // 一样会丢清空瞬间晚到的写，属注释中已接受的残余竞态窗口。
 func drainCapacityBucket(b *capacityBucket) bool {
-	attempts, rejected, peak := b.attempts.Load(), b.rejected.Load(), b.peak.Load()
-	if attempts == 0 && rejected == 0 && peak == 0 {
+	attempts, rejected, rejected429, peak := b.attempts.Load(), b.rejected.Load(), b.rejected429.Load(), b.peak.Load()
+	if attempts == 0 && rejected == 0 && rejected429 == 0 && peak == 0 {
 		return true
 	}
 	if err := capacityUpsert(&model.CapacityMetric{
-		BucketTs: b.ts, Attempts: attempts, Rejected503: rejected, InflightPeak: peak,
+		BucketTs: b.ts, Attempts: attempts, Rejected503: rejected, Rejected429: rejected429, InflightPeak: peak,
 	}); err != nil {
 		common.SysError("failed to flush capacity bucket: " + err.Error())
 		return false
 	}
 	b.attempts.Store(0)
 	b.rejected.Store(0)
+	b.rejected429.Store(0)
 	b.peak.Store(0)
 	return true
 }

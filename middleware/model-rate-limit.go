@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
@@ -92,6 +93,9 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 			return
 		}
 		if !allowed {
+			// 429 拒绝计入容量桶 rejected_429：本中间件仅挂载在 relay 链上
+			// （RelayCapacity 先于本检查执行），被拒请求已计入 attempts。
+			perfmetrics.RecordRateLimitReject()
 			abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount))
 			return
 		}
@@ -116,6 +120,8 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 			}
 
 			if !allowed {
+				// 同成功请求数分支：429 计入容量桶 rejected_429。
+				perfmetrics.RecordRateLimitReject()
 				abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount))
 			}
 		}
@@ -141,6 +147,9 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 
 		// 1. 检查总请求数限制（当totalMaxCount为0时跳过）
 		if totalMaxCount > 0 && !inMemoryRateLimiter.Request(totalKey, totalMaxCount, duration) {
+			// 429 拒绝计入容量桶 rejected_429：本中间件仅挂载在 relay 链上
+			// （RelayCapacity 先于本检查执行），被拒请求已计入 attempts。
+			perfmetrics.RecordRateLimitReject()
 			c.Status(http.StatusTooManyRequests)
 			c.Abort()
 			return
@@ -150,6 +159,8 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 		// 使用一个临时key来检查限制，这样可以避免实际记录
 		checkKey := successKey + "_check"
 		if !inMemoryRateLimiter.Request(checkKey, successMaxCount, duration) {
+			// 同总请求数分支：429 计入容量桶 rejected_429。
+			perfmetrics.RecordRateLimitReject()
 			c.Status(http.StatusTooManyRequests)
 			c.Abort()
 			return

@@ -85,6 +85,9 @@ export type CapacityPoint = {
   attempts: number
   /** Requests rejected with HTTP 503 by the relay capacity check. */
   rejected_503: number
+  /** Requests rejected with HTTP 429 by the relay rate limiter; absent in
+   * responses cached before the field was added. */
+  rejected_429?: number
   /** Peak in-flight concurrency in the bucket (2s sampling approximation). */
   inflight_peak: number
 }

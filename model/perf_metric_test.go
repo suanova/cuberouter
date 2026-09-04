@@ -51,15 +51,18 @@ func TestCapacityMetricUpsertPeakIsMax(t *testing.T) {
 	DB = db
 	defer func() { DB = oldDB }()
 
-	require.NoError(t, UpsertCapacityMetric(&CapacityMetric{BucketTs: 2000, Attempts: 10, Rejected503: 1, InflightPeak: 8}))
-	require.NoError(t, UpsertCapacityMetric(&CapacityMetric{BucketTs: 2000, Attempts: 5, Rejected503: 2, InflightPeak: 3}))
-	require.NoError(t, UpsertCapacityMetric(&CapacityMetric{BucketTs: 2000, Attempts: 7, Rejected503: 0, InflightPeak: 12}))
+	// AutoMigrate 已随 CapacityMetric 结构建出 rejected_429 列（newPerfTestDB），
+	// 冲突累加须同时覆盖 rejected_429（新增列，旧行缺失时按 0 起步）。
+	require.NoError(t, UpsertCapacityMetric(&CapacityMetric{BucketTs: 2000, Attempts: 10, Rejected503: 1, Rejected429: 4, InflightPeak: 8}))
+	require.NoError(t, UpsertCapacityMetric(&CapacityMetric{BucketTs: 2000, Attempts: 5, Rejected503: 2, Rejected429: 2, InflightPeak: 3}))
+	require.NoError(t, UpsertCapacityMetric(&CapacityMetric{BucketTs: 2000, Attempts: 7, Rejected503: 0, Rejected429: 0, InflightPeak: 12}))
 
 	rows, err := GetCapacityMetrics(0, 5000)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, int64(22), rows[0].Attempts)
 	assert.Equal(t, int64(3), rows[0].Rejected503)
+	assert.Equal(t, int64(6), rows[0].Rejected429)   // ON CONFLICT 增量累加（4+2+0）
 	assert.Equal(t, int64(12), rows[0].InflightPeak) // 峰值取 max，非累加
 
 	require.NoError(t, DeleteCapacityBefore(1500))

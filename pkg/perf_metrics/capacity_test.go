@@ -11,10 +11,11 @@ import (
 )
 
 type capacityUpsertCall struct {
-	ts       int64
-	attempts int64
-	rejected int64
-	peak     int64
+	ts          int64
+	attempts    int64
+	rejected    int64
+	rejected429 int64
+	peak        int64
 }
 
 func recordCapacityUpserts(t *testing.T, failFirst bool) (*[]capacityUpsertCall, func()) {
@@ -28,7 +29,7 @@ func recordCapacityUpserts(t *testing.T, failFirst bool) (*[]capacityUpsertCall,
 			return errors.New("db down")
 		}
 		*calls = append(*calls, capacityUpsertCall{
-			ts: m.BucketTs, attempts: m.Attempts, rejected: m.Rejected503, peak: m.InflightPeak,
+			ts: m.BucketTs, attempts: m.Attempts, rejected: m.Rejected503, rejected429: m.Rejected429, peak: m.InflightPeak,
 		})
 		return nil
 	}
@@ -45,21 +46,25 @@ func TestFlushCompletedCapacityBucketsDrainsPendingAndStaleCurrent(t *testing.T)
 	plantedOld := &capacityBucket{ts: nowStart - 2*3600}
 	plantedOld.attempts.Store(10)
 	plantedOld.rejected.Store(3)
+	plantedOld.rejected429.Store(6)
 	plantedOld.peak.Store(7)
 	zeroCount := &capacityBucket{ts: nowStart - 3600} // 全零：不应产生 upsert
+	only429 := &capacityBucket{ts: nowStart - 2700}   // 仅 rejected429 非零：不得被零值跳过
+	only429.rejected429.Store(2)
 	staleCurrent := &capacityBucket{ts: nowStart - 1800}
 	staleCurrent.attempts.Store(4)
 	staleCurrent.rejected.Store(1)
+	staleCurrent.rejected429.Store(5)
 	staleCurrent.peak.Store(2)
 
 	capacityMu.Lock()
-	pendingCaps = []*capacityBucket{plantedOld, zeroCount}
+	pendingCaps = []*capacityBucket{plantedOld, zeroCount, only429}
 	currentCap = staleCurrent
 	capacityMu.Unlock()
 
 	flushCompletedCapacityBuckets()
 
-	require.Len(t, *calls, 2) // 非空 pending 桶 + 越界 currentCap，零计数桶被跳过
+	require.Len(t, *calls, 3) // 非空 pending 桶 ×2 + 越界 currentCap，零计数桶被跳过
 	byTs := map[int64]capacityUpsertCall{}
 	for _, c := range *calls {
 		byTs[c.ts] = c
@@ -68,11 +73,19 @@ func TestFlushCompletedCapacityBucketsDrainsPendingAndStaleCurrent(t *testing.T)
 	require.True(t, ok, "pending 跨界桶应被 drain")
 	assert.Equal(t, int64(10), gotPending.attempts)
 	assert.Equal(t, int64(3), gotPending.rejected)
+	assert.Equal(t, int64(6), gotPending.rejected429, "pending 桶的 rejected_429 值应原样 upsert")
 	assert.Equal(t, int64(7), gotPending.peak)
+	gotOnly429, ok := byTs[only429.ts]
+	require.True(t, ok, "仅 rejected_429 非零的桶也应被 drain")
+	assert.Equal(t, int64(0), gotOnly429.attempts)
+	assert.Equal(t, int64(0), gotOnly429.rejected)
+	assert.Equal(t, int64(2), gotOnly429.rejected429)
+	assert.Equal(t, int64(0), gotOnly429.peak)
 	gotCurrent, ok := byTs[staleCurrent.ts]
 	require.True(t, ok, "越界 currentCap 应被 drain（不得丢弃）")
 	assert.Equal(t, int64(4), gotCurrent.attempts)
 	assert.Equal(t, int64(1), gotCurrent.rejected)
+	assert.Equal(t, int64(5), gotCurrent.rejected429, "越界 currentCap 的 rejected_429 值应原样 upsert")
 	assert.Equal(t, int64(2), gotCurrent.peak)
 	_, ok = byTs[zeroCount.ts]
 	assert.False(t, ok, "零计数桶不应产生 upsert")
@@ -95,6 +108,7 @@ func TestFlushCompletedCapacityBucketsRetriesFailedDrain(t *testing.T) {
 	b := &capacityBucket{ts: nowStart - 3600}
 	b.attempts.Store(5)
 	b.rejected.Store(2)
+	b.rejected429.Store(6)
 	b.peak.Store(4)
 
 	capacityMu.Lock()
@@ -110,7 +124,7 @@ func TestFlushCompletedCapacityBucketsRetriesFailedDrain(t *testing.T) {
 
 	flushCompletedCapacityBuckets()
 	require.Len(t, *calls, 1)
-	assert.Equal(t, capacityUpsertCall{ts: b.ts, attempts: 5, rejected: 2, peak: 4}, (*calls)[0])
+	assert.Equal(t, capacityUpsertCall{ts: b.ts, attempts: 5, rejected: 2, rejected429: 6, peak: 4}, (*calls)[0], "重试 upsert 应携带完整的 rejected_429 值（原值补上，不重复计数）")
 	capacityMu.Lock()
 	defer capacityMu.Unlock()
 	assert.Empty(t, pendingCaps)

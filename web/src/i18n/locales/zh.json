@@ -5529,6 +5529,7 @@
     "Success Rate": "成功率",
     "TPS": "TPS",
     "No channel data for this model": "该模型暂无渠道数据",
-    "+{{count}} Models": "+{{count}} 个模型"
+    "+{{count}} Models": "+{{count}} 个模型",
+    "Rate limit 429": "限流 429"
   }
 }

@@ -5529,6 +5529,7 @@
     "Success Rate": "Success Rate",
     "TPS": "TPS",
     "No channel data for this model": "No channel data for this model",
-    "+{{count}} Models": "+{{count}} Models"
+    "+{{count}} Models": "+{{count}} Models",
+    "Rate limit 429": "Rate limit 429"
   }
 }

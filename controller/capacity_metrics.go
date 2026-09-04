@@ -33,7 +33,8 @@ func parseHoursParam(raw string, def int) int {
 // 数据点可能滞后当前墙钟桶至多一个 flush 周期；inflight_peak 为 2s 采样近似峰值。
 // attempts 是进入 relay 子组的请求数（含被过载保护 503 拒绝、被鉴权/限流拒绝者，
 // 见 middleware.RelayCapacity）；rejected_503 是其中 SystemPerformanceCheck 过载
-// 拒绝的 503 子集；RPS = attempts / 桶秒数由前端换算。
+// 拒绝的 503 子集，rejected_429 是其中模型请求限流（ModelRequestRateLimit）拒绝
+// 的 429 子集；RPS = attempts / 桶秒数由前端换算。
 func GetCapacityMetrics(c *gin.Context) {
 	hours := parseHoursParam(c.Query("hours"), 24)
 	endTs := time.Now().Unix()
@@ -49,11 +50,12 @@ func GetCapacityMetrics(c *gin.Context) {
 		Ts           int64 `json:"ts"`
 		Attempts     int64 `json:"attempts"`
 		Rejected503  int64 `json:"rejected_503"`
+		Rejected429  int64 `json:"rejected_429"`
 		InflightPeak int64 `json:"inflight_peak"`
 	}
 	series := make([]point, 0, len(rows))
 	for _, r := range rows {
-		series = append(series, point{Ts: r.BucketTs, Attempts: r.Attempts, Rejected503: r.Rejected503, InflightPeak: r.InflightPeak})
+		series = append(series, point{Ts: r.BucketTs, Attempts: r.Attempts, Rejected503: r.Rejected503, Rejected429: r.Rejected429, InflightPeak: r.InflightPeak})
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

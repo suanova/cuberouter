@@ -43,9 +43,10 @@ type CapacityChartPoint = {
   rps: number
   inflight_peak: number
   rejected_503: number
+  rejected_429: number
 }
 
-type CapacityMetricKey = 'rps' | 'inflight_peak' | 'rejected_503'
+type CapacityMetricKey = 'rps' | 'inflight_peak' | 'rejected_503' | 'rejected_429'
 
 // RPS per bucket is derived from the bucket's attempt count divided by the
 // bucket width, which is inferred from the neighboring timestamps (the final
@@ -68,6 +69,8 @@ function toChartPoints(series: CapacityPoint[]): CapacityChartPoint[] {
       rps,
       inflight_peak: point.inflight_peak,
       rejected_503: point.rejected_503,
+      // 旧缓存响应不含 rejected_429 字段，缺失按 0 处理。
+      rejected_429: point.rejected_429 ?? 0,
     }
   })
 }
@@ -105,7 +108,7 @@ export function CapacityOverviewCard() {
     content = <CapacityChartSkeleton />
   } else if (chartData.length > 1) {
     content = (
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
+      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
         <CapacityMiniChart
           label={t('RPS')}
           dataKey='rps'
@@ -122,6 +125,12 @@ export function CapacityOverviewCard() {
           label={t('Rejected 503')}
           dataKey='rejected_503'
           color='#ef4444'
+          data={chartData}
+        />
+        <CapacityMiniChart
+          label={t('Rate limit 429')}
+          dataKey='rejected_429'
+          color='#f97316'
           data={chartData}
         />
       </div>
@@ -201,8 +210,8 @@ function CapacityMiniChart(props: {
 
 function CapacityChartSkeleton() {
   return (
-    <div className='grid grid-cols-1 gap-3 sm:grid-cols-3'>
-      {[0, 1, 2].map((key) => (
+    <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+      {[0, 1, 2, 3].map((key) => (
         <div key={key} className='flex flex-col gap-1.5'>
           <Skeleton className='h-3.5 w-20' />
           <Skeleton className='h-28 rounded-md sm:h-32' />
