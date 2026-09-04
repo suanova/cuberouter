@@ -129,3 +129,40 @@ func TestFlushCompletedCapacityBucketsRetriesFailedDrain(t *testing.T) {
 	defer capacityMu.Unlock()
 	assert.Empty(t, pendingCaps)
 }
+
+// CR 竞态修复验证：写路径（relayAttemptAdd/rejectAdd/rateLimitRejectAdd）的
+// 跨界搬迁与加数整体在 capacityMu 内完成——加数只落在持锁瞬间仍为当前的桶
+// 上，桶一旦被 flush 摘除即不可达，drain 的清零不可能丢写。确定性（无
+// goroutine）：plant 一个已跨界的 currentCap（ts 早于当前桶起点、带既有计数），
+// 依次走三个内部加数路径，断言计数全部落在新当前桶、旧桶以原值进 pendingCaps
+// 且未被触碰。
+func TestCapacityWriteAddsRollOverStaleCurrentBucket(t *testing.T) {
+	nowStart := bucketStart(time.Now().Unix())
+	oldBucket := &capacityBucket{ts: nowStart - 3600}
+	oldBucket.attempts.Store(5)
+	oldBucket.rejected.Store(2)
+	oldBucket.rejected429.Store(3)
+
+	capacityMu.Lock()
+	currentCap = oldBucket
+	pendingCaps = nil
+	capacityMu.Unlock()
+
+	relayAttemptAdd()
+	rejectAdd()
+	rateLimitRejectAdd()
+
+	capacityMu.Lock()
+	defer capacityMu.Unlock()
+	require.NotNil(t, currentCap, "跨界后应换出新当前桶")
+	assert.NotSame(t, oldBucket, currentCap, "旧桶不得继续充当 currentCap")
+	assert.Greater(t, currentCap.ts, oldBucket.ts, "新桶起点应晚于旧桶")
+	assert.Equal(t, int64(1), currentCap.attempts.Load(), "attempt 应落在新当前桶")
+	assert.Equal(t, int64(1), currentCap.rejected.Load(), "503 拒绝应落在新当前桶")
+	assert.Equal(t, int64(1), currentCap.rejected429.Load(), "429 拒绝应落在新当前桶")
+	require.Len(t, pendingCaps, 1, "被替换的旧桶应入 pendingCaps 等待 drain")
+	assert.Same(t, oldBucket, pendingCaps[0])
+	assert.Equal(t, int64(5), pendingCaps[0].attempts.Load(), "旧桶既有值原样保留，未收到脱离桶的加数")
+	assert.Equal(t, int64(2), pendingCaps[0].rejected.Load())
+	assert.Equal(t, int64(3), pendingCaps[0].rejected429.Load())
+}

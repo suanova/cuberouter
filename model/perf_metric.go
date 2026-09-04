@@ -311,28 +311,29 @@ type CapacityMetric struct {
 
 func (CapacityMetric) TableName() string { return "capacity_metrics" }
 
-// UpsertCapacityMetric 先以冲突累加写入 attempts/rejected_503/rejected_429，
-// 再以条件更新取 inflight_peak 最大值。不用 GREATEST/max()（方言差异，见
-// AGENTS.md）。
+// UpsertCapacityMetric 在单个事务内完成冲突累加写入（attempts/rejected_503/
+// rejected_429）与 inflight_peak 条件更新取最大值，两语句原子提交：任一失败
+// 整个事务回滚、无任何数据落库，drain 失败重试时以桶原值重放是安全的，不会
+// 重复累加。不用 GREATEST/max()（方言差异，见 AGENTS.md）。
 func UpsertCapacityMetric(m *CapacityMetric) error {
 	if m == nil {
 		return nil
 	}
-	err := DB.Clauses(clause.OnConflict{
-		Columns: []clause.Column{{Name: "bucket_ts"}},
-		DoUpdates: clause.Assignments(map[string]interface{}{
-			"attempts":     gorm.Expr("capacity_metrics.attempts + ?", m.Attempts),
-			"rejected_503": gorm.Expr("capacity_metrics.rejected_503 + ?", m.Rejected503),
-			"rejected_429": gorm.Expr("capacity_metrics.rejected_429 + ?", m.Rejected429),
-		}),
-	}).Create(m).Error
-	if err != nil {
-		return err
-	}
-	res := DB.Model(&CapacityMetric{}).
-		Where("bucket_ts = ? AND inflight_peak < ?", m.BucketTs, m.InflightPeak).
-		Update("inflight_peak", m.InflightPeak)
-	return res.Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "bucket_ts"}},
+			DoUpdates: clause.Assignments(map[string]interface{}{
+				"attempts":     gorm.Expr("capacity_metrics.attempts + ?", m.Attempts),
+				"rejected_503": gorm.Expr("capacity_metrics.rejected_503 + ?", m.Rejected503),
+				"rejected_429": gorm.Expr("capacity_metrics.rejected_429 + ?", m.Rejected429),
+			}),
+		}).Create(m).Error; err != nil {
+			return err
+		}
+		return tx.Model(&CapacityMetric{}).
+			Where("bucket_ts = ? AND inflight_peak < ?", m.BucketTs, m.InflightPeak).
+			Update("inflight_peak", m.InflightPeak).Error
+	})
 }
 
 func GetCapacityMetrics(startTs int64, endTs int64) ([]CapacityMetric, error) {
