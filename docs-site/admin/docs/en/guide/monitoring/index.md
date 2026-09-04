@@ -99,7 +99,7 @@ System Settings → **Operations** category on the left → **Monitoring & Alert
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| Enable model performance metrics | On | Controls collection, database flushing and retention cleanup. When off, the Dashboard and model performance pages stop updating, but in-process counters keep running and export counters continue from process start once re-enabled |
+| Enable model performance metrics | On | Controls collection, database flushing and retention cleanup. When off, the Dashboard and model performance pages stop updating and the exported relay request, latency and TTFT series freeze (they stop growing with new requests), resuming once re-enabled; capacity exports (attempts, 503 rejects, in-flight gauge) are unaffected and keep updating for the process lifetime |
 | Flush interval (minutes) | 5 | How often in-memory buckets are written to the database; one component of data lag |
 | Aggregation bucket | 1 hour | Aggregation granularity — 1 minute, 5 minutes or 1 hour. The Capacity (24h) cards and model performance charts share this granularity; finer buckets show fresher, more detailed movement but cost more storage and database writes |
 | Retention days | 0 (keep forever) | How many days of performance data to keep. 0 means data is kept permanently; **set an explicit value in production** (e.g. 30-90 days) so the metric tables do not grow without bound |
@@ -195,9 +195,10 @@ With multiple instances, scrape **per instance (pod)**, because:
 
 ### Notes
 
-- Model-level 429 rate-limit rejections from the capacity cards are **not** part of the export; only the metrics listed above are exposed
-- The export shares the same in-process counters as metric collection. When collection is disabled the exported counters freeze (they stop growing with new requests) and resume once it is re-enabled
-- Retention cleanup does not affect the in-process export counters; export only lives as long as the process
+- Model-level 429 rate-limit rejections from the capacity cards are **not** part of the export; only the metrics listed above are exposed (429 rejections are counted within `cuberouter_relay_attempts_total`)
+- With **Enable model performance metrics** off, the exported relay request, latency and TTFT series (`cuberouter_relay_requests_total` and the latency/TTFT histograms) freeze — they stop growing with new requests — and resume once the switch is re-enabled
+- The capacity exports (`cuberouter_relay_attempts_total`, `cuberouter_overload_rejects_total`, `cuberouter_inflight_requests`) are independent process-level counters, unaffected by the switch, and keep updating as requests flow
+- Retention cleanup only removes historical bucket data from the database; it does not affect the in-process export counters above
 
 ---
 
