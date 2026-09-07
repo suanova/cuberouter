@@ -97,6 +97,18 @@ func TestMigratePrefillGroupUniquenessPostgreSQL(t *testing.T) {
 			},
 		},
 		{
+			name: "legacy_gorm_canonical_constraint",
+			prepareOld: func(t *testing.T, tx *gorm.DB) {
+				t.Helper()
+				require.NoError(t, tx.Exec(
+					"ALTER TABLE ? ADD CONSTRAINT ? UNIQUE (?)",
+					clause.Table{Name: "prefill_groups"},
+					clause.Column{Name: gormPrefillGroupUniqueName},
+					clause.Column{Name: "name"},
+				).Error)
+			},
+		},
+		{
 			name: "legacy_standalone_index",
 			prepareOld: func(t *testing.T, tx *gorm.DB) {
 				t.Helper()
