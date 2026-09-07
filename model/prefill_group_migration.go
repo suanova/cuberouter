@@ -9,6 +9,7 @@ import (
 
 const prefillGroupNameIndex = "uk_prefill_name"
 const legacyPrefillGroupNameUnique = "idx_prefill_groups_name"
+const gormPrefillGroupUniqueName = "uni_prefill_groups_name"
 
 type conflictingPrefillGroupUniqueness struct {
 	constraints []string
@@ -25,15 +26,23 @@ func (conflicts conflictingPrefillGroupUniqueness) empty() bool {
 }
 
 func (conflicts conflictingPrefillGroupUniqueness) validateAutomaticMigrationScope() error {
+	// gormPrefillGroupUniqueName is the constraint name older GORM builds
+	// auto-generate for a `gorm:"unique"`-style column; it is migratable the
+	// same way as the pre-partial-index legacy name. Any other single-column
+	// unique object requires manual handling and is reported, not touched.
+	automaticNames := map[string]bool{
+		legacyPrefillGroupNameUnique: true,
+		gormPrefillGroupUniqueName:   true,
+	}
 	unexpectedConstraints := make([]string, 0)
 	for _, name := range conflicts.constraints {
-		if name != legacyPrefillGroupNameUnique {
+		if !automaticNames[name] {
 			unexpectedConstraints = append(unexpectedConstraints, name)
 		}
 	}
 	unexpectedIndexes := make([]string, 0)
 	for _, name := range conflicts.indexes {
-		if name != legacyPrefillGroupNameUnique {
+		if !automaticNames[name] {
 			unexpectedIndexes = append(unexpectedIndexes, name)
 		}
 	}

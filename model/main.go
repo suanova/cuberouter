@@ -318,6 +318,14 @@ func migrateDB() error {
 	if err := migrateTokenKeyUniqueness(DB); err != nil {
 		return err
 	}
+	// Runs before AutoMigrate(&PrefillGroup{}): without it, GORM's postgres
+	// migrator sees any single-column UNIQUE constraint on prefill_groups.name
+	// and unconditionally tries to drop its auto-generated canonical name
+	// (uni_prefill_groups_name), failing with SQLSTATE 42704 when the actual
+	// constraint is named differently (e.g. the legacy idx_prefill_groups_name).
+	if err := migratePrefillGroupUniqueness(DB); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
