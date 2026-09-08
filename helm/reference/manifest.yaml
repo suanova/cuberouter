@@ -1,0 +1,491 @@
+---
+# Reference: actual deployed manifest of cube-router release (chart cube-router-0.6.0, rev 31)
+# Retrieved via: helm get manifest cube-router -n cube-router
+# NOTE: Secret "cube-router-secret" (keys: SQL_DSN, REDIS_CONN_STRING, SESSION_SECRET, CRYPTO_SECRET, REDIS_PASSWORD)
+# is referenced but not part of the helm-managed manifest.
+
+---
+# Source: cube-router/templates/pdb.yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: cube-router-app-pdb
+  namespace: cube-router
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cube-router
+      app.kubernetes.io/instance: cube-router
+      app.kubernetes.io/component: app
+---
+# Source: cube-router/templates/configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cube-router-config
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    helm.sh/chart: cube-router-0.6.0
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/managed-by: Helm
+data:
+  BATCH_UPDATE_ENABLED: "true"
+  ERROR_LOG_ENABLED: "true"
+  NODE_TYPE: "master"
+  PORT: "3000"
+  TZ: "Asia/Shanghai"
+---
+# Source: cube-router/templates/app.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cube-router-app-data
+  namespace: cube-router
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Source: cube-router/templates/app.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cube-router-app-logs
+  namespace: cube-router
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Source: cube-router/templates/app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cube-router-app
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: app
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: app
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Source: cube-router/templates/app.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cube-router-docs
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: docs
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: docs
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Source: cube-router/templates/redis.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: cube-router-redis
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: redis
+spec:
+  selector:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+# Source: cube-router/templates/app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cube-router-app
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: app
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cube-router
+      app.kubernetes.io/instance: cube-router
+      app.kubernetes.io/component: app
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cube-router
+        app.kubernetes.io/instance: cube-router
+        app.kubernetes.io/component: app
+    spec:
+      imagePullSecrets:
+        - name: huawei-swr
+      initContainers:
+        - name: wait-for-dependencies
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z cube-router-redis 6379; do echo waiting for redis; sleep 2; done
+      containers:
+        - name: cube-router
+          image: "swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/searouter:v1.1.55-isuanova-agent-release"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: cube-router-config
+          env:
+            - name: SQL_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: cube-router-secret
+                  key: SQL_DSN
+            - name: REDIS_CONN_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: cube-router-secret
+                  key: REDIS_CONN_STRING
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cube-router-secret
+                  key: SESSION_SECRET
+            - name: CRYPTO_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: cube-router-secret
+                  key: CRYPTO_SECRET
+          volumeMounts:
+            - name: cube-router-data
+              mountPath: /data
+            - name: cube-router-logs
+              mountPath: /app/logs
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            failureThreshold: 30
+            periodSeconds: 10
+            timeoutSeconds: 3
+          resources:
+            limits:
+              cpu: "2"
+              memory: 2Gi
+            requests:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: cube-router-data
+          persistentVolumeClaim:
+            claimName: cube-router-app-data
+        - name: cube-router-logs
+          persistentVolumeClaim:
+            claimName: cube-router-app-logs
+---
+# Source: cube-router/templates/app.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cube-router-docs
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: docs
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cube-router
+      app.kubernetes.io/instance: cube-router
+      app.kubernetes.io/component: docs
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cube-router
+        app.kubernetes.io/instance: cube-router
+        app.kubernetes.io/component: docs
+    spec:
+      imagePullSecrets:
+        - name: huawei-swr
+      containers:
+        - name: docs
+          image: "swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/searouter-docs:v1.1.49-isuanova-agent-release"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+---
+# Source: cube-router/templates/hpa.yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: cube-router-app-hpa
+  namespace: cube-router
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: cube-router-app
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+# Source: cube-router/templates/redis.yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cube-router-redis
+  namespace: cube-router
+  labels:
+    app.kubernetes.io/name: cube-router
+    app.kubernetes.io/instance: cube-router
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: cube-router-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cube-router
+      app.kubernetes.io/instance: cube-router
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cube-router
+        app.kubernetes.io/instance: cube-router
+        app.kubernetes.io/component: redis
+    spec:
+      imagePullSecrets:
+        - name: huawei-swr
+      containers:
+        - name: redis
+          image: "swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/redis:7-alpine"
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: cube-router-secret
+                  key: REDIS_PASSWORD
+          ports:
+            - name: redis
+              containerPort: 6379
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli -a \"$REDIS_PASSWORD\" ping | grep PONG"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            limits:
+              cpu: 500m
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi
+---
+# Source: cube-router/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cube-router-ingress
+  namespace: cube-router
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: cube-router.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cube-router-app
+                port:
+                  number: 80
+    - host: www.cube-router.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cube-router-app
+                port:
+                  number: 80
+    - host: cuberouter.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cube-router-app
+                port:
+                  number: 80
+    - host: www.cuberouter.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cube-router-app
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - cube-router.com
+        - www.cube-router.com
+        - cuberouter.com
+        - www.cuberouter.com
+      secretName: cube-router-tls
+---
+# Source: cube-router/templates/ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cube-router-docs-ingress
+  namespace: cube-router
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: docs.cube-router.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cube-router-docs
+                port:
+                  number: 80
+    - host: docs.cuberouter.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cube-router-docs
+                port:
+                  number: 80
+  tls:
+    - hosts:
+        - docs.cube-router.com
+        - docs.cuberouter.com
+      secretName: cube-router-docs-tls
