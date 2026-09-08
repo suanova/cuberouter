@@ -1,0 +1,89 @@
+{{- if and .Values.postgresql.enabled (not .Values.postgresql.crunchy.enabled) }}
+{{- $f := include "cube-router.fullname" . }}
+{{- $secretName := include "cube-router.secretName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $f }}-postgresql
+  labels:
+    {{- include "cube-router.selectorLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+spec:
+  selector:
+    {{- include "cube-router.selectorLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+  ports:
+    - name: postgres
+      port: {{ .Values.postgresql.service.port }}
+      targetPort: {{ .Values.postgresql.service.targetPort }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $f }}-postgresql
+  labels:
+    {{- include "cube-router.selectorLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+spec:
+  serviceName: {{ $f }}-postgresql
+  replicas: {{ .Values.postgresql.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "cube-router.selectorLabels" (dict "root" . "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "cube-router.selectorLabels" (dict "root" . "component" "postgresql") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        {{- include "cube-router.imagePullSecrets" . | nindent 8 }}
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: {{ .Values.postgresql.auth.passwordKey }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          {{- if .Values.postgresql.persistence.enabled }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          {{- end }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: {{ .Values.postgresql.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.postgresql.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.postgresql.probes.readiness.failureThreshold }}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: {{ .Values.postgresql.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.postgresql.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.postgresql.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.postgresql.probes.liveness.failureThreshold }}
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+  {{- if .Values.postgresql.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes:
+          {{- toYaml .Values.postgresql.persistence.accessModes | nindent 10 }}
+        {{- if .Values.postgresql.persistence.storageClassName }}
+        storageClassName: {{ .Values.postgresql.persistence.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size }}
+  {{- end }}
+{{- end }}

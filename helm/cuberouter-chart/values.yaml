@@ -1,0 +1,408 @@
+# Default values for cube-router.
+#
+# Layout follows the production cube-router 0.6.0 chart, extended with:
+#   - postgresql.crunchy.*  : HA PostgreSQL via CrunchyData PGO (PostgresCluster CR)
+#   - redis.operator.*      : HA Redis via Spotahome redis-operator (RedisFailover CR)
+#   - postgresql-operator / redis-operator : vendored operator subcharts
+#
+# HA deployment example (see README.md):
+#   helm install cube-router ./helm/cuberouter-chart -n cube-router --create-namespace \
+#     --set postgresql.enabled=false \
+#     --set postgresql.crunchy.enabled=true \
+#     --set postgresql-operator.enabled=true \
+#     --set redis.enabled=false \
+#     --set redis.operator.enabled=true \
+#     --set redis-operator.enabled=true
+
+# ---------------------------------------------------------------------------
+# Naming
+# ---------------------------------------------------------------------------
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  imagePullSecrets:
+    - name: huawei-swr
+
+# ---------------------------------------------------------------------------
+# App configuration (ConfigMap, injected via envFrom)
+# ---------------------------------------------------------------------------
+config:
+  BATCH_UPDATE_ENABLED: "true"
+  ERROR_LOG_ENABLED: "true"
+  NODE_TYPE: master
+  PORT: "3000"
+  TZ: Asia/Shanghai
+  # Additional plain environment variables (name: value)
+  extra: {}
+
+# ---------------------------------------------------------------------------
+# App secret (SQL_DSN / REDIS_CONN_STRING / SESSION_SECRET / CRYPTO_SECRET /
+# REDIS_PASSWORD / POSTGRES_PASSWORD)
+#
+# secret.create=true  : the chart creates the secret. Any secrets.* value left
+#                       empty is generated. Generated values are stable across
+#                       helm upgrades as long as the secret already exists in
+#                       the cluster (read via lookup).
+# secret.create=false : point existingSecret at a pre-created secret that has
+#                       the same keys (0.6.0 production pattern).
+# ---------------------------------------------------------------------------
+secret:
+  create: true
+  existingSecret: ""
+
+secrets:
+  SQL_DSN: ""
+  REDIS_CONN_STRING: ""
+  SESSION_SECRET: ""
+  CRYPTO_SECRET: ""
+  REDIS_PASSWORD: ""
+  POSTGRES_PASSWORD: ""
+
+# ---------------------------------------------------------------------------
+# CubeRouter application
+# ---------------------------------------------------------------------------
+cubeRouter:
+  enabled: true
+  replicaCount: 2
+  revisionHistoryLimit: 5
+  image:
+    repository: swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/searouter
+    tag: v1.1.55-isuanova-agent-release
+    pullPolicy: IfNotPresent
+  containerPort: 3000
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: http
+  persistence:
+    data:
+      enabled: true
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ""
+      mountPath: /data
+    logs:
+      enabled: true
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ""
+      mountPath: /app/logs
+  probes:
+    liveness:
+      path: /api/status
+      initialDelaySeconds: 40
+      periodSeconds: 20
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      path: /api/status
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 6
+    startup:
+      path: /api/status
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 30
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  # Init container that waits for Redis (TCP) and PostgreSQL (auth) before
+  # starting the app container.
+  waitForDependencies:
+    enabled: true
+    image: busybox:1.36
+    # psql client image used to verify database auth (HA mode). Empty means:
+    # reuse the Crunchy cluster image (or the operator related image).
+    databaseImage: ""
+    timeoutSeconds: 600
+  # Additional environment variables (name: value), rendered into the ConfigMap
+  env: {}
+  # Additional raw env entries for the container, e.g.
+  #   - name: STREAMING_TIMEOUT
+  #     value: "300"
+  envVars: []
+  # Optional container command/args overrides (the image entrypoint is used
+  # when empty). Useful for smoke/stub images.
+  command: []
+  args: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Docs site
+# ---------------------------------------------------------------------------
+docs:
+  enabled: true
+  replicaCount: 1
+  revisionHistoryLimit: 5
+  image:
+    repository: swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/searouter-docs
+    tag: v1.1.49-isuanova-agent-release
+    pullPolicy: IfNotPresent
+  containerPort: 80
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: http
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------
+# Autoscaling / disruption
+# ---------------------------------------------------------------------------
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  app:
+    minAvailable: 1
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - cube-router.com
+    - www.cube-router.com
+    - cuberouter.com
+    - www.cuberouter.com
+  tls:
+    enabled: true
+    secretName: cube-router-tls
+  docs:
+    hosts:
+      - docs.cube-router.com
+      - docs.cuberouter.com
+    tls:
+      enabled: true
+      secretName: cube-router-docs-tls
+
+# ---------------------------------------------------------------------------
+# Redis
+#
+# Two mutually exclusive modes:
+#   redis.enabled=true           : standalone single-node StatefulSet (0.6.0)
+#   redis.operator.enabled=true  : HA via Spotahome RedisFailover CR
+# ---------------------------------------------------------------------------
+redis:
+  # --- standalone mode (0.6.0 behaviour) ---
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  service:
+    port: 6379
+    targetPort: redis
+  persistence:
+    enabled: true
+    size: 10Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
+  probes:
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  auth:
+    # Key in the app secret holding the Redis password
+    passwordKey: REDIS_PASSWORD
+
+  # --- HA mode (Spotahome redis-operator) ---
+  operator:
+    enabled: false
+    # Replicas behind the automatically elected primary
+    redisReplicas: 2
+    # Sentinel count (must be odd; quorum = 2 by operator default)
+    sentinelReplicas: 3
+    # The operator reads the password from a Secret with a `password` key
+    # (rendered by this chart at <fullname>-redis-auth).
+    # Extra redis.conf lines, applied at runtime via CONFIG SET
+    redisCustomConfig: []
+      # - "maxmemory 1gb"
+      # - "maxmemory-policy allkeys-lru"
+    # Extra sentinel parameters, applied via SENTINEL SET mymaster <key> <value>
+    sentinelCustomConfig: []
+      # - "down-after-milliseconds 5000"
+    resources:
+      redis:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
+      sentinel:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          cpu: 200m
+          memory: 256Mi
+    persistence:
+      enabled: false
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+      storageClassName: ""
+
+# ---------------------------------------------------------------------------
+# PostgreSQL
+#
+# Two mutually exclusive modes:
+#   postgresql.enabled=true      : standalone single-node StatefulSet (0.6.0)
+#   postgresql.crunchy.enabled=true : HA via Crunchy PostgresCluster CR
+# ---------------------------------------------------------------------------
+postgresql:
+  # --- standalone mode (0.6.0 behaviour) ---
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: swr.ap-southeast-1.myhuaweicloud.com/cloud-mdgx/postgres
+    tag: 15-alpine
+    pullPolicy: IfNotPresent
+  service:
+    port: 5432
+    targetPort: postgres
+  persistence:
+    enabled: true
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+    storageClassName: ""
+  probes:
+    readiness:
+      initialDelaySeconds: 10
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 6
+    liveness:
+      initialDelaySeconds: 30
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 3
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  auth:
+    database: cube_router_db
+    username: cube_router_user
+    # Key in the app secret holding the database password
+    passwordKey: POSTGRES_PASSWORD
+
+  # --- HA mode (CrunchyData PGO) ---
+  crunchy:
+    enabled: false
+    # Postgres major version; must match the image major version
+    postgresVersion: 16
+    # Instance group; replicas >= 2 for HA (Patroni automatic failover)
+    instanceName: instance1
+    replicas: 2
+    # Full corev1 Affinity for the instance pods. Empty = the chart renders a
+    # soft pod anti-affinity that spreads replicas of this cluster across nodes.
+    affinity: {}
+    storage: 20Gi
+    storageClassName: ""
+    # Explicit Postgres image; empty = operator RELATED_IMAGE_POSTGRES_<ver>
+    image: ""
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 4Gi
+    backups:
+      enabled: true
+      # Cron schedule for full pgBackRest backups
+      schedule: "0 2 * * 0"
+      storage: 20Gi
+      storageClassName: ""
+    pgBouncer:
+      enabled: false
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+    # Post-install Job that waits for the cluster, then sets the app role
+    # password (the operator auto-generates passwords, so this chart syncs
+    # the generated/known password onto the role) and grants schema rights.
+    initJob:
+      enabled: true
+      backoffLimit: 10
+      # psql client image; empty = same as crunchy.image (or RELATED image)
+      image: ""
+
+# ---------------------------------------------------------------------------
+# Subcharts: operator control planes
+# ---------------------------------------------------------------------------
+
+# CrunchyData postgres-operator (vendored, v6.0.2)
+postgresql-operator:
+  enabled: false
+  replicas: 1
+  image:
+    repository: registry.developers.crunchydata.com/crunchydata/postgres-operator
+    tag: ubi9-6.0.2-0
+    pullPolicy: IfNotPresent
+  relatedImages: {}
+  resources: {}
+
+# Spotahome redis-operator (vendored, chart 3.3.0 / operator v1.3.0)
+redis-operator:
+  enabled: false
+  image:
+    repository: quay.io/spotahome/redis-operator
+    tag: v1.3.0
+    pullPolicy: IfNotPresent
+  resources: {}

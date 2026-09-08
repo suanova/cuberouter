@@ -1,0 +1,50 @@
+{{- if .Values.docs.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cube-router.fullname" . }}-docs
+  labels:
+    {{- include "cube-router.selectorLabels" (dict "root" . "component" "docs") | nindent 4 }}
+spec:
+  type: {{ .Values.docs.service.type }}
+  selector:
+    {{- include "cube-router.selectorLabels" (dict "root" . "component" "docs") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.docs.service.port }}
+      targetPort: {{ .Values.docs.service.targetPort }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cube-router.fullname" . }}-docs
+  labels:
+    {{- include "cube-router.selectorLabels" (dict "root" . "component" "docs") | nindent 4 }}
+spec:
+  replicas: {{ .Values.docs.replicaCount }}
+  revisionHistoryLimit: {{ .Values.docs.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "cube-router.selectorLabels" (dict "root" . "component" "docs") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        {{- include "cube-router.selectorLabels" (dict "root" . "component" "docs") | nindent 8 }}
+    spec:
+      imagePullSecrets:
+        {{- include "cube-router.imagePullSecrets" . | nindent 8 }}
+      containers:
+        - name: docs
+          image: "{{ .Values.docs.image.repository }}:{{ .Values.docs.image.tag }}"
+          imagePullPolicy: {{ .Values.docs.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.docs.containerPort }}
+          resources:
+            {{- toYaml .Values.docs.resources | nindent 12 }}
+{{- end }}

@@ -1,0 +1,9 @@
+apiVersion: v2
+name: postgresql-operator
+description: CrunchyData Postgres Operator (PGO), vendored from the official postgres-operator v6.0.2 kustomize installer
+type: application
+version: 6.0.2
+appVersion: "6.0.2"
+home: https://github.com/CrunchyData/postgres-operator
+sources:
+  - https://github.com/CrunchyData/postgres-operator/tree/v6.0.2

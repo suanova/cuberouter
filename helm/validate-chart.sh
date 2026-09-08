@@ -3,7 +3,7 @@
 # Usage: helm/validate-chart.sh [path-to-helm-binary]
 set -euo pipefail
 
-CHART_DIR="$(cd "$(dirname "$0")" && pwd)/cuberouter"
+CHART_DIR="$(cd "$(dirname "$0")" && pwd)/cuberouter-chart"
 HELM_BIN="${1:-$(command -v helm || true)}"
 if [[ -z "${HELM_BIN}" ]]; then
   echo "usage: $0 [path-to-helm-binary]" >&2

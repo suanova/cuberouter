@@ -1,0 +1,31 @@
+apiVersion: v2
+name: cube-router
+description: CubeRouter (AI API gateway) with high-availability PostgreSQL (CrunchyData PGO) and Redis (Spotahome redis-operator)
+type: application
+version: 0.7.0
+appVersion: "v1.1.55-isuanova-agent-release"
+home: https://github.com/QuantumNous/new-api
+keywords:
+  - cuberouter
+  - new-api
+  - ai-gateway
+maintainers:
+  - name: suanova
+    url: https://github.com/QuantumNous/new-api
+dependencies:
+  # Vendored from the official CrunchyData postgres-operator v6.0.2 installer.
+  # Installs the PGO control plane + CRDs. The PostgresCluster CR (HA cluster)
+  # is rendered by the parent chart's templates/postgres-cluster.yaml.
+  - name: postgresql-operator
+    version: 6.0.2
+    condition: postgresql-operator.enabled
+    tags:
+      - operator
+  # Vendored from https://github.com/spotahome/redis-operator (chart 3.3.0).
+  # Installs the redis-operator control plane + CRDs. The RedisFailover CR
+  # (HA cluster) is rendered by the parent chart's templates/redis-failover.yaml.
+  - name: redis-operator
+    version: 3.3.0
+    condition: redis-operator.enabled
+    tags:
+      - operator

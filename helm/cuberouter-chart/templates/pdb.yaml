@@ -1,0 +1,13 @@
+{{- if and .Values.pdb.enabled .Values.cubeRouter.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cube-router.fullname" . }}-app-pdb
+  labels:
+    {{- include "cube-router.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.app.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "cube-router.selectorLabels" (dict "root" . "component" "app") | nindent 6 }}
+{{- end }}

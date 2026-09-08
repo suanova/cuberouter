@@ -1,0 +1,52 @@
+{{- if .Values.redis.operator.enabled }}
+{{- $f := include "cube-router.fullname" . }}
+{{- $crName := include "cube-router.redisFailoverName" . }}
+{{- if gt (len $crName) 48 }}
+{{- fail (printf "RedisFailover name %q is longer than 48 characters; shorten the release name or set fullnameOverride" $crName) }}
+{{- end }}
+apiVersion: databases.spotahome.com/v1
+kind: RedisFailover
+metadata:
+  name: {{ $crName }}
+  labels:
+    {{- include "cube-router.labels" . | nindent 4 }}
+spec:
+  auth:
+    secretPath: {{ $crName }}-auth
+  redis:
+    replicas: {{ .Values.redis.operator.redisReplicas }}
+    image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+    {{- with .Values.redis.operator.redisCustomConfig }}
+    customConfig:
+      {{- range . }}
+      - {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    resources:
+      {{- toYaml .Values.redis.operator.resources.redis | nindent 6 }}
+    {{- if .Values.redis.operator.persistence.enabled }}
+    storage:
+      persistentVolumeClaim:
+        metadata:
+          name: {{ $crName }}-data
+        spec:
+          accessModes:
+            {{- toYaml .Values.redis.operator.persistence.accessModes | nindent 12 }}
+          {{- if .Values.redis.operator.persistence.storageClassName }}
+          storageClassName: {{ .Values.redis.operator.persistence.storageClassName }}
+          {{- end }}
+          resources:
+            requests:
+              storage: {{ .Values.redis.operator.persistence.size }}
+    {{- end }}
+  sentinel:
+    replicas: {{ .Values.redis.operator.sentinelReplicas }}
+    {{- with .Values.redis.operator.sentinelCustomConfig }}
+    customConfig:
+      {{- range . }}
+      - {{ . | quote }}
+      {{- end }}
+    {{- end }}
+    resources:
+      {{- toYaml .Values.redis.operator.resources.sentinel | nindent 6 }}
+{{- end }}

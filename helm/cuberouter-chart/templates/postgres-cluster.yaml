@@ -1,0 +1,157 @@
+{{- if .Values.postgresql.crunchy.enabled }}
+{{- $f := include "cube-router.fullname" . }}
+{{- $cluster := include "cube-router.postgresClusterName" . }}
+{{- $user := .Values.postgresql.auth.username }}
+{{- $db := .Values.postgresql.auth.database }}
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: {{ $cluster }}
+  labels:
+    {{- include "cube-router.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.postgresql.crunchy.image }}
+  image: {{ .Values.postgresql.crunchy.image }}
+  {{- end }}
+  postgresVersion: {{ .Values.postgresql.crunchy.postgresVersion }}
+  users:
+    - name: {{ $user }}
+      databases:
+        - {{ $db }}
+  instances:
+    - name: {{ .Values.postgresql.crunchy.instanceName }}
+      replicas: {{ .Values.postgresql.crunchy.replicas }}
+      affinity:
+        {{- if .Values.postgresql.crunchy.affinity }}
+        {{- toYaml .Values.postgresql.crunchy.affinity | nindent 8 }}
+        {{- else }}
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    postgres-operator.crunchydata.com/cluster: {{ $cluster }}
+                topologyKey: kubernetes.io/hostname
+        {{- end }}
+      dataVolumeClaimSpec:
+        accessModes:
+          {{- toYaml (list "ReadWriteOnce") | nindent 10 }}
+        {{- if .Values.postgresql.crunchy.storageClassName }}
+        storageClassName: {{ .Values.postgresql.crunchy.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.crunchy.storage }}
+      resources:
+        {{- toYaml .Values.postgresql.crunchy.resources | nindent 8 }}
+  {{- if .Values.postgresql.crunchy.backups.enabled }}
+  backups:
+    pgbackrest:
+      repoHost:
+        dedicated: {}
+      repos:
+        - name: repo1
+          volume:
+            volumeClaimSpec:
+              accessModes:
+                - ReadWriteOnce
+              {{- if .Values.postgresql.crunchy.backups.storageClassName }}
+              storageClassName: {{ .Values.postgresql.crunchy.backups.storageClassName }}
+              {{- end }}
+              resources:
+                requests:
+                  storage: {{ .Values.postgresql.crunchy.backups.storage }}
+      schedule:
+        full: {{ .Values.postgresql.crunchy.backups.schedule | quote }}
+  {{- end }}
+  {{- if .Values.postgresql.crunchy.pgBouncer.enabled }}
+  proxy:
+    pgBouncer:
+      replicas: {{ .Values.postgresql.crunchy.pgBouncer.replicas }}
+      resources:
+        {{- toYaml .Values.postgresql.crunchy.pgBouncer.resources | nindent 8 }}
+  {{- end }}
+{{- if .Values.postgresql.crunchy.initJob.enabled }}
+---
+{{/*
+Post-install hook: waits for the Crunchy cluster, then syncs the app role
+password (the operator auto-generates passwords, this chart uses its own)
+and grants schema rights. Idempotent; safe to re-run on upgrades.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $cluster }}-init
+  labels:
+    {{- include "cube-router.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    "helm.sh/hook-weight": "10"
+spec:
+  backoffLimit: {{ .Values.postgresql.crunchy.initJob.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "cube-router.selectorLabels" (dict "root" . "component" "postgresql") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      imagePullSecrets:
+        {{- include "cube-router.imagePullSecrets" . | nindent 8 }}
+      containers:
+        - name: init
+          image: {{ .Values.postgresql.crunchy.initJob.image | default (include "cube-router.postgresImage" .) }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: {{ $cluster }}-primary
+            - name: PGUSER
+              value: postgres
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $cluster }}-pguser-postgres
+                  key: password
+            - name: APP_USER
+              value: {{ $user }}
+            - name: APP_DB
+              value: {{ $db }}
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cube-router.secretName" . }}
+                  key: {{ .Values.postgresql.auth.passwordKey }}
+          command:
+            - bash
+            - -ec
+            - |
+              echo "waiting for postgres primary ${PGHOST} ..."
+              for _ in $(seq 1 300); do
+                if pg_isready -q -h "$PGHOST" -U "$PGUSER"; then
+                  break
+                fi
+                sleep 2
+              done
+              pg_isready -q -h "$PGHOST" -U "$PGUSER" || { echo "postgres did not become ready in time"; exit 1; }
+
+              psql_admin() { psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U "$PGUSER" "$@"; }
+
+              if [ -z "$(psql_admin -tA -c "SELECT 1 FROM pg_roles WHERE rolname = '$APP_USER'")" ]; then
+                echo "creating role $APP_USER"
+                psql_admin -c "CREATE ROLE \"$APP_USER\" LOGIN"
+              fi
+              echo "syncing password for role $APP_USER"
+              psql_admin -c "ALTER ROLE \"$APP_USER\" WITH PASSWORD '$APP_PASSWORD'"
+
+              if [ -z "$(psql_admin -tA -c "SELECT 1 FROM pg_database WHERE datname = '$APP_DB'")" ]; then
+                echo "creating database $APP_DB"
+                psql_admin -c "CREATE DATABASE \"$APP_DB\" OWNER \"$APP_USER\""
+              fi
+
+              psql_admin -d "$APP_DB" -c "GRANT ALL ON SCHEMA public TO \"$APP_USER\""
+              psql_admin -d "$APP_DB" -c "ALTER SCHEMA public OWNER TO \"$APP_USER\""
+
+              echo "postgres initialization complete"
+{{- end }}
+{{- end }}
