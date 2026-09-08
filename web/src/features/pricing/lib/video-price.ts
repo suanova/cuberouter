@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+
 import type { OffPeakWindow } from '../types'
 
 // ----------------------------------------------------------------------------
@@ -34,13 +36,50 @@ export function formatOffPeakHour(hour: number): string {
 }
 
 /**
- * Format a per-second video price for display. Admin-configured ¥/s values are
- * shown verbatim (no coefficients, no rounding): JSON numbers round-trip to
- * their shortest decimal form, so String() reproduces the stored value.
+ * Stringify a per-second video price number for display. The caller is
+ * responsible for any currency conversion/rounding: this helper only renders
+ * the shortest decimal form of a finite number (no symbol, no "/s" unit).
  */
 export function formatVideoPrice(value: number): string {
   if (!Number.isFinite(value)) return MISSING_VALUE
   return String(value)
+}
+
+/**
+ * Video per-second price display precision: values ≥ 1 keep up to 4 fraction
+ * digits, smaller values up to 6 — the same convention as the usage-logs
+ * price columns, so small USD/s rates such as 0.1027 never collapse to 0.
+ */
+const VIDEO_PRICE_FORMAT_OPTIONS = {
+  digitsLarge: 4,
+  digitsSmall: 6,
+  abbreviate: false,
+} as const
+
+export type VideoPriceMoneyOptions = {
+  /**
+   * Whether to include the currency symbol. Pass false when the column header
+   * already carries the symbol and the "/s" unit (numeric-only cell).
+   */
+  showSymbol?: boolean
+}
+
+/**
+ * Convert a per-second video price stored as USD/s to the site display
+ * currency and format it (single conversion; e.g. CNY/rate 7.3 turns 0.75
+ * into "¥5.475"). Falls back to a placeholder for non-finite values.
+ */
+export function formatVideoPriceMoney(
+  usdPerSecond: number | null | undefined,
+  options?: VideoPriceMoneyOptions
+): string {
+  if (usdPerSecond == null || !Number.isFinite(usdPerSecond)) {
+    return MISSING_VALUE
+  }
+  return formatBillingCurrencyFromUSD(usdPerSecond, {
+    ...VIDEO_PRICE_FORMAT_OPTIONS,
+    showSymbol: options?.showSymbol ?? true,
+  })
 }
 
 export type OffPeakWindowLabel = {

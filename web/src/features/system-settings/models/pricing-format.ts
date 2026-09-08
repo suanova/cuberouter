@@ -52,6 +52,8 @@ function snapFloatDrift(value: number): number {
   return value
 }
 
+// 归整展示串:≥1e-12 量级(12 位小数内)保真;更小量级(< ~5e-13)会被 toFixed(12)
+// 归为 "0" —— 现实定价不可达。结果经 parseFloat 修剪尾零,不是字符串级恒等。
 export function formatPricingNumber(value: unknown): string {
   const num = toNumberOrNull(value)
   if (num === null) return ''

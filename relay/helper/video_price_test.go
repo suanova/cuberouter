@@ -25,7 +25,7 @@ func beijing(layout, value string) time.Time {
 	return t
 }
 
-// seedVideoPrice 写入与 vidu 价目表一致的管理员配置(分辨率 × 正常/错峰 ¥/秒)。
+// seedVideoPrice 写入与 vidu 价目表一致的管理员配置(分辨率 × 正常/错峰 USD/s)。
 func seedVideoPrice(t *testing.T) {
 	t.Helper()
 	err := ratio_setting.UpdateVideoPriceByJSONString(`{

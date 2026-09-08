@@ -16,17 +16,44 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { expect } from 'vitest'
-import { describe, test } from 'vitest'
+import { beforeEach, describe, expect, test } from 'vitest'
+
+import {
+  DEFAULT_CURRENCY_CONFIG,
+  useSystemConfigStore,
+  type CurrencyDisplayType,
+} from '@/stores/system-config-store'
 
 import {
   formatOffPeakHour,
   formatVideoPrice,
+  formatVideoPriceMoney,
   getOffPeakWindowLabel,
 } from '../video-price'
 
+// 注水 store 的 currency,与 pricing-currency.test.ts 同款(字段以真实类型为准)。
+function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
+  useSystemConfigStore.setState((state) => ({
+    config: {
+      ...state.config,
+      currency: {
+        ...DEFAULT_CURRENCY_CONFIG,
+        quotaDisplayType: type,
+        usdExchangeRate: rate,
+        customCurrencyExchangeRate: rate,
+      },
+    },
+  }))
+}
+
+beforeEach(() => {
+  useSystemConfigStore.setState((state) => ({
+    config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
+  }))
+})
+
 describe('formatVideoPrice', () => {
-  test('renders configured values verbatim without trailing zeros', () => {
+  test('renders an already-converted display value verbatim without trailing zeros', () => {
     expect(formatVideoPrice(0.75)).toBe('0.75')
     expect(formatVideoPrice(0.375)).toBe('0.375')
     expect(formatVideoPrice(0.625)).toBe('0.625')
@@ -38,6 +65,64 @@ describe('formatVideoPrice', () => {
   test('falls back to a placeholder for non-finite values', () => {
     expect(formatVideoPrice(Number.NaN)).toBe('—')
     expect(formatVideoPrice(Number.POSITIVE_INFINITY)).toBe('—')
+  })
+})
+
+describe('formatVideoPriceMoney(USD/s 随站点展示货币)', () => {
+  test('USD 显示模式:数值即存储的 USD/s 原值,不被汇率缩放', () => {
+    expect(formatVideoPriceMoney(0.75)).toBe('$0.75')
+    expect(formatVideoPriceMoney(0.1027)).toBe('$0.1027')
+    expect(formatVideoPriceMoney(0.375)).toBe('$0.375')
+  })
+
+  test('CNY/7.3:USD/s 0.75 → 本地 ¥5.475(≈¥5.48/s 数量级),符号随货币', () => {
+    seedDisplayCurrency('CNY', 7.3)
+    expect(formatVideoPriceMoney(0.75)).toBe('¥5.475')
+    expect(formatVideoPriceMoney(1)).toBe('¥7.3')
+  })
+
+  test('CNY 存量往返:legacy ¥0.75/s 迁移为 USD/s 后再展示回到 ¥0.75', () => {
+    seedDisplayCurrency('CNY', 7.3)
+    expect(formatVideoPriceMoney(0.75 / 7.3)).toBe('¥0.75')
+  })
+
+  test('小值保留:0.1027 USD/s 不会被格式化成 0', () => {
+    expect(formatVideoPriceMoney(0.1027)).toBe('$0.1027')
+    seedDisplayCurrency('CNY', 7.3)
+    // 0.1027 × 7.3 = 0.74971,digitsSmall 6 保留
+    expect(formatVideoPriceMoney(0.1027)).toBe('¥0.74971')
+  })
+
+  test('showSymbol:false 只出换算后的数值(表头已含符号与 /s)', () => {
+    expect(formatVideoPriceMoney(0.75, { showSymbol: false })).toBe('0.75')
+    seedDisplayCurrency('CNY', 7.3)
+    expect(formatVideoPriceMoney(0.75, { showSymbol: false })).toBe('5.475')
+  })
+
+  test('TOKENS 展示模式回落美元语义($/rate 1)', () => {
+    seedDisplayCurrency('TOKENS', 7.3)
+    expect(formatVideoPriceMoney(0.75)).toBe('$0.75')
+  })
+
+  test('CUSTOM 展示模式用自定义符号与汇率', () => {
+    useSystemConfigStore.setState((state) => ({
+      config: {
+        ...state.config,
+        currency: {
+          ...DEFAULT_CURRENCY_CONFIG,
+          quotaDisplayType: 'CUSTOM',
+          customCurrencySymbol: '₩',
+          customCurrencyExchangeRate: 1300,
+        },
+      },
+    }))
+    expect(formatVideoPriceMoney(0.75)).toBe('₩ 975')
+  })
+
+  test('非有限值/缺省值回退占位符', () => {
+    expect(formatVideoPriceMoney(Number.NaN)).toBe('—')
+    expect(formatVideoPriceMoney(null)).toBe('—')
+    expect(formatVideoPriceMoney(undefined)).toBe('—')
   })
 })
 

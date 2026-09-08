@@ -18,9 +18,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-expr'
 import type { VideoPrice, VideoPriceTable } from '@/features/pricing/types'
+import {
+  formatBillingCurrencyFromUSD,
+  getBillingCurrency,
+} from '@/lib/currency'
 
 import { safeJsonParse } from '../utils/json-parser'
-import { formatPricingNumber } from './pricing-format'
 
 export type ModelPricingSnapshotInput = {
   modelPrice: string
@@ -78,11 +81,21 @@ const toNumberOrNull = (value?: string) => {
   return Number.isFinite(num) ? num : null
 }
 
-const ratioToPrice = (ratio?: string, denominator?: string) => {
+/**
+ * 摘要/细节里的金额统一走 formatBillingCurrencyFromUSD:
+ * 这里仍以美元数做倍率算术(ratio 无量纲,×$2/1M 基准或主价),格式化一次交给换算出口。
+ * 精度与 usage-logs/dynamic-price 一致(digitsLarge 4 / digitsSmall 6)。
+ */
+const SNAPSHOT_PRICE_OPTIONS = { digitsLarge: 4, digitsSmall: 6 }
+
+const formatPriceUsd = (usd: number | null) =>
+  formatBillingCurrencyFromUSD(usd, SNAPSHOT_PRICE_OPTIONS)
+
+/** ratio × 美元基准($2/1M,或传入的主价美元数)得到该 lane 的美元价。 */
+const ratioToPrice = (ratio?: string, baseUsd?: number): number | null => {
   const ratioNumber = toNumberOrNull(ratio)
-  const denominatorNumber = denominator ? toNumberOrNull(denominator) : 2
-  if (ratioNumber === null || denominatorNumber === null) return ''
-  return formatPricingNumber(ratioNumber * denominatorNumber)
+  if (ratioNumber === null) return null
+  return ratioNumber * (baseUsd ?? 2)
 }
 
 export const getModeLabel = (mode?: string) => {
@@ -114,7 +127,7 @@ const getExpressionSummary = (
 
 export const getPriceSummary = (
   row: ModelPricingSnapshot,
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, string>) => string
 ) => {
   if (row.billingMode === 'tiered_expr') {
     return getExpressionSummary(row, t)
@@ -123,11 +136,13 @@ export const getPriceSummary = (
     return t('Video per second')
   }
   if (row.billingMode === 'per-request') {
-    return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
+    return row.price
+      ? `${formatPriceUsd(toNumberOrNull(row.price))} / ${t('request')}`
+      : t('Unset price')
   }
 
-  const inputPrice = ratioToPrice(row.ratio)
-  if (!inputPrice) return t('Unset price')
+  const inputPriceUsd = ratioToPrice(row.ratio)
+  if (inputPriceUsd === null) return t('Unset price')
 
   const extraCount = [
     row.completionRatio,
@@ -139,13 +154,15 @@ export const getPriceSummary = (
   ].filter(hasPricingValue).length
 
   return extraCount > 0
-    ? `${t('Input')} $${inputPrice} · ${extraCount} ${t('extras')}`
-    : `${t('Input')} $${inputPrice}`
+    ? `${t('Input')} ${formatPriceUsd(inputPriceUsd)} · ${extraCount} ${t(
+        'extras'
+      )}`
+    : `${t('Input')} ${formatPriceUsd(inputPriceUsd)}`
 }
 
 export const getPriceDetail = (
   row: ModelPricingSnapshot,
-  t: (key: string) => string
+  t: (key: string, options?: Record<string, string>) => string
 ) => {
   if (row.billingMode === 'tiered_expr') {
     return row.requestRuleExpr
@@ -153,23 +170,28 @@ export const getPriceDetail = (
       : t('Expression based')
   }
   if (row.billingMode === 'video-per-second') {
-    return t('Video price (¥/s)')
+    // 视频按秒单价:列表只标单位符号,金额由视频表/用户侧另行展示
+    return t('Video price ({{symbol}}/s)', {
+      symbol: getBillingCurrency().symbol,
+    })
   }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
   }
 
-  const inputPrice = ratioToPrice(row.ratio)
-  if (!inputPrice) return t('No base input price')
+  const inputPriceUsd = ratioToPrice(row.ratio)
+  if (inputPriceUsd === null) return t('No base input price')
 
   const details = [
-    row.completionRatio &&
-      `${t('Output')} $${ratioToPrice(row.completionRatio, inputPrice)}`,
-    row.cacheRatio &&
-      `${t('Cache')} $${ratioToPrice(row.cacheRatio, inputPrice)}`,
-    row.createCacheRatio &&
-      `${t('Cache write')} $${ratioToPrice(row.createCacheRatio, inputPrice)}`,
+    { ratio: row.completionRatio, label: t('Output') },
+    { ratio: row.cacheRatio, label: t('Cache') },
+    { ratio: row.createCacheRatio, label: t('Cache write') },
   ]
+    .map(({ ratio, label }) => {
+      if (!hasPricingValue(ratio)) return ''
+      const priceUsd = ratioToPrice(ratio, inputPriceUsd)
+      return priceUsd === null ? '' : `${label} ${formatPriceUsd(priceUsd)}`
+    })
     .filter(Boolean)
     .slice(0, 2)
 

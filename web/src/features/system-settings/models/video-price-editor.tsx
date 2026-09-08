@@ -29,8 +29,9 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import type { VideoPriceTable } from '@/features/pricing/types'
+import { getBillingCurrency } from '@/lib/currency'
 
-import { numericDraftRegex } from './model-pricing-core'
+import { numericDraftRegex, usdPriceToDisplay } from './model-pricing-core'
 import {
   addVideoPriceRowDraft,
   removeVideoPriceRowDraft,
@@ -50,6 +51,7 @@ export const VideoPriceEditor = function VideoPriceEditor(
   props: VideoPriceEditorProps
 ) {
   const { t } = useTranslation()
+  const currencySymbol = getBillingCurrency().symbol
   const [drafts, setDrafts] = useState<VideoPriceRowDraft[]>(() =>
     videoPriceDraftsFromTable(props.table)
   )
@@ -84,10 +86,10 @@ export const VideoPriceEditor = function VideoPriceEditor(
             {t('Resolution')}
           </span>
           <span className='text-muted-foreground text-xs'>
-            {t('Video price (¥/s)')}
+            {t('Video price ({{symbol}}/s)', { symbol: currencySymbol })}
           </span>
           <span className='text-muted-foreground text-xs'>
-            {t('Off-peak price (¥/s)')}
+            {t('Off-peak price ({{symbol}}/s)', { symbol: currencySymbol })}
           </span>
           <span />
         </div>
@@ -101,11 +103,11 @@ export const VideoPriceEditor = function VideoPriceEditor(
               }
             />
             <InputGroup>
-              <InputGroupAddon>¥</InputGroupAddon>
+              <InputGroupAddon>{currencySymbol}</InputGroupAddon>
               <InputGroupInput
                 inputMode='decimal'
                 value={draft.normalPrice}
-                placeholder='0.75'
+                placeholder={usdPriceToDisplay(0.75)}
                 onChange={(event) => {
                   const value = event.target.value
                   if (numericDraftRegex.test(value)) {
@@ -115,11 +117,11 @@ export const VideoPriceEditor = function VideoPriceEditor(
               />
             </InputGroup>
             <InputGroup>
-              <InputGroupAddon>¥</InputGroupAddon>
+              <InputGroupAddon>{currencySymbol}</InputGroupAddon>
               <InputGroupInput
                 inputMode='decimal'
                 value={draft.offPeakPrice}
-                placeholder='0.375'
+                placeholder={usdPriceToDisplay(0.375)}
                 onChange={(event) => {
                   const value = event.target.value
                   if (numericDraftRegex.test(value)) {

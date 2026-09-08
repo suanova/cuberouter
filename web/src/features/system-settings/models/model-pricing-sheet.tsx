@@ -68,12 +68,15 @@ import {
   generateTaskExprFromConfig,
 } from '@/features/pricing/lib/task-expr'
 import type { VideoPriceTable } from '@/features/pricing/types'
+import { getBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
+  basePriceToRatio,
   buildPreviewRows,
+  buildPricingSubmitData,
   createInitialLaneState,
   createModelPricingSchema,
   getInitialPricingMode,
@@ -82,6 +85,7 @@ import {
   numericDraftRegex,
   ratioFieldByLane,
   toNumberOrNull,
+  usdPriceToDisplay,
   type LaneKey,
   type ModelPricingFormValues,
   type ModelRatioData,
@@ -157,6 +161,7 @@ export const ModelPricingEditorPanel = forwardRef<
   ref
 ) {
   const { t } = useTranslation()
+  const currencySymbol = getBillingCurrency().symbol
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
   const [videoPriceTable, setVideoPriceTable] = useState<VideoPriceTable>({
     rows: [],
@@ -232,9 +237,12 @@ export const ModelPricingEditorPanel = forwardRef<
     const nextLaneState = createInitialLaneState(editData)
 
     if (editData) {
+      // 编辑态数值字段一律为显示货币:price(美元单价)换算后进表单;ratio 家族为倍率原样保留
       form.reset({
         name: editData.name,
-        price: editData.price || '',
+        price: editData.price
+          ? usdPriceToDisplay(Number(editData.price))
+          : '',
         ratio: editData.ratio || '',
         cacheRatio: editData.cacheRatio || '',
         createCacheRatio: editData.createCacheRatio || '',
@@ -324,11 +332,9 @@ export const ModelPricingEditorPanel = forwardRef<
     nextLanePrices = lanePrices,
     nextLaneEnabled = laneEnabled
   ) => {
-    const inputPrice = toNumberOrNull(nextPromptPrice)
-    setFormValue(
-      'ratio',
-      inputPrice !== null ? formatPricingNumber(inputPrice / 2) : ''
-    )
+    // 基准 ratio 推导收敛到 core 换算边界(显示主价 → USD → ÷$2 基准),
+    // 落库倍率与 USD 模式推导一致(汇率无关),由 basePriceToRatio 单测 pin。
+    setFormValue('ratio', basePriceToRatio(nextPromptPrice))
 
     laneConfigs.forEach(({ key }) => {
       const ratioField = ratioFieldByLane[key]
@@ -512,31 +518,13 @@ export const ModelPricingEditorPanel = forwardRef<
   }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
   const buildSubmitData = useCallback(
-    (values: ModelPricingFormValues) => {
-      const data: ModelRatioData = {
-        name: values.name.trim(),
-        billingMode: pricingMode,
-        price: values.price || '',
-        ratio: values.ratio || '',
-        cacheRatio: values.cacheRatio || '',
-        createCacheRatio: values.createCacheRatio || '',
-        completionRatio: values.completionRatio || '',
-        imageRatio: values.imageRatio || '',
-        audioRatio: values.audioRatio || '',
-        audioCompletionRatio: values.audioCompletionRatio || '',
-      }
-
-      if (pricingMode === 'tiered_expr') {
-        data.billingExpr = resolvedBillingExpr
-        data.requestRuleExpr = requestRuleExpr
-      }
-
-      if (pricingMode === 'video-per-second') {
-        data.videoPrices = videoPriceTable
-      }
-
-      return data
-    },
+    (values: ModelPricingFormValues) =>
+      // 提交组装统一走 core 的换算出口(price 显示货币 → USD 落库)
+      buildPricingSubmitData(values, pricingMode, {
+        billingExpr: resolvedBillingExpr,
+        requestRuleExpr,
+        videoPrices: videoPriceTable,
+      }),
     [pricingMode, requestRuleExpr, resolvedBillingExpr, videoPriceTable]
   )
 
@@ -668,11 +656,13 @@ export const ModelPricingEditorPanel = forwardRef<
                         <FieldLabel>{t('Input price')}</FieldLabel>
                         <PriceInput
                           value={promptPrice}
-                          placeholder='3'
+                          placeholder={usdPriceToDisplay(3)}
                           onChange={handlePromptPriceChange}
                         />
                         <FieldDescription>
-                          {t('USD price per 1M input tokens.')}
+                          {t('Price in {{symbol}} per 1M tokens.', {
+                            symbol: currencySymbol,
+                          })}
                         </FieldDescription>
                       </Field>
 
@@ -687,7 +677,9 @@ export const ModelPricingEditorPanel = forwardRef<
                               key={lane.key}
                               title={t(lane.titleKey)}
                               description={t(lane.descriptionKey)}
-                              placeholder={lane.placeholder}
+                              placeholder={usdPriceToDisplay(
+                                Number(lane.placeholder)
+                              )}
                               value={lanePrices[lane.key]}
                               enabled={laneEnabled[lane.key]}
                               disabled={disabled}
@@ -715,10 +707,10 @@ export const ModelPricingEditorPanel = forwardRef<
                               <FieldLabel>{t('Fixed price')}</FieldLabel>
                               <FormControl>
                                 <InputGroup>
-                                  <InputGroupAddon>$</InputGroupAddon>
+                                  <InputGroupAddon>{currencySymbol}</InputGroupAddon>
                                   <InputGroupInput
                                     inputMode='decimal'
-                                    placeholder='0.01'
+                                    placeholder={usdPriceToDisplay(0.01)}
                                     {...field}
                                     onChange={(event) => {
                                       const value = event.target.value
@@ -734,7 +726,8 @@ export const ModelPricingEditorPanel = forwardRef<
                               </FormControl>
                               <FieldDescription>
                                 {t(
-                                  'Cost in USD per request, regardless of tokens used.'
+                                  'Cost in {{symbol}} per request, regardless of tokens used.',
+                                  { symbol: currencySymbol }
                                 )}
                               </FieldDescription>
                               <FormMessage />

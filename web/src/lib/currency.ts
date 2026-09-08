@@ -130,6 +130,12 @@ type DisplayMeta =
       quotaPerUnit: number
     }
 
+/**
+ * getBillingDisplayMeta 的实际返回:currency/custom 分支
+ * (tokens 分支已在其中回落到 currency)。
+ */
+type BillingDisplayMeta = Extract<DisplayMeta, { exchangeRate: number }>
+
 const DEFAULT_FORMAT_OPTIONS: ResolvedCurrencyFormatOptions = {
   digitsLarge: 2,
   digitsSmall: 4,
@@ -215,7 +221,7 @@ function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
   }
 }
 
-function getBillingDisplayMeta(config: CurrencyConfig): DisplayMeta {
+function getBillingDisplayMeta(config: CurrencyConfig): BillingDisplayMeta {
   const meta = getDisplayMeta(config)
   if (meta.kind === 'tokens') {
     return {
@@ -634,4 +640,30 @@ export function formatLocalCurrencyAmount(
   const merged = mergeOptions(options)
 
   return formatCurrencyValue(amount, merged, meta)
+}
+
+export type BillingCurrencyMeta = {
+  kind: 'currency' | 'custom'
+  symbol: string
+  exchangeRate: number
+}
+
+/** 定价/计费语境下的货币元信息:TOKENS 显示模式回落美元($, rate=1)。 */
+export function getBillingCurrency(): BillingCurrencyMeta {
+  const meta = getBillingDisplayMeta(getConfig())
+  return {
+    kind: meta.kind,
+    symbol: meta.symbol,
+    exchangeRate: meta.exchangeRate > 0 ? meta.exchangeRate : 1,
+  }
+}
+
+/** 美元 → 本地货币数值(仅换算,不格式化)。 */
+export function usdToLocalNumber(usd: number): number {
+  return usd * getBillingCurrency().exchangeRate
+}
+
+/** 本地货币 → 美元数值(仅换算,不格式化)。 */
+export function localToUsdNumber(local: number): number {
+  return local / getBillingCurrency().exchangeRate
 }

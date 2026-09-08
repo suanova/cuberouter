@@ -279,8 +279,8 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 
 func TestModelPriceHelperPerCallVideoTablePriority(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	// 视频按秒定价:模型配置视频价格表后,按次计费以锚点(最高 normal 价)¥/秒 → USD
-	// per-call 定价,优先于模型价格/倍率;系数(分辨率/错峰)由适配器按表推导。
+	// 视频按秒定价:模型配置视频价格表后,按次计费以锚点(最高 normal 价)USD/s 作为
+	// per-call 价格,优先于模型价格/倍率;系数(分辨率/错峰)由适配器按表推导。
 	require.NoError(t, ratio_setting.UpdateVideoPriceByJSONString(`{
 		"video-price-percall-model": {"rows": [
 			{"resolution":"1080p","normal_price":0.75,"off_peak_price":0.375},
@@ -299,10 +299,9 @@ func TestModelPriceHelperPerCallVideoTablePriority(t *testing.T) {
 	require.NoError(t, err)
 	// 设置断言后继续检查后续字段,任一失败不中断其余断言
 	assert.True(t, priceData.UsePrice)
-	// InDelta:常量折叠(0.75/7.3)与运行时浮点除法(锚点/7.3)存在 1 ULP 差异
-	assert.InDelta(t, 0.75/ratio_setting.USD2RMB, priceData.ModelPrice, 1e-12)
-	// 锚点 0.75 ¥/秒 ÷ 7.3 × QuotaPerUnit(500000) × groupRatio 1.0 → 51369(截断)
-	assert.Equal(t, 51369, priceData.Quota)
+	assert.InDelta(t, 0.75, priceData.ModelPrice, 1e-12)
+	// 锚点 0.75 USD/s × QuotaPerUnit(500000) × groupRatio 1.0 → 375000(截断)
+	assert.Equal(t, 375000, priceData.Quota)
 }
 
 // Pricing at controller/relay.go runs before ApplyReasoningModelSuffix.
