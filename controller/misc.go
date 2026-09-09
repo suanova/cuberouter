@@ -181,38 +181,22 @@ func GetNotice(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	notice := common.OptionMap["Notice"]
 	common.OptionMapRWMutex.RUnlock()
-	serveRevalidatedJSON(c, gin.H{
-		"success": true,
-		"message": "",
-		"data":    notice,
-	})
+	serveRevalidatedJSON(c, notice)
 }
 
 func GetAbout(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	about := common.OptionMap["About"]
 	common.OptionMapRWMutex.RUnlock()
-	serveRevalidatedJSON(c, gin.H{
-		"success": true,
-		"message": "",
-		"data":    about,
-	})
+	serveRevalidatedJSON(c, about)
 }
 
 func GetUserAgreement(c *gin.Context) {
-	serveRevalidatedJSON(c, gin.H{
-		"success": true,
-		"message": "",
-		"data":    system_setting.GetLegalSettings().UserAgreement,
-	})
+	serveRevalidatedJSON(c, system_setting.GetLegalSettings().UserAgreement)
 }
 
 func GetPrivacyPolicy(c *gin.Context) {
-	serveRevalidatedJSON(c, gin.H{
-		"success": true,
-		"message": "",
-		"data":    system_setting.GetLegalSettings().PrivacyPolicy,
-	})
+	serveRevalidatedJSON(c, system_setting.GetLegalSettings().PrivacyPolicy)
 }
 
 func GetMidjourney(c *gin.Context) {
@@ -230,11 +214,7 @@ func GetHomePageContent(c *gin.Context) {
 	common.OptionMapRWMutex.RLock()
 	homePageContent := common.OptionMap["HomePageContent"]
 	common.OptionMapRWMutex.RUnlock()
-	serveRevalidatedJSON(c, gin.H{
-		"success": true,
-		"message": "",
-		"data":    homePageContent,
-	})
+	serveRevalidatedJSON(c, homePageContent)
 }
 
 func SendEmailVerification(c *gin.Context) {
