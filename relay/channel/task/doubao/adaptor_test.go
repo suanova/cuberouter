@@ -405,6 +405,18 @@ func TestEstimateBillingVideoTableWinsOverStatic(t *testing.T) {
 		assert.Equal(t, map[string]float64{"video_input": 31.0 / 46.0}, got)
 	})
 
+	t.Run("static_size_only_resolves_tier", func(t *testing.T) {
+		// 无按秒表 + 仅传 OpenAI size + 视频输入:分辨率归一 1080p 后静态表
+		// 应选 31/46,与 convert 转发给上游的档位一致(CodeRabbit Major 回归)。
+		sizeOnly := req
+		sizeOnly.Resolution = ""
+		sizeOnly.Size = "1920x1080"
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", sizeOnly)
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		assert.Equal(t, map[string]float64{"video_input": 31.0 / 46.0}, got)
+	})
+
 	t.Run("static_no_video_input_nil", func(t *testing.T) {
 		noVideo := req
 		noVideo.Content = nil

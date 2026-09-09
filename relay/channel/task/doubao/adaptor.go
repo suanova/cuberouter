@@ -143,9 +143,15 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 		return nil
 	}
 	hasVideo := hasVideoReference(&req)
-	resolution := req.Resolution
+	// 与 convertToRequestPayload 的分辨率优先级一致:metadata > 顶层 > size 归一,
+	// 否则 size-only 请求(convert 已把 1920x1080 归一为 1080p 发给上游)在静态表
+	// 里选不到对应档位。
+	resolution, _ := req.Metadata["resolution"].(string)
 	if resolution == "" {
-		resolution, _ = req.Metadata["resolution"].(string)
+		resolution = req.Resolution
+	}
+	if resolution == "" {
+		resolution = helper.VideoResolutionTier(req.Size)
 	}
 	ratio, ok := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
 	if !ok || ratio == 1.0 {
