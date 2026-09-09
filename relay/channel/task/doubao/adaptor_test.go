@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -363,4 +364,114 @@ func TestParseResponseArkSubmitShape(t *testing.T) {
 	// 原始上游响应原样缓存为 TaskData，供轮询阶段解析；客户端未收到任何写入。
 	assert.Contains(t, string(submitResp.TaskData), "upstream_456")
 	assert.Empty(t, recorder.Body.String())
+}
+
+// TestEstimateBillingVideoTableWinsOverStatic 锁定估算优先级:模型配置了视频
+// 按秒表时表系数全权接管(table-wins,与 JS 插件任务适配器语义一致),不再叠加
+// 内置 video_input 静态倍率;清表后静态逻辑按原行为回归。
+func TestEstimateBillingVideoTableWinsOverStatic(t *testing.T) {
+	const model = "doubao-seedance-2-0-260128"
+	adaptor := &TaskAdaptor{}
+	req := relaycommon.TaskSubmitReq{
+		Model:      model,
+		Duration:   10,
+		Resolution: "1080p",
+		Content: []relaycommon.TaskContentItem{
+			{Type: "video_url", VideoURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr("https://example.com/ref.mp4")}},
+		},
+	}
+
+	t.Run("table_wins_over_static_video_input", func(t *testing.T) {
+		err := ratio_setting.UpdateVideoPriceByJSONString(`{
+		  "doubao-seedance-2-0-260128": {"rows": [
+		    {"resolution":"1080p","normal_price":1.0,"off_peak_price":1.0},
+		    {"resolution":"720p","normal_price":0.8,"off_peak_price":0.8}]}
+		}`)
+		require.NoError(t, err)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", req)
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		// 命中表:seconds 系数(1080p 为锚点行无 size 系数),不含 video_input。
+		assert.Equal(t, map[string]float64{"seconds": 10}, got)
+	})
+
+	t.Run("static_video_input_fallback_when_no_table", func(t *testing.T) {
+		err := ratio_setting.UpdateVideoPriceByJSONString(`{}`)
+		require.NoError(t, err)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", req)
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		// 1080p + 视频输入 → 31.0/46.0(内置表的既有语义不回归)。
+		assert.Equal(t, map[string]float64{"video_input": 31.0 / 46.0}, got)
+	})
+
+	t.Run("static_size_only_resolves_tier", func(t *testing.T) {
+		// 无按秒表 + 仅传 OpenAI size + 视频输入:分辨率归一 1080p 后静态表
+		// 应选 31/46,与 convert 转发给上游的档位一致(CodeRabbit Major 回归)。
+		sizeOnly := req
+		sizeOnly.Resolution = ""
+		sizeOnly.Size = "1920x1080"
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", sizeOnly)
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		assert.Equal(t, map[string]float64{"video_input": 31.0 / 46.0}, got)
+	})
+
+	t.Run("static_no_video_input_nil", func(t *testing.T) {
+		noVideo := req
+		noVideo.Content = nil
+		noVideo.Resolution = "720p" // 720p 非视频输入 = 基准价 46,比率 1.0 → nil
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", noVideo)
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		assert.Nil(t, got)
+	})
+}
+
+// TestConvertToRequestPayloadResolutionFromSize 锁定 OpenAI 风格 size 归一:
+// 仅当 metadata 与顶层 resolution 均缺省时,size 归一到档位写入上游 resolution。
+func TestConvertToRequestPayloadResolutionFromSize(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	tests := []struct {
+		name string
+		req  relaycommon.TaskSubmitReq
+		want string
+	}{
+		{
+			name: "size_pixels_to_1080p",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-0-260128", Prompt: "x", Size: "1920x1080"},
+			want: "1080p",
+		},
+		{
+			name: "size_4k",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-0-260128", Prompt: "x", Size: "3840x2160"},
+			want: "4k",
+		},
+		{
+			name: "top_resolution_wins_over_size",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-0-260128", Prompt: "x", Resolution: "720p", Size: "1920x1080"},
+			want: "720p",
+		},
+		{
+			name: "metadata_resolution_wins_over_top_and_size",
+			req: relaycommon.TaskSubmitReq{
+				Model: "doubao-seedance-2-0-260128", Prompt: "x", Resolution: "720p", Size: "1920x1080",
+				Metadata: map[string]interface{}{"resolution": "540p"},
+			},
+			want: "540p",
+		},
+		{
+			name: "garbage_size_keeps_empty",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-0-260128", Prompt: "x", Size: "fhd"},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := adaptor.convertToRequestPayload(&tt.req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, body.Resolution)
+		})
+	}
 }

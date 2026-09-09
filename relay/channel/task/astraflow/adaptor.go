@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
 
@@ -104,6 +105,13 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 	a.ChannelType = info.ChannelType
 	a.baseURL = info.ChannelBaseUrl
 	a.apiKey = info.ApiKey
+}
+
+// EstimateBilling 模型命中视频按秒表时按请求推导计费系数(seconds/size/time,
+// 与 JS 插件任务适配器语义一致);未配表返回 nil,保持倍率模型的 token 差额
+// 结算路径不变。
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	return helper.VideoPriceRatiosFromTaskContext(c, info.OriginModelName)
 }
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
@@ -421,7 +429,13 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	if r.Parameters.Resolution == "" {
-		r.Parameters.Resolution = req.Resolution
+		if req.Resolution != "" {
+			r.Parameters.Resolution = req.Resolution
+		} else if tier := helper.VideoResolutionTier(req.Size); tier != "" {
+			// OpenAI 风格请求只传 size(如 1920x1080)时归一到档位,让上游与
+			// 计费(视频按秒表)按同一档位取值。
+			r.Parameters.Resolution = tier
+		}
 	}
 
 	// ratio 与 Ark 规范一致默认 "adaptive"：上游在字段缺失时报

@@ -1,12 +1,16 @@
 package helper
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+
+	"github.com/gin-gonic/gin"
 )
 
 // 视频按秒定价的缺省参数(与请求透传缺省保持一致):
@@ -74,4 +78,125 @@ func ComputeVideoPriceRatios(req relaycommon.TaskSubmitReq, model string, now ti
 		ratios["time"] = offPeakRatio
 	}
 	return ratios
+}
+
+// VideoResolutionTier 把 OpenAI 风格的尺寸描述("1920x1080" / "1920*1080")
+// 或分辨率档位字面量归一到表行使用的档位(360p/480p/540p/720p/1080p/4k)。
+// 尺寸按长边分档:≥3840→4k,≥1920→1080p,≥1280→720p,≥960→540p,≥640→480p,
+// 其余→360p。无法解析时返回 ""(调用方保持原值/缺省,按未知分辨率保守计费)。
+func VideoResolutionTier(raw string) string {
+	s := strings.ToLower(strings.TrimSpace(raw))
+	switch s {
+	case "360p", "480p", "540p", "720p", "1080p", "4k":
+		return s
+	case "2160p": // 2160p 与 4k 同档
+		return "4k"
+	}
+	parts := strings.FieldsFunc(s, func(r rune) bool { return r == 'x' || r == '*' })
+	if len(parts) != 2 {
+		return ""
+	}
+	width, errW := strconv.Atoi(parts[0])
+	height, errH := strconv.Atoi(parts[1])
+	if errW != nil || errH != nil || width <= 0 || height <= 0 {
+		return ""
+	}
+	switch max := max(width, height); {
+	case max >= 3840:
+		return "4k"
+	case max >= 1920:
+		return "1080p"
+	case max >= 1280:
+		return "720p"
+	case max >= 960:
+		return "540p"
+	case max >= 640:
+		return "480p"
+	default:
+		return "360p"
+	}
+}
+
+// VideoPriceRatiosFromTaskContext 供 Go 任务适配器(doubao/astraflow)在
+// EstimateBilling 中调用:模型命中视频按秒表时,从请求上下文
+// (Validate 阶段 storeTaskRequest 写入)推导计费系数;未命中返回 nil。
+// 请求缺失(构造上不可达)时按缺省参数推导并 SysError 审计——不能回落 nil,
+// 那会退化成"1 秒锚点价"漏计,而按次计费(PerCallBilling)成功任务不做差额结算。
+func VideoPriceRatiosFromTaskContext(c *gin.Context, modelName string) map[string]float64 {
+	if _, ok := ratio_setting.GetVideoPrice(modelName); !ok {
+		return nil
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		common.SysError(fmt.Sprintf("video price estimate: task request missing: %v", err))
+		req = relaycommon.TaskSubmitReq{}
+	}
+	return ComputeVideoPriceRatiosForTaskSubmit(req, modelName, time.Now())
+}
+
+// ComputeVideoPriceRatiosForTaskSubmit 是 ComputeVideoPriceRatios 的 Ark 风格
+// 包装:除 TaskSubmitReq 顶层字段外,还按 Ark 覆盖语义读取 metadata 中的
+// duration/resolution(与 doubao/astraflow convertToRequestPayload 的优先级
+// 一致:metadata 覆盖 > 顶层 duration/resolution > size 归一),之后委托
+// ComputeVideoPriceRatios 推导计费系数。模型未配置视频按秒表时返回 nil。
+func ComputeVideoPriceRatiosForTaskSubmit(req relaycommon.TaskSubmitReq, model string, now time.Time) map[string]float64 {
+	if _, ok := ratio_setting.GetVideoPrice(model); !ok {
+		return nil
+	}
+	if duration := metadataDurationSeconds(req.Metadata); duration > 0 {
+		req.Duration = duration
+	}
+	resolution := strings.TrimSpace(metadataResolution(req.Metadata))
+	if resolution == "" {
+		resolution = strings.TrimSpace(req.Resolution)
+	}
+	if resolution == "" {
+		resolution = VideoResolutionTier(req.Size)
+	}
+	if resolution != "" {
+		// ComputeVideoPriceRatios 优先读 size 字段,把生效档位写回 size 并清空
+		// resolution,避免残留顶层值干扰匹配。
+		req.Size = resolution
+		req.Resolution = ""
+	}
+	return ComputeVideoPriceRatios(req, model, now)
+}
+
+// metadataDurationSeconds 读取 metadata["duration"],兼容 JSON 数值(float64)、
+// int/int64 与数字字符串;解析失败或 ≤0 视为未提供(调用方走下一优先级)。
+// 上限由 ComputeVideoPriceRatios 内部按 MaxTaskDurationSeconds 饱和。
+func metadataDurationSeconds(metadata map[string]any) int {
+	raw, ok := metadata["duration"]
+	if !ok {
+		return 0
+	}
+	switch v := raw.(type) {
+	case float64:
+		if v > 0 {
+			return int(v)
+		}
+	case float32:
+		if v > 0 {
+			return int(v)
+		}
+	case int:
+		if v > 0 {
+			return v
+		}
+	case int64:
+		if v > 0 {
+			return int(v)
+		}
+	case string:
+		if seconds, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && seconds > 0 {
+			return seconds
+		}
+	}
+	return 0
+}
+
+// metadataResolution 读取 metadata["resolution"],仅接受非空字符串。
+func metadataResolution(metadata map[string]any) string {
+	resolution, _ := metadata["resolution"].(string)
+	return resolution
 }

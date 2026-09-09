@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
@@ -600,4 +601,93 @@ func TestParseResponseArkSubmitShape(t *testing.T) {
 	// 原始上游响应原样缓存为 TaskData，供轮询阶段解析；客户端未收到任何写入。
 	assert.Contains(t, string(submitResp.TaskData), "upstream_456")
 	assert.Empty(t, recorder.Body.String())
+}
+
+// TestEstimateBillingVideoPriceTable 锁定视频按秒表接入:模型命中表时
+// EstimateBilling 按请求推导 seconds/size 系数(metadata 覆盖语义与 convert 一致),
+// 未配表模型返回 nil(倍率模型保持 token 差额结算路径)。
+func TestEstimateBillingVideoPriceTable(t *testing.T) {
+	const model = "ut-astraflow-video-price"
+	err := ratio_setting.UpdateVideoPriceByJSONString(`{
+	  "ut-astraflow-video-price": {"rows": [
+	    {"resolution":"1080p","normal_price":1.0,"off_peak_price":1.0},
+	    {"resolution":"720p","normal_price":0.8,"off_peak_price":0.8},
+	    {"resolution":"540p","normal_price":0.4,"off_peak_price":0.4}]}
+	}`)
+	require.NoError(t, err)
+
+	adaptor := &TaskAdaptor{}
+
+	t.Run("table_hit_derives_ratios", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", relaycommon.TaskSubmitReq{Duration: 10, Size: "1920x1080"})
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		assert.Equal(t, map[string]float64{"seconds": 10}, got)
+	})
+
+	t.Run("metadata_overlay_like_convert", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", relaycommon.TaskSubmitReq{
+			Duration: 2,
+			Metadata: map[string]interface{}{"duration": float64(9), "resolution": "540p"},
+		})
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: model})
+		assert.Equal(t, map[string]float64{"seconds": 9, "size": 0.4}, got)
+	})
+
+	t.Run("no_table_nil", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Set("task_request", relaycommon.TaskSubmitReq{Duration: 5})
+		got := adaptor.EstimateBilling(c, &relaycommon.RelayInfo{OriginModelName: "ut-astraflow-no-table"})
+		assert.Nil(t, got)
+	})
+}
+
+// TestConvertToRequestPayloadResolutionFromSize 锁定 OpenAI 风格 size 归一:
+// 仅当 metadata 与顶层 resolution 均缺省时,size(如 1920x1080)归一到档位
+// 写入 parameters.resolution;垃圾 size 保持空,交上游缺省。
+func TestConvertToRequestPayloadResolutionFromSize(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+
+	tests := []struct {
+		name string
+		req  relaycommon.TaskSubmitReq
+		want string
+	}{
+		{
+			name: "size_pixels_to_1080p",
+			req:  relaycommon.TaskSubmitReq{Model: "seedance", Prompt: "x", Size: "1920x1080"},
+			want: "1080p",
+		},
+		{
+			name: "size_4k",
+			req:  relaycommon.TaskSubmitReq{Model: "seedance", Prompt: "x", Size: "3840x2160"},
+			want: "4k",
+		},
+		{
+			name: "top_resolution_wins_over_size",
+			req:  relaycommon.TaskSubmitReq{Model: "seedance", Prompt: "x", Resolution: "720p", Size: "1920x1080"},
+			want: "720p",
+		},
+		{
+			name: "metadata_resolution_wins_over_top_and_size",
+			req: relaycommon.TaskSubmitReq{
+				Model: "seedance", Prompt: "x", Resolution: "720p", Size: "1920x1080",
+				Metadata: map[string]interface{}{"resolution": "540p"},
+			},
+			want: "540p",
+		},
+		{
+			name: "garbage_size_keeps_empty",
+			req:  relaycommon.TaskSubmitReq{Model: "seedance", Prompt: "x", Size: "fhd"},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := adaptor.convertToRequestPayload(&tt.req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, body.Parameters.Resolution)
+		})
+	}
 }

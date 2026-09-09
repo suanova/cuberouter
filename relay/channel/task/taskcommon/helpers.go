@@ -82,6 +82,9 @@ const (
 type BaseBilling struct{}
 
 // EstimateBilling returns nil (no extra ratios; use base model price).
+// Go 任务适配器(doubao/astraflow)如需视频按秒表系数,在各自覆写中调用
+// helper.VideoPriceRatiosFromTaskContext(本包不 import relay/helper,避免
+// relay/helper → service → taskcommon 的 import 环)。
 func (BaseBilling) EstimateBilling(_ *gin.Context, _ *relaycommon.RelayInfo) map[string]float64 {
 	return nil
 }
