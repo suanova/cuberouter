@@ -140,9 +140,7 @@ func (o *LogOther) toMap() map[string]any {
 		return result
 	}
 
-	for key, value := range o.public {
-		result[key] = value
-	}
+	maps.Copy(result, o.public)
 	if adminInfo := copyLogOtherMap(o.adminInfo); len(adminInfo) > 0 {
 		result[logOtherAdminInfoKey] = adminInfo
 	}
