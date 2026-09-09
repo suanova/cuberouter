@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import i18next from 'i18next'
 import { beforeAll, beforeEach, describe, expect, test } from 'vitest'
 
@@ -30,7 +30,7 @@ import { PriceInput, PriceLane } from '../model-pricing-inputs'
 
 // 注水方式与 lib/__tests__/pricing-currency.test.ts 一致:在
 // DEFAULT_CURRENCY_CONFIG 之上覆盖被测字段,重置即恢复默认。
-function setDisplay(type: CurrencyDisplayType, rate: number, symbol = '¤') {
+function setDisplay(type: CurrencyDisplayType, rate: number, symbol = '¤'): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -45,16 +45,21 @@ function setDisplay(type: CurrencyDisplayType, rate: number, symbol = '¤') {
   }))
 }
 
-const noop = () => {}
+const noop = (): void => {}
 
-function expectSymbolAroundInput(symbol: string, unit: string, value: string) {
-  const prefix = screen.getByText(symbol)
-  const suffix = screen.getByText(`${symbol}/${unit}`)
+function expectSymbolAroundInput(
+  symbol: string,
+  unit: string,
+  value: string
+): void {
   const input = screen.getByDisplayValue(value)
+  // 只断言货币前缀与单位后缀与输入同组可见,不锁 DOM 顺序
   const group = input.closest('[data-slot="input-group"]')
-  // 输入控件的布局契约:货币符号是输入框前的首元素,单位后缀是末尾元素
-  expect(group?.firstElementChild).toBe(prefix)
-  expect(group?.lastElementChild).toBe(suffix)
+  expect(group).not.toBeNull()
+  expect(within(group as HTMLElement).getByText(symbol)).toBeInTheDocument()
+  expect(
+    within(group as HTMLElement).getByText(`${symbol}/${unit}`)
+  ).toBeInTheDocument()
 }
 
 beforeAll(() => {

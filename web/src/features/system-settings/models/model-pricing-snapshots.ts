@@ -88,7 +88,7 @@ const toNumberOrNull = (value?: string) => {
  */
 const SNAPSHOT_PRICE_OPTIONS = { digitsLarge: 4, digitsSmall: 6 }
 
-const formatPriceUsd = (usd: number | null) =>
+const formatPriceUsd = (usd: number | null): string =>
   formatBillingCurrencyFromUSD(usd, SNAPSHOT_PRICE_OPTIONS)
 
 /** ratio × 美元基准($2/1M,或传入的主价美元数)得到该 lane 的美元价。 */

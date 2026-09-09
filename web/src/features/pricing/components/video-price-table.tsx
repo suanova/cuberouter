@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { StaticDataTable } from '@/components/data-table'
-import { getBillingCurrency } from '@/lib/currency'
+import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import { formatVideoPriceMoney, getOffPeakWindowLabel } from '../lib/video-price'
@@ -44,7 +44,7 @@ const headerCellClass =
  */
 export function VideoPriceTable(props: VideoPriceTableProps) {
   const { t } = useTranslation()
-  const symbol = getBillingCurrency().symbol
+  const symbol = useBillingCurrency().symbol
   const rows = props.table?.rows ?? []
   if (rows.length === 0) return null
 

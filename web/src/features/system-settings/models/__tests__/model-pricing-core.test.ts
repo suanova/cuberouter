@@ -38,7 +38,7 @@ import {
 } from '../model-pricing-core'
 
 // 注水方式与 pricing-currency.test.ts 一致(store 真实类型,currency 不可为 null)。
-function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
+function seedDisplayCurrency(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -52,7 +52,7 @@ function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
   }))
 }
 
-function resetDisplayCurrency() {
+function resetDisplayCurrency(): void {
   useSystemConfigStore.setState((state) => ({
     config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
   }))

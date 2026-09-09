@@ -27,7 +27,7 @@ import {
 
 import { TieredPricingEditor } from '../tiered-pricing-editor'
 
-function setDisplay(type: CurrencyDisplayType, rate: number) {
+function setDisplay(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -54,12 +54,14 @@ const baseProps = {
   onRequestRuleExprChange: vi.fn(),
 }
 
-function renderEditor(props: Partial<typeof baseProps> = {}) {
+function renderEditor(
+  props: Partial<typeof baseProps> = {}
+): ReturnType<typeof render> {
   return render(<TieredPricingEditor {...baseProps} {...props} />)
 }
 
 /** 第一个 spinbutton 是 Input price 的录入框(默认 tier 无条件行,缓存/媒体价在后)。 */
-function inputPriceInput() {
+function inputPriceInput(): HTMLElement {
   return screen.getAllByRole('spinbutton')[0]
 }
 

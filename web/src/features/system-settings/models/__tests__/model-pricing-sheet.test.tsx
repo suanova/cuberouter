@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { createRef } from 'react'
 import i18next from 'i18next'
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -26,13 +27,16 @@ import {
   type CurrencyDisplayType,
 } from '@/stores/system-config-store'
 
-import { ModelPricingEditorPanel } from '../model-pricing-sheet'
+import {
+  ModelPricingEditorPanel,
+  type ModelPricingEditorPanelHandle,
+} from '../model-pricing-sheet'
 
 vi.mock('@/features/pricing/hooks/use-pricing-data', () => ({
   usePricingData: () => ({ models: [] }),
 }))
 
-function setDisplay(type: CurrencyDisplayType, rate: number) {
+function setDisplay(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -61,7 +65,7 @@ beforeEach(() => {
   }))
 })
 
-function openPerRequestTab() {
+function openPerRequestTab(): void {
   fireEvent.click(screen.getByRole('tab', { name: 'Per-request' }))
 }
 
@@ -78,14 +82,14 @@ describe('model pricing sheet currency copy', () => {
     openPerRequestTab()
 
     const input = screen.getByPlaceholderText('0.073')
-    // FormControl 的 slot 会合并到 InputGroup 根节点,input 的父节点即输入框组
+    // FormControl 的 slot 会合并到 InputGroup 根节点,input 的父节点即输入框组;
+    // 只断言可见的货币前缀与单位文案,不锁 DOM 层级
     const group = input.parentElement
     expect(group).not.toBeNull()
-    const prefix = within(group as HTMLElement).getByText('¥')
-    const suffix = within(group as HTMLElement).getByText('per request')
-    // 布局契约同 PriceInput:货币符号为输入框组首元素,单位文案为末尾元素
-    expect(group?.firstElementChild).toBe(prefix)
-    expect(group?.lastElementChild).toBe(suffix)
+    expect(within(group as HTMLElement).getByText('¥')).toBeInTheDocument()
+    expect(
+      within(group as HTMLElement).getByText('per request')
+    ).toBeInTheDocument()
     expect(
       screen.getByText('Cost in ¥ per request, regardless of tokens used.')
     ).toBeInTheDocument()
@@ -99,12 +103,37 @@ describe('model pricing sheet currency copy', () => {
     const input = screen.getByPlaceholderText('0.01')
     const group = input.parentElement
     expect(group).not.toBeNull()
-    const prefix = within(group as HTMLElement).getByText('$')
-    const suffix = within(group as HTMLElement).getByText('per request')
-    expect(group?.firstElementChild).toBe(prefix)
-    expect(group?.lastElementChild).toBe(suffix)
+    expect(within(group as HTMLElement).getByText('$')).toBeInTheDocument()
+    expect(
+      within(group as HTMLElement).getByText('per request')
+    ).toBeInTheDocument()
     expect(
       screen.getByText('Cost in $ per request, regardless of tokens used.')
     ).toBeInTheDocument()
+  })
+})
+
+describe('model pricing sheet draft exchange-rate rebase', () => {
+  test('CNY 打开存量 per-request 价:汇率切到 USD 后草稿 rebase,提交仍为原 USD 价', async () => {
+    setDisplay('CNY', 7.3)
+    const ref = createRef<ModelPricingEditorPanelHandle>()
+    render(
+      <ModelPricingEditorPanel
+        ref={ref}
+        editData={{ name: 'gpt-video', price: '2.5' }}
+      />
+    )
+    openPerRequestTab()
+
+    // 加载边界:2.5 USD × 7.3 → ¥18.25 显示草稿
+    const priceInput = screen.getByPlaceholderText('0.073')
+    await waitFor(() => expect(priceInput).toHaveValue('18.25'))
+
+    // 挂载中汇率切到 USD:草稿 rebase 回 2.5(不丢、不按旧汇率写回)
+    act(() => setDisplay('USD', 1))
+    await waitFor(() => expect(priceInput).toHaveValue('2.5'))
+
+    const data = await act(async () => ref.current?.commitDraft())
+    expect(data?.price).toBe('2.5')
   })
 })

@@ -493,6 +493,7 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                                 type='number'
                                 min={0}
                                 step={0.000001}
+                                aria-label={field}
                                 value={laneUsdToLocalNumber(
                                   matrixRows[0].unitPrices[field] ?? 0
                                 )}
@@ -535,6 +536,7 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                             type='number'
                             min={0}
                             step={0.000001}
+                            aria-label={t('Base charge')}
                             value={laneUsdToLocalNumber(matrixRows[0].constant)}
                             onFocus={(event) => {
                               if (Number(event.currentTarget.value) === 0) {

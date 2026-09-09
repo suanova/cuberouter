@@ -68,7 +68,7 @@ import {
   generateTaskExprFromConfig,
 } from '@/features/pricing/lib/task-expr'
 import type { VideoPriceTable } from '@/features/pricing/types'
-import { getBillingCurrency } from '@/lib/currency'
+import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import {
@@ -92,7 +92,10 @@ import {
   type PricingMode,
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
-import { formatPricingNumber } from './pricing-format'
+import {
+  formatPricingNumber,
+  rebaseDisplayPriceDraft,
+} from './pricing-format'
 import { TaskUsagePricingEditor } from './task-usage-pricing-editor'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 import { VideoPriceEditor } from './video-price-editor'
@@ -161,7 +164,7 @@ export const ModelPricingEditorPanel = forwardRef<
   ref
 ) {
   const { t } = useTranslation()
-  const currencySymbol = getBillingCurrency().symbol
+  const { symbol: currencySymbol, exchangeRate } = useBillingCurrency()
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
   const [videoPriceTable, setVideoPriceTable] = useState<VideoPriceTable>({
     rows: [],
@@ -177,6 +180,10 @@ export const ModelPricingEditorPanel = forwardRef<
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const autoSwitchedForRef = useRef<string | null>(null)
+  // 显示货币草稿(price/promptPrice/lanePrices)的换算基准汇率;汇率变化时 rebase,
+  // 保证提交端 ÷当前汇率与草稿显示的是同一底层美元意图。
+  const draftRateRef = useRef(exchangeRate)
+  const loadedEditDataRef = useRef(editData)
   const isEditMode = !!editData
   const { models: pricingModels } = usePricingData()
 
@@ -283,6 +290,43 @@ export const ModelPricingEditorPanel = forwardRef<
     setEditorReloadToken((token) => token + 1)
     autoSwitchedForRef.current = null
   }, [editData, form])
+
+  // 展示货币汇率变化时 rebase 显示货币草稿(保留底层 USD 意图,不丢用户录入):
+  // - per-request price:提交时 ÷当前汇率落库,不 rebase 会把旧汇率显示值按新汇率写回;
+  // - per-token 主价/lane 价:显示字符串同源重算,后续比率推导(显示价相除)不受混合汇率影响。
+  // 编辑对象切换(editData 身份变化)时,上面的加载 effect 已按当前汇率重建草稿,
+  // 这里只同步基准、不再重换算。
+  useEffect(() => {
+    const nextRate = exchangeRate
+    let prevRate = draftRateRef.current
+    if (loadedEditDataRef.current !== editData) {
+      loadedEditDataRef.current = editData
+      draftRateRef.current = nextRate
+      prevRate = nextRate
+    }
+    if (prevRate === nextRate) return
+    draftRateRef.current = nextRate
+    setPromptPrice((prev) => rebaseDisplayPriceDraft(prev, prevRate, nextRate))
+    setLanePrices((prev) => {
+      let next = prev
+      for (const lane of laneConfigs) {
+        const rebased = rebaseDisplayPriceDraft(
+          prev[lane.key],
+          prevRate,
+          nextRate
+        )
+        if (rebased !== prev[lane.key]) {
+          next = next === prev ? { ...prev } : next
+          next[lane.key] = rebased
+        }
+      }
+      return next
+    })
+    form.setValue(
+      'price',
+      rebaseDisplayPriceDraft(form.getValues('price') ?? '', prevRate, nextRate)
+    )
+  }, [editData, exchangeRate, form])
 
   useEffect(() => {
     if (!editData) return

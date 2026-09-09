@@ -28,7 +28,7 @@ import {
 
 import { TaskUsagePricingEditor } from '../task-usage-pricing-editor'
 
-function setDisplay(type: CurrencyDisplayType, rate: number) {
+function setDisplay(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -58,7 +58,11 @@ type RenderEditorOverrides = Partial<{
   onBillingExprChange: (next: string) => void
 }>
 
-function renderEditor(overrides: RenderEditorOverrides = {}) {
+function renderEditor(
+  overrides: RenderEditorOverrides = {}
+): ReturnType<typeof render> & {
+  onBillingExprChange: (next: string) => void
+} {
   const onBillingExprChange = overrides.onBillingExprChange ?? (() => undefined)
   const utils = render(
     <TaskUsagePricingEditor
@@ -72,9 +76,9 @@ function renderEditor(overrides: RenderEditorOverrides = {}) {
   return { ...utils, onBillingExprChange }
 }
 
-/** 单数字字段(无枚举)视图下第一个 spinbutton 是 usage price 输入框。 */
-function unitPriceInput() {
-  return screen.getAllByRole('spinbutton')[0]
+/** 单数字字段(无枚举)视图下按可访问名称定位 usage price 输入框(不依赖 DOM 顺序)。 */
+function unitPriceInput(): HTMLElement {
+  return screen.getByRole('spinbutton', { name: 'seconds' })
 }
 
 describe('task usage editor currency boundary (CNY rate 7.3)', () => {

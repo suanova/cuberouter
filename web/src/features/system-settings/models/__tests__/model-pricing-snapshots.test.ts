@@ -31,7 +31,7 @@ import {
 } from '../model-pricing-snapshots'
 
 // 注水方式与 model-pricing-core.test.ts 一致(store 真实类型,currency 不可为 null)。
-function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
+function seedDisplayCurrency(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -45,14 +45,14 @@ function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
   }))
 }
 
-function resetDisplayCurrency() {
+function resetDisplayCurrency(): void {
   useSystemConfigStore.setState((state) => ({
     config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
   }))
 }
 
 // 模拟 i18next:未翻译 key 原样返回,插值占位符按 options 替换。
-const t = (key: string, options?: Record<string, string>) =>
+const t = (key: string, options?: Record<string, string>): string =>
   key.replaceAll(/\{\{(\w+)\}\}/g, (match, name: string) =>
     options && name in options ? options[name] : match
   )

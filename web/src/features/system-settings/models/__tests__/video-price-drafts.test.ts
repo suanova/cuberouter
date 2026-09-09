@@ -27,6 +27,7 @@ import {
 import {
   addVideoPriceRowDraft,
   createVideoPriceRowDraft,
+  rebaseVideoPriceDrafts,
   removeVideoPriceRowDraft,
   updateVideoPriceRowDraft,
   videoPriceDraftsFromTable,
@@ -35,7 +36,7 @@ import {
 } from '../video-price-drafts'
 
 // 注水方式与 model-pricing-core.test.ts 一致(store 真实类型,currency 不可为 null)。
-function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
+function seedDisplayCurrency(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -49,7 +50,7 @@ function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
   }))
 }
 
-function resetDisplayCurrency() {
+function resetDisplayCurrency(): void {
   useSystemConfigStore.setState((state) => ({
     config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
   }))
@@ -210,5 +211,46 @@ describe('video price draft list helpers', () => {
     expect(table.rows).toEqual([
       { resolution: '1080p', normal_price: 0.75, off_peak_price: 0 },
     ])
+  })
+})
+
+describe('rebaseVideoPriceDrafts(汇率变化保留底层 USD 意图)', () => {
+  test('CNY 7.3 → USD 1:显示草稿回落到 USD 数值', () => {
+    const drafts = [
+      draft({ resolution: '1080p', normalPrice: '5.475', offPeakPrice: '2.7375' }),
+      draft({ resolution: '', normalPrice: '', offPeakPrice: '' }),
+    ]
+
+    const rebased = rebaseVideoPriceDrafts(drafts, 7.3, 1)
+
+    expect(rebased[0].resolution).toBe('1080p')
+    expect(rebased[0].normalPrice).toBe('0.75')
+    expect(rebased[0].offPeakPrice).toBe('0.375')
+    // 空行(未录入)原样保留
+    expect(rebased[1].normalPrice).toBe('')
+    expect(rebased[1].offPeakPrice).toBe('')
+  })
+
+  test('USD 1 → CNY 7.3:显示草稿按新汇率放大,保持同一美元意图', () => {
+    const drafts = [draft({ resolution: '720p', normalPrice: '0.75', offPeakPrice: '' })]
+
+    const rebased = rebaseVideoPriceDrafts(drafts, 1, 7.3)
+
+    expect(rebased[0].normalPrice).toBe('5.475')
+    expect(rebased[0].offPeakPrice).toBe('')
+  })
+
+  test('汇率相等时恒等返回,不重建对象', () => {
+    const drafts = [draft({ normalPrice: '5.475' })]
+    expect(rebaseVideoPriceDrafts(drafts, 7.3, 7.3)).toBe(drafts)
+  })
+
+  test('不可解析的录入串(空/尾点)原样保留,不打断输入', () => {
+    const drafts = [draft({ resolution: '1080p', normalPrice: '.', offPeakPrice: '' })]
+
+    const rebased = rebaseVideoPriceDrafts(drafts, 7.3, 1)
+
+    expect(rebased[0].normalPrice).toBe('.')
+    expect(rebased[0].offPeakPrice).toBe('')
   })
 })

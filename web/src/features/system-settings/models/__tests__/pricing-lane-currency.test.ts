@@ -27,7 +27,7 @@ import {
 import { laneLocalToUsdNumber, laneUsdToLocalNumber } from '../pricing-lane-currency'
 
 // 注水方式与 model-pricing-core.test.ts 一致(store 真实类型,currency 不可为 null)。
-function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
+function seedDisplayCurrency(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,

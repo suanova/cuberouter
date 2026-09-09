@@ -35,7 +35,7 @@ import {
 //   故在 DEFAULT_CURRENCY_CONFIG 之上覆盖被测字段;
 // - quotaDisplayType 是 'USD' | 'CNY' | 'TOKENS' | 'CUSTOM' 字面量联合,
 //   参数类型用 CurrencyDisplayType(各处调用均为合法字面量)。
-function setDisplay(type: CurrencyDisplayType, rate: number, symbol = '¤') {
+function setDisplay(type: CurrencyDisplayType, rate: number, symbol = '¤'): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,

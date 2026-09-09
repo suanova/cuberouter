@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { StaticDataTable } from '@/components/data-table'
 import { Badge } from '@/components/ui/badge'
-import { getBillingCurrency } from '@/lib/currency'
+import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import {
@@ -249,7 +249,8 @@ export function DynamicPricingBreakdown({
   const expr = billingExpr || ''
   // 金额走 billing 货币语义(与 formatBillingCurrencyFromUSD 同一出口):
   // CNY/CUSTOM 用配置汇率与符号,USD/TOKENS 回落 $/rate 1。
-  const { symbol, exchangeRate: rate } = getBillingCurrency()
+  // 响应式订阅:展示货币配置变化时符号/汇率随挂载视图更新。
+  const { symbol, exchangeRate: rate } = useBillingCurrency()
 
   const { tiers, ruleGroups } = useMemo(() => {
     const split = splitBillingExprAndRequestRules(expr)

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import i18next from 'i18next'
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -30,7 +30,7 @@ import {
 import { VideoPriceEditor } from '../video-price-editor'
 
 // 注水方式与 model-pricing-sheet.test.tsx 一致。
-function setDisplay(type: CurrencyDisplayType, rate: number) {
+function setDisplay(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
@@ -76,7 +76,7 @@ describe('video price editor display currency', () => {
     const normalGroup = screen
       .getByDisplayValue('5.475')
       .parentElement as HTMLElement
-    expect(normalGroup.firstElementChild?.textContent).toBe('¥')
+    expect(within(normalGroup).getByText('¥')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('5.475')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('2.7375')).toBeInTheDocument()
   })
@@ -92,7 +92,7 @@ describe('video price editor display currency', () => {
     const normalGroup = screen
       .getByDisplayValue('0.75')
       .parentElement as HTMLElement
-    expect(normalGroup.firstElementChild?.textContent).toBe('$')
+    expect(within(normalGroup).getByText('$')).toBeInTheDocument()
     expect(screen.getByPlaceholderText('0.75')).toBeInTheDocument()
   })
 
@@ -108,6 +108,29 @@ describe('video price editor display currency', () => {
 
     expect(onChange).toHaveBeenLastCalledWith({
       rows: [{ resolution: '1080p', normal_price: 1, off_peak_price: 0.375 }],
+    })
+  })
+
+  test('挂载中汇率变化:草稿 rebase 保留 USD 意图,随后编辑按新汇率发出正确载荷', () => {
+    setDisplay('CNY', 7.3)
+    const onChange = vi.fn()
+    render(<VideoPriceEditor table={fullHdRow} onChange={onChange} />)
+
+    // CNY 加载:0.75 USD/s → ¥5.475 草稿
+    expect(screen.getByDisplayValue('5.475')).toBeInTheDocument()
+
+    // 切到 USD:草稿回落到 0.75(不被旧汇率污染),表头随 $
+    act(() => setDisplay('USD', 1))
+    expect(screen.getByDisplayValue('0.75')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('5.475')).not.toBeInTheDocument()
+    expect(screen.getByText('Video price ($/s)')).toBeInTheDocument()
+
+    // 翻转后继续编辑:整表按当前汇率折算,未编辑行保持原 USD(旧实现会把它按 7.3 放大)
+    fireEvent.change(screen.getByDisplayValue('0.75'), {
+      target: { value: '1.5' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith({
+      rows: [{ resolution: '1080p', normal_price: 1.5, off_peak_price: 0.375 }],
     })
   })
 

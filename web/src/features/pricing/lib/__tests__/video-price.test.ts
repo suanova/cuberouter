@@ -32,7 +32,7 @@ import {
 } from '../video-price'
 
 // 注水 store 的 currency,与 pricing-currency.test.ts 同款(字段以真实类型为准)。
-function seedDisplayCurrency(type: CurrencyDisplayType, rate: number) {
+function seedDisplayCurrency(type: CurrencyDisplayType, rate: number): void {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,

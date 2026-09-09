@@ -21,7 +21,7 @@ import { nanoid } from 'nanoid'
 import type { VideoPriceTable } from '@/features/pricing/types'
 import { localToUsdNumber, usdToLocalNumber } from '@/lib/currency'
 
-import { formatPricingNumber } from './pricing-format'
+import { formatPricingNumber, rebaseDisplayPriceDraft } from './pricing-format'
 
 /**
  * 视频价格草稿的货币换算边界:
@@ -84,6 +84,27 @@ export function videoPriceTableFromDrafts(
         off_peak_price: parsePriceDraft(draft.offPeakPrice),
       })),
   }
+}
+
+/**
+ * 汇率变化时 rebase 整张草稿表:每行价格串保持其底层 USD 意图换算到新汇率
+ * (resolution 不动;空/未完成录入原样保留)。
+ */
+export function rebaseVideoPriceDrafts(
+  drafts: VideoPriceRowDraft[],
+  fromRate: number,
+  toRate: number
+): VideoPriceRowDraft[] {
+  if (fromRate === toRate) return drafts
+  return drafts.map((draft) => ({
+    ...draft,
+    normalPrice: rebaseDisplayPriceDraft(draft.normalPrice, fromRate, toRate),
+    offPeakPrice: rebaseDisplayPriceDraft(
+      draft.offPeakPrice,
+      fromRate,
+      toRate
+    ),
+  }))
 }
 
 export function addVideoPriceRowDraft(

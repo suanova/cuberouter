@@ -122,7 +122,7 @@ export function usePricingColumns(
           return (
             <div className='max-w-full min-w-0'>
               <span className='font-mono text-sm tabular-nums'>
-                {formatVideoPriceMoney(videoPrices.rows[0].normal_price)}/s
+                {formatVideoPriceMoney(videoPrices.rows[0].normal_price)}/{t('s')}
               </span>
               <div className='text-muted-foreground/50 text-[10px]'>
                 {t('Video per second')}

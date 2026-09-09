@@ -61,3 +61,20 @@ export function formatPricingNumber(value: unknown): string {
   const normalized = snapFloatDrift(num)
   return Number.parseFloat(normalized.toFixed(DISPLAY_DECIMALS)).toString()
 }
+
+/**
+ * 显示货币草稿 rebase:把同一底层美元意图从 fromRate 重换算到 toRate。
+ * 不可解析的录入串(空串、输入中的 '.' 等)原样返回,不打断输入;两汇率相等时恒等。
+ * 用于编辑态站点展示货币变化时重算显示草稿,保证保存端 ÷当前汇率与草稿显示的
+ * 美元意图一致(否则跨汇率保存会把旧汇率显示值当新汇率值写入)。
+ */
+export function rebaseDisplayPriceDraft(
+  value: string,
+  fromRate: number,
+  toRate: number
+): string {
+  if (fromRate === toRate) return value
+  const num = toNumberOrNull(value)
+  if (num === null) return value
+  return formatPricingNumber((num / fromRate) * toRate)
+}

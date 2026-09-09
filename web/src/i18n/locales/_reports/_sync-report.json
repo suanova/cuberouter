@@ -9,9 +9,9 @@
     },
     "zh-TW": {
       "file": "zh-TW.json",
-      "missingCount": 6,
-      "extrasCount": 4,
-      "untranslatedCount": 37
+      "missingCount": 0,
+      "extrasCount": 0,
+      "untranslatedCount": 32
     },
     "zh": {
       "file": "zh.json",

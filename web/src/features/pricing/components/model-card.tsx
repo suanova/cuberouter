@@ -124,9 +124,9 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             >
               <span className='text-muted-foreground'>{row.resolution}</span>
               <span className='text-foreground font-mono tabular-nums'>
-                {formatVideoPriceMoney(row.normal_price)}/s
+                {formatVideoPriceMoney(row.normal_price)}/{t('s')}
                 <span className='text-muted-foreground/70'>
-                  {' '}/ {formatVideoPriceMoney(row.off_peak_price)}/s
+                  {' '}/ {formatVideoPriceMoney(row.off_peak_price)}/{t('s')}
                 </span>
               </span>
             </div>

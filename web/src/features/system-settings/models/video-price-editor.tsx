@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -29,11 +29,12 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import type { VideoPriceTable } from '@/features/pricing/types'
-import { getBillingCurrency } from '@/lib/currency'
+import { useBillingCurrency } from '@/lib/currency'
 
 import { numericDraftRegex, usdPriceToDisplay } from './model-pricing-core'
 import {
   addVideoPriceRowDraft,
+  rebaseVideoPriceDrafts,
   removeVideoPriceRowDraft,
   updateVideoPriceRowDraft,
   videoPriceDraftsFromTable,
@@ -51,10 +52,21 @@ export const VideoPriceEditor = function VideoPriceEditor(
   props: VideoPriceEditorProps
 ) {
   const { t } = useTranslation()
-  const currencySymbol = getBillingCurrency().symbol
+  const { symbol: currencySymbol, exchangeRate } = useBillingCurrency()
   const [drafts, setDrafts] = useState<VideoPriceRowDraft[]>(() =>
     videoPriceDraftsFromTable(props.table)
   )
+  // 草稿按加载时的汇率换算成显示货币;汇率变化时 rebase(保留底层 USD 意图),
+  // 否则后续任一行的编辑会按新汇率重换算整张旧汇率草稿,写错未编辑行的价。
+  const draftRateRef = useRef(exchangeRate)
+
+  useEffect(() => {
+    const nextRate = exchangeRate
+    const prevRate = draftRateRef.current
+    if (nextRate === prevRate) return
+    draftRateRef.current = nextRate
+    setDrafts((prev) => rebaseVideoPriceDrafts(prev, prevRate, nextRate))
+  }, [exchangeRate])
 
   const handleDraftsChange = (nextDrafts: VideoPriceRowDraft[]) => {
     setDrafts(nextDrafts)

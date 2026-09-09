@@ -21,5 +21,12 @@
 ## 备注 / 后续
 
 - `features/models/components/drawers/model-mutate-drawer.tsx`(约 1012-1188 行)是另一个可达的模型定价编辑入口(per-request "Fixed price (USD)" + `Cost in USD per request…` key + `$/1M` 输入 + `Calculated price: $…` 预览),编辑同一批 ModelPrice/ModelRatio map,仍写死 USD——已登记为 follow-up:复用 getBillingCurrency/formatBillingCurrencyFromUSD 边界做换算(ratio 模式不换算),需独立任务级评审后再实施
-- zh-TW 新增 6 key 由 i18n:sync 以 en 回填,如需繁体文案需单独翻译
 - deferred minors 清单见 SDD ledger(final review 已裁夺)
+
+## CodeRabbit 评审处理(2026-09-09,PR #74)
+
+- **响应式货币源**: 新增 `useBillingCurrency()`(currency.ts,与 `getBillingCurrency` 同归一化出口);`dynamic-pricing-breakdown` / `video-price-table` 改用响应式订阅,挂载中展示货币变化即刷新符号与价格(补行为回归测试 ×2)
+- **draft 汇率 rebase(数据正确性)**: `pricing-format.rebaseDisplayPriceDraft` 纯函数;model-pricing-sheet 的 price/promptPrice/lanePrices 与 video-price-editor 草稿在汇率变化时 rebase(保留底层 USD 意图,空/未完成录入原样保留),杜绝跨汇率保存写错价(补纯函数 + 编辑器行为测试)
+- 视频价 `/s` 走 `t('s')`;task-usage 价格输入框补可访问名称(aria-label),测试按 accessible name 查询;zh-TW 6 条新增定价文案译繁中并同步 untranslated 报告;nitpick 全清(测试 helper 显式类型、去掉 DOM 顺序断言)
+- 验证: typecheck + 全量 vitest(559)全绿;改动文件 oxlint 干净
+- model-mutate-drawer 维持 follow-up(见上),CodeRabbit 线程已回复说明
