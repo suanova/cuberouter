@@ -43,10 +43,12 @@ spec:
   {{- if .Values.postgresql.backups.enabled }}
   backups:
     pgbackrest:
-      repoHost:
-        dedicated: {}
+      # dedicated pgBackRest repo host Deployment
+      repoHost: {}
       repos:
         - name: repo1
+          schedules:
+            full: {{ .Values.postgresql.backups.schedule | quote }}
           volume:
             volumeClaimSpec:
               accessModes:
@@ -54,8 +56,6 @@ spec:
               resources:
                 requests:
                   storage: {{ .Values.postgresql.backups.storage }}
-      schedule:
-        full: {{ .Values.postgresql.backups.schedule | quote }}
   {{- end }}
   {{- if .Values.postgresql.pgBouncer.enabled }}
   proxy:
