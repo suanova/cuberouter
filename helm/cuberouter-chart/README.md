@@ -329,10 +329,11 @@ helm uninstall cuberouter -n cuberouter
 `helm uninstall` removes the rendered workloads, Services, PVCs, the Cluster /
 RedisReplication CRs (and, via the operators, their underlying PVCs) and both operator
 control planes with their cluster-scoped RBAC / webhook configurations. The operator
-**CRDs** are marked `helm.sh/resource-policy: keep` upstream (so that uninstalling one
-release cannot wipe the API of other clusters sharing it) and therefore remain; remove
-them manually if desired, e.g. `kubectl get crd -o name | grep postgresql.cnpg.io | xargs
-kubectl delete` (same for the `redis.redis.opstreelabs.in` CRDs). Two caveats:
+**CRDs** are packaged in the subcharts' `crds/` directory (and are also marked
+`helm.sh/resource-policy: keep` upstream), so Helm installs them ahead of the rest of
+the release and never deletes them on uninstall; remove them manually if desired, e.g.
+`kubectl get crd -o name | grep postgresql.cnpg.io | xargs kubectl delete` (same for the
+`redis.redis.opstreelabs.in` CRDs). Two caveats:
 
 - deleting the CloudNativePG CRDs deletes **every** `Cluster` CR in the cluster, not only
   the one owned by this release — uninstall other CNPG releases first if they exist;

@@ -45,9 +45,10 @@ updateStrategy: {}
 #    maxSurge: 25%
 #    maxUnavailable: 25%
 
-crds:
-  # -- Specifies whether the CRDs should be created when installing the chart.
-  create: true
+# NOTE: the CRDs live in this chart's crds/ directory, so Helm installs them
+# before the rest of the release on every install/upgrade (and never deletes
+# them on uninstall). The upstream `crds.create` toggle does not apply to
+# files in crds/, so it was dropped from this vendored copy.
 
 # -- The webhook configuration.
 webhook:
