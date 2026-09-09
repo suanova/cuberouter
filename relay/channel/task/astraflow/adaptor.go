@@ -438,15 +438,38 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 		}
 	}
 
-	// ratio 与 Ark 规范一致默认 "adaptive"：上游在字段缺失时报
-	// "ratio is required"，因此显式下发规范默认值。req.Ratio 为指针，
-	// 以区分客户端缺省（nil）与显式空串；两者都落到 adaptive，空串
-	// 不是合法 ratio。
-	if r.Parameters.Ratio == "" && req.Ratio != nil {
-		r.Parameters.Ratio = *req.Ratio
+	// 首帧/首尾帧模式(内容含无角色或 first_frame/last_frame 标注的
+	// image_url,含 OpenAI 风格 images 转换来的无角色图)的输出比例由首帧图
+	// 决定,上游拒绝携带 ratio(InvalidParameter.TaskTypeConstraint),
+	// 此时整段不发送——客户端显式值与默认 adaptive 都跳过。
+	// reference_image 等参考角色不受此限,按文生视频路径处理。
+	hasFrameImage := false
+	for _, item := range r.Input.Content {
+		if item.Type != "image_url" {
+			continue
+		}
+		role := ""
+		if item.Role != nil {
+			role = *item.Role
+		}
+		if role == "" || role == "first_frame" || role == "last_frame" {
+			hasFrameImage = true
+			break
+		}
 	}
-	if r.Parameters.Ratio == "" {
-		r.Parameters.Ratio = "adaptive"
+	if hasFrameImage {
+		r.Parameters.Ratio = ""
+	} else {
+		// ratio 与 Ark 规范一致默认 "adaptive"：上游在字段缺失时报
+		// "ratio is required"，因此显式下发规范默认值。req.Ratio 为指针，
+		// 以区分客户端缺省（nil）与显式空串；两者都落到 adaptive，空串
+		// 不是合法 ratio。
+		if r.Parameters.Ratio == "" && req.Ratio != nil {
+			r.Parameters.Ratio = *req.Ratio
+		}
+		if r.Parameters.Ratio == "" {
+			r.Parameters.Ratio = "adaptive"
+		}
 	}
 
 	if contentFromClient {
