@@ -67,7 +67,7 @@ the namespace (or configure the nodes/registry) if your registry requires authen
 
 The release name is the base for every resource name (see
 [Resource names and endpoints](#resource-names-and-endpoints)), so the examples below use
-`cuberouter` to reproduce the canonical `cuberouter-app`, `cuberouter-redis`, etc. naming.
+`cuberouter` to reproduce the canonical `cuberouter`, `cuberouter-redis`, etc. naming.
 
 All installs start from the chart directory:
 
@@ -214,12 +214,14 @@ point `secret.existingSecret` at a pre-created secret that carries the same six 
 
 ## Resource names and endpoints
 
-`<fullname>` defaults to the **release name** (so release `cuberouter` → `cuberouter-app`,
-matching the 0.6.0 production deployment); set `nameOverride` or `fullnameOverride` to change it.
+`<fullname>` defaults to the **release name** (so release `cuberouter` → Deployment
+`cuberouter`, service `cuberouter-app`, CRs `cuberouter-postgres` / `cuberouter-redis`);
+set `nameOverride` or `fullnameOverride` to change it.
 
 | Resource | Name (`<f>` = `<fullname>`) |
 |---|---|
-| App Service / Deployment | `<f>-app` |
+| App Service | `<f>-app` |
+| App Deployment | `<f>` |
 | App data / logs PVCs | `<f>-app-data`, `<f>-app-logs` |
 | App HPA / PDB | `<f>-app-hpa`, `<f>-app-pdb` |
 | Docs Service / Deployment | `<f>-docs` |
