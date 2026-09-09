@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"maps"
+	"slices"
 
 	"github.com/QuantumNous/new-api/common"
 )
@@ -12,6 +13,15 @@ const (
 	logOtherRootInfoKey  = "root_info"
 	logOtherAuditInfoKey = "audit_info"
 )
+
+// legacySensitiveLogOtherKeys are historical top-level fields that must never
+// be written via SetPublic and must be stripped from user-visible projections.
+var legacySensitiveLogOtherKeys = []string{
+	"channel_id",
+	"channel_name",
+	"channel_type",
+	"reject_reason",
+}
 
 type logOtherVisibility int
 
@@ -37,11 +47,10 @@ func NewLogOther() *LogOther {
 
 func isReservedLogOtherKey(key string) bool {
 	switch key {
-	case logOtherAdminInfoKey, logOtherRootInfoKey, logOtherAuditInfoKey,
-		"channel_id", "channel_name", "channel_type", "reject_reason":
+	case logOtherAdminInfoKey, logOtherRootInfoKey, logOtherAuditInfoKey:
 		return true
 	default:
-		return false
+		return slices.Contains(legacySensitiveLogOtherKeys, key)
 	}
 }
 
@@ -125,55 +134,32 @@ func copyLogOtherMap(values map[string]any) map[string]any {
 	return copyValues
 }
 
-func (o *LogOther) normalizeLegacyAdminFields() {
-	if o == nil || o.public == nil {
-		return
-	}
-	if rejectReason, ok := o.public["reject_reason"]; ok {
-		if _, exists := o.adminInfo["reject_reason"]; !exists {
-			o.SetAdmin("reject_reason", rejectReason)
-		}
-		delete(o.public, "reject_reason")
-	}
-}
-
-func (o *LogOther) toMap(visibility logOtherVisibility) map[string]any {
+func (o *LogOther) toMap() map[string]any {
 	result := make(map[string]any)
 	if o == nil {
 		return result
 	}
 
 	for key, value := range o.public {
-		if visibility == logOtherVisibilityUser {
-			switch key {
-			case "channel_id", "channel_name", "channel_type", "reject_reason":
-				continue
-			}
-		}
 		result[key] = value
 	}
-	if visibility >= logOtherVisibilityAdmin {
-		if adminInfo := copyLogOtherMap(o.adminInfo); len(adminInfo) > 0 {
-			result[logOtherAdminInfoKey] = adminInfo
-		}
-		if auditInfo := copyLogOtherMap(o.auditInfo); len(auditInfo) > 0 {
-			result[logOtherAuditInfoKey] = auditInfo
-		}
+	if adminInfo := copyLogOtherMap(o.adminInfo); len(adminInfo) > 0 {
+		result[logOtherAdminInfoKey] = adminInfo
 	}
-	if visibility == logOtherVisibilityRoot {
-		if rootInfo := copyLogOtherMap(o.rootInfo); len(rootInfo) > 0 {
-			result[logOtherRootInfoKey] = rootInfo
-		}
+	if auditInfo := copyLogOtherMap(o.auditInfo); len(auditInfo) > 0 {
+		result[logOtherAuditInfoKey] = auditInfo
+	}
+	if rootInfo := copyLogOtherMap(o.rootInfo); len(rootInfo) > 0 {
+		result[logOtherRootInfoKey] = rootInfo
 	}
 	return result
 }
 
-func (o *LogOther) jsonString(visibility logOtherVisibility) string {
+func (o *LogOther) jsonString() string {
 	if o == nil {
 		return ""
 	}
-	o.normalizeLegacyAdminFields()
-	data, err := common.Marshal(o.toMap(visibility))
+	data, err := common.Marshal(o.toMap())
 	if err != nil {
 		common.SysError("failed to marshal log other: " + err.Error())
 		return ""
@@ -184,7 +170,7 @@ func (o *LogOther) jsonString(visibility logOtherVisibility) string {
 // JSONString returns the complete stored representation, including all
 // privileged scopes. API projections must use the role-specific formatter.
 func (o *LogOther) JSONString() string {
-	return o.jsonString(logOtherVisibilityRoot)
+	return o.jsonString()
 }
 
 // Snapshot returns a detached top-level view for tests and read-only
@@ -193,11 +179,11 @@ func (o *LogOther) Snapshot() map[string]any {
 	if o == nil {
 		return nil
 	}
-	return o.toMap(logOtherVisibilityRoot)
+	return o.toMap()
 }
 
 func (o *LogOther) MarshalJSON() ([]byte, error) {
-	return common.Marshal(o.toMap(logOtherVisibilityRoot))
+	return common.Marshal(o.toMap())
 }
 
 func normalizeLegacyRejectReason(values map[string]json.RawMessage) bool {
@@ -243,15 +229,13 @@ func formatLogOtherJSON(value string, visibility logOtherVisibility) string {
 
 	changed := false
 	if visibility == logOtherVisibilityUser {
-		for _, key := range []string{
-			logOtherAdminInfoKey,
-			logOtherRootInfoKey,
-			logOtherAuditInfoKey,
-			"channel_id",
-			"channel_name",
-			"channel_type",
-			"reject_reason",
-		} {
+		for _, key := range []string{logOtherAdminInfoKey, logOtherRootInfoKey, logOtherAuditInfoKey} {
+			if _, exists := values[key]; exists {
+				delete(values, key)
+				changed = true
+			}
+		}
+		for _, key := range legacySensitiveLogOtherKeys {
 			if _, exists := values[key]; exists {
 				delete(values, key)
 				changed = true
@@ -267,7 +251,7 @@ func formatLogOtherJSON(value string, visibility logOtherVisibility) string {
 		}
 	}
 
-	if visibility == logOtherVisibilityRoot && !changed {
+	if !changed {
 		return value
 	}
 	formatted, err := common.Marshal(values)

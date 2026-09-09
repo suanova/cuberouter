@@ -68,3 +68,17 @@ func TestLogOtherRejectsSensitivePublicFields(t *testing.T) {
 	require.JSONEq(t, `{"request_path":"/v1/responses"}`, other.JSONString())
 	require.JSONEq(t, `{}`, NewLogOther().JSONString())
 }
+
+func TestLogOtherJSONStringDoesNotMutateReceiver(t *testing.T) {
+	other := NewLogOther()
+	require.True(t, other.SetPublic("request_path", "/v1/chat/completions"))
+	require.True(t, other.SetAdmin("rejected", false))
+
+	before := other.Snapshot()
+	first := other.JSONString()
+	after := other.Snapshot()
+	second := other.JSONString()
+
+	require.Equal(t, before, after)
+	require.Equal(t, first, second)
+}

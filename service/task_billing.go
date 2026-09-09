@@ -144,7 +144,9 @@ func taskBillingOther(task *model.Task) *model.LogOther {
 		other.SetPublic("group_ratio", bc.GroupRatio)
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
-				other.SetPublic(k, v)
+				if !other.SetPublic(k, v) {
+					common.SysError("task billing other ratio key rejected: " + k)
+				}
 			}
 		}
 		if snap := bc.TieredSnapshot; snap != nil {

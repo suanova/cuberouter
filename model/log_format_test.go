@@ -229,4 +229,16 @@ func TestLogFormattingPreservesLargeIntegerLexemes(t *testing.T) {
 
 		assert.Equal(t, other, logs[0].Other)
 	})
+
+	t.Run("unprivileged", func(t *testing.T) {
+		const unprivileged = `{"public_id":9007199254740993,"model_price":0.004}`
+
+		userLogs := []*Log{{Other: unprivileged}}
+		formatUserLogs(userLogs, 0)
+		assert.Equal(t, unprivileged, userLogs[0].Other)
+
+		adminLogs := []*Log{{Other: unprivileged}}
+		FormatAdminLogs(adminLogs)
+		assert.Equal(t, unprivileged, adminLogs[0].Other)
+	})
 }
