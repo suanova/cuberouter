@@ -6,6 +6,11 @@ apiVersion: postgres-operator.crunchydata.com/v1beta1
 kind: PostgresCluster
 metadata:
   name: {{ $cluster }}
+  annotations:
+    # operator creates a schema named after each user in that user's
+    # databases, owned by the user (PG15+: users can no longer create
+    # objects in the "public" schema without extra grants)
+    postgres-operator.crunchydata.com/autoCreateUserSchema: "true"
   labels:
     {{- include "cuberouter.labels" . | nindent 4 }}
 spec:
@@ -65,9 +70,13 @@ spec:
 {{- if .Values.postgresql.initJob.enabled }}
 ---
 {{/*
-Post-install hook: waits for the Crunchy cluster, then syncs the app role
-password (the operator auto-generates passwords, this chart uses its own)
-and grants schema rights. Idempotent; safe to re-run on upgrades.
+Post-install hook: waits for the operator to create the app user, then syncs
+the app role password to the chart-generated one (the operator auto-generates
+initial passwords, this chart uses its own). It connects as the app user
+itself — a role may always change its own password, so no superuser access
+is needed (PGO v6 does not expose a superuser password secret). Idempotent;
+re-runs on upgrades, re-syncing the password if the operator re-applied
+user SQL in the meantime.
 */}}
 apiVersion: batch/v1
 kind: Job
@@ -95,16 +104,17 @@ spec:
             - name: PGHOST
               value: {{ $cluster }}-primary
             - name: PGUSER
-              value: postgres
+              value: {{ $user }}
+            - name: PGDATABASE
+              value: {{ $db }}
+            # PGO enforces TLS for client connections (pg_hba hostssl only)
+            - name: PGSSLMODE
+              value: require
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ $cluster }}-pguser-postgres
+                  name: {{ $cluster }}-pguser-{{ $user }}
                   key: password
-            - name: APP_USER
-              value: {{ $user }}
-            - name: APP_DB
-              value: {{ $db }}
             - name: APP_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -114,31 +124,20 @@ spec:
             - bash
             - -ec
             - |
-              echo "waiting for postgres primary ${PGHOST} ..."
+              echo "waiting for postgres user ${PGUSER} on ${PGHOST} ..."
               for _ in $(seq 1 300); do
-                if pg_isready -q -h "$PGHOST" -U "$PGUSER"; then
+                if psql -X -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -c "SELECT 1" >/dev/null 2>&1; then
                   break
                 fi
                 sleep 2
               done
-              pg_isready -q -h "$PGHOST" -U "$PGUSER" || { echo "postgres did not become ready in time"; exit 1; }
+              psql -X -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -c "SELECT 1" >/dev/null 2>&1 || {
+                echo "postgres user ${PGUSER} did not become available in time"; exit 1;
+              }
 
-              psql_admin() { psql -v ON_ERROR_STOP=1 -h "$PGHOST" -U "$PGUSER" "$@"; }
-
-              if [ -z "$(psql_admin -tA -c "SELECT 1 FROM pg_roles WHERE rolname = '$APP_USER'")" ]; then
-                echo "creating role $APP_USER"
-                psql_admin -c "CREATE ROLE \"$APP_USER\" LOGIN"
-              fi
-              echo "syncing password for role $APP_USER"
-              psql_admin -c "ALTER ROLE \"$APP_USER\" WITH PASSWORD '$APP_PASSWORD'"
-
-              if [ -z "$(psql_admin -tA -c "SELECT 1 FROM pg_database WHERE datname = '$APP_DB'")" ]; then
-                echo "creating database $APP_DB"
-                psql_admin -c "CREATE DATABASE \"$APP_DB\" OWNER \"$APP_USER\""
-              fi
-
-              psql_admin -d "$APP_DB" -c "GRANT ALL ON SCHEMA public TO \"$APP_USER\""
-              psql_admin -d "$APP_DB" -c "ALTER SCHEMA public OWNER TO \"$APP_USER\""
+              echo "syncing password for role ${PGUSER}"
+              psql -X -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
+                -c "ALTER ROLE \"${PGUSER}\" WITH PASSWORD '${APP_PASSWORD}'"
 
               echo "postgres initialization complete"
 {{- end }}

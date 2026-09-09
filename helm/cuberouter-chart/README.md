@@ -125,7 +125,7 @@ passwords you set.
 
 ```sh
 kubectl create secret generic cuberouter-secret -n cuberouter \
-  --from-literal=SQL_DSN='postgresql://cuberouter-user:pass@cuberouter-postgres-primary:5432/cuberouter_db' \
+  --from-literal=SQL_DSN='postgresql://cuberouter:pass@cuberouter-postgres-primary:5432/cuberouter?sslmode=require' \
   --from-literal=REDIS_CONN_STRING='redis://:pass@cuberouter-redis-master:6379' \
   --from-literal=SESSION_SECRET='...' \
   --from-literal=CRYPTO_SECRET='...' \
@@ -175,8 +175,9 @@ kubectl -n cuberouter get postgresclusters,redisreplications
 ```
 
 Wait for the `PostgresCluster` to report `ClusterRunning` (its `status.phase`) and for the
-`cuberouter-postgres-init` Job to complete — that Job syncs the app role password (the operator
-auto-generates passwords; the app DSN uses the chart's). Then the app and docs pods pass their
+`cuberouter-postgres-init` Job to complete — that Job waits for the operator to create the app
+role, then sets its password to the chart-generated one (the operator auto-generates the initial
+password; the app DSN uses the chart's). Then the app and docs pods pass their
 `/api/status` probes:
 
 ```sh
@@ -226,7 +227,7 @@ matching the 0.6.0 production deployment); set `nameOverride` or `fullnameOverri
 | App Ingress / Docs Ingress | `<f>-ingress`, `<f>-docs-ingress` |
 | PostgresCluster CR | `<f>-postgres` |
 | PG primary service (app connection target) | `<f>-postgres-primary:5432` |
-| PG user / superuser secrets (operator-generated) | `<f>-postgres-pguser-<user>` / `<f>-postgres-pguser-postgres` |
+| PG user secret (operator-generated initial password) | `<f>-postgres-pguser-<user>` |
 | Post-install init Job | `<f>-postgres-init` |
 | RedisReplication CR | `<f>-redis` (derived service names must stay ≤ 63 chars) |
 | Redis master service (app connection target) | `<f>-redis-master:6379` |
@@ -235,7 +236,7 @@ matching the 0.6.0 production deployment); set `nameOverride` or `fullnameOverri
 
 Computed connection strings:
 
-- PostgreSQL: `postgresql://<user>:<pw>@<f>-postgres-primary:5432/<db>` (defaults `cuberouter-user` / `cuberouter_db`)
+- PostgreSQL: `postgresql://<user>:<pw>@<f>-postgres-primary:5432/<db>?sslmode=require` (defaults `cuberouter` / `cuberouter`; `sslmode=require` because PGO only accepts TLS client connections)
 - Redis: `redis://:<pw>@<f>-redis-master:6379` (operator-managed master service that follows the primary)
 
 ## Key values at a glance
@@ -258,10 +259,19 @@ Computed connection strings:
 
 ### PostgreSQL (CrunchyData PGO)
 
-- The operator auto-generates passwords and a `PostgresCluster` cannot pin them, so the chart's
-  post-install/post-upgrade hook Job (`<f>-postgres-init`) connects as superuser, sets the app role
-  password to the chart-generated one, ensures the database exists, and hands ownership of the
-  `public` schema to the app role (required on PG15+). It is idempotent and safe to re-run.
+- The operator auto-generates the app role password and a `PostgresCluster` cannot pin it, so the
+  chart's post-install/post-upgrade hook Job (`<f>-postgres-init`) logs in as the app role (initial
+  password from `<f>-postgres-pguser-<user>`) and changes it to the chart-generated one — a role may
+  always alter its own password, so no superuser access is needed (PGO v6 does not expose a
+  superuser password secret). It is idempotent and re-runs on every upgrade. If you edit
+  `spec.users` of the `PostgresCluster` or the `pguser` secret afterwards, the operator re-applies
+  its own password on the next reconcile — run `helm upgrade` to re-sync the chart password.
+- On PG15+ regular roles cannot create objects in the `public` schema, so the CR carries the
+  `postgres-operator.crunchydata.com/autoCreateUserSchema: "true"` annotation: the operator creates
+  a schema named after the user (owned by that user) in each of its databases, and the app's
+  unqualified DDL lands there (search path `$user`, `public`).
+- Client connections must use TLS (PGO `pg_hba` default: `hostssl` only), hence the computed
+  `SQL_DSN` carries `?sslmode=require` (TLS, no certificate verification).
 - Set `postgresql.postgresVersion` to match the Postgres **major** version you run; when
   `postgresql.image` is empty the operator uses `postgresql-operator.relatedImages`
   (`POSTGRES_<version>`, default `POSTGRES_16`).
