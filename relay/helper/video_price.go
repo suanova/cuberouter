@@ -81,13 +81,14 @@ func ComputeVideoPriceRatios(req relaycommon.TaskSubmitReq, model string, now ti
 }
 
 // VideoResolutionTier 把 OpenAI 风格的尺寸描述("1920x1080" / "1920*1080")
-// 或分辨率档位字面量归一到表行使用的档位(360p/480p/540p/720p/1080p/4k)。
+// 或分辨率档位字面量归一到表行使用的档位
+// (360p/480p/540p/720p/1080p/4k,另含部分上游特有的 768p/2k 直出档)。
 // 尺寸按长边分档:≥3840→4k,≥1920→1080p,≥1280→720p,≥960→540p,≥640→480p,
 // 其余→360p。无法解析时返回 ""(调用方保持原值/缺省,按未知分辨率保守计费)。
 func VideoResolutionTier(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	switch s {
-	case "360p", "480p", "540p", "720p", "1080p", "4k":
+	case "360p", "480p", "540p", "720p", "768p", "1080p", "2k", "4k":
 		return s
 	case "2160p": // 2160p 与 4k 同档
 		return "4k"
