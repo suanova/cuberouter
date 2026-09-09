@@ -2,142 +2,89 @@
 {{- $cluster := include "cuberouter.postgresClusterName" . }}
 {{- $user := .Values.postgresql.auth.username }}
 {{- $db := .Values.postgresql.auth.database }}
-apiVersion: postgres-operator.crunchydata.com/v1beta1
-kind: PostgresCluster
+{{/*
+CloudNativePG Cluster: HA PostgreSQL managed by the cloudnative-pg operator
+(built-in streaming replication, automatic failover, self-signed TLS).
+
+- bootstrap.initdb creates the app database owned by the app user (the
+  operator issues CREATE ROLE <owner> LOGIN + CREATE DATABASE ... OWNER
+  <owner>); a database owner has full rights on its "public" schema (PG15+).
+- bootstrap.initdb.secret points at the "<cluster>-app-auth" basic-auth
+  secret (rendered by secret.yaml): the operator applies that password to the
+  app role and re-applies it whenever the secret changes — the chart password
+  is the live database password from first start, no init Job needed.
+- Superuser TCP access stays disabled (enableSuperuserAccess=false default);
+  the superuser role has no password.
+- The primary service is "<cluster>-rw" (see postgresAddr helper);
+  "<cluster>-ro" / "<cluster>-r" / "<cluster>-any" cover read paths.
+*/}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
 metadata:
   name: {{ $cluster }}
-  annotations:
-    # operator creates a schema named after each user in that user's
-    # databases, owned by the user (PG15+: users can no longer create
-    # objects in the "public" schema without extra grants)
-    postgres-operator.crunchydata.com/autoCreateUserSchema: "true"
   labels:
     {{- include "cuberouter.labels" . | nindent 4 }}
 spec:
-  {{- if .Values.postgresql.image }}
-  image: {{ .Values.postgresql.image }}
-  {{- end }}
-  postgresVersion: {{ .Values.postgresql.postgresVersion }}
-  users:
-    - name: {{ $user }}
-      databases:
-        - {{ $db }}
-  instances:
-    - name: instance1
-      replicas: {{ .Values.postgresql.replicas }}
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    postgres-operator.crunchydata.com/cluster: {{ $cluster }}
-                topologyKey: kubernetes.io/hostname
-      dataVolumeClaimSpec:
-        accessModes:
-          {{- toYaml (list "ReadWriteOnce") | nindent 10 }}
-        {{- if .Values.postgresql.storageClassName }}
-        storageClassName: {{ .Values.postgresql.storageClassName }}
-        {{- end }}
-        resources:
-          requests:
-            storage: {{ .Values.postgresql.storage }}
-      resources:
-        {{- toYaml .Values.postgresql.resources | nindent 8 }}
+  imageName: {{ .Values.postgresql.image | quote }}
+  imagePullPolicy: IfNotPresent
+  # >= 2 for HA: the operator elects one primary and streams the rest
+  instances: {{ .Values.postgresql.replicas }}
+  storage:
+    size: {{ .Values.postgresql.storage | quote }}
+    {{- if .Values.postgresql.storageClassName }}
+    storageClass: {{ .Values.postgresql.storageClassName }}
+    {{- end }}
+  resources:
+    {{- toYaml .Values.postgresql.resources | nindent 4 }}
+  bootstrap:
+    initdb:
+      database: {{ $db }}
+      owner: {{ $user }}
+      # credentials for the database owner: the chart renders this secret,
+      # so the operator never generates a random password for the app role
+      secret:
+        name: {{ $cluster }}-app-auth
   {{- if .Values.postgresql.backups.enabled }}
-  backups:
-    pgbackrest:
-      # dedicated pgBackRest repo host Deployment
-      repoHost: {}
-      repos:
-        - name: repo1
-          schedules:
-            full: {{ .Values.postgresql.backups.schedule | quote }}
-          volume:
-            volumeClaimSpec:
-              accessModes:
-                - ReadWriteOnce
-              resources:
-                requests:
-                  storage: {{ .Values.postgresql.backups.storage }}
+  # volume snapshots via the cluster's default VolumeSnapshotClass
+  backup:
+    volumeSnapshot: {}
   {{- end }}
-  {{- if .Values.postgresql.pgBouncer.enabled }}
-  proxy:
-    pgBouncer:
-      replicas: {{ .Values.postgresql.pgBouncer.replicas }}
-  {{- end }}
-{{- if .Values.postgresql.initJob.enabled }}
+{{- if .Values.postgresql.pgBouncer.enabled }}
 ---
 {{/*
-Post-install hook: waits for the operator to create the app user, then syncs
-the app role password to the chart-generated one (the operator auto-generates
-initial passwords, this chart uses its own). It connects as the app user
-itself — a role may always change its own password, so no superuser access
-is needed (PGO v6 does not expose a superuser password secret). Idempotent;
-re-runs on upgrades, re-syncing the password if the operator re-applied
-user SQL in the meantime.
+Operator-managed pgbouncer pooler in front of the cluster (optional).
+Clients connect to the pooler service "<cluster>-pgbouncer:5432"; type rw
+forwards pooled connections to the primary. The chart's SQL_DSN keeps
+pointing at the primary service.
 */}}
-apiVersion: batch/v1
-kind: Job
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
 metadata:
-  name: {{ $cluster }}-init
+  name: {{ $cluster }}-pgbouncer
   labels:
     {{- include "cuberouter.labels" . | nindent 4 }}
-  annotations:
-    "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
-    "helm.sh/hook-weight": "10"
 spec:
-  backoffLimit: 10
-  template:
-    metadata:
-      labels:
-        {{- include "cuberouter.selectorLabels" (dict "root" . "component" "postgresql") | nindent 8 }}
-    spec:
-      restartPolicy: Never
-      containers:
-        - name: init
-          image: {{ .Values.postgresql.initJob.image | default (include "cuberouter.postgresImage" .) }}
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: PGHOST
-              value: {{ $cluster }}-primary
-            - name: PGUSER
-              value: {{ $user }}
-            - name: PGDATABASE
-              value: {{ $db }}
-            # PGO enforces TLS for client connections (pg_hba hostssl only)
-            - name: PGSSLMODE
-              value: require
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $cluster }}-pguser-{{ $user }}
-                  key: password
-            - name: APP_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "cuberouter.secretName" . }}
-                  key: POSTGRES_PASSWORD
-          command:
-            - bash
-            - -ec
-            - |
-              echo "waiting for postgres user ${PGUSER} on ${PGHOST} ..."
-              for _ in $(seq 1 300); do
-                if psql -X -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -c "SELECT 1" >/dev/null 2>&1; then
-                  break
-                fi
-                sleep 2
-              done
-              psql -X -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -c "SELECT 1" >/dev/null 2>&1 || {
-                echo "postgres user ${PGUSER} did not become available in time"; exit 1;
-              }
-
-              echo "syncing password for role ${PGUSER}"
-              psql -X -h "$PGHOST" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
-                -c "ALTER ROLE \"${PGUSER}\" WITH PASSWORD '${APP_PASSWORD}'"
-
-              echo "postgres initialization complete"
+  cluster:
+    name: {{ $cluster }}
+  type: rw
+  instances: {{ .Values.postgresql.pgBouncer.replicas }}
+  pgbouncer:
+    poolMode: transaction
+    # authenticate pool clients against the role catalog
+    authQuery: "SELECT usename, passwd FROM pg_catalog.pg_shadow WHERE usename=$1"
+{{- end }}
+{{- if .Values.postgresql.backups.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $cluster }}-backup
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  cluster:
+    name: {{ $cluster }}
+  method: volumeSnapshot
+  schedule: {{ .Values.postgresql.backups.schedule | quote }}
+  online: true
 {{- end }}

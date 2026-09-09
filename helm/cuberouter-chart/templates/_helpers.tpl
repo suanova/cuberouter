@@ -55,7 +55,7 @@ App secret name (created or pre-existing).
 {{- end -}}
 
 {{/*
-PostgresCluster CR name (HA mode).
+CloudNativePG Cluster CR name (HA mode).
 */}}
 {{- define "cuberouter.postgresClusterName" -}}
 {{- printf "%s-postgres" (include "cuberouter.fullname" .) -}}
@@ -70,10 +70,12 @@ service names (<name>-master, <name>-additional, ...) fit in 63.
 {{- end -}}
 
 {{/*
-PostgreSQL connection host:port (always the writable primary).
+PostgreSQL connection host:port (always the writable primary): the
+CloudNativePG read-write service ("<name>-rw" selects the current primary
+pod).
 */}}
 {{- define "cuberouter.postgresAddr" -}}
-{{- printf "%s-primary:5432" (include "cuberouter.postgresClusterName" .) -}}
+{{- printf "%s-rw:5432" (include "cuberouter.postgresClusterName" .) -}}
 {{- end -}}
 
 {{/*
@@ -83,21 +85,4 @@ redis-role label).
 */}}
 {{- define "cuberouter.redisAddr" -}}
 {{- printf "%s-master:6379" (include "cuberouter.redisName" .) -}}
-{{- end -}}
-
-{{/*
-Postgres image used for the Crunchy cluster and psql client images.
-Empty crunchy.image = operator RELATED_IMAGE_POSTGRES_<ver>.
-*/}}
-{{- define "cuberouter.postgresImage" -}}
-{{- if .Values.postgresql.image -}}
-{{- .Values.postgresql.image -}}
-{{- else -}}
-{{- $rel := index (index .Values "postgresql-operator").relatedImages (printf "POSTGRES_%v" .Values.postgresql.postgresVersion) -}}
-{{- if $rel -}}
-{{- $rel -}}
-{{- else -}}
-{{- required (printf "postgresql.image is required when postgresql-operator.relatedImages has no POSTGRES_%v entry" .Values.postgresql.postgresVersion) "" -}}
-{{- end -}}
-{{- end -}}
 {{- end -}}

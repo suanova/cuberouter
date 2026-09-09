@@ -28,6 +28,12 @@ render existing-secret \
   --set secret.existingSecret=legacy-app-secret
 echo "   ok"
 
+echo "== helm template: pgBouncer enabled, backups disabled =="
+render pooler \
+  --set postgresql.pgBouncer.enabled=true \
+  --set postgresql.backups.enabled=false
+echo "   ok"
+
 echo "== negative: password with space must fail =="
 if render neg-pw --set "secrets.POSTGRES_PASSWORD=bad password" 2> /dev/null; then
   echo "   FAIL: expected render error" >&2; exit 1

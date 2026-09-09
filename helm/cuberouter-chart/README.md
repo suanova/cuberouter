@@ -8,7 +8,7 @@ subcharts are vendored under `charts/`, so it can be installed offline without `
 |---|---|
 | Chart | `cuberouter` **0.7.0** |
 | App version | `v1.1.55-isuanova-agent-release` |
-| Components | CubeRouter app, docs site, PostgreSQL (CrunchyData PGO), Redis (OpsTree redis-operator) |
+| Components | CubeRouter app, docs site, PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
 
 ## Contents
 
@@ -33,7 +33,7 @@ through their operators:
 
 | Component | What the chart installs |
 |---|---|
-| PostgreSQL | `PostgresCluster` CR (CrunchyData PGO / Patroni, PostgreSQL 16, 2 replicas) + PGO control plane |
+| PostgreSQL | `Cluster` CR (CloudNativePG, built-in streaming replication + automatic failover, PostgreSQL 16, 2 instances) + CNPG control plane |
 | Redis | `RedisReplication` CR (1 master + 1 replica, embedded 3-sentinel set) + OpsTree control plane |
 
 The operator subcharts (CRDs + control-plane Deployments) are always installed
@@ -43,9 +43,11 @@ together with the stores.
 
 - **Helm 3.x** and **kubectl**
 - A Kubernetes cluster with a **StorageClass** capable of `ReadWriteOnce` volumes (default sizes:
-  app data 10Gi, app logs 10Gi, PostgreSQL 20Gi, backups 20Gi — each tunable)
-- Multi-node clusters recommended so HA replicas spread across hosts (a soft pod anti-affinity is
-  rendered for Crunchy instance pods)
+  app data 10Gi, app logs 10Gi, PostgreSQL 20Gi — each tunable) and, with the default
+  `postgresql.backups.enabled: true`, a **default `VolumeSnapshotClass`** for volume-snapshot
+  backups (disable backups if the cluster has none)
+- Multi-node clusters recommended so HA replicas spread across hosts (the CloudNativePG operator
+  applies a soft pod anti-affinity to the instance pods)
 - Network access from the cluster to the container registries hosting the images (see next section)
 
 ## Images and registry access
@@ -54,10 +56,10 @@ together with the stores.
 |---|---|---|
 | App | `harbor.isuanova.com/suanova/cuberouter:latest` | `cubeRouter.image.repository` / `.tag` |
 | Docs | `harbor.isuanova.com.cn/suanova/cuberouter:latest` | `docs.image.repository` / `.tag` |
-| PostgreSQL instances | operator `RELATED_IMAGE_POSTGRES_<postgresVersion>` (default `POSTGRES_16`) | `postgresql.image` (empty) or `postgresql-operator.relatedImages` |
+| PostgreSQL instances | `ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie` (tag encodes the PG version) | `postgresql.image` |
 | Redis instances | `quay.io/opstree/redis:v7.0.15` | `redis.image.repository` / `.tag` |
 | Redis sentinel | `quay.io/opstree/redis-sentinel:v7.0.15` | `redis.sentinelImage.repository` / `.tag` |
-| CrunchyData PGO operator | `registry.developers.crunchydata.com/crunchydata/postgres-operator:ubi9-6.0.2-0` | `postgresql-operator.image.*` |
+| CloudNativePG operator | `ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0` | `cloudnative-pg.image.*` |
 | OpsTree redis-operator | `quay.io/opstree/redis-operator:v0.26.0` | `redis-operator.image.*` |
 
 All images are plain registry images; the chart does not manage image pull secrets — create one in
@@ -120,12 +122,12 @@ To manage all credentials yourself, set `secret.create=false` and point
 `secret.existingSecret` at a pre-created secret carrying **all** six keys (see
 [Secrets and credentials](#secrets-and-credentials)). The chart still creates the
 operator-managed stores, so `SQL_DSN` / `REDIS_CONN_STRING` must target the services the
-chart renders (`<fullname>-postgres-primary:5432`, `<fullname>-redis-master:6379`) with the
+chart renders (`<fullname>-postgres-rw:5432`, `<fullname>-redis-master:6379`) with the
 passwords you set.
 
 ```sh
 kubectl create secret generic cuberouter-secret -n cuberouter \
-  --from-literal=SQL_DSN='postgresql://cuberouter:pass@cuberouter-postgres-primary:5432/cuberouter?sslmode=require' \
+  --from-literal=SQL_DSN='postgresql://cuberouter:pass@cuberouter-postgres-rw:5432/cuberouter?sslmode=require' \
   --from-literal=REDIS_CONN_STRING='redis://:pass@cuberouter-redis-master:6379' \
   --from-literal=SESSION_SECRET='...' \
   --from-literal=CRYPTO_SECRET='...' \
@@ -171,14 +173,13 @@ kubectl -n cuberouter port-forward svc/cuberouter-docs 8080:80  # docs at http:/
 ```sh
 helm status cuberouter -n cuberouter
 kubectl -n cuberouter get pods
-kubectl -n cuberouter get postgresclusters,redisreplications
+kubectl -n cuberouter get clusters,redisreplications
 ```
 
-Wait for the `PostgresCluster` to report `ClusterRunning` (its `status.phase`) and for the
-`cuberouter-postgres-init` Job to complete — that Job waits for the operator to create the app
-role, then sets its password to the chart-generated one (the operator auto-generates the initial
-password; the app DSN uses the chart's). Then the app and docs pods pass their
-`/api/status` probes:
+Wait for the `Cluster` to report `ClusterOnline` (its `status.phase`) and for its instances to
+be ready. The app role and its chart-generated password exist from first start (the operator
+applies `cuberouter-postgres-app-auth` during bootstrap), so the app and docs pods pass their
+`/api/status` probes as soon as the cluster is online:
 
 ```sh
 curl -i http://localhost:3000/api/status
@@ -227,10 +228,12 @@ set `nameOverride` or `fullnameOverride` to change it.
 | Docs Service / Deployment | `<f>-docs` |
 | ConfigMap / Secret | `<f>-config`, `<f>-secret` |
 | App Ingress / Docs Ingress | `<f>-ingress`, `<f>-docs-ingress` |
-| PostgresCluster CR | `<f>-postgres` |
-| PG primary service (app connection target) | `<f>-postgres-primary:5432` |
-| PG user secret (operator-generated initial password) | `<f>-postgres-pguser-<user>` |
-| Post-install init Job | `<f>-postgres-init` |
+| Cluster CR (CloudNativePG) | `<f>-postgres` |
+| PG primary service (app connection target) | `<f>-postgres-rw:5432` |
+| PG read services | `<f>-postgres-ro:5432` (replicas), `<f>-postgres-r:5432` (all ready), `<f>-postgres-any:5432` |
+| App role credentials secret (chart-managed) | `<f>-postgres-app-auth` |
+| Pooler CR / service (only when `pgBouncer.enabled`) | `<f>-postgres-pgbouncer` / `<f>-postgres-pgbouncer:5432` |
+| ScheduledBackup CR (only when `backups.enabled`) | `<f>-postgres-backup` |
 | RedisReplication CR | `<f>-redis` (derived service names must stay ≤ 63 chars) |
 | Redis master service (app connection target) | `<f>-redis-master:6379` |
 | Sentinel headless service | `<f>-redis-s-hl:26379` |
@@ -238,7 +241,7 @@ set `nameOverride` or `fullnameOverride` to change it.
 
 Computed connection strings:
 
-- PostgreSQL: `postgresql://<user>:<pw>@<f>-postgres-primary:5432/<db>?sslmode=require` (defaults `cuberouter` / `cuberouter`; `sslmode=require` because PGO only accepts TLS client connections)
+- PostgreSQL: `postgresql://<user>:<pw>@<f>-postgres-rw:5432/<db>?sslmode=require` (defaults `cuberouter` / `cuberouter`; `sslmode=require` because the server certificate is self-signed — plain `host` connections would also be accepted)
 - Redis: `redis://:<pw>@<f>-redis-master:6379` (operator-managed master service that follows the primary)
 
 ## Key values at a glance
@@ -252,34 +255,40 @@ Computed connection strings:
 | `hpa` | `enabled: true`, 2→5 replicas at 70% CPU |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
-| `postgresql` | `auth.database/username`, `postgresVersion: 16`, `replicas: 2`, `storage: 20Gi`, `image`, `resources`, `backups.*`, `pgBouncer.*`, `initJob.*` |
+| `postgresql` | `auth.database/username`, `image` (PostgreSQL 16.14), `replicas: 2`, `storage: 20Gi`, `resources`, `backups.*`, `pgBouncer.*` |
 | `redis` | `image` (redis instances), `replicas: 2` (1 master + 1 replica), `sentinelReplicas: 3`, `sentinelImage`, `redisCustomConfig`, `persistence.*` |
-| `postgresql-operator` | PGO control plane (always installed), image, `relatedImages` (defaults ship `POSTGRES_15`–`POSTGRES_18` from the v6.0.2 installer) |
+| `cloudnative-pg` | CNPG control plane (always installed), image, `resources` |
 | `redis-operator` | OpsTree control plane (always installed), image |
 
 ## HA details
 
-### PostgreSQL (CrunchyData PGO)
+### PostgreSQL (CloudNativePG)
 
-- The operator auto-generates the app role password and a `PostgresCluster` cannot pin it, so the
-  chart's post-install/post-upgrade hook Job (`<f>-postgres-init`) logs in as the app role (initial
-  password from `<f>-postgres-pguser-<user>`) and changes it to the chart-generated one — a role may
-  always alter its own password, so no superuser access is needed (PGO v6 does not expose a
-  superuser password secret). It is idempotent and re-runs on every upgrade. If you edit
-  `spec.users` of the `PostgresCluster` or the `pguser` secret afterwards, the operator re-applies
-  its own password on the next reconcile — run `helm upgrade` to re-sync the chart password.
-- On PG15+ regular roles cannot create objects in the `public` schema, so the CR carries the
-  `postgres-operator.crunchydata.com/autoCreateUserSchema: "true"` annotation: the operator creates
-  a schema named after the user (owned by that user) in each of its databases, and the app's
-  unqualified DDL lands there (search path `$user`, `public`).
-- Client connections must use TLS (PGO `pg_hba` default: `hostssl` only), hence the computed
-  `SQL_DSN` carries `?sslmode=require` (TLS, no certificate verification).
-- Set `postgresql.postgresVersion` to match the Postgres **major** version you run; when
-  `postgresql.image` is empty the operator uses `postgresql-operator.relatedImages`
-  (`POSTGRES_<version>`, default `POSTGRES_16`).
-- pgBackRest full backups run on `postgresql.backups.schedule` (default weekly Sunday 02:00) into a
-  dedicated repo volume. `postgresql.pgBouncer.enabled` optionally adds a pgBouncer proxy pool.
-- Instance pods default to a soft pod anti-affinity spreading replicas across nodes.
+- The `Cluster` CR declares the app role through `spec.bootstrap.initdb` (`database` + `owner` +
+  `secret`): the operator creates the role (`CREATE ROLE <user> LOGIN`), creates the database with
+  `OWNER <user>`, and applies the password from the chart-rendered `<f>-postgres-app-auth`
+  secret (basic-auth format). The chart password is therefore the live database password from
+  first start — no init Job — and the operator re-applies it whenever that secret changes.
+- Because the app user **owns** the database, it has full rights on its `public` schema
+  (PostgreSQL 15+), so the app's DDL/migrations work without extra grants.
+- Client connections use TLS with a self-signed server certificate (generated by the operator);
+  the computed `SQL_DSN` carries `?sslmode=require` (TLS, no certificate verification). The
+  default `pg_hba` also accepts plain TCP, so either works.
+- `postgresql.image` is explicit — the tag encodes the PostgreSQL major version (default
+  `16.14-system-trixie` = PostgreSQL 16.14). Pick a different tag to change the major version.
+- Backups (`postgresql.backups.enabled`, default on): a `ScheduledBackup` CR runs on
+  `postgresql.backups.schedule` (default weekly Sunday 02:00) using **volume snapshots** — the
+  cluster must provide a default `VolumeSnapshotClass`; set `backups.enabled: false` if it does
+  not.
+- `postgresql.pgBouncer.enabled` (default off) adds an operator-managed pgbouncer `Pooler` in
+  front of the cluster (service `<f>-postgres-pgbouncer:5432`, transaction pooling, clients
+  authenticated against the role catalog).
+- The operator spreads instance pods across nodes automatically (preferred pod anti-affinity).
+  Superuser TCP access is disabled (the `postgres` role has no password).
+- The operator admission webhooks run with `failurePolicy: Ignore` (subchart values): the
+  Cluster CR is created in the same release as the operator, before the operator is serving;
+  "Ignore" admits it during that window and validates normally afterwards (the operator
+  injects its self-signed CA into the webhook configurations at startup).
 
 ### Redis (OpsTree redis-operator)
 
@@ -300,7 +309,8 @@ Computed connection strings:
 ## Upgrading and rolling back
 
 - `helm upgrade` is safe: generated passwords are re-read from the existing secret (`lookup`) so they
-  stay stable, and the Crunchy init Job re-runs (idempotently) on every upgrade.
+  stay stable, and the CloudNativePG operator re-applies the app role password whenever the
+  `cuberouter-postgres-app-auth` secret changes.
 - Migrating from the 0.6.0 deployment: keep `secret.create=false` + the existing
   `existingSecret=cuberouter-secret` — its `SQL_DSN` / `REDIS_CONN_STRING` keep working unchanged,
   or switch to the managed clusters by importing your data first. This chart does **not** migrate
@@ -313,10 +323,20 @@ Computed connection strings:
 helm uninstall cuberouter -n cuberouter
 ```
 
-`helm uninstall` removes the rendered workloads, Services, PVCs and the PostgresCluster /
-RedisReplication CRs (and, via the operators, their underlying PVCs). The operator **CRDs** are
-cluster-scoped and installed by the operator subcharts, so they remain after uninstall; remove them
-separately if desired. **Back up your databases before uninstalling.**
+`helm uninstall` removes the rendered workloads, Services, PVCs, the Cluster /
+RedisReplication CRs (and, via the operators, their underlying PVCs) and both operator
+control planes with their cluster-scoped RBAC / webhook configurations. The operator
+**CRDs** are marked `helm.sh/resource-policy: keep` upstream (so that uninstalling one
+release cannot wipe the API of other clusters sharing it) and therefore remain; remove
+them manually if desired, e.g. `kubectl get crd -o name | grep postgresql.cnpg.io | xargs
+kubectl delete` (same for the `redis.redis.opstreelabs.in` CRDs). Two caveats:
+
+- deleting the CloudNativePG CRDs deletes **every** `Cluster` CR in the cluster, not only
+  the one owned by this release — uninstall other CNPG releases first if they exist;
+- operator-generated leftovers that are not part of the release (e.g. the `cnpg-webhook-cert`
+  secret) stay in the namespace — remove them with `kubectl delete ns <namespace>`.
+
+**Back up your databases before uninstalling.**
 
 ## Validating the chart locally
 

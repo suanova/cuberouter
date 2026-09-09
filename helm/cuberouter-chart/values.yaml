@@ -1,8 +1,9 @@
 # Default values for cuberouter.
 #
 # PostgreSQL and Redis are required and always managed by operators (HA):
-#   PostgreSQL : Crunchy PostgresCluster (Patroni failover)
-#                + postgresql-operator subchart (installed together)
+#   PostgreSQL : CloudNativePG Cluster (built-in streaming replication +
+#                automatic failover) + cloudnative-pg subchart (installed
+#                together)
 #   Redis      : OpsTree RedisReplication (embedded sentinel set)
 #                + redis-operator subchart (installed together)
 # See README.md.
@@ -138,21 +139,20 @@ ingress:
       secretName: cuberouter-docs-tls
 
 # ---------------------------------------------------------------------------
-# PostgreSQL — HA cluster via CrunchyData PGO (PostgresCluster CR)
+# PostgreSQL — HA cluster via CloudNativePG (Cluster CR)
 # ---------------------------------------------------------------------------
 postgresql:
   auth:
     database: cuberouter
-    # Crunchy requires [a-z0-9-] only (no underscores)
+    # [a-z0-9-] only (no underscores)
     username: cuberouter
-  # Must match the image major version
-  postgresVersion: 16
-  # >= 2 for HA (Patroni automatic failover)
+  # Instance image; the tag encodes the PostgreSQL major version
+  # (16.14 = PostgreSQL 16.14)
+  image: ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie
+  # >= 2 for HA (automatic failover)
   replicas: 2
   storage: 20Gi
   storageClassName: ""
-  # Empty = operator RELATED_IMAGE_POSTGRES_<postgresVersion>
-  image: ""
   resources:
     requests:
       cpu: 500m
@@ -160,20 +160,14 @@ postgresql:
     limits:
       cpu: "2"
       memory: 4Gi
+  # Weekly backups via volume snapshots (uses the cluster's default
+  # VolumeSnapshotClass; set enabled=false if the cluster has none)
   backups:
     enabled: true
     schedule: "0 2 * * 0"
-    storage: 20Gi
   pgBouncer:
     enabled: false
     replicas: 2
-  # Post-install Job syncing the chart password onto the app role (the
-  # operator auto-generates passwords) and granting schema rights.
-  # Idempotent, re-runs on upgrade.
-  initJob:
-    enabled: true
-    # Empty = same image as the cluster
-    image: ""
 
 # ---------------------------------------------------------------------------
 # Redis — HA failover via OpsTree redis-operator (RedisReplication CR with
@@ -205,12 +199,11 @@ redis:
 # Always installed together with the managed stores; image and resources
 # can be tuned here.
 # ---------------------------------------------------------------------------
-postgresql-operator:
+cloudnative-pg:
   image:
-    repository: registry.developers.crunchydata.com/crunchydata/postgres-operator
-    tag: ubi9-6.0.2-0
+    repository: ghcr.io/cloudnative-pg/cloudnative-pg
+    tag: "1.30.0"
     pullPolicy: IfNotPresent
-  relatedImages: {}
   resources: {}
 
 redis-operator:
