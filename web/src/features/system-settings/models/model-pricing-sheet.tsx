@@ -68,12 +68,15 @@ import {
   generateTaskExprFromConfig,
 } from '@/features/pricing/lib/task-expr'
 import type { VideoPriceTable } from '@/features/pricing/types'
+import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
+  basePriceToRatio,
   buildPreviewRows,
+  buildPricingSubmitData,
   createInitialLaneState,
   createModelPricingSchema,
   getInitialPricingMode,
@@ -82,13 +85,17 @@ import {
   numericDraftRegex,
   ratioFieldByLane,
   toNumberOrNull,
+  usdPriceToDisplay,
   type LaneKey,
   type ModelPricingFormValues,
   type ModelRatioData,
   type PricingMode,
 } from './model-pricing-core'
 import { PriceInput, PriceLane } from './model-pricing-inputs'
-import { formatPricingNumber } from './pricing-format'
+import {
+  formatPricingNumber,
+  rebaseDisplayPriceDraft,
+} from './pricing-format'
 import { TaskUsagePricingEditor } from './task-usage-pricing-editor'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 import { VideoPriceEditor } from './video-price-editor'
@@ -157,6 +164,7 @@ export const ModelPricingEditorPanel = forwardRef<
   ref
 ) {
   const { t } = useTranslation()
+  const { symbol: currencySymbol, exchangeRate } = useBillingCurrency()
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
   const [videoPriceTable, setVideoPriceTable] = useState<VideoPriceTable>({
     rows: [],
@@ -172,6 +180,10 @@ export const ModelPricingEditorPanel = forwardRef<
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const autoSwitchedForRef = useRef<string | null>(null)
+  // 显示货币草稿(price/promptPrice/lanePrices)的换算基准汇率;汇率变化时 rebase,
+  // 保证提交端 ÷当前汇率与草稿显示的是同一底层美元意图。
+  const draftRateRef = useRef(exchangeRate)
+  const loadedEditDataRef = useRef(editData)
   const isEditMode = !!editData
   const { models: pricingModels } = usePricingData()
 
@@ -232,9 +244,12 @@ export const ModelPricingEditorPanel = forwardRef<
     const nextLaneState = createInitialLaneState(editData)
 
     if (editData) {
+      // 编辑态数值字段一律为显示货币:price(美元单价)换算后进表单;ratio 家族为倍率原样保留
       form.reset({
         name: editData.name,
-        price: editData.price || '',
+        price: editData.price
+          ? usdPriceToDisplay(Number(editData.price))
+          : '',
         ratio: editData.ratio || '',
         cacheRatio: editData.cacheRatio || '',
         createCacheRatio: editData.createCacheRatio || '',
@@ -275,6 +290,43 @@ export const ModelPricingEditorPanel = forwardRef<
     setEditorReloadToken((token) => token + 1)
     autoSwitchedForRef.current = null
   }, [editData, form])
+
+  // 展示货币汇率变化时 rebase 显示货币草稿(保留底层 USD 意图,不丢用户录入):
+  // - per-request price:提交时 ÷当前汇率落库,不 rebase 会把旧汇率显示值按新汇率写回;
+  // - per-token 主价/lane 价:显示字符串同源重算,后续比率推导(显示价相除)不受混合汇率影响。
+  // 编辑对象切换(editData 身份变化)时,上面的加载 effect 已按当前汇率重建草稿,
+  // 这里只同步基准、不再重换算。
+  useEffect(() => {
+    const nextRate = exchangeRate
+    let prevRate = draftRateRef.current
+    if (loadedEditDataRef.current !== editData) {
+      loadedEditDataRef.current = editData
+      draftRateRef.current = nextRate
+      prevRate = nextRate
+    }
+    if (prevRate === nextRate) return
+    draftRateRef.current = nextRate
+    setPromptPrice((prev) => rebaseDisplayPriceDraft(prev, prevRate, nextRate))
+    setLanePrices((prev) => {
+      let next = prev
+      for (const lane of laneConfigs) {
+        const rebased = rebaseDisplayPriceDraft(
+          prev[lane.key],
+          prevRate,
+          nextRate
+        )
+        if (rebased !== prev[lane.key]) {
+          next = next === prev ? { ...prev } : next
+          next[lane.key] = rebased
+        }
+      }
+      return next
+    })
+    form.setValue(
+      'price',
+      rebaseDisplayPriceDraft(form.getValues('price') ?? '', prevRate, nextRate)
+    )
+  }, [editData, exchangeRate, form])
 
   useEffect(() => {
     if (!editData) return
@@ -324,11 +376,9 @@ export const ModelPricingEditorPanel = forwardRef<
     nextLanePrices = lanePrices,
     nextLaneEnabled = laneEnabled
   ) => {
-    const inputPrice = toNumberOrNull(nextPromptPrice)
-    setFormValue(
-      'ratio',
-      inputPrice !== null ? formatPricingNumber(inputPrice / 2) : ''
-    )
+    // 基准 ratio 推导收敛到 core 换算边界(显示主价 → USD → ÷$2 基准),
+    // 落库倍率与 USD 模式推导一致(汇率无关),由 basePriceToRatio 单测 pin。
+    setFormValue('ratio', basePriceToRatio(nextPromptPrice))
 
     laneConfigs.forEach(({ key }) => {
       const ratioField = ratioFieldByLane[key]
@@ -512,31 +562,13 @@ export const ModelPricingEditorPanel = forwardRef<
   }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, t])
 
   const buildSubmitData = useCallback(
-    (values: ModelPricingFormValues) => {
-      const data: ModelRatioData = {
-        name: values.name.trim(),
-        billingMode: pricingMode,
-        price: values.price || '',
-        ratio: values.ratio || '',
-        cacheRatio: values.cacheRatio || '',
-        createCacheRatio: values.createCacheRatio || '',
-        completionRatio: values.completionRatio || '',
-        imageRatio: values.imageRatio || '',
-        audioRatio: values.audioRatio || '',
-        audioCompletionRatio: values.audioCompletionRatio || '',
-      }
-
-      if (pricingMode === 'tiered_expr') {
-        data.billingExpr = resolvedBillingExpr
-        data.requestRuleExpr = requestRuleExpr
-      }
-
-      if (pricingMode === 'video-per-second') {
-        data.videoPrices = videoPriceTable
-      }
-
-      return data
-    },
+    (values: ModelPricingFormValues) =>
+      // 提交组装统一走 core 的换算出口(price 显示货币 → USD 落库)
+      buildPricingSubmitData(values, pricingMode, {
+        billingExpr: resolvedBillingExpr,
+        requestRuleExpr,
+        videoPrices: videoPriceTable,
+      }),
     [pricingMode, requestRuleExpr, resolvedBillingExpr, videoPriceTable]
   )
 
@@ -668,11 +700,13 @@ export const ModelPricingEditorPanel = forwardRef<
                         <FieldLabel>{t('Input price')}</FieldLabel>
                         <PriceInput
                           value={promptPrice}
-                          placeholder='3'
+                          placeholder={usdPriceToDisplay(3)}
                           onChange={handlePromptPriceChange}
                         />
                         <FieldDescription>
-                          {t('USD price per 1M input tokens.')}
+                          {t('Price in {{symbol}} per 1M tokens.', {
+                            symbol: currencySymbol,
+                          })}
                         </FieldDescription>
                       </Field>
 
@@ -687,7 +721,9 @@ export const ModelPricingEditorPanel = forwardRef<
                               key={lane.key}
                               title={t(lane.titleKey)}
                               description={t(lane.descriptionKey)}
-                              placeholder={lane.placeholder}
+                              placeholder={usdPriceToDisplay(
+                                Number(lane.placeholder)
+                              )}
                               value={lanePrices[lane.key]}
                               enabled={laneEnabled[lane.key]}
                               disabled={disabled}
@@ -715,10 +751,10 @@ export const ModelPricingEditorPanel = forwardRef<
                               <FieldLabel>{t('Fixed price')}</FieldLabel>
                               <FormControl>
                                 <InputGroup>
-                                  <InputGroupAddon>$</InputGroupAddon>
+                                  <InputGroupAddon>{currencySymbol}</InputGroupAddon>
                                   <InputGroupInput
                                     inputMode='decimal'
-                                    placeholder='0.01'
+                                    placeholder={usdPriceToDisplay(0.01)}
                                     {...field}
                                     onChange={(event) => {
                                       const value = event.target.value
@@ -734,7 +770,8 @@ export const ModelPricingEditorPanel = forwardRef<
                               </FormControl>
                               <FieldDescription>
                                 {t(
-                                  'Cost in USD per request, regardless of tokens used.'
+                                  'Cost in {{symbol}} per request, regardless of tokens used.',
+                                  { symbol: currencySymbol }
                                 )}
                               </FieldDescription>
                               <FormMessage />

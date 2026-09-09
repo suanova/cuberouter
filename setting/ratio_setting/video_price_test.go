@@ -123,7 +123,7 @@ func TestVideoPriceAnchor(t *testing.T) {
 }
 
 func TestVideoPriceModelPrice(t *testing.T) {
-	// 按次计费美元价格 = 锚点 ¥/秒 ÷ 7.3(1 USD = 7.3 RMB)
+	// 按次计费美元价格 = 锚点(最高 normal 价行)本身:表内价格以 USD/s 存储,不再折算。
 	tests := []struct {
 		name   string
 		rows   []VideoPriceRow
@@ -138,7 +138,7 @@ func TestVideoPriceModelPrice(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.InDelta(t, tt.anchor/USD2RMB, VideoPriceModelPrice(&VideoPriceTable{Rows: tt.rows}), 1e-12)
+			require.InDelta(t, tt.anchor, VideoPriceModelPrice(&VideoPriceTable{Rows: tt.rows}), 1e-12)
 		})
 	}
 }
@@ -171,6 +171,25 @@ func TestIsOffPeakHour(t *testing.T) {
 		now := time.Date(2026, 9, 1, hour, 0, 0, 0, loc)
 		assert.False(t, IsOffPeakHour(now, noOffPeak), "hour=%d", hour)
 	}
+}
+
+func TestParseVideoPriceMap(t *testing.T) {
+	valid := `{"viduq3-pro":{"rows":[{"resolution":"1080p","normal_price":0.75,"off_peak_price":0.375}]}}`
+	m, err := ParseVideoPriceMap(valid)
+	require.NoError(t, err)
+	require.Len(t, m, 1)
+	require.InDelta(t, 0.75, m["viduq3-pro"].Rows[0].NormalPrice, 1e-12)
+
+	empty, err := ParseVideoPriceMap("{}")
+	require.NoError(t, err)
+	require.Empty(t, empty)
+
+	empty2, err := ParseVideoPriceMap("")
+	require.NoError(t, err)
+	require.Empty(t, empty2)
+
+	_, err = ParseVideoPriceMap(`{"m":1}`)
+	require.Error(t, err)
 }
 
 func TestGetOffPeakWindowDefault(t *testing.T) {

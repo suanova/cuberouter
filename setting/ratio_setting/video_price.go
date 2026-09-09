@@ -22,9 +22,21 @@ type VideoPriceTable struct {
 
 var videoPriceMap = types.NewRWMap[string, *VideoPriceTable]()
 
-func UpdateVideoPriceByJSONString(jsonStr string) error {
-	var m map[string]*VideoPriceTable
+// ParseVideoPriceMap 解析 VideoPrice option 的顶层 map(模型名 → 价格表)。
+func ParseVideoPriceMap(jsonStr string) (map[string]*VideoPriceTable, error) {
+	m := make(map[string]*VideoPriceTable)
+	if strings.TrimSpace(jsonStr) == "" {
+		return m, nil
+	}
 	if err := common.UnmarshalJsonStr(jsonStr, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+func UpdateVideoPriceByJSONString(jsonStr string) error {
+	m, err := ParseVideoPriceMap(jsonStr)
+	if err != nil {
 		return err
 	}
 	for model, table := range m {
@@ -60,9 +72,10 @@ func VideoPriceAnchor(t *VideoPriceTable) float64 {
 	return anchor
 }
 
-// VideoPriceModelPrice 返回按次计费的美元价格:锚点 ¥/秒 → USD per-call。
+// VideoPriceModelPrice 返回按次计费的美元价格:锚点(最高 normal 价行)直接作为 USD/s 计费锚。
+// 表内价格以 USD/s 存储(2026-09-08 迁移),不再做 ¥→USD 折算。
 func VideoPriceModelPrice(t *VideoPriceTable) float64 {
-	return VideoPriceAnchor(t) / USD2RMB
+	return VideoPriceAnchor(t)
 }
 
 type OffPeakWindow struct {

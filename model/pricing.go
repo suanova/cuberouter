@@ -455,8 +455,9 @@ func updatePricing() {
 	}
 
 	// 防止大更新后数据不通用
+	// 2026-09-08:VideoPrice option 迁移为 USD/s 语义,版本号随之变化使既有缓存失效
 	if len(pricingMap) > 0 {
-		pricingMap[0].PricingVersion = "5a90f2b86c08bd983a9a2e6d66c255f4eaef9c4bc934386d2b6ae84ef0ff1f1f"
+		pricingMap[0].PricingVersion = "6be793d2da24eee0e8557ce5bc713f2c0ae3622bc561a55d7dd0db1b690c806b"
 	}
 
 	// 刷新缓存映射，供高并发快速查询

@@ -192,8 +192,8 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 	var usePrice bool
 	var modelRatio float64
 
-	// 视频按秒定价:模型配置了视频价格表时,锚点(最高 normal 价 ¥/秒)转为
-	// USD per-call 价格,系数(分辨率/错峰)由适配器按表推导。
+	// 视频按秒定价:模型配置了视频价格表时,锚点(最高 normal 价 USD/s)作为
+	// per-call 价格,系数(分辨率/错峰)由适配器按表推导。
 	if table, ok := ratio_setting.GetVideoPrice(info.OriginModelName); ok {
 		modelPrice = ratio_setting.VideoPriceModelPrice(table)
 		usePrice = true

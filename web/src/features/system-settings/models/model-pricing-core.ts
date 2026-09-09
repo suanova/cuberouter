@@ -20,8 +20,29 @@ import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
 import type { VideoPriceTable } from '@/features/pricing/types'
+import {
+  getBillingCurrency,
+  localToUsdNumber,
+  usdToLocalNumber,
+} from '@/lib/currency'
 
 import { formatPricingNumber } from './pricing-format'
+
+/**
+ * 编辑器的货币换算边界:
+ * - 加载/联动显示:内部美元价 → 显示货币字符串;
+ * - 解析/提交:显示货币数值 → 内部美元数。
+ * 换算经 formatPricingNumber/snapFloatDrift 归整:≥1e-12 量级的现实定价往返保真;
+ * 更小量级会归零(现实定价不可达),故显示货币与 USD 相同(或汇率非法回落 1)时
+ * 仅跳过 ×rate,不保证字符串级恒等(尾零会被修剪、极小量级归 "0")。
+ */
+export function usdPriceToDisplay(usdNumber: number): string {
+  return formatPricingNumber(usdToLocalNumber(usdNumber))
+}
+
+export function displayPriceToUsd(localNumber: number): number {
+  return localToUsdNumber(localNumber)
+}
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
   z.object({
@@ -184,9 +205,26 @@ export function toNumberOrNull(value: unknown): number | null {
 function ratioToBasePrice(ratio: unknown): string {
   const num = toNumberOrNull(ratio)
   if (num === null) return ''
-  return formatPricingNumber(num * 2)
+  // ratio 是倍率,主输入价(美元/1M)= ratio × 2(2 为美元计价基准),出口换算为显示货币
+  return usdPriceToDisplay(num * 2)
 }
 
+/**
+ * ratioToBasePrice 的编辑期逆推导(同一 $2/1M 美元基准):
+ * 显示货币主价 → USD → ÷2 → 落库基准倍率 ratio。汇率在 ÷rate 处消除,任何显示
+ * 货币下推导结果都与 USD 模式直接输入美元主价一致(倍率,汇率无关)。不可解析
+ * 输入返回空串,与表单 ratio 空值语义一致。
+ */
+export function basePriceToRatio(displayPrice: string): string {
+  const num = toNumberOrNull(displayPrice)
+  if (num === null) return ''
+  return formatPricingNumber(displayPriceToUsd(num) / 2)
+}
+
+/**
+ * 派生 lane 价 = lane 倍率 × 主价。倍率无量纲,denominator 为显示货币价格串时
+ * 结果即显示货币价(汇率在两个同货币量中已约去),无需在此换算。
+ */
 function deriveLanePrice(
   ratio: unknown,
   denominator: unknown,
@@ -198,6 +236,10 @@ function deriveLanePrice(
   return formatPricingNumber(ratioNumber * denominatorNumber)
 }
 
+/**
+ * 由库中倍率(ratio 家族,美元无关)还原 per-token 主价与各 lane 价。
+ * 返回的价格串为显示货币(经 usdPriceToDisplay/汇率约去推导)。
+ */
 export function createInitialLaneState(data?: ModelRatioData | null) {
   if (!data) {
     return {
@@ -281,18 +323,22 @@ export function buildPreviewRows(
     ]
   }
 
+  // 预览金额已是显示货币串,符号随计费货币补齐(与输入框 addon 同源)。
+  // per-request/tiered_expr 预览行只回显录入原文,不带前缀。
+  const symbol = getBillingCurrency().symbol
+
   return [
     {
       key: 'inputPrice',
       label: t('Input price'),
-      value: promptPrice ? `$${promptPrice}` : t('Empty'),
+      value: promptPrice ? `${symbol}${promptPrice}` : t('Empty'),
     },
     {
       key: 'completion',
       label: t('Completion price'),
       value:
         laneEnabled.completion && lanePrices.completion
-          ? `$${lanePrices.completion}`
+          ? `${symbol}${lanePrices.completion}`
           : t('Empty'),
     },
     {
@@ -300,7 +346,7 @@ export function buildPreviewRows(
       label: t('Cache read price'),
       value:
         laneEnabled.cache && lanePrices.cache
-          ? `$${lanePrices.cache}`
+          ? `${symbol}${lanePrices.cache}`
           : t('Empty'),
     },
     {
@@ -308,7 +354,7 @@ export function buildPreviewRows(
       label: t('Cache write price'),
       value:
         laneEnabled.createCache && lanePrices.createCache
-          ? `$${lanePrices.createCache}`
+          ? `${symbol}${lanePrices.createCache}`
           : t('Empty'),
     },
     {
@@ -316,7 +362,7 @@ export function buildPreviewRows(
       label: t('Image input price'),
       value:
         laneEnabled.image && lanePrices.image
-          ? `$${lanePrices.image}`
+          ? `${symbol}${lanePrices.image}`
           : t('Empty'),
     },
     {
@@ -324,7 +370,7 @@ export function buildPreviewRows(
       label: t('Audio input price'),
       value:
         laneEnabled.audioInput && lanePrices.audioInput
-          ? `$${lanePrices.audioInput}`
+          ? `${symbol}${lanePrices.audioInput}`
           : t('Empty'),
     },
     {
@@ -332,7 +378,7 @@ export function buildPreviewRows(
       label: t('Audio output price'),
       value:
         laneEnabled.audioOutput && lanePrices.audioOutput
-          ? `$${lanePrices.audioOutput}`
+          ? `${symbol}${lanePrices.audioOutput}`
           : t('Empty'),
     },
   ]
@@ -351,10 +397,16 @@ export function buildPricingSubmitData(
     videoPrices?: VideoPriceTable
   }
 ): ModelRatioData {
+  // price 为 per-request 美元单价,编辑态是显示货币录入值,落库前折算为 USD;
+  // ratio 家族是倍率(汇率约去),以录入值原样落库。
+  const priceNumber = toNumberOrNull(values.price)
   const data: ModelRatioData = {
     name: values.name.trim(),
     billingMode: mode,
-    price: values.price || '',
+    price:
+      priceNumber === null
+        ? values.price || ''
+        : formatPricingNumber(displayPriceToUsd(priceNumber)),
     ratio: values.ratio || '',
     cacheRatio: values.cacheRatio || '',
     createCacheRatio: values.createCacheRatio || '',

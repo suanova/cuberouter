@@ -61,7 +61,13 @@ import type {
   BillingUsageFieldSchema,
   BillingUsageSchema,
 } from '@/features/pricing/types'
+import { getBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
+
+import {
+  laneLocalToUsdNumber,
+  laneUsdToLocalNumber,
+} from './pricing-lane-currency'
 
 const TASK_MATRIX_GROUP_THRESHOLD = 24
 
@@ -96,9 +102,12 @@ function FillColumnPopover(props: FillColumnPopoverProps) {
 
   const handleSubmit = () => {
     const nextValue = Number(value)
+    // 填列弹窗里的数值为显示货币,入状态前折算回美元
     props.onFillColumn(
       props.priceKey,
-      Number.isFinite(nextValue) && nextValue >= 0 ? nextValue : 0
+      Number.isFinite(nextValue) && nextValue >= 0
+        ? laneLocalToUsdNumber(nextValue)
+        : 0
     )
     setOpen(false)
   }
@@ -171,6 +180,7 @@ type TaskMatrixTableProps = {
 
 function TaskMatrixTable(props: TaskMatrixTableProps) {
   const { t } = useTranslation()
+  const symbol = getBillingCurrency().symbol
   const visibleEnumFields = props.enumFields.filter(
     ([field]) => field !== props.hiddenEnumField
   )
@@ -190,12 +200,14 @@ function TaskMatrixTable(props: TaskMatrixTableProps) {
                 <div className='flex flex-col gap-0.5'>
                   <code>{field}</code>
                   <span className='text-muted-foreground text-[11px] font-normal'>
-                    $/{t(getTaskUsagePriceUnitLabelKey(definition.unit))}
+                    {symbol}/{t(getTaskUsagePriceUnitLabelKey(definition.unit))}
                   </span>
                 </div>
                 <FillColumnPopover
                   priceKey={field}
-                  initialValue={props.firstRow.unitPrices[field] ?? 0}
+                  initialValue={laneUsdToLocalNumber(
+                    props.firstRow.unitPrices[field] ?? 0
+                  )}
                   onFillColumn={props.onFillColumn}
                 />
               </div>
@@ -206,12 +218,12 @@ function TaskMatrixTable(props: TaskMatrixTableProps) {
               <div className='flex flex-col gap-0.5'>
                 <span>{t('Base charge')}</span>
                 <span className='text-muted-foreground text-[11px] font-normal'>
-                  $/{t('request')}
+                  {symbol}/{t('request')}
                 </span>
               </div>
               <FillColumnPopover
                 priceKey='constant'
-                initialValue={props.firstRow.constant}
+                initialValue={laneUsdToLocalNumber(props.firstRow.constant)}
                 onFillColumn={props.onFillColumn}
               />
             </div>
@@ -248,7 +260,7 @@ function TaskMatrixTable(props: TaskMatrixTableProps) {
                     type='number'
                     min={0}
                     step={0.000001}
-                    value={entry.row.unitPrices[field] ?? 0}
+                    value={laneUsdToLocalNumber(entry.row.unitPrices[field] ?? 0)}
                     data-matrix-col={field}
                     data-matrix-row={entry.index}
                     aria-label={`${field}: ${rowLabel}`}
@@ -258,7 +270,9 @@ function TaskMatrixTable(props: TaskMatrixTableProps) {
                       }
                     }}
                     onChange={(event) => {
-                      const value = Number(event.target.value)
+                      const value = laneLocalToUsdNumber(
+                        Number(event.target.value)
+                      )
                       props.onRowChange(entry.index, {
                         ...entry.row,
                         unitPrices: {
@@ -280,7 +294,7 @@ function TaskMatrixTable(props: TaskMatrixTableProps) {
                   type='number'
                   min={0}
                   step={0.000001}
-                  value={entry.row.constant}
+                  value={laneUsdToLocalNumber(entry.row.constant)}
                   data-matrix-col='constant'
                   data-matrix-row={entry.index}
                   aria-label={`${t('Base charge')}: ${rowLabel}`}
@@ -290,7 +304,9 @@ function TaskMatrixTable(props: TaskMatrixTableProps) {
                     }
                   }}
                   onChange={(event) => {
-                    const value = Number(event.target.value)
+                    const value = laneLocalToUsdNumber(
+                      Number(event.target.value)
+                    )
                     props.onRowChange(entry.index, {
                       ...entry.row,
                       constant:

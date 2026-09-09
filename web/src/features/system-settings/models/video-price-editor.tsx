@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -29,10 +29,12 @@ import {
   InputGroupInput,
 } from '@/components/ui/input-group'
 import type { VideoPriceTable } from '@/features/pricing/types'
+import { useBillingCurrency } from '@/lib/currency'
 
-import { numericDraftRegex } from './model-pricing-core'
+import { numericDraftRegex, usdPriceToDisplay } from './model-pricing-core'
 import {
   addVideoPriceRowDraft,
+  rebaseVideoPriceDrafts,
   removeVideoPriceRowDraft,
   updateVideoPriceRowDraft,
   videoPriceDraftsFromTable,
@@ -50,9 +52,21 @@ export const VideoPriceEditor = function VideoPriceEditor(
   props: VideoPriceEditorProps
 ) {
   const { t } = useTranslation()
+  const { symbol: currencySymbol, exchangeRate } = useBillingCurrency()
   const [drafts, setDrafts] = useState<VideoPriceRowDraft[]>(() =>
     videoPriceDraftsFromTable(props.table)
   )
+  // 草稿按加载时的汇率换算成显示货币;汇率变化时 rebase(保留底层 USD 意图),
+  // 否则后续任一行的编辑会按新汇率重换算整张旧汇率草稿,写错未编辑行的价。
+  const draftRateRef = useRef(exchangeRate)
+
+  useEffect(() => {
+    const nextRate = exchangeRate
+    const prevRate = draftRateRef.current
+    if (nextRate === prevRate) return
+    draftRateRef.current = nextRate
+    setDrafts((prev) => rebaseVideoPriceDrafts(prev, prevRate, nextRate))
+  }, [exchangeRate])
 
   const handleDraftsChange = (nextDrafts: VideoPriceRowDraft[]) => {
     setDrafts(nextDrafts)
@@ -84,10 +98,10 @@ export const VideoPriceEditor = function VideoPriceEditor(
             {t('Resolution')}
           </span>
           <span className='text-muted-foreground text-xs'>
-            {t('Video price (¥/s)')}
+            {t('Video price ({{symbol}}/s)', { symbol: currencySymbol })}
           </span>
           <span className='text-muted-foreground text-xs'>
-            {t('Off-peak price (¥/s)')}
+            {t('Off-peak price ({{symbol}}/s)', { symbol: currencySymbol })}
           </span>
           <span />
         </div>
@@ -101,11 +115,11 @@ export const VideoPriceEditor = function VideoPriceEditor(
               }
             />
             <InputGroup>
-              <InputGroupAddon>¥</InputGroupAddon>
+              <InputGroupAddon>{currencySymbol}</InputGroupAddon>
               <InputGroupInput
                 inputMode='decimal'
                 value={draft.normalPrice}
-                placeholder='0.75'
+                placeholder={usdPriceToDisplay(0.75)}
                 onChange={(event) => {
                   const value = event.target.value
                   if (numericDraftRegex.test(value)) {
@@ -115,11 +129,11 @@ export const VideoPriceEditor = function VideoPriceEditor(
               />
             </InputGroup>
             <InputGroup>
-              <InputGroupAddon>¥</InputGroupAddon>
+              <InputGroupAddon>{currencySymbol}</InputGroupAddon>
               <InputGroupInput
                 inputMode='decimal'
                 value={draft.offPeakPrice}
-                placeholder='0.375'
+                placeholder={usdPriceToDisplay(0.375)}
                 onChange={(event) => {
                   const value = event.target.value
                   if (numericDraftRegex.test(value)) {

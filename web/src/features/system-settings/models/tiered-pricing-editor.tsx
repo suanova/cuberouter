@@ -99,9 +99,14 @@ import {
   normalizeVisualTier,
   tryParseVisualConfig,
 } from '@/features/pricing/lib/tier-expr'
+import { getBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
-const PRICE_SUFFIX = '$/1M tokens'
+import {
+  laneLocalToUsdNumber,
+  laneUsdToLocalNumber,
+} from './pricing-lane-currency'
+
 const CACHE_PRICE_VARS = BILLING_EXTRA_VARS.filter(
   (variable) => variable.group === 'cache'
 )
@@ -313,12 +318,18 @@ const PRESET_GROUPS: PresetGroup[] = [
   },
 ]
 
+/**
+ * PriceField 输入边界的货币换算(状态美元,展示本地货币):
+ * - tier 里的 *_unit_cost 是美元单位价系数(USD/1M tokens,表达式原样使用);
+ * - PriceField 展示/录入的“price”数值随显示货币(rate=1 恒等)。
+ * 展示 ×rate + formatPricingNumber 归整;录入 ÷rate 保留原精度。
+ */
 function unitCostToPrice(uc: number | string): number {
-  return Number(uc) || 0
+  return laneUsdToLocalNumber(Number(uc) || 0)
 }
 
 function priceToUnitCost(price: number | string): number {
-  return Number(price) || 0
+  return laneLocalToUsdNumber(Number(price) || 0)
 }
 
 function formatTokenHint(n: number | string | null | undefined): string {
@@ -680,7 +691,7 @@ function VisualTierCard({
         <div className='flex items-center justify-between gap-3'>
           <Label className='text-sm font-semibold'>{t('Token prices')}</Label>
           <span className='bg-muted text-muted-foreground rounded-md px-2 py-1 text-xs'>
-            {PRICE_SUFFIX}
+            {t('{{symbol}}/1M tokens', { symbol: getBillingCurrency().symbol })}
           </span>
         </div>
 

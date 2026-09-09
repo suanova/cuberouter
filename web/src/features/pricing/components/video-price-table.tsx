@@ -19,9 +19,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { StaticDataTable } from '@/components/data-table'
+import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
-import { formatVideoPrice, getOffPeakWindowLabel } from '../lib/video-price'
+import { formatVideoPriceMoney, getOffPeakWindowLabel } from '../lib/video-price'
 import type { OffPeakWindow, VideoPriceTable } from '../types'
 
 export interface VideoPriceTableProps {
@@ -36,12 +37,14 @@ const headerCellClass =
   'text-muted-foreground py-2 text-[10px] font-medium tracking-wider uppercase'
 
 /**
- * Per-second video price table for a model, showing the admin-configured
- * ¥/s values verbatim (no coefficients), with the global off-peak window
- * note beside the table. Renders nothing when the table has no rows.
+ * Per-second video price table for a model, showing the stored USD/s values
+ * converted to the site display currency (symbol in the header), with the
+ * global off-peak window note beside the table. Renders nothing when the
+ * table has no rows.
  */
 export function VideoPriceTable(props: VideoPriceTableProps) {
   const { t } = useTranslation()
+  const symbol = useBillingCurrency().symbol
   const rows = props.table?.rows ?? []
   if (rows.length === 0) return null
 
@@ -70,17 +73,19 @@ export function VideoPriceTable(props: VideoPriceTableProps) {
           },
           {
             id: 'normal',
-            header: t('Video price (¥/s)'),
+            header: t('Video price ({{symbol}}/s)', { symbol }),
             className: `${headerCellClass} text-right`,
             cellClassName: 'py-2 text-right font-mono tabular-nums',
-            cell: (row) => formatVideoPrice(row.normal_price),
+            cell: (row) =>
+              formatVideoPriceMoney(row.normal_price, { showSymbol: false }),
           },
           {
             id: 'off-peak',
-            header: t('Off-peak price (¥/s)'),
+            header: t('Off-peak price ({{symbol}}/s)', { symbol }),
             className: `${headerCellClass} text-right`,
             cellClassName: 'py-2 text-right font-mono tabular-nums',
-            cell: (row) => formatVideoPrice(row.off_peak_price),
+            cell: (row) =>
+              formatVideoPriceMoney(row.off_peak_price, { showSymbol: false }),
           },
         ]}
       />

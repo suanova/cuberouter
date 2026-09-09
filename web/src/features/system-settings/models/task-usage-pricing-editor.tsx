@@ -60,8 +60,13 @@ import type {
   BillingUsageExample,
   BillingUsageSchema,
 } from '@/features/pricing/types'
+import { getBillingCurrency } from '@/lib/currency'
 import { resolveLocalizedText } from '@/lib/localized-text'
 
+import {
+  laneLocalToUsdNumber,
+  laneUsdToLocalNumber,
+} from './pricing-lane-currency'
 import { formatPricingNumber } from './pricing-format'
 import { TaskPricingMatrix } from './task-pricing-matrix'
 
@@ -89,6 +94,8 @@ type TaskBillingPreviewProps = {
 
 function TaskBillingPreview(props: TaskBillingPreviewProps) {
   const { t } = useTranslation()
+  // 预览金额是表达式求值出的美元数:符号与数值都随显示货币(rate=1 时与旧 $ 文案一致)
+  const symbol = getBillingCurrency().symbol
   const enumFields = getTaskEnumFields(props.usageSchema)
   const numberFields = getTaskNumberFields(props.usageSchema)
     const result = props.config
@@ -111,7 +118,7 @@ function TaskBillingPreview(props: TaskBillingPreviewProps) {
 
   const formulaParts = result.parts.map((part) => {
     if (part.kind === 'constant') {
-      return `$${formatPricingNumber(part.amount)}`
+      return `${symbol}${formatPricingNumber(laneUsdToLocalNumber(part.amount))}`
     }
 
     const definition = props.usageSchema[part.field ?? '']
@@ -122,10 +129,11 @@ function TaskBillingPreview(props: TaskBillingPreviewProps) {
       definition?.unit === 'second'
         ? `${formatPricingNumber(part.quantity)}${quantityUnitLabel}`
         : `${formatPricingNumber(part.quantity)} ${quantityUnitLabel}`
-    return `${quantityLabel} × $${formatPricingNumber(part.unitPrice)}/${t(priceUnitKey)}`
+    return `${quantityLabel} × ${symbol}${formatPricingNumber(laneUsdToLocalNumber(part.unitPrice ?? 0))}/${t(priceUnitKey)}`
   })
-  const formulaLeft = formulaParts.length > 0 ? formulaParts.join(' + ') : '$0'
-  const formula = `${formulaLeft} = $${formatPricingNumber(result.total)}`
+  const formulaLeft =
+    formulaParts.length > 0 ? formulaParts.join(' + ') : `${symbol}0`
+  const formula = `${formulaLeft} = ${symbol}${formatPricingNumber(laneUsdToLocalNumber(result.total))}`
 
   return (
     <div className='bg-muted/30 flex flex-col gap-3 rounded-md border p-3'>
@@ -428,7 +436,8 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
       <Alert>
         <AlertDescription className='text-xs'>
           {t(
-            'Task usage prices are USD per declared unit. Token fields use dollars per 1M tokens; the editor writes / 1000000 into the expression. Other units are not divided by one million.'
+            'Prices are stored in the expression as USD per declared unit. Token fields are priced per 1M tokens; the visual editor writes / 1000000 into the expression. Visual inputs and previews show {{symbol}}; the expression editor writes USD directly.',
+            { symbol: getBillingCurrency().symbol }
           )}
         </AlertDescription>
       </Alert>
@@ -484,14 +493,19 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                                 type='number'
                                 min={0}
                                 step={0.000001}
-                                value={matrixRows[0].unitPrices[field] ?? 0}
+                                aria-label={field}
+                                value={laneUsdToLocalNumber(
+                                  matrixRows[0].unitPrices[field] ?? 0
+                                )}
                                 onFocus={(event) => {
                                   if (Number(event.currentTarget.value) === 0) {
                                     event.currentTarget.select()
                                   }
                                 }}
                                 onChange={(event) => {
-                                  const value = Number(event.target.value)
+                                  const value = laneLocalToUsdNumber(
+                                    Number(event.target.value)
+                                  )
                                   handleRowChange(0, {
                                     ...matrixRows[0],
                                     unitPrices: {
@@ -506,7 +520,7 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                                 className='font-mono'
                               />
                               <span className='text-muted-foreground shrink-0 text-xs'>
-                                $/{t(getTaskUsagePriceUnitLabelKey(definition.unit))}
+                                {getBillingCurrency().symbol}/{t(getTaskUsagePriceUnitLabelKey(definition.unit))}
                               </span>
                             </div>
                             {description ? (
@@ -522,14 +536,17 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                             type='number'
                             min={0}
                             step={0.000001}
-                            value={matrixRows[0].constant}
+                            aria-label={t('Base charge')}
+                            value={laneUsdToLocalNumber(matrixRows[0].constant)}
                             onFocus={(event) => {
                               if (Number(event.currentTarget.value) === 0) {
                                 event.currentTarget.select()
                               }
                             }}
                             onChange={(event) => {
-                              const value = Number(event.target.value)
+                              const value = laneLocalToUsdNumber(
+                                Number(event.target.value)
+                              )
                               handleRowChange(0, {
                                 ...matrixRows[0],
                                 constant:
@@ -541,7 +558,7 @@ export const TaskUsagePricingEditor = memo(function TaskUsagePricingEditor(
                             className='font-mono'
                           />
                           <span className='text-muted-foreground shrink-0 text-xs'>
-                            $/{t('request')}
+                            {getBillingCurrency().symbol}/{t('request')}
                           </span>
                         </div>
                       </Field>

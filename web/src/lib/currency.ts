@@ -130,6 +130,12 @@ type DisplayMeta =
       quotaPerUnit: number
     }
 
+/**
+ * getBillingDisplayMeta 的实际返回:currency/custom 分支
+ * (tokens 分支已在其中回落到 currency)。
+ */
+type BillingDisplayMeta = Extract<DisplayMeta, { exchangeRate: number }>
+
 const DEFAULT_FORMAT_OPTIONS: ResolvedCurrencyFormatOptions = {
   digitsLarge: 2,
   digitsSmall: 4,
@@ -159,29 +165,34 @@ export function parseCurrencyDisplayType(
   return isCurrencyDisplayType(value) ? value : fallback
 }
 
-function getConfig(): CurrencyConfig {
-  const { config } = useSystemConfigStore.getState()
-  const currency = config?.currency ?? DEFAULT_CURRENCY_CONFIG
+/** 非法/缺失字段回落默认值,供快照(getConfig)与响应式(useBillingCurrency)两条路径共用。 */
+function normalizeCurrencyConfig(currency?: CurrencyConfig): CurrencyConfig {
+  const source = currency ?? DEFAULT_CURRENCY_CONFIG
   return {
     ...DEFAULT_CURRENCY_CONFIG,
-    ...currency,
+    ...source,
     quotaPerUnit:
-      currency?.quotaPerUnit && currency.quotaPerUnit > 0
-        ? currency.quotaPerUnit
+      source.quotaPerUnit && source.quotaPerUnit > 0
+        ? source.quotaPerUnit
         : DEFAULT_CURRENCY_CONFIG.quotaPerUnit,
     usdExchangeRate:
-      currency?.usdExchangeRate && currency.usdExchangeRate > 0
-        ? currency.usdExchangeRate
+      source.usdExchangeRate && source.usdExchangeRate > 0
+        ? source.usdExchangeRate
         : DEFAULT_CURRENCY_CONFIG.usdExchangeRate,
     customCurrencyExchangeRate:
-      currency?.customCurrencyExchangeRate &&
-      currency.customCurrencyExchangeRate > 0
-        ? currency.customCurrencyExchangeRate
+      source.customCurrencyExchangeRate &&
+      source.customCurrencyExchangeRate > 0
+        ? source.customCurrencyExchangeRate
         : DEFAULT_CURRENCY_CONFIG.customCurrencyExchangeRate,
     customCurrencySymbol:
-      currency?.customCurrencySymbol?.trim() ||
+      source.customCurrencySymbol?.trim() ||
       DEFAULT_CURRENCY_CONFIG.customCurrencySymbol,
   }
+}
+
+function getConfig(): CurrencyConfig {
+  const { config } = useSystemConfigStore.getState()
+  return normalizeCurrencyConfig(config?.currency)
 }
 
 function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
@@ -215,7 +226,7 @@ function getDisplayMeta(config: CurrencyConfig): DisplayMeta {
   }
 }
 
-function getBillingDisplayMeta(config: CurrencyConfig): DisplayMeta {
+function getBillingDisplayMeta(config: CurrencyConfig): BillingDisplayMeta {
   const meta = getDisplayMeta(config)
   if (meta.kind === 'tokens') {
     return {
@@ -634,4 +645,44 @@ export function formatLocalCurrencyAmount(
   const merged = mergeOptions(options)
 
   return formatCurrencyValue(amount, merged, meta)
+}
+
+export type BillingCurrencyMeta = {
+  kind: 'currency' | 'custom'
+  symbol: string
+  exchangeRate: number
+}
+
+function billingCurrencyMeta(config: CurrencyConfig): BillingCurrencyMeta {
+  const meta = getBillingDisplayMeta(config)
+  return {
+    kind: meta.kind,
+    symbol: meta.symbol,
+    exchangeRate: meta.exchangeRate > 0 ? meta.exchangeRate : 1,
+  }
+}
+
+/** 定价/计费语境下的货币元信息:TOKENS 显示模式回落美元($, rate=1)。 */
+export function getBillingCurrency(): BillingCurrencyMeta {
+  return billingCurrencyMeta(getConfig())
+}
+
+/**
+ * getBillingCurrency 的响应式版本:订阅 currency 配置的 React hook。挂载期间
+ * 站点展示货币变化(设置页保存、跨标签页同步)会触发订阅组件重渲染,避免
+ * 价格视图持旧符号/汇率快照。
+ */
+export function useBillingCurrency(): BillingCurrencyMeta {
+  const currency = useSystemConfigStore((s) => s.config.currency)
+  return billingCurrencyMeta(normalizeCurrencyConfig(currency))
+}
+
+/** 美元 → 本地货币数值(仅换算,不格式化)。 */
+export function usdToLocalNumber(usd: number): number {
+  return usd * getBillingCurrency().exchangeRate
+}
+
+/** 本地货币 → 美元数值(仅换算,不格式化)。 */
+export function localToUsdNumber(local: number): number {
+  return local / getBillingCurrency().exchangeRate
 }
