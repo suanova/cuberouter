@@ -57,7 +57,7 @@ func TestOptInSafeToolLossRejectedAsBadRequestWithAdminDiagnostics(t *testing.T)
 	assert.True(t, hasHostDiagnosticCode(diagnostics, "unsupported_hosted_tool"))
 
 	other := service.GenerateTextOtherInfo(c, info, 1, 1, 1, 0, 0, 0, 1)
-	adminInfo, ok := other["admin_info"].(map[string]interface{})
+	adminInfo, ok := other.Snapshot()["admin_info"].(map[string]interface{})
 	require.True(t, ok)
 	require.Contains(t, adminInfo, "conversion_diagnostics")
 }

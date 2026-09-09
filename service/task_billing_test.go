@@ -171,6 +171,13 @@ func makeTask(userId, channelId, quota, tokenId int, billingSource string, subsc
 	}
 }
 
+func taskBillingOtherMap(t *testing.T, other *model.LogOther) map[string]interface{} {
+	t.Helper()
+	var values map[string]interface{}
+	require.NoError(t, common.UnmarshalJsonStr(other.JSONString(), &values))
+	return values
+}
+
 func TestPriceDataOtherRatiosFilterAndSnapshot(t *testing.T) {
 	priceData := types.PriceData{}
 
@@ -235,7 +242,7 @@ func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
 		"inf":      math.Inf(1),
 	}
 
-	other := taskBillingOther(task)
+	other := taskBillingOtherMap(t, taskBillingOther(task))
 
 	assert.Equal(t, 2.0, other["seconds"])
 	assert.Equal(t, 1.0, other["identity"])
@@ -261,7 +268,7 @@ func TestTaskBillingOtherIncludesTieredSnapshotAndKeepsUsageFactsNested(t *testi
 		},
 	}
 
-	other := taskBillingOther(task)
+	other := taskBillingOtherMap(t, taskBillingOther(task))
 
 	assert.Equal(t, "tiered_expr", other["billing_mode"])
 	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(expression)), other["expr_b64"])
@@ -270,7 +277,7 @@ func TestTaskBillingOtherIncludesTieredSnapshotAndKeepsUsageFactsNested(t *testi
 	require.True(t, ok)
 	assert.Equal(t, map[string]any{
 		"resolution": "720P",
-		"seconds":    5,
+		"seconds":    float64(5),
 	}, facts)
 	assert.NotContains(t, other, "resolution")
 	assert.NotContains(t, other, "seconds")
@@ -285,7 +292,7 @@ func TestTaskBillingOtherOmitsEmptyUsageFacts(t *testing.T) {
 		UsageFacts:    map[string]any{},
 	}
 
-	other := taskBillingOther(task)
+	other := taskBillingOtherMap(t, taskBillingOther(task))
 
 	assert.Equal(t, "tiered_expr", other["billing_mode"])
 	assert.Equal(t, base64.StdEncoding.EncodeToString([]byte(expression)), other["expr_b64"])
@@ -409,7 +416,7 @@ func TestTaskBillingOtherSeparatesPluginAndRootDiagnostics(t *testing.T) {
 		},
 	}
 
-	other := taskBillingOther(task)
+	other := taskBillingOtherMap(t, taskBillingOther(task))
 
 	assert.Equal(t, "task_public", other["task_id"])
 	adminInfo, ok := other["admin_info"].(map[string]interface{})
@@ -429,7 +436,7 @@ func TestTaskBillingOtherSeparatesPluginAndRootDiagnostics(t *testing.T) {
 	assert.Equal(t, "node-a", rootInfo["node_name"])
 	runtimeInfo, ok := rootInfo["task_plugin"].(map[string]interface{})
 	require.True(t, ok)
-	assert.Equal(t, uint64(42), runtimeInfo["generation"])
+	assert.Equal(t, float64(42), runtimeInfo["generation"])
 	assert.NotContains(t, runtimeInfo, "author")
 }
 

@@ -559,7 +559,7 @@ func settleTestQuota(info *relaycommon.RelayInfo, priceData hosttypes.PriceData,
 	return common.QuotaFromFloat(priceData.ModelPrice * common.QuotaPerUnit), nil
 }
 
-func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) map[string]interface{} {
+func buildTestLogOther(c *gin.Context, info *relaycommon.RelayInfo, priceData hosttypes.PriceData, usage *dto.Usage, tieredResult *billingexpr.TieredResult) *model.LogOther {
 	other := service.GenerateTextOtherInfo(c, info, priceData.ModelRatio, priceData.GroupRatioInfo.GroupRatio, priceData.CompletionRatio,
 		usage.PromptTokensDetails.CachedTokens, priceData.CacheRatio, priceData.ModelPrice, priceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
