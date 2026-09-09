@@ -11,8 +11,10 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/security_setting"
 
 	"github.com/gin-gonic/gin"
@@ -39,6 +41,14 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	requestPath := info.RequestURLPath
 	if requestPath == "" {
 		return info.ChannelBaseUrl, nil
+	}
+	// /v1/messages (RelayFormatClaude) 的请求体由 ConvertClaudeRequest 转成
+	// OpenAI 格式，必须打到上游 OpenAI chat 端点，而不是透传客户端路径
+	// （上游只说 OpenAI 协议）。
+	if info.RelayFormat == types.RelayFormatClaude &&
+		info.RelayMode != constant.RelayModeResponses &&
+		info.RelayMode != constant.RelayModeResponsesCompact {
+		return fmt.Sprintf("%s/v1/chat/completions", info.ChannelBaseUrl), nil
 	}
 	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestPath, info.ChannelType), nil
 }
@@ -111,7 +121,21 @@ func (a *Adaptor) GetChannelName() string {
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
-	return nil, errors.New("not implemented")
+	// 上游只说 OpenAI 协议：把 Anthropic 请求体转成 OpenAI chat 请求，
+	// 由 GetRequestURL 指向 /v1/chat/completions；响应侧由 openai handler
+	// 按 RelayFormatClaude 转回 Anthropic 格式（含流式逐块转换）。
+	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	if err != nil {
+		return nil, err
+	}
+	aiRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected OpenAI chat completions request, got %T", result.Value)
+	}
+	if info.SupportStreamOptions && info.IsStream {
+		aiRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
+	}
+	return a.ConvertOpenAIRequest(c, info, aiRequest)
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
