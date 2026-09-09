@@ -1,31 +1,26 @@
 apiVersion: v2
-name: cube-router
-description: CubeRouter (AI API gateway) with high-availability PostgreSQL (CrunchyData PGO) and Redis (Spotahome redis-operator)
+name: cuberouter
+description: CubeRouter (AI API gateway) with high-availability PostgreSQL (CrunchyData PGO) and Redis (OpsTree redis-operator)
 type: application
-version: 0.7.0
-appVersion: "v1.1.55-isuanova-agent-release"
-home: https://github.com/QuantumNous/new-api
+version: 1.0.0
+appVersion: "v1.0.0"
+home: https://github.com/suanova/cuberouter
 keywords:
   - cuberouter
   - new-api
   - ai-gateway
 maintainers:
   - name: suanova
-    url: https://github.com/QuantumNous/new-api
+    url: https://github.com/suanova/cuberouter
 dependencies:
   # Vendored from the official CrunchyData postgres-operator v6.0.2 installer.
   # Installs the PGO control plane + CRDs. The PostgresCluster CR (HA cluster)
   # is rendered by the parent chart's templates/postgres-cluster.yaml.
   - name: postgresql-operator
     version: 6.0.2
-    condition: postgresql-operator.enabled
-    tags:
-      - operator
-  # Vendored from https://github.com/spotahome/redis-operator (chart 3.3.0).
-  # Installs the redis-operator control plane + CRDs. The RedisFailover CR
-  # (HA cluster) is rendered by the parent chart's templates/redis-failover.yaml.
+  # Vendored from https://github.com/OT-CONTAINER-KIT/redis-operator (v0.26.0).
+  # Installs the redis-operator control plane + CRDs. The RedisReplication CR
+  # (HA cluster with embedded sentinel set) is rendered by the parent chart's
+  # templates/redis-replication.yaml.
   - name: redis-operator
-    version: 3.3.0
-    condition: redis-operator.enabled
-    tags:
-      - operator
+    version: 0.26.0

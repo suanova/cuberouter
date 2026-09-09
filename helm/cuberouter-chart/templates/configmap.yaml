@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "cube-router.fullname" . }}-config
+  name: {{ include "cuberouter.fullname" . }}-config
   labels:
-    {{- include "cube-router.labels" . | nindent 4 }}
+    {{- include "cuberouter.labels" . | nindent 4 }}
 data:
   BATCH_UPDATE_ENABLED: {{ .Values.config.BATCH_UPDATE_ENABLED | quote }}
   ERROR_LOG_ENABLED: {{ .Values.config.ERROR_LOG_ENABLED | quote }}
@@ -11,8 +11,5 @@ data:
   PORT: {{ .Values.config.PORT | quote }}
   TZ: {{ .Values.config.TZ | quote }}
   {{- range $key, $value := .Values.config.extra }}
-  {{ $key }}: {{ $value | quote }}
-  {{- end }}
-  {{- range $key, $value := .Values.cubeRouter.env }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}

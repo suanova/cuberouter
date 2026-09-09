@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Validate the cube-router chart: lint + render all deployment modes.
+# Validate the cuberouter chart: lint + render all deployment modes.
 # Usage: helm/validate-chart.sh [path-to-helm-binary]
 set -euo pipefail
 
@@ -11,54 +11,26 @@ if [[ -z "${HELM_BIN}" ]]; then
 fi
 
 render() {
-  # render <mode> <extra --set args...>
-  local mode="$1"; shift
-  "${HELM_BIN}" template cube-router "${CHART_DIR}" -n cube-router "$@" > /dev/null
+  local label="$1"; shift
+  "${HELM_BIN}" template cuberouter "${CHART_DIR}" -n cuberouter "$@" > /dev/null
 }
 
 echo "== helm lint =="
 "${HELM_BIN}" lint "${CHART_DIR}"
 
-echo "== helm template: default-standalone =="
-render default-standalone
+echo "== helm template: default (full HA, zero flags) =="
+render default
 echo "   ok"
 
-echo "== helm template: ha-postgres =="
-render ha-postgres \
-  --set postgresql.enabled=false \
-  --set postgresql.crunchy.enabled=true \
-  --set postgresql-operator.enabled=true
+echo "== helm template: existingSecret (0.6.0 pattern) =="
+render existing-secret \
+  --set secret.create=false \
+  --set secret.existingSecret=legacy-app-secret
 echo "   ok"
 
-echo "== helm template: ha-redis =="
-render ha-redis \
-  --set redis.enabled=false \
-  --set redis.operator.enabled=true \
-  --set redis-operator.enabled=true
-echo "   ok"
-
-echo "== helm template: full-ha =="
-render full-ha \
-  --set postgresql.enabled=false \
-  --set postgresql.crunchy.enabled=true \
-  --set postgresql-operator.enabled=true \
-  --set redis.enabled=false \
-  --set redis.operator.enabled=true \
-  --set redis-operator.enabled=true
-echo "   ok"
-
-echo "== helm template: external-deps =="
-render external-deps \
-  --set postgresql.enabled=false \
-  --set redis.enabled=false \
-  --set secrets.SQL_DSN=postgresql://u:p@db:5432/d \
-  --set secrets.REDIS_CONN_STRING=redis://:p@r:6379
-echo "   ok"
-
-echo "== negative: no pg mode without SQL_DSN must fail =="
-if render no-pg-mode --set postgresql.enabled=false 2> /dev/null; then
-  echo "   FAIL: expected render error" >&2
-  exit 1
+echo "== negative: password with space must fail =="
+if render neg-pw --set "secrets.POSTGRES_PASSWORD=bad password" 2> /dev/null; then
+  echo "   FAIL: expected render error" >&2; exit 1
 fi
 echo "   ok (render correctly rejected)"
 

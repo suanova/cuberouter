@@ -1,16 +1,16 @@
 {{/*
 Chart name.
 */}}
-{{- define "cube-router.name" -}}
+{{- define "cuberouter.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*
 Fully qualified app name.
 Follows the 0.6.0 convention: with no override, the release name is the base,
-so release "cube-router" yields "cube-router-app", etc.
+so release "cuberouter" yields "cuberouter-app", etc.
 */}}
-{{- define "cube-router.fullname" -}}
+{{- define "cuberouter.fullname" -}}
 {{- if .Values.fullnameOverride -}}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
 {{- else if .Values.nameOverride -}}
@@ -23,8 +23,8 @@ so release "cube-router" yields "cube-router-app", etc.
 {{/*
 Common labels.
 */}}
-{{- define "cube-router.labels" -}}
-app.kubernetes.io/name: {{ include "cube-router.name" . }}
+{{- define "cuberouter.labels" -}}
+app.kubernetes.io/name: {{ include "cuberouter.name" . }}
 helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
@@ -35,10 +35,10 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 
 {{/*
 Selector labels for a component.
-Usage: {{ include "cube-router.selectorLabels" (dict "root" . "component" "app") }}
+Usage: {{ include "cuberouter.selectorLabels" (dict "root" . "component" "app") }}
 */}}
-{{- define "cube-router.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "cube-router.name" .root }}
+{{- define "cuberouter.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "cuberouter.name" .root }}
 app.kubernetes.io/instance: {{ .root.Release.Name }}
 app.kubernetes.io/component: {{ .component }}
 {{- end -}}
@@ -46,9 +46,9 @@ app.kubernetes.io/component: {{ .component }}
 {{/*
 App secret name (created or pre-existing).
 */}}
-{{- define "cube-router.secretName" -}}
+{{- define "cuberouter.secretName" -}}
 {{- if .Values.secret.create -}}
-{{- printf "%s-secret" (include "cube-router.fullname" .) -}}
+{{- printf "%s-secret" (include "cuberouter.fullname" .) -}}
 {{- else -}}
 {{- required "secret.existingSecret is required when secret.create=false" .Values.secret.existingSecret -}}
 {{- end -}}
@@ -57,65 +57,47 @@ App secret name (created or pre-existing).
 {{/*
 PostgresCluster CR name (HA mode).
 */}}
-{{- define "cube-router.postgresClusterName" -}}
-{{- printf "%s-postgres" (include "cube-router.fullname" .) -}}
+{{- define "cuberouter.postgresClusterName" -}}
+{{- printf "%s-postgres" (include "cuberouter.fullname" .) -}}
 {{- end -}}
 
 {{/*
-RedisFailover CR name (HA mode). Must stay <= 48 chars (operator limit).
+RedisReplication CR name (HA mode). Must stay <= 50 chars so the derived
+service names (<name>-master, <name>-additional, ...) fit in 63.
 */}}
-{{- define "cube-router.redisFailoverName" -}}
-{{- printf "%s-redis" (include "cube-router.fullname" .) -}}
+{{- define "cuberouter.redisName" -}}
+{{- printf "%s-redis" (include "cuberouter.fullname" .) -}}
 {{- end -}}
 
 {{/*
 PostgreSQL connection host:port (always the writable primary).
 */}}
-{{- define "cube-router.postgresAddr" -}}
-{{- if .Values.postgresql.crunchy.enabled -}}
-{{- printf "%s-primary:5432" (include "cube-router.postgresClusterName" .) -}}
-{{- else if .Values.postgresql.enabled -}}
-{{- printf "%s-postgresql:%v" (include "cube-router.fullname" .) (.Values.postgresql.service.port | int) -}}
-{{- else -}}
-{{- "" -}}
-{{- end -}}
+{{- define "cuberouter.postgresAddr" -}}
+{{- printf "%s-primary:5432" (include "cuberouter.postgresClusterName" .) -}}
 {{- end -}}
 
 {{/*
-Redis connection host:port (always the writable node).
-Standalone: the StatefulSet service. HA: the operator-managed master service
-("rf-rm-<name>" follows the current master pod).
+Redis connection host:port (always the writable node): the operator-managed
+master service ("<name>-master" follows the current master pod via the
+redis-role label).
 */}}
-{{- define "cube-router.redisAddr" -}}
-{{- if .Values.redis.operator.enabled -}}
-{{- printf "rf-rm-%s:6379" (include "cube-router.redisFailoverName" .) -}}
-{{- else if .Values.redis.enabled -}}
-{{- printf "%s-redis:%v" (include "cube-router.fullname" .) (.Values.redis.service.port | int) -}}
-{{- else -}}
-{{- "" -}}
-{{- end -}}
+{{- define "cuberouter.redisAddr" -}}
+{{- printf "%s-master:6379" (include "cuberouter.redisName" .) -}}
 {{- end -}}
 
 {{/*
 Postgres image used for the Crunchy cluster and psql client images.
 Empty crunchy.image = operator RELATED_IMAGE_POSTGRES_<ver>.
 */}}
-{{- define "cube-router.postgresImage" -}}
-{{- if .Values.postgresql.crunchy.image -}}
-{{- .Values.postgresql.crunchy.image -}}
+{{- define "cuberouter.postgresImage" -}}
+{{- if .Values.postgresql.image -}}
+{{- .Values.postgresql.image -}}
 {{- else -}}
-{{- $rel := index (index .Values "postgresql-operator").relatedImages (printf "POSTGRES_%v" .Values.postgresql.crunchy.postgresVersion) -}}
+{{- $rel := index (index .Values "postgresql-operator").relatedImages (printf "POSTGRES_%v" .Values.postgresql.postgresVersion) -}}
 {{- if $rel -}}
 {{- $rel -}}
 {{- else -}}
-{{- required (printf "postgresql.crunchy.image is required when postgresql-operator.relatedImages has no POSTGRES_%v entry" .Values.postgresql.crunchy.postgresVersion) "" -}}
+{{- required (printf "postgresql.image is required when postgresql-operator.relatedImages has no POSTGRES_%v entry" .Values.postgresql.postgresVersion) "" -}}
 {{- end -}}
 {{- end -}}
-{{- end -}}
-
-{{/*
-Image pull secrets from global.
-*/}}
-{{- define "cube-router.imagePullSecrets" -}}
-{{- toYaml .Values.global.imagePullSecrets -}}
 {{- end -}}

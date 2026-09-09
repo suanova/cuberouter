@@ -1,0 +1,61 @@
+{{- $f := include "cuberouter.fullname" . }}
+{{- $name := include "cuberouter.redisName" . }}
+{{- if gt (len $name) 50 }}
+{{- fail (printf "RedisReplication name %q is longer than 50 characters; shorten the release name or set fullnameOverride" $name) }}
+{{- end }}
+apiVersion: redis.redis.opstreelabs.in/v1beta2
+kind: RedisReplication
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  # Total redis nodes: 1 master + (N-1) replicas
+  clusterSize: {{ .Values.redis.replicas }}
+  kubernetesConfig:
+    image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+    imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+    redisSecret:
+      name: {{ $name }}-auth
+      key: password
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  redisExporter:
+    enabled: false
+  {{- with .Values.redis.redisCustomConfig }}
+  redisConfig:
+    dynamicConfig:
+      {{- range . }}
+      - {{ . | quote }}
+      {{- end }}
+  {{- end }}
+  sentinel:
+    size: {{ .Values.redis.sentinelReplicas }}
+    image: "{{ .Values.redis.sentinelImage.repository }}:{{ .Values.redis.sentinelImage.tag }}"
+    imagePullPolicy: {{ .Values.redis.sentinelImage.pullPolicy }}
+    quorum: "2"
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+  {{- if .Values.redis.persistence.enabled }}
+  storage:
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        {{- if .Values.redis.persistence.storageClassName }}
+        storageClassName: {{ .Values.redis.persistence.storageClassName }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}
+  {{- end }}

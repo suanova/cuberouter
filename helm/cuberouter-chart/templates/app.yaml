@@ -1,34 +1,15 @@
-{{- if .Values.cubeRouter.enabled }}
-{{- $f := include "cube-router.fullname" . }}
-{{- $secretName := include "cube-router.secretName" . }}
-{{- $redisEnabled := or .Values.redis.enabled .Values.redis.operator.enabled }}
-{{- $pgEnabled := or .Values.postgresql.enabled .Values.postgresql.crunchy.enabled }}
-{{- $redisHost := "" -}}
-{{- $redisPort := 6379 -}}
-{{- if .Values.redis.operator.enabled -}}
-{{- $redisHost = printf "rf-rm-%s" (include "cube-router.redisFailoverName" .) -}}
-{{- else if .Values.redis.enabled -}}
-{{- $redisHost = printf "%s-redis" $f -}}
-{{- $redisPort = .Values.redis.service.port | int -}}
-{{- end }}
-{{- $pgHost := "" -}}
-{{- $pgPort := 5432 -}}
-{{- if .Values.postgresql.crunchy.enabled -}}
-{{- $pgHost = printf "%s-primary" (include "cube-router.postgresClusterName" .) -}}
-{{- else if .Values.postgresql.enabled -}}
-{{- $pgHost = printf "%s-postgresql" $f -}}
-{{- $pgPort = .Values.postgresql.service.port | int -}}
-{{- end }}
+{{- $f := include "cuberouter.fullname" . }}
+{{- $secretName := include "cuberouter.secretName" . }}
 {{- if .Values.cubeRouter.persistence.data.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ $f }}-app-data
   labels:
-    {{- include "cube-router.labels" . | nindent 4 }}
+    {{- include "cuberouter.labels" . | nindent 4 }}
 spec:
   accessModes:
-    {{- toYaml .Values.cubeRouter.persistence.data.accessModes | nindent 4 }}
+    - ReadWriteOnce
   {{- if .Values.cubeRouter.persistence.data.storageClassName }}
   storageClassName: {{ .Values.cubeRouter.persistence.data.storageClassName }}
   {{- end }}
@@ -43,10 +24,10 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ $f }}-app-logs
   labels:
-    {{- include "cube-router.labels" . | nindent 4 }}
+    {{- include "cuberouter.labels" . | nindent 4 }}
 spec:
   accessModes:
-    {{- toYaml .Values.cubeRouter.persistence.logs.accessModes | nindent 4 }}
+    - ReadWriteOnce
   {{- if .Values.cubeRouter.persistence.logs.storageClassName }}
   storageClassName: {{ .Values.cubeRouter.persistence.logs.storageClassName }}
   {{- end }}
@@ -60,28 +41,28 @@ kind: Service
 metadata:
   name: {{ $f }}-app
   labels:
-    {{- include "cube-router.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
+    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
 spec:
   type: {{ .Values.cubeRouter.service.type }}
   selector:
-    {{- include "cube-router.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
+    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
   ports:
     - name: http
       port: {{ .Values.cubeRouter.service.port }}
-      targetPort: {{ .Values.cubeRouter.service.targetPort }}
+      targetPort: http
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: {{ $f }}-app
   labels:
-    {{- include "cube-router.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
+    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
 spec:
   replicas: {{ .Values.cubeRouter.replicaCount }}
-  revisionHistoryLimit: {{ .Values.cubeRouter.revisionHistoryLimit }}
+  revisionHistoryLimit: 5
   selector:
     matchLabels:
-      {{- include "cube-router.selectorLabels" (dict "root" . "component" "app") | nindent 6 }}
+      {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 6 }}
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -90,75 +71,10 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "cube-router.selectorLabels" (dict "root" . "component" "app") | nindent 8 }}
+        {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 8 }}
     spec:
-      imagePullSecrets:
-        {{- include "cube-router.imagePullSecrets" . | nindent 8 }}
-      {{- if and .Values.cubeRouter.waitForDependencies.enabled (or $redisEnabled $pgEnabled) }}
-      initContainers:
-        - name: wait-for-dependencies
-          {{- if .Values.postgresql.crunchy.enabled }}
-          image: {{ .Values.cubeRouter.waitForDependencies.databaseImage | default (include "cube-router.postgresImage" .) }}
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: DB_HOST
-              value: {{ $pgHost }}
-            - name: DB_USER
-              value: {{ .Values.postgresql.auth.username }}
-            - name: DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $secretName }}
-                  key: {{ .Values.postgresql.auth.passwordKey }}
-            - name: TIMEOUT_SECONDS
-              value: {{ .Values.cubeRouter.waitForDependencies.timeoutSeconds | quote }}
-          command:
-            - bash
-            - -ec
-            - |
-              MAX=$(( TIMEOUT_SECONDS / 2 ))
-              {{- if $redisEnabled }}
-              echo "waiting for redis at {{ $redisHost }}:{{ $redisPort }}"
-              n=0
-              until (exec 3<>"/dev/tcp/{{ $redisHost }}/{{ $redisPort }}") 2>/dev/null; do
-                n=$((n+1)); [ "$n" -gt "$MAX" ] && { echo "timed out waiting for redis"; exit 1; }
-                sleep 2
-              done
-              {{- end }}
-              echo "waiting for database auth at {{ $pgHost }} as {{ .Values.postgresql.auth.username }}"
-              n=0
-              until PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d postgres -c 'SELECT 1' >/dev/null 2>&1; do
-                n=$((n+1)); [ "$n" -gt "$MAX" ] && { echo "timed out waiting for database auth"; exit 1; }
-                sleep 3
-              done
-          {{- else }}
-          image: {{ .Values.cubeRouter.waitForDependencies.image }}
-          imagePullPolicy: IfNotPresent
-          command:
-            - sh
-            - -c
-            - |
-              MAX={{ .Values.cubeRouter.waitForDependencies.timeoutSeconds | int }}
-              {{- if $redisEnabled }}
-              echo "waiting for redis at {{ $redisHost }}:{{ $redisPort }}"
-              n=0
-              until nc -z {{ $redisHost }} {{ $redisPort }}; do
-                n=$((n+1)); [ "$n" -gt "$MAX" ] && { echo "timed out waiting for redis"; exit 1; }
-                sleep 2
-              done
-              {{- end }}
-              {{- if .Values.postgresql.enabled }}
-              echo "waiting for postgres at {{ $pgHost }}:{{ $pgPort }}"
-              n=0
-              until nc -z {{ $pgHost }} {{ $pgPort }}; do
-                n=$((n+1)); [ "$n" -gt "$MAX" ] && { echo "timed out waiting for postgres"; exit 1; }
-                sleep 2
-              done
-              {{- end }}
-          {{- end }}
-      {{- end }}
       containers:
-        - name: cube-router
+        - name: cuberouter
           image: "{{ .Values.cubeRouter.image.repository }}:{{ .Values.cubeRouter.image.tag }}"
           imagePullPolicy: {{ .Values.cubeRouter.image.pullPolicy }}
           {{- with .Values.cubeRouter.command }}
@@ -171,7 +87,7 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: {{ .Values.cubeRouter.containerPort }}
+              containerPort: 3000
           envFrom:
             - configMapRef:
                 name: {{ $f }}-config
@@ -201,46 +117,46 @@ spec:
             {{- end }}
           volumeMounts:
             {{- if .Values.cubeRouter.persistence.data.enabled }}
-            - name: cube-router-data
+            - name: cuberouter-data
               mountPath: {{ .Values.cubeRouter.persistence.data.mountPath }}
             {{- end }}
             {{- if .Values.cubeRouter.persistence.logs.enabled }}
-            - name: cube-router-logs
+            - name: cuberouter-logs
               mountPath: {{ .Values.cubeRouter.persistence.logs.mountPath }}
             {{- end }}
           readinessProbe:
             httpGet:
-              path: {{ .Values.cubeRouter.probes.readiness.path }}
+              path: /api/status
               port: http
-            initialDelaySeconds: {{ .Values.cubeRouter.probes.readiness.initialDelaySeconds }}
-            periodSeconds: {{ .Values.cubeRouter.probes.readiness.periodSeconds }}
-            timeoutSeconds: {{ .Values.cubeRouter.probes.readiness.timeoutSeconds }}
-            failureThreshold: {{ .Values.cubeRouter.probes.readiness.failureThreshold }}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
           livenessProbe:
             httpGet:
-              path: {{ .Values.cubeRouter.probes.liveness.path }}
+              path: /api/status
               port: http
-            initialDelaySeconds: {{ .Values.cubeRouter.probes.liveness.initialDelaySeconds }}
-            periodSeconds: {{ .Values.cubeRouter.probes.liveness.periodSeconds }}
-            timeoutSeconds: {{ .Values.cubeRouter.probes.liveness.timeoutSeconds }}
-            failureThreshold: {{ .Values.cubeRouter.probes.liveness.failureThreshold }}
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           startupProbe:
             httpGet:
-              path: {{ .Values.cubeRouter.probes.startup.path }}
+              path: /api/status
               port: http
-            periodSeconds: {{ .Values.cubeRouter.probes.startup.periodSeconds }}
-            timeoutSeconds: {{ .Values.cubeRouter.probes.startup.timeoutSeconds }}
-            failureThreshold: {{ .Values.cubeRouter.probes.startup.failureThreshold }}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
           resources:
             {{- toYaml .Values.cubeRouter.resources | nindent 12 }}
       volumes:
         {{- if .Values.cubeRouter.persistence.data.enabled }}
-        - name: cube-router-data
+        - name: cuberouter-data
           persistentVolumeClaim:
             claimName: {{ $f }}-app-data
         {{- end }}
         {{- if .Values.cubeRouter.persistence.logs.enabled }}
-        - name: cube-router-logs
+        - name: cuberouter-logs
           persistentVolumeClaim:
             claimName: {{ $f }}-app-logs
         {{- end }}
@@ -252,8 +168,3 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.cubeRouter.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-{{- end }}
