@@ -1,4 +1,6 @@
-{{- if .Values.pdb.enabled }}
+{{/* Not rendered in base mode: a single replica has nothing to protect, and
+    minAvailable>=1 would block rolling updates of a 1-replica Deployment. */}}
+{{- if and .Values.pdb.enabled (ne .Values.deployMode "base") }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

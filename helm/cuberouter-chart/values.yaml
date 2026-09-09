@@ -11,6 +11,15 @@
 nameOverride: ""
 fullnameOverride: ""
 
+# Deployment mode (replica preset):
+#   high (default): HA — app 2, docs 1, PostgreSQL 2 instances,
+#                   Redis 2 nodes + 3 sentinels
+#   base: a single replica everywhere — app 1, docs 1, PostgreSQL 1
+#         instance, Redis 1 node + 1 sentinel; the app PDB is not rendered
+# In base mode every replica count below is forced to 1 (the per-component
+# values only apply in high mode).
+deployMode: high  # base | high
+
 # ---------------------------------------------------------------------------
 # App configuration (ConfigMap, injected via envFrom)
 # ---------------------------------------------------------------------------
@@ -44,6 +53,7 @@ secrets:
 # CubeRouter application (always installed)
 # ---------------------------------------------------------------------------
 cubeRouter:
+  # used when deployMode: high (base mode forces 1)
   replicaCount: 2
   image:
     repository: harbor.isuanova.com/suanova/cuberouter
@@ -149,7 +159,7 @@ postgresql:
   # Instance image; the tag encodes the PostgreSQL major version
   # (16.14 = PostgreSQL 16.14)
   image: ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie
-  # >= 2 for HA (automatic failover)
+  # >= 2 for HA (automatic failover); used when deployMode: high
   replicas: 2
   storage: 20Gi
   storageClassName: ""
@@ -179,9 +189,9 @@ redis:
     repository: quay.io/opstree/redis
     tag: v7.0.15
     pullPolicy: IfNotPresent
-  # Total redis nodes: 1 master + (N-1) replicas
+  # Total redis nodes: 1 master + (N-1) replicas; used when deployMode: high
   replicas: 2
-  # Number of sentinel nodes (automatic failover)
+  # Number of sentinel nodes (automatic failover); used when deployMode: high
   sentinelReplicas: 3
   sentinelImage:
     repository: quay.io/opstree/redis-sentinel

@@ -21,7 +21,7 @@ metadata:
   labels:
     {{- include "cuberouter.selectorLabels" (dict "root" . "component" "docs") | nindent 4 }}
 spec:
-  replicas: {{ .Values.docs.replicaCount }}
+  replicas: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.docs.replicaCount) }}
   revisionHistoryLimit: 5
   selector:
     matchLabels:

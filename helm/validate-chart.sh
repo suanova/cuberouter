@@ -34,6 +34,10 @@ render pooler \
   --set postgresql.backups.enabled=false
 echo "   ok"
 
+echo "== helm template: deployMode=base (single replica everywhere) =="
+render base --set deployMode=base
+echo "   ok"
+
 echo "== negative: password with space must fail =="
 if render neg-pw --set "secrets.POSTGRES_PASSWORD=bad password" 2> /dev/null; then
   echo "   FAIL: expected render error" >&2; exit 1

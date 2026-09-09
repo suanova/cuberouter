@@ -10,8 +10,8 @@ metadata:
   labels:
     {{- include "cuberouter.labels" . | nindent 4 }}
 spec:
-  # Total redis nodes: 1 master + (N-1) replicas
-  clusterSize: {{ .Values.redis.replicas }}
+  # Total redis nodes: 1 master + (N-1) replicas (deployMode=base renders 1)
+  clusterSize: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.redis.replicas) }}
   kubernetesConfig:
     image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
     imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
@@ -38,10 +38,15 @@ spec:
       {{- end }}
   {{- end }}
   sentinel:
-    size: {{ .Values.redis.sentinelReplicas }}
+    size: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.redis.sentinelReplicas) }}
     image: "{{ .Values.redis.sentinelImage.repository }}:{{ .Values.redis.sentinelImage.tag }}"
     imagePullPolicy: {{ .Values.redis.sentinelImage.pullPolicy }}
+    # majority of the sentinel set (base mode: 1 of 1)
+    {{- if eq .Values.deployMode "base" }}
+    quorum: "1"
+    {{- else }}
     quorum: "2"
+    {{- end }}
     resources:
       requests:
         cpu: 50m

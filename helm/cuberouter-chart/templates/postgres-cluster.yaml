@@ -28,7 +28,8 @@ spec:
   imageName: {{ .Values.postgresql.image | quote }}
   imagePullPolicy: IfNotPresent
   # >= 2 for HA: the operator elects one primary and streams the rest
-  instances: {{ .Values.postgresql.replicas }}
+  # (deployMode=base renders 1)
+  instances: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.postgresql.replicas) }}
   storage:
     size: {{ .Values.postgresql.storage | quote }}
     {{- if .Values.postgresql.storageClassName }}
@@ -67,7 +68,7 @@ spec:
   cluster:
     name: {{ $cluster }}
   type: rw
-  instances: {{ .Values.postgresql.pgBouncer.replicas }}
+  instances: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.postgresql.pgBouncer.replicas) }}
   pgbouncer:
     poolMode: transaction
     # authenticate pool clients against the role catalog

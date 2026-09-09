@@ -10,7 +10,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: {{ include "cuberouter.fullname" . }}
-  minReplicas: {{ .Values.hpa.minReplicas }}
+  # base mode keeps a single replica even when the HPA is enabled
+  minReplicas: {{ if eq .Values.deployMode "base" }}1{{ else }}{{ .Values.hpa.minReplicas }}{{ end }}
   maxReplicas: {{ .Values.hpa.maxReplicas }}
   metrics:
     - type: Resource

@@ -39,6 +39,13 @@ through their operators:
 The operator subcharts (CRDs + control-plane Deployments) are always installed
 together with the stores.
 
+`deployMode` is the replica-count preset: **high** (default) is the HA setup above;
+**base** runs a single replica everywhere (app 1, docs 1, one PostgreSQL instance,
+one Redis node + one sentinel), for dev/test clusters. In base mode the
+per-component replica values are ignored (everything is 1) and the app PDB is
+not rendered (a single replica has nothing to protect, and a PDB would block
+rolling updates).
+
 ## Prerequisites
 
 - **Helm 3.x** and **kubectl**
@@ -81,34 +88,29 @@ helm install cuberouter ./helm/cuberouter-chart -n cuberouter --create-namespace
 ### 1. Full HA (default values)
 
 The defaults already install the app, the docs site, the HA PostgreSQL cluster and the HA Redis
-failover — plus both operator control planes, HPA and PDB:
+failover — plus both operator control planes (HPA is off by default; the PDB keeps at least one
+app replica available):
 
 ```sh
 helm install cuberouter ./helm/cuberouter-chart -n cuberouter --create-namespace
 ```
 
-For a smaller cluster, override first:
+For a smaller (dev/test) cluster, use `deployMode: base` (single replica everywhere) and
+override first:
 
 ```yaml
 # my-values.yaml
+deployMode: base              # app 1, docs 1, 1 PG instance, 1 redis + 1 sentinel
 ingress:
   enabled: false              # you'll reach the app via port-forward instead
-hpa:
-  enabled: false              # defaults: app already runs 2 replicas
-pdb:
-  enabled: false
 cubeRouter:
-  replicaCount: 1
   persistence:
     data: { size: 5Gi }
     logs: { size: 2Gi }
 postgresql:
   storage: 10Gi
-  replicas: 1                 # single instance = no HA, still operator-managed
   backups:
-    enabled: false
-redis: {}                    # keep defaults: 2 nodes + 3 sentinels (embedded-sentinel
-                              # failover needs a quorum of 2, so 1+1 is not a valid setup)
+    enabled: false            # no VolumeSnapshotClass needed then
 ```
 
 ```sh
@@ -224,7 +226,7 @@ set `nameOverride` or `fullnameOverride` to change it.
 | App Service | `<f>-app` |
 | App Deployment | `<f>` |
 | App data / logs PVCs | `<f>-app-data`, `<f>-app-logs` |
-| App HPA / PDB | `<f>-app-hpa`, `<f>-app-pdb` |
+| App HPA / PDB | `<f>-app-hpa`, `<f>-app-pdb` (PDB only in high mode) |
 | Docs Service / Deployment | `<f>-docs` |
 | ConfigMap / Secret | `<f>-config`, `<f>-secret` |
 | App Ingress / Docs Ingress | `<f>-ingress`, `<f>-docs-ingress` |
@@ -248,12 +250,13 @@ Computed connection strings:
 
 | Values group | Highlights (defaults) |
 |---|---|
+| `deployMode` | `high` (HA replica counts) \| `base` (single replica everywhere; app PDB not rendered) |
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`; extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
 | `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `nodeSelector` / `tolerations` |
 | `docs` | `enabled: true`, own image, own Deployment + Service |
-| `hpa` | `enabled: true`, 2→5 replicas at 70% CPU |
-| `pdb` | `enabled: true`, `minAvailable: 1` for the app |
+| `hpa` | `enabled: false`, 2→5 replicas at 70% CPU (minReplicas is 1 in base mode) |
+| `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
 | `postgresql` | `auth.database/username`, `image` (PostgreSQL 16.14), `replicas: 2`, `storage: 20Gi`, `resources`, `backups.*`, `pgBouncer.*` |
 | `redis` | `image` (redis instances), `replicas: 2` (1 master + 1 replica), `sentinelReplicas: 3`, `sentinelImage`, `redisCustomConfig`, `persistence.*` |

@@ -44,6 +44,19 @@ app.kubernetes.io/component: {{ .component }}
 {{- end -}}
 
 {{/*
+Replica count for a component. deployMode=base forces 1 everywhere; in
+deployMode=high the per-component value (HA defaults) applies.
+Usage: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.cubeRouter.replicaCount) }}
+*/}}
+{{- define "cuberouter.replicas" -}}
+{{- if eq .root.Values.deployMode "base" -}}
+1
+{{- else -}}
+{{ .ha }}
+{{- end -}}
+{{- end -}}
+
+{{/*
 App secret name (created or pre-existing).
 */}}
 {{- define "cuberouter.secretName" -}}
