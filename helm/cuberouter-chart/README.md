@@ -1,6 +1,6 @@
 # cuberouter Helm Chart
 
-Installs **CubeRouter** (the AI gateway app + its docs site) on Kubernetes together with its
+Installs **CubeRouter** (the AI gateway app) on Kubernetes together with its
 dependency stores (PostgreSQL and Redis). The chart is **self-contained**: the two operator
 subcharts are vendored under `charts/`, so it can be installed offline without `helm dependency update`.
 
@@ -8,7 +8,7 @@ subcharts are vendored under `charts/`, so it can be installed offline without `
 |---|---|
 | Chart | `cuberouter` **1.0.0** |
 | App version | `v1.0.0` |
-| Components | CubeRouter app, docs site, PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
+| Components | CubeRouter app (user + admin docs bundled), PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
 
 ## Contents
 
@@ -40,7 +40,7 @@ The operator subcharts (CRDs + control-plane Deployments) are always installed
 together with the stores.
 
 `deployMode` is the replica-count preset: **high** (default) is the HA setup above;
-**base** runs a single replica everywhere (app 1, docs 1, one PostgreSQL instance,
+**base** runs a single replica everywhere (app 1, one PostgreSQL instance,
 one Redis node + one sentinel), for dev/test clusters. In base mode the
 per-component replica values are ignored (everything is 1) and the app PDB is
 not rendered (a single replica has nothing to protect, and a PDB would block
@@ -62,7 +62,6 @@ rolling updates).
 | Component | Default image | Values key |
 |---|---|---|
 | App | `harbor.isuanova.com/suanova/cuberouter:latest` | `cubeRouter.image.repository` / `.tag` |
-| Docs | `harbor.isuanova.com.cn/suanova/cuberouter:latest` | `docs.image.repository` / `.tag` |
 | PostgreSQL instances | `ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie` (tag encodes the PG version) | `postgresql.image` |
 | Redis instances | `quay.io/opstree/redis:v7.0.15` | `redis.image.repository` / `.tag` |
 | Redis sentinel | `quay.io/opstree/redis-sentinel:v7.0.15` | `redis.sentinelImage.repository` / `.tag` |
@@ -87,7 +86,7 @@ helm install cuberouter ./helm/cuberouter-chart -n cuberouter --create-namespace
 
 ### 1. Full HA (default values)
 
-The defaults already install the app, the docs site, the HA PostgreSQL cluster and the HA Redis
+The defaults already install the app, the HA PostgreSQL cluster and the HA Redis
 failover — plus both operator control planes (HPA is off by default; the PDB keeps at least one
 app replica available):
 
@@ -100,7 +99,7 @@ override first:
 
 ```yaml
 # my-values.yaml
-deployMode: base              # app 1, docs 1, 1 PG instance, 1 redis + 1 sentinel
+deployMode: base              # app 1, 1 PG instance, 1 redis + 1 sentinel
 ingress:
   enabled: false              # you'll reach the app via port-forward instead
 cubeRouter:
@@ -143,8 +142,8 @@ helm install cuberouter ./helm/cuberouter-chart -n cuberouter --create-namespace
 
 ## Accessing the app
 
-The app service is `ClusterIP` on **port 80 → container 3000**; the docs service is also port 80.
-Two common ways in:
+The app service is `ClusterIP` on **port 80 → container 3000**, and it serves the bundled
+documentation itself: user docs at `/docs/user/`, admin docs at `/docs/admin/`. Two common ways in:
 
 **Ingress** — the chart ships an `nginx` Ingress by default, but with the production host names
 (`cuberouter.com`, …) and TLS enabled against secrets the cluster may not have. Configure it:
@@ -156,18 +155,15 @@ ingress:
   tls:
     enabled: true
     secretName: cuberouter-tls     # must exist in the namespace
-  docs:
-    hosts: [docs.example.com]
-    tls:
-      enabled: true
-      secretName: cuberouter-docs-tls
 ```
+
+Add an extra host to `ingress.hosts` (e.g. `docs.example.com`) if you want to reach the docs on
+their own hostname — it is the same service, and the docs stay under `/docs/user/`.
 
 **Port-forward** (no Ingress):
 
 ```sh
-kubectl -n cuberouter port-forward svc/cuberouter 3000:80       # app at http://localhost:3000
-kubectl -n cuberouter port-forward svc/cuberouter-docs 8080:80  # docs at http://localhost:8080
+kubectl -n cuberouter port-forward svc/cuberouter 3000:80  # app + docs at http://localhost:3000
 ```
 
 ## Verifying the install
@@ -229,9 +225,8 @@ point `secret.existingSecret` at a pre-created secret that carries the same six 
 | App Service / Deployment | `<f>` (same name, different kinds) |
 | App data / logs PVCs | `<f>-app-data`, `<f>-app-logs` |
 | App HPA / PDB | `<f>-app-hpa`, `<f>-app-pdb` (PDB only in high mode) |
-| Docs Service / Deployment | `<f>-docs` |
 | ConfigMap / Secret | `<f>-config`, `<f>-secret` |
-| App Ingress / Docs Ingress | `<f>-ingress`, `<f>-docs-ingress` |
+| App Ingress | `<f>-ingress` |
 | Cluster CR (CloudNativePG) | `<f>-postgres` |
 | PG primary service (app connection target) | `<f>-postgres-rw:5432` |
 | PG read services | `<f>-postgres-ro:5432` (replicas), `<f>-postgres-r:5432` (all ready), `<f>-postgres-any:5432` |
@@ -256,7 +251,6 @@ Computed connection strings:
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`; extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
 | `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
-| `docs` | `enabled: true`, own image, own Deployment + Service |
 | `hpa` | `enabled: false`, 2→5 replicas at 70% CPU (minReplicas is 1 in base mode) |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
@@ -339,6 +333,11 @@ Computed connection strings:
   `existingSecret=cuberouter-secret` — its `SQL_DSN` / `REDIS_CONN_STRING` keep working unchanged,
   or switch to the managed clusters by importing your data first. This chart does **not** migrate
   data automatically.
+- Upgrading a release that deployed the standalone docs workload: its Deployment, Service and
+  Ingress are gone — the app image now bundles both docs sites and serves them at `/docs/user/`
+  and `/docs/admin/`. An upgrade removes `<f>-docs` and `<f>-docs-ingress`; drop the `docs.*` and
+  `ingress.docs.*` values (they are ignored) and point the documentation hostname at the app
+  service, e.g. by adding it to `ingress.hosts`.
 - Roll back with `helm rollback cuberouter <revision> -n cuberouter`.
 
 ## Uninstalling
