@@ -691,3 +691,69 @@ func TestConvertToRequestPayloadResolutionFromSize(t *testing.T) {
 		})
 	}
 }
+
+// TestConvertToRequestPayloadRatioSuppressedForFrameImage 锁定首帧/首尾帧模式
+// 的 ratio 抑制:内容含无角色或 first_frame/last_frame 的 image_url 时整段不
+// 发送 ratio(客户端显式值与默认 adaptive 均跳过,上游对首帧生成拒绝携带
+// ratio);reference_image 参考角色与纯文生视频仍按原逻辑下发。
+func TestConvertToRequestPayloadRatioSuppressedForFrameImage(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	url := "https://example.com/first.png"
+
+	tests := []struct {
+		name string
+		req  relaycommon.TaskSubmitReq
+		want string
+	}{
+		{
+			name: "top_level_images_with_explicit_ratio_suppressed",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-5-260628", Prompt: "x", Images: []string{url}, Ratio: lo.ToPtr("16:9")},
+			want: "",
+		},
+		{
+			name: "openai_images_without_ratio_no_adaptive_injection",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-5-260628", Prompt: "x", Images: []string{url}},
+			want: "",
+		},
+		{
+			name: "content_first_and_last_frame_suppressed",
+			req: relaycommon.TaskSubmitReq{
+				Model: "doubao-seedance-2-5-260628",
+				Content: []relaycommon.TaskContentItem{
+					{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr(url)}, Role: lo.ToPtr("first_frame")},
+					{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr(url)}, Role: lo.ToPtr("last_frame")},
+					{Type: "text", Text: lo.ToPtr("x")},
+				},
+			},
+			want: "",
+		},
+		{
+			name: "reference_image_keeps_ratio_path",
+			req: relaycommon.TaskSubmitReq{
+				Model: "doubao-seedance-2-5-260628",
+				Content: []relaycommon.TaskContentItem{
+					{Type: "text", Text: lo.ToPtr("x")},
+					{Type: "image_url", ImageURL: &relaycommon.TaskMediaURL{URL: lo.ToPtr(url)}, Role: lo.ToPtr("reference_image")},
+				},
+			},
+			want: "adaptive",
+		},
+		{
+			name: "text_to_video_explicit_ratio_kept",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-5-260628", Prompt: "x", Ratio: lo.ToPtr("16:9")},
+			want: "16:9",
+		},
+		{
+			name: "text_to_video_default_adaptive",
+			req:  relaycommon.TaskSubmitReq{Model: "doubao-seedance-2-5-260628", Prompt: "x"},
+			want: "adaptive",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := adaptor.convertToRequestPayload(&tt.req)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, body.Parameters.Ratio)
+		})
+	}
+}
