@@ -102,7 +102,7 @@ docs:
   enabled: true
   replicaCount: 1
   image:
-    repository: harbor.isuanova.com.cn/suanova/cuberouter
+    repository: harbor.isuanova.com.cn/suanova/cuberouter-docs-user
     tag: latest
     pullPolicy: IfNotPresent
   service:
