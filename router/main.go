@@ -22,8 +22,12 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	SetTaskPluginProtocolRouter(router)
 	SetVideoRouter(router)
 	SetTaskRouter(router)
-	pluginDispatcher := SetPluginRouter(router)
+	// The docs routes must exist before SetPluginRouter snapshots the static
+	// routes: a plugin route under /docs/{user,admin}/... would otherwise be
+	// admitted by the conflict check and then silently shadowed by these
+	// routes instead of being reported as intersecting a static route.
 	SetDocsRouter(router)
+	pluginDispatcher := SetPluginRouter(router)
 	// Swagger 仅 DEBUG=true 时挂载(生产默认关闭,避免匿名暴露完整 API 规格)。
 	if common.DebugEnabled {
 		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
