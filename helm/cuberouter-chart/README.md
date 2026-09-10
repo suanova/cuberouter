@@ -166,7 +166,7 @@ ingress:
 **Port-forward** (no Ingress):
 
 ```sh
-kubectl -n cuberouter port-forward svc/cuberouter-app 3000:80   # app at http://localhost:3000
+kubectl -n cuberouter port-forward svc/cuberouter 3000:80       # app at http://localhost:3000
 kubectl -n cuberouter port-forward svc/cuberouter-docs 8080:80  # docs at http://localhost:8080
 ```
 
@@ -219,13 +219,12 @@ point `secret.existingSecret` at a pre-created secret that carries the same six 
 ## Resource names and endpoints
 
 `<fullname>` defaults to the **release name** (so release `cuberouter` → Deployment
-`cuberouter`, service `cuberouter-app`, CRs `cuberouter-postgres` / `cuberouter-redis`);
-set `nameOverride` or `fullnameOverride` to change it.
++ Service `cuberouter`, CRs `cuberouter-postgres` / `cuberouter-redis`); set
+`nameOverride` or `fullnameOverride` to change it.
 
 | Resource | Name (`<f>` = `<fullname>`) |
 |---|---|
-| App Service | `<f>-app` |
-| App Deployment | `<f>` |
+| App Service / Deployment | `<f>` (same name, different kinds) |
 | App data / logs PVCs | `<f>-app-data`, `<f>-app-logs` |
 | App HPA / PDB | `<f>-app-hpa`, `<f>-app-pdb` (PDB only in high mode) |
 | Docs Service / Deployment | `<f>-docs` |

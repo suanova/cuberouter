@@ -19,7 +19,7 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: {{ $f }}-app
+                name: {{ $f }}
                 port:
                   number: {{ $.Values.cubeRouter.service.port }}
     {{- end }}

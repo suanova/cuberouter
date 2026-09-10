@@ -39,7 +39,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ $f }}-app
+  name: {{ $f }}
   labels:
     {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
 spec:
