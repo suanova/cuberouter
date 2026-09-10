@@ -390,6 +390,19 @@ func GetModelRatio(name string) (float64, bool, string) {
 	return ratio, true, name
 }
 
+// IsRegisteredModel reports whether name is a model the pricing registry knows
+// about, from either the default tables or operator overrides. Callers use it
+// as the "is this a real model ID, not an alias?" signal before rewriting a
+// model name.
+func IsRegisteredModel(name string) bool {
+	name = FormatMatchingModelName(name)
+	if _, ok := modelRatioMap.Get(name); ok {
+		return true
+	}
+	_, ok := modelPriceMap.Get(name)
+	return ok
+}
+
 func DefaultModelRatio2JSONString() string {
 	jsonBytes, err := common.Marshal(defaultModelRatio)
 	if err != nil {

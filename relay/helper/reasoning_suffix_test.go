@@ -9,6 +9,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -201,6 +202,63 @@ func TestApplyReasoningModelSuffixStillParsesOpenAIEffortTail(t *testing.T) {
 	require.NotNil(t, info.ReasoningConversion)
 	assert.Equal(t, "enabled", info.ReasoningConversion.Mode)
 	assert.Equal(t, "high", info.ReasoningConversion.Effort)
+}
+
+// useModelRatios installs a known pricing registry for the duration of a test.
+// The registry is the "is this name a real model?" source for effort-tail
+// detection, so tests must seed it explicitly instead of inheriting whatever
+// the process happens to hold.
+func useModelRatios(t *testing.T, ratios map[string]float64) {
+	t.Helper()
+	savedRatios := ratio_setting.ModelRatio2JSONString()
+	savedPrices := ratio_setting.ModelPrice2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios))
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(savedPrices))
+	})
+
+	payload, err := common.Marshal(ratios)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(payload)))
+}
+
+// A model ID that merely ends in an effort token must survive when it reached
+// the request through a channel model_mapping. The operator configured an
+// upstream identifier there, not a client-facing reasoning alias, so trimming
+// it rewrites a real model into a nonexistent one (qwen3.8-max -> qwen3.8).
+func TestApplyReasoningModelSuffixPreservesMappedRealModelID(t *testing.T) {
+	useModelRatios(t, map[string]float64{"gpt-5.6-sol": 2.5})
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "qwen3.8-max-a",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "qwen3.8-max", // channel model_mapping target
+			IsModelMapped:     true,
+		},
+	}
+
+	require.NoError(t, ApplyReasoningModelSuffix(info))
+	assert.Equal(t, "qwen3.8-max", info.UpstreamModelName)
+	assert.Nil(t, info.ReasoningConversion)
+}
+
+// An ambiguous tail (-max/-medium, tokens real model IDs use too) still trims
+// when the base name it leaves behind is a registered model.
+func TestApplyReasoningModelSuffixTrimsAmbiguousTailWhenBaseIsRegistered(t *testing.T) {
+	useModelRatios(t, map[string]float64{"gpt-5.6-sol": 2.5})
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gpt-5.6-sol-max",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gpt-5.6-sol-max",
+		},
+	}
+
+	require.NoError(t, ApplyReasoningModelSuffix(info))
+	assert.Equal(t, "gpt-5.6-sol", info.UpstreamModelName)
+	require.NotNil(t, info.ReasoningConversion)
+	assert.Equal(t, "enabled", info.ReasoningConversion.Mode)
+	assert.Equal(t, "max", info.ReasoningConversion.Effort)
 }
 
 func TestApplyReasoningModelSuffixTrimsOpenRouterThinkingOnly(t *testing.T) {

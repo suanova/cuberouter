@@ -4,7 +4,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 type ChatCompletionsToResponsesPolicy struct {
@@ -86,8 +88,23 @@ func ShouldPreserveThinkingSuffix(modelName string) bool {
 	return false
 }
 
-// ShouldPreserveEffortTail reports model IDs whose names already end in an
-// effort-like token and must not be treated as reasoning aliases.
+// ambiguousEffortTokens are effort tails that are also ordinary words in real
+// model IDs (qwen-max, yi-medium, stable-diffusion-3-medium). They are read as
+// reasoning aliases only when the base name they leave behind is a registered
+// model. The remaining effort tokens (-high, -low, -minimal, -none, -xhigh) are
+// reasoning-specific and are always read as aliases.
+var ambiguousEffortTokens = []string{"-max", "-medium"}
+
+// ShouldPreserveEffortTail reports whether a model name ending in an
+// effort-like token (for example -max or -high) must be sent upstream verbatim
+// instead of being read as a reasoning alias.
+//
+// Rewriting is only safe when we can tell an alias apart from a real model ID.
+// For an ambiguous tail that means the base name must be a registered model:
+// gpt-5.6-sol-max resolves to the registered base gpt-5.6-sol, whereas
+// qwen3.8-max would resolve to qwen3.8, which nobody registered — that is a
+// real model ID that merely looks like an alias. EffortTailModelIDs remains as
+// an explicit override for real model IDs whose base name is registered too.
 func ShouldPreserveEffortTail(modelName string) bool {
 	target := strings.TrimSpace(modelName)
 	if target == "" {
@@ -106,5 +123,10 @@ func ShouldPreserveEffortTail(modelName string) bool {
 			return true
 		}
 	}
-	return false
+
+	base, _, found := reasoning.TrimEffortSuffixWithSuffixes(target, ambiguousEffortTokens)
+	if !found {
+		return false
+	}
+	return !ratio_setting.IsRegisteredModel(base)
 }
