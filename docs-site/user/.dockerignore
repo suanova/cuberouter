@@ -1,5 +1,0 @@
-node_modules
-docs/**
-!docs/.vitepress
-docs/.vitepress/**
-!docs/.vitepress/dist

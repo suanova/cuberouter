@@ -174,13 +174,13 @@ jobs:
           registry: harbor.isuanova.com
           username: ${{ vars.CI_BOT_NAME }}
           password: ${{ secrets.CI_BOT_PASSWORD }}
-      # docker-build.yml / docker-build-docs.yml publish the versioned images in
-      # parallel with this workflow on the same tag push, so poll until every
-      # image required by the compose stack exists in Harbor before pulling it.
+      # docker-build.yml publishes the versioned image in parallel with this
+      # workflow on the same tag push, so poll until every image required by the
+      # compose stack exists in Harbor before pulling it.
       - name: Wait for required images to be ready
         run: |
           set -euo pipefail
-          images=$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u)
+          images=$(docker compose -f docker-compose.yml config --images | sort -u)
           echo "Required images:"
           echo "$images"
           deadline=$(( $(date +%s) + 1800 ))

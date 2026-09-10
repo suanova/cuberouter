@@ -78,14 +78,14 @@ reset-setup:
 	fi
 
 # Offline deployment package: pull every image referenced by the compose stack
-# (docker-compose.yml + docker-compose.docs.yml) and bundle them together with
+# (docker-compose.yml; the documentation sites ship inside the cuberouter image
+# and are served at /docs/user/ and /docs/admin/) and bundle them together with
 # the deployment files into a single gzipped tarball $(OFFLINE_PACKAGE), so a
 # machine without any registry access can deploy by extracting the archive and
 # running `docker load -i images.tar` + `docker compose up -d`.
 # Archive layout (flat, so `tar xzf` yields a ready-to-use deploy directory):
 #   images.tar            docker save output of all stack images
 #   docker-compose.yml    core services (cuberouter / postgres / redis)
-#   docker-compose.docs.yml  documentation sites
 #   scripts/gen-tls-cert.sh  HTTPS certificate generator
 # CUBEROUTER_IMAGE_TAG pins the versioned images
 # (e.g. CUBEROUTER_IMAGE_TAG=v1.0.0 make offline-package).
@@ -93,7 +93,7 @@ reset-setup:
 # failed docker save/tar never leaves a partial $(OFFLINE_PACKAGE) behind.
 offline-package:
 	@set -e; \
-	images=$$(docker compose -f docker-compose.yml -f docker-compose.docs.yml config --images | sort -u); \
+	images=$$(docker compose -f docker-compose.yml config --images | sort -u); \
 	echo "Packaging images into $(OFFLINE_PACKAGE):"; \
 	echo "$$images"; \
 	for img in $$images; do \
@@ -109,14 +109,14 @@ offline-package:
 		exit 1; \
 	fi; \
 	mkdir -p "$$tmp_dir/scripts"; \
-	cp docker-compose.yml docker-compose.docs.yml "$$tmp_dir/"; \
+	cp docker-compose.yml "$$tmp_dir/"; \
 	cp scripts/gen-tls-cert.sh "$$tmp_dir/scripts/"; \
 	sed -i "s|:\$${CUBEROUTER_IMAGE_TAG:-latest}|:$(CUBEROUTER_IMAGE_TAG)|g" \
-		"$$tmp_dir/docker-compose.yml" "$$tmp_dir/docker-compose.docs.yml"; \
+		"$$tmp_dir/docker-compose.yml"; \
 	if ! tar -C "$$tmp_dir" -czf "$$tmp_gz" .; then \
 		echo "packaging failed; discarding partial archive" >&2; \
 		exit 1; \
 	fi; \
 	mv "$$tmp_gz" "$(OFFLINE_PACKAGE)"; \
 	echo "Offline package ready: $(OFFLINE_PACKAGE)"; \
-	echo "On the target machine: tar xzf $(OFFLINE_PACKAGE) && docker load -i images.tar && docker compose up -d && docker compose -f docker-compose.docs.yml up -d"
+	echo "On the target machine: tar xzf $(OFFLINE_PACKAGE) && docker load -i images.tar && docker compose up -d"

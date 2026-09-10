@@ -1,6 +1,11 @@
 import { defineConfig } from 'vitepress'
 
+// Served by the CubeRouter app at /docs/admin/ (see router/docs-router.go and
+// the root Dockerfile). Must start and end with a slash.
+const base = '/docs/admin/'
+
 export default defineConfig({
+  base,
   title: 'CubeRouter 管理员文档',
   description: 'CubeRouter AI 网关平台管理员文档中心',
   lang: 'zh-CN',
@@ -364,7 +369,9 @@ export default defineConfig({
     }
   },
   head: [
-    ['link', { rel: 'icon', href: '/favicon.ico' }],
+    // head entries are injected verbatim (no base prefixing), so reference the
+    // favicon with the explicit base path.
+    ['link', { rel: 'icon', href: `${base}favicon.ico` }],
     ['link', { rel: 'preconnect', href: 'https://fonts.googleapis.com' }],
     ['link', { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: '' }],
     ['link', { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap' }],
