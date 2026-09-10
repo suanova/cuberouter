@@ -73,6 +73,61 @@ spec:
       labels:
         {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 8 }}
     spec:
+      {{- if or .Values.cubeRouter.waitForPostgres .Values.cubeRouter.waitForRedis }}
+      # Blocks pod startup until the managed stores are usable by the app
+      # (the pod stays in the Init state until every enabled check passes,
+      # retries every 5s, no timeout):
+      #   wait-for-postgres: psql "SELECT 1" with the app DSN — passes only
+      #     when the primary accepts TLS connections, the app role
+      #     authenticates and the app database exists.
+      #   wait-for-redis: redis-cli PING with the app password — passes only
+      #     when the master service answers AUTH + PING.
+      initContainers:
+        {{- if .Values.cubeRouter.waitForPostgres }}
+        - name: wait-for-postgres
+          image: "{{ .Values.postgresql.image }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SQL_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: SQL_DSN
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "waiting for PostgreSQL to be ready..."
+              until psql "$SQL_DSN" -tAc "SELECT 1" >/dev/null 2>&1; do
+                sleep 5
+              done
+              echo "PostgreSQL is ready"
+        {{- end }}
+        {{- if .Values.cubeRouter.waitForRedis }}
+        - name: wait-for-redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_HOST
+              value: "{{ include "cuberouter.redisName" . }}-master"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: REDIS_PASSWORD
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "waiting for Redis to be ready..."
+              until redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; do
+                sleep 5
+              done
+              echo "Redis is ready"
+        {{- end }}
+      {{- end }}
       containers:
         - name: cuberouter
           image: "{{ .Values.cubeRouter.image.repository }}:{{ .Values.cubeRouter.image.tag }}"

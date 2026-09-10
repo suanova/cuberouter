@@ -180,8 +180,9 @@ kubectl -n cuberouter get clusters,redisreplications
 
 Wait for the `Cluster` to report `ClusterOnline` (its `status.phase`) and for its instances to
 be ready. The app role and its chart-generated password exist from first start (the operator
-applies `cuberouter-postgres-app-auth` during bootstrap), so the app and docs pods pass their
-`/api/status` probes as soon as the cluster is online:
+applies `cuberouter-postgres-app-auth` during bootstrap). Until the stores are online the app
+pods show `Init:x/2` (the `wait-for-postgres` / `wait-for-redis` init containers are still
+waiting); once both stores are ready they start and pass their `/api/status` probes:
 
 ```sh
 curl -i http://localhost:3000/api/status
@@ -253,7 +254,7 @@ Computed connection strings:
 | `deployMode` | `high` (HA replica counts) \| `base` (single replica everywhere; app PDB not rendered) |
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`; extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
-| `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `nodeSelector` / `tolerations` |
+| `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
 | `docs` | `enabled: true`, own image, own Deployment + Service |
 | `hpa` | `enabled: false`, 2→5 replicas at 70% CPU (minReplicas is 1 in base mode) |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
@@ -292,6 +293,12 @@ Computed connection strings:
   Cluster CR is created in the same release as the operator, before the operator is serving;
   "Ignore" admits it during that window and validates normally afterwards (the operator
   injects its self-signed CA into the webhook configurations at startup).
+- **Startup ordering:** the app pods run init containers (`cubeRouter.waitForPostgres` /
+  `cubeRouter.waitForRedis`, both on by default) that retry every 5 seconds — `psql "SELECT 1"`
+  with the app's own DSN for PostgreSQL and `redis-cli` AUTH + PING against the master for Redis —
+  so the pods stay in the `Init` state until the primary accepts TLS connections, the app role
+  authenticates, the app database exists and the master answers PING. The app container never
+  starts against an unready store.
 
 ### Redis (OpsTree redis-operator)
 

@@ -87,6 +87,13 @@ cubeRouter:
   args: []
   nodeSelector: {}
   tolerations: []
+  # Init containers that keep the pods in the Init state until the managed
+  # stores are usable (5s retries, no timeout):
+  #   waitForPostgres: psql "SELECT 1" with the app DSN
+  #   waitForRedis:    redis-cli AUTH + PING against the master
+  # Disable a check only if you handle that store's readiness yourself.
+  waitForPostgres: true
+  waitForRedis: true
 
 # ---------------------------------------------------------------------------
 # Docs site

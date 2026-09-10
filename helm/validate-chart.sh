@@ -38,6 +38,21 @@ echo "== helm template: deployMode=base (single replica everywhere) =="
 render base --set deployMode=base
 echo "   ok"
 
+echo "== init containers: wait-for-postgres + wait-for-redis rendered by default =="
+"${HELM_BIN}" template cuberouter "${CHART_DIR}" -n cuberouter \
+  | grep -q "name: wait-for-postgres"
+"${HELM_BIN}" template cuberouter "${CHART_DIR}" -n cuberouter \
+  | grep -q "name: wait-for-redis"
+echo "   ok"
+
+echo "== init containers: absent when both checks disabled =="
+if "${HELM_BIN}" template cuberouter "${CHART_DIR}" -n cuberouter \
+  --set cubeRouter.waitForPostgres=false \
+  --set cubeRouter.waitForRedis=false | grep -q "wait-for-"; then
+  echo "   FAIL: no init containers should be rendered" >&2; exit 1
+fi
+echo "   ok"
+
 echo "== negative: password with space must fail =="
 if render neg-pw --set "secrets.POSTGRES_PASSWORD=bad password" 2> /dev/null; then
   echo "   FAIL: expected render error" >&2; exit 1
