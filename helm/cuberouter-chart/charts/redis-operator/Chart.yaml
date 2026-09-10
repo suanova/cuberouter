@@ -1,0 +1,18 @@
+apiVersion: v2
+name: redis-operator
+description: OpsTree Redis operator control plane (vendored from OT-CONTAINER-KIT/redis-operator v0.26.0)
+type: application
+version: 0.26.0
+appVersion: "0.26.0"
+home: https://github.com/OT-CONTAINER-KIT/redis-operator
+sources:
+  - https://github.com/OT-CONTAINER-KIT/redis-operator
+keywords:
+  - operator
+  - redis
+  - opstree
+  - kubernetes
+maintainers:
+  - name: iamabhishek-dubey
+  - name: sandy724
+  - name: shubham-cmyk

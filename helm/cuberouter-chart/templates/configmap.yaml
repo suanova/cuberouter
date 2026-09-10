@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cuberouter.fullname" . }}-config
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+data:
+  BATCH_UPDATE_ENABLED: {{ .Values.config.BATCH_UPDATE_ENABLED | quote }}
+  ERROR_LOG_ENABLED: {{ .Values.config.ERROR_LOG_ENABLED | quote }}
+  NODE_TYPE: {{ .Values.config.NODE_TYPE | quote }}
+  PORT: {{ .Values.config.PORT | quote }}
+  TZ: {{ .Values.config.TZ | quote }}
+  {{- range $key, $value := .Values.config.extra }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}

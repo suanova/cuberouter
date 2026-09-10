@@ -1,0 +1,15 @@
+{{/* Not rendered in base mode: a single replica has nothing to protect, and
+    minAvailable>=1 would block rolling updates of a 1-replica Deployment. */}}
+{{- if and .Values.pdb.enabled (ne .Values.deployMode "base") }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cuberouter.fullname" . }}-app-pdb
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.app.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 6 }}
+{{- end }}

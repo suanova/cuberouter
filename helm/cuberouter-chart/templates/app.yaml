@@ -1,0 +1,233 @@
+{{- $f := include "cuberouter.fullname" . }}
+{{- $secretName := include "cuberouter.secretName" . }}
+{{- if .Values.cubeRouter.persistence.data.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $f }}-app-data
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.cubeRouter.persistence.data.storageClassName }}
+  storageClassName: {{ .Values.cubeRouter.persistence.data.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.cubeRouter.persistence.data.size }}
+---
+{{- end }}
+{{- if .Values.cubeRouter.persistence.logs.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $f }}-app-logs
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.cubeRouter.persistence.logs.storageClassName }}
+  storageClassName: {{ .Values.cubeRouter.persistence.logs.storageClassName }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.cubeRouter.persistence.logs.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $f }}
+  labels:
+    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
+spec:
+  type: {{ .Values.cubeRouter.service.type }}
+  selector:
+    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.cubeRouter.service.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $f }}
+  labels:
+    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 4 }}
+spec:
+  replicas: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.cubeRouter.replicaCount) }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      {{- if eq .Values.deployMode "base" }}
+      # One replica sharing ReadWriteOnce claims: a surge pod could never
+      # attach the volume (Multi-Attach), so replace the pod in place.
+      maxUnavailable: 1
+      maxSurge: 0
+      {{- else }}
+      maxUnavailable: 0
+      maxSurge: 1
+      {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 8 }}
+    spec:
+      {{- if or .Values.cubeRouter.waitForPostgres .Values.cubeRouter.waitForRedis }}
+      # Blocks pod startup until the managed stores are usable by the app
+      # (the pod stays in the Init state until every enabled check passes,
+      # retries every 5s, no timeout):
+      #   wait-for-postgres: psql "SELECT 1" with the app DSN — passes only
+      #     when the primary accepts TLS connections, the app role
+      #     authenticates and the app database exists.
+      #   wait-for-redis: redis-cli PING with the app password — passes only
+      #     when the master service answers AUTH + PING.
+      initContainers:
+        {{- if .Values.cubeRouter.waitForPostgres }}
+        - name: wait-for-postgres
+          image: "{{ .Values.postgresql.image }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: SQL_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: SQL_DSN
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "waiting for PostgreSQL to be ready..."
+              until psql "$SQL_DSN" -tAc "SELECT 1" >/dev/null 2>&1; do
+                sleep 5
+              done
+              echo "PostgreSQL is ready"
+        {{- end }}
+        {{- if .Values.cubeRouter.waitForRedis }}
+        - name: wait-for-redis
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: REDIS_HOST
+              value: "{{ include "cuberouter.redisName" . }}-master"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: REDIS_PASSWORD
+          command:
+            - /bin/sh
+            - -c
+            - |
+              echo "waiting for Redis to be ready..."
+              until redis-cli -h "$REDIS_HOST" -p "$REDIS_PORT" -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG; do
+                sleep 5
+              done
+              echo "Redis is ready"
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: cuberouter
+          image: "{{ .Values.cubeRouter.image.repository }}:{{ .Values.cubeRouter.image.tag }}"
+          imagePullPolicy: {{ .Values.cubeRouter.image.pullPolicy }}
+          {{- with .Values.cubeRouter.command }}
+          command:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.cubeRouter.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              # the app listens on config.PORT (same value the probes hit)
+              containerPort: {{ .Values.config.PORT }}
+          envFrom:
+            - configMapRef:
+                name: {{ $f }}-config
+          env:
+            - name: SQL_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: SQL_DSN
+            - name: REDIS_CONN_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: REDIS_CONN_STRING
+            - name: SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: SESSION_SECRET
+            - name: CRYPTO_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: CRYPTO_SECRET
+            {{- range .Values.cubeRouter.envVars }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            {{- if .Values.cubeRouter.persistence.data.enabled }}
+            - name: cuberouter-data
+              mountPath: {{ .Values.cubeRouter.persistence.data.mountPath }}
+            {{- end }}
+            {{- if .Values.cubeRouter.persistence.logs.enabled }}
+            - name: cuberouter-logs
+              mountPath: {{ .Values.cubeRouter.persistence.logs.mountPath }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            initialDelaySeconds: 40
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/status
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+          resources:
+            {{- toYaml .Values.cubeRouter.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.cubeRouter.persistence.data.enabled }}
+        - name: cuberouter-data
+          persistentVolumeClaim:
+            claimName: {{ $f }}-app-data
+        {{- end }}
+        {{- if .Values.cubeRouter.persistence.logs.enabled }}
+        - name: cuberouter-logs
+          persistentVolumeClaim:
+            claimName: {{ $f }}-app-logs
+        {{- end }}
+      {{- with .Values.cubeRouter.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.cubeRouter.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

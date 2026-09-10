@@ -1,0 +1,35 @@
+# Default values for the redis-operator subchart (OpsTree OT-CONTAINER-KIT).
+# Vendored from the official v0.26.0 chart (charts/redis-operator), slimmed to
+# the control plane (webhook disabled, cert-manager not used).
+
+# Number of operator replicas (leader election; 1 is the recommended value)
+replicas: 1
+
+# Operator container image (also used for the per-pod config init container)
+image:
+  repository: quay.io/opstree/redis-operator
+  tag: v0.26.0
+  pullPolicy: Always
+
+# Service account used by the operator
+serviceAccountName: redis-operator
+
+# Namespaces to watch (empty = all namespaces)
+watchNamespace: ""
+
+# Operator feature gates (FEATURE_GATES)
+featureGates:
+  GenerateConfigInInitContainer: false
+
+# Operator resource requests/limits
+resources:
+  requests:
+    cpu: 500m
+    memory: 500Mi
+  limits:
+    cpu: 500m
+    memory: 500Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

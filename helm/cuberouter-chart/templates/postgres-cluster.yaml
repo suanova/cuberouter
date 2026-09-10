@@ -1,0 +1,96 @@
+{{- $f := include "cuberouter.fullname" . }}
+{{- $cluster := include "cuberouter.postgresClusterName" . }}
+{{- $user := .Values.postgresql.auth.username }}
+{{- $db := .Values.postgresql.auth.database }}
+{{/*
+CloudNativePG Cluster: HA PostgreSQL managed by the cloudnative-pg operator
+(built-in streaming replication, automatic failover, self-signed TLS).
+
+- bootstrap.initdb creates the app database owned by the app user (the
+  operator issues CREATE ROLE <owner> LOGIN + CREATE DATABASE ... OWNER
+  <owner>); a database owner has full rights on its "public" schema (PG15+).
+- bootstrap.initdb.secret points at the "<cluster>-app-auth" basic-auth
+  secret (rendered by secret.yaml): the operator applies that password to the
+  app role and re-applies it whenever the secret changes — the chart password
+  is the live database password from first start, no init Job needed.
+- Superuser TCP access stays disabled (enableSuperuserAccess=false default);
+  the superuser role has no password.
+- The primary service is "<cluster>-rw" (see postgresAddr helper);
+  "<cluster>-ro" / "<cluster>-r" / "<cluster>-any" cover read paths.
+*/}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ $cluster }}
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  imageName: {{ .Values.postgresql.image | quote }}
+  imagePullPolicy: IfNotPresent
+  # >= 2 for HA: the operator elects one primary and streams the rest
+  # (deployMode=base renders 1)
+  instances: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.postgresql.replicas) }}
+  storage:
+    size: {{ .Values.postgresql.storage | quote }}
+    {{- if .Values.postgresql.storageClassName }}
+    storageClass: {{ .Values.postgresql.storageClassName }}
+    {{- end }}
+  resources:
+    {{- toYaml .Values.postgresql.resources | nindent 4 }}
+  bootstrap:
+    initdb:
+      database: {{ $db }}
+      owner: {{ $user }}
+      # credentials for the database owner: the chart renders this secret,
+      # so the operator never generates a random password for the app role
+      secret:
+        name: {{ $cluster }}-app-auth
+  {{- if .Values.postgresql.backups.enabled }}
+  # volume snapshots via the cluster's default VolumeSnapshotClass
+  backup:
+    volumeSnapshot: {}
+  {{- end }}
+{{- if .Values.postgresql.pgBouncer.enabled }}
+---
+{{/*
+Operator-managed pgbouncer pooler in front of the cluster (optional).
+Clients connect to the pooler service "<cluster>-pgbouncer:5432"; type rw
+forwards pooled connections to the primary. The chart's SQL_DSN keeps
+pointing at the primary service.
+*/}}
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: {{ $cluster }}-pgbouncer
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  cluster:
+    name: {{ $cluster }}
+  type: rw
+  instances: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.postgresql.pgBouncer.replicas) }}
+  pgbouncer:
+    poolMode: transaction
+    # No authQuery: the operator then runs its automated pgbouncer
+    # integration (dedicated pooler user, user_search function and the
+    # "<cluster>-pooler" secret). Setting a custom authQuery disables that
+    # setup and requires an authQuerySecret (webhook validation).
+{{- end }}
+{{- if .Values.postgresql.backups.enabled }}
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: {{ $cluster }}-backup
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  cluster:
+    name: {{ $cluster }}
+  method: volumeSnapshot
+  schedule: {{ .Values.postgresql.backups.schedule | quote }}
+  # cold snapshot (CNPG's recommended mode): crash-consistent by itself, no
+  # WAL archiving needed; the primary is fenced (read-only) only while the
+  # snapshot is being taken
+  online: false
+{{- end }}

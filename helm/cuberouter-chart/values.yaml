@@ -1,0 +1,231 @@
+# Default values for cuberouter.
+#
+# PostgreSQL and Redis are required and always managed by operators (HA):
+#   PostgreSQL : CloudNativePG Cluster (built-in streaming replication +
+#                automatic failover) + cloudnative-pg subchart (installed
+#                together)
+#   Redis      : OpsTree RedisReplication (embedded sentinel set)
+#                + redis-operator subchart (installed together)
+# See README.md.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Deployment mode (replica preset):
+#   high (default): HA — app 2, docs 1, PostgreSQL 2 instances,
+#                   Redis 2 nodes + 3 sentinels
+#   base: a single replica everywhere — app 1, docs 1, PostgreSQL 1
+#         instance, Redis 1 node + 1 sentinel; the app PDB is not rendered
+# In base mode every replica count below is forced to 1 (the per-component
+# values only apply in high mode).
+deployMode: high  # base | high
+
+# ---------------------------------------------------------------------------
+# App configuration (ConfigMap, injected via envFrom)
+# ---------------------------------------------------------------------------
+config:
+  BATCH_UPDATE_ENABLED: "true"
+  ERROR_LOG_ENABLED: "true"
+  NODE_TYPE: master
+  PORT: "3000"
+  TZ: Asia/Shanghai
+  # Additional plain environment variables (name: value)
+  extra: {}
+
+# ---------------------------------------------------------------------------
+# App secret: SQL_DSN / REDIS_CONN_STRING / SESSION_SECRET / CRYPTO_SECRET /
+# REDIS_PASSWORD / POSTGRES_PASSWORD
+# create=true  : chart creates the secret; empty secrets.* values are
+#                generated (stable across upgrades via lookup).
+# create=false : point existingSecret at a pre-created secret (0.6.0 pattern).
+# ---------------------------------------------------------------------------
+secret:
+  create: true
+  existingSecret: ""
+
+secrets:
+  SESSION_SECRET: ""
+  CRYPTO_SECRET: ""
+  REDIS_PASSWORD: ""
+  POSTGRES_PASSWORD: ""
+
+# ---------------------------------------------------------------------------
+# CubeRouter application (always installed)
+# ---------------------------------------------------------------------------
+cubeRouter:
+  # used when deployMode: high (base mode forces 1)
+  replicaCount: 2
+  image:
+    repository: harbor.isuanova.com/suanova/cuberouter
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  persistence:
+    data:
+      enabled: true
+      size: 10Gi
+      storageClassName: ""
+      mountPath: /data
+    logs:
+      enabled: true
+      size: 10Gi
+      storageClassName: ""
+      mountPath: /app/logs
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  # Extra env entries: [{name: X, value: "1"}]
+  envVars: []
+  # Optional entrypoint override (useful for smoke/stub images)
+  command: []
+  args: []
+  nodeSelector: {}
+  tolerations: []
+  # Init containers that keep the pods in the Init state until the managed
+  # stores are usable (5s retries, no timeout):
+  #   waitForPostgres: psql "SELECT 1" with the app DSN
+  #   waitForRedis:    redis-cli AUTH + PING against the master
+  # Disable a check only if you handle that store's readiness yourself.
+  waitForPostgres: true
+  waitForRedis: true
+
+# ---------------------------------------------------------------------------
+# Docs site
+# ---------------------------------------------------------------------------
+docs:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: harbor.isuanova.com.cn/suanova/cuberouter-docs-user
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+hpa:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+pdb:
+  enabled: true
+  app:
+    minAvailable: 1
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 100m
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - cuberouter.com
+    - www.cuberouter.com
+    - cuberouter.com
+    - www.cuberouter.com
+  tls:
+    enabled: true
+    secretName: cuberouter-tls
+  docs:
+    hosts:
+      - docs.cuberouter.com
+      - docs.cuberouter.com
+    tls:
+      enabled: true
+      secretName: cuberouter-docs-tls
+
+# ---------------------------------------------------------------------------
+# PostgreSQL — HA cluster via CloudNativePG (Cluster CR)
+# ---------------------------------------------------------------------------
+postgresql:
+  auth:
+    database: cuberouter
+    # [a-z0-9-] only (no underscores)
+    username: cuberouter
+  # Instance image; the tag encodes the PostgreSQL major version
+  # (16.14 = PostgreSQL 16.14)
+  image: ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie
+  # >= 2 for HA (automatic failover); used when deployMode: high
+  replicas: 2
+  storage: 20Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  # Weekly backups via volume snapshots (uses the cluster's default
+  # VolumeSnapshotClass; set enabled=false if the cluster has none)
+  backups:
+    enabled: true
+    schedule: "0 2 * * 0"
+  pgBouncer:
+    enabled: false
+    replicas: 2
+
+# ---------------------------------------------------------------------------
+# Redis — HA failover via OpsTree redis-operator (RedisReplication CR with
+# an embedded sentinel set)
+# ---------------------------------------------------------------------------
+redis:
+  # Image of the redis instances (the operator requires the opstree images)
+  image:
+    repository: quay.io/opstree/redis
+    tag: v7.0.15
+    pullPolicy: IfNotPresent
+  # Total redis nodes: 1 master + (N-1) replicas; used when deployMode: high
+  replicas: 2
+  # Number of sentinel nodes (automatic failover); used when deployMode: high
+  sentinelReplicas: 3
+  sentinelImage:
+    repository: quay.io/opstree/redis-sentinel
+    tag: v7.0.15
+    pullPolicy: IfNotPresent
+  # Extra redis.conf parameters: list of "<key> <value>" strings, applied via CONFIG SET
+  redisCustomConfig: []
+  persistence:
+    enabled: false
+    size: 10Gi
+    storageClassName: ""
+
+# ---------------------------------------------------------------------------
+# Operator subcharts (vendored under charts/, offline-installable).
+# Always installed together with the managed stores; image and resources
+# can be tuned here.
+# ---------------------------------------------------------------------------
+cloudnative-pg:
+  image:
+    repository: ghcr.io/cloudnative-pg/cloudnative-pg
+    tag: "1.30.0"
+    pullPolicy: IfNotPresent
+  resources: {}
+
+redis-operator:
+  image:
+    repository: quay.io/opstree/redis-operator
+    tag: v0.26.0
+    pullPolicy: Always
+  resources: {}

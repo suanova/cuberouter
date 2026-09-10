@@ -1,0 +1,27 @@
+apiVersion: v2
+name: cuberouter
+description: CubeRouter (AI API gateway) with high-availability PostgreSQL (CloudNativePG) and Redis (OpsTree redis-operator)
+type: application
+version: 1.0.0
+appVersion: "v1.0.0"
+home: https://github.com/suanova/cuberouter
+keywords:
+  - cuberouter
+  - new-api
+  - ai-gateway
+maintainers:
+  - name: suanova
+    url: https://github.com/suanova/cuberouter
+dependencies:
+  # Vendored from https://github.com/cloudnative-pg/charts (chart 0.29.0,
+  # operator 1.30.0, Apache-2.0). Installs the CloudNativePG control plane +
+  # CRDs. The Cluster CR (HA cluster) is rendered by the parent chart's
+  # templates/postgres-cluster.yaml.
+  - name: cloudnative-pg
+    version: 0.29.0
+  # Vendored from https://github.com/OT-CONTAINER-KIT/redis-operator (v0.26.0).
+  # Installs the redis-operator control plane + CRDs. The RedisReplication CR
+  # (HA cluster with embedded sentinel set) is rendered by the parent chart's
+  # templates/redis-replication.yaml.
+  - name: redis-operator
+    version: 0.26.0

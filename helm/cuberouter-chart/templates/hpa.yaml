@@ -1,0 +1,23 @@
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "cuberouter.fullname" . }}-app-hpa
+  labels:
+    {{- include "cuberouter.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "cuberouter.fullname" . }}
+  # base mode keeps a single replica even when the HPA is enabled
+  minReplicas: {{ if eq .Values.deployMode "base" }}1{{ else }}{{ .Values.hpa.minReplicas }}{{ end }}
+  maxReplicas: {{ if eq .Values.deployMode "base" }}1{{ else }}{{ .Values.hpa.maxReplicas }}{{ end }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
