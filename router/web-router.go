@@ -24,6 +24,7 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.Han
 
 	router.NoRoute(
 		pluginDispatcher,
+		relayV1CompatRedirect(bareV1RoutePatterns(router.Routes())),
 		middleware.RouteTag("web"),
 		gzip.Gzip(gzip.DefaultCompression),
 		middleware.GlobalWebRateLimit(),
