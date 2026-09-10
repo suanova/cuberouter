@@ -6,7 +6,7 @@ subcharts are vendored under `charts/`, so it can be installed offline without `
 
 | | |
 |---|---|
-| Chart | `cuberouter` **1.0.0** |
+| Chart | `cuberouter-chart` **1.0.0** |
 | App version | `v1.0.0` |
 | Components | CubeRouter app (user + admin docs bundled), PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
 

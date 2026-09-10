@@ -68,13 +68,16 @@ jobs:
         working-directory: helm/cuberouter-chart
         run: |
           set -euo pipefail
-          # Package next to the chart dir and push as an OCI artifact. The
-          # explicit OCI repository (suanova/cuberouter-chart) is kept
-          # separate from the app image repo (suanova/cuberouter) so chart
-          # version tags and image tags never share a repository.
+          # Package next to the chart dir and push as an OCI artifact.
+          # helm push derives the repository path from the chart metadata name
+          # (cuberouter-chart, from Chart.yaml) — not from the local file name
+          # — so pushing to oci://harbor.isuanova.com/suanova stores the chart
+          # at suanova/cuberouter-chart, next to but separate from the app
+          # image repo suanova/cuberouter.
           helm package .
-          # The OCI version tag is the Chart.yaml version — derive the tgz
-          # name from it so a version bump needs no workflow edit.
+          # The OCI version tag is the Chart.yaml version, and helm package
+          # names the file after the chart (cuberouter-chart-<version>.tgz) —
+          # derive the name from it so a version bump needs no workflow edit.
           CHART_VERSION="$(helm show chart . | awk '/^version:/{print $2}')"
-          helm push "cuberouter-${CHART_VERSION}.tgz" \
-            oci://harbor.isuanova.com/suanova/cuberouter-chart
+          helm push "cuberouter-chart-${CHART_VERSION}.tgz" \
+            oci://harbor.isuanova.com/suanova
