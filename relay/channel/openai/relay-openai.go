@@ -147,6 +147,16 @@ func lastOpenAIStreamResponseFinished(lastStreamData string) bool {
 // returnOpenAIStreamError 处理流错误响应：客户端已断开则直接返回；尚未写出任何
 // 数据则清掉 SSE 头并返回普通 HTTP 错误；否则在流里发一个 OpenAI 兼容的错误事件。
 func returnOpenAIStreamError(c *gin.Context, info *relaycommon.RelayInfo, apiErr *types.NewAPIError, clientDisconnected bool) (*dto.Usage, *types.NewAPIError) {
+	// 幂等补充网关侧 request id，与 controller.Relay 统一错误出口的格式
+	// (message 尾部追加 "(request id: …)")一致。流式中断类错误可能经不经过
+	// Relay defer 的出口(如 /v1/responses 插件协议桥)直接序列化,此前这类
+	// 502 报文体里没有 request id,运维无法关联网关日志。
+	if c != nil {
+		if requestID := c.GetString(common.RequestIdKey); requestID != "" &&
+			!strings.Contains(apiErr.Error(), "(request id: ") {
+			apiErr.SetMessage(common.MessageWithRequestId(apiErr.Error(), requestID))
+		}
+	}
 	if clientDisconnected {
 		helper.MarkStreamErrorResponseHandled(c)
 		return nil, apiErr
