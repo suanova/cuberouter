@@ -43,6 +43,7 @@ kind: Secret
 type: Opaque
 metadata:
   name: {{ .Values.config.name }}
+  namespace: {{ include "cloudnative-pg.namespace" . }}
   labels:
     {{- include "cloudnative-pg.labels" . | nindent 4 }}
   {{- with .Values.commonAnnotations }}

@@ -59,4 +59,16 @@ if render neg-pw --set "secrets.POSTGRES_PASSWORD=bad password" 2> /dev/null; th
 fi
 echo "   ok (render correctly rejected)"
 
+echo "== negative: password with URI special character must fail =="
+if render neg-uripw --set "secrets.POSTGRES_PASSWORD=p@ss" 2> /dev/null; then
+  echo "   FAIL: expected render error" >&2; exit 1
+fi
+echo "   ok (render correctly rejected)"
+
+echo "== negative: invalid deployMode must fail =="
+if render neg-mode --set "deployMode=bogus" 2> /dev/null; then
+  echo "   FAIL: expected render error" >&2; exit 1
+fi
+echo "   ok (render correctly rejected)"
+
 echo "all checks passed"

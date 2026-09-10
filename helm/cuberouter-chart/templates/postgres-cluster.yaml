@@ -71,8 +71,10 @@ spec:
   instances: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.postgresql.pgBouncer.replicas) }}
   pgbouncer:
     poolMode: transaction
-    # authenticate pool clients against the role catalog
-    authQuery: "SELECT usename, passwd FROM pg_catalog.pg_shadow WHERE usename=$1"
+    # No authQuery: the operator then runs its automated pgbouncer
+    # integration (dedicated pooler user, user_search function and the
+    # "<cluster>-pooler" secret). Setting a custom authQuery disables that
+    # setup and requires an authQuerySecret (webhook validation).
 {{- end }}
 {{- if .Values.postgresql.backups.enabled }}
 ---
@@ -87,5 +89,8 @@ spec:
     name: {{ $cluster }}
   method: volumeSnapshot
   schedule: {{ .Values.postgresql.backups.schedule | quote }}
-  online: true
+  # cold snapshot (CNPG's recommended mode): crash-consistent by itself, no
+  # WAL archiving needed; the primary is fenced (read-only) only while the
+  # snapshot is being taken
+  online: false
 {{- end }}

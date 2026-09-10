@@ -6,8 +6,8 @@ subcharts are vendored under `charts/`, so it can be installed offline without `
 
 | | |
 |---|---|
-| Chart | `cuberouter` **0.7.0** |
-| App version | `v1.1.55-isuanova-agent-release` |
+| Chart | `cuberouter` **1.0.0** |
+| App version | `v1.0.0` |
 | Components | CubeRouter app, docs site, PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
 
 ## Contents
@@ -209,8 +209,10 @@ Resolution order per key:
 3. otherwise a freshly generated value.
 
 > Passwords are random alphanumeric only by construction; if you set `REDIS_PASSWORD` or
-> `POSTGRES_PASSWORD` explicitly they **must not contain single quotes or spaces** (the chart fails
-> the render otherwise).
+> `POSTGRES_PASSWORD` explicitly they **must not contain single quotes, spaces or URI special
+> characters (`@ : / ? # [ ] %`)**, because they are embedded verbatim in the computed connection
+> strings (the chart fails the render otherwise). `postgresql.auth.username` must match
+> `[a-z0-9-]+` for the same reason.
 
 To fully manage the secret yourself (the 0.6.0 production pattern), set `secret.create=false` and
 point `secret.existingSecret` at a pre-created secret that carries the same six keys — see the
@@ -280,12 +282,14 @@ Computed connection strings:
 - `postgresql.image` is explicit — the tag encodes the PostgreSQL major version (default
   `16.14-system-trixie` = PostgreSQL 16.14). Pick a different tag to change the major version.
 - Backups (`postgresql.backups.enabled`, default on): a `ScheduledBackup` CR runs on
-  `postgresql.backups.schedule` (default weekly Sunday 02:00) using **volume snapshots** — the
-  cluster must provide a default `VolumeSnapshotClass`; set `backups.enabled: false` if it does
-  not.
+  `postgresql.backups.schedule` (default weekly Sunday 02:00) taking a **cold volume snapshot**
+  (CNPG's recommended mode: crash-consistent on its own, no WAL archiving required; the primary
+  is fenced read-only only while the snapshot is taken) — the cluster must provide a default
+  `VolumeSnapshotClass`; set `backups.enabled: false` if it does not.
 - `postgresql.pgBouncer.enabled` (default off) adds an operator-managed pgbouncer `Pooler` in
-  front of the cluster (service `<f>-postgres-pgbouncer:5432`, transaction pooling, clients
-  authenticated against the role catalog).
+  front of the cluster (service `<f>-postgres-pgbouncer:5432`, transaction pooling; the operator
+  manages pooler authentication itself through its automated integration — the chart sets no
+  `authQuery`, which would disable that setup and require an `authQuerySecret`).
 - The operator spreads instance pods across nodes automatically (preferred pod anti-affinity).
   Superuser TCP access is disabled (the `postgres` role has no password).
 - The operator admission webhooks run with `failurePolicy: Ignore` (subchart values): the
@@ -317,6 +321,17 @@ Computed connection strings:
 
 ## Upgrading and rolling back
 
+- **CRDs are not updated by Helm.** `helm upgrade` only creates the subcharts' CRDs when they do
+  not exist yet; existing ones are skipped (and never deleted). When upgrading to a chart version
+  that ships a newer operator (and therefore possibly changed CRDs), apply the new CRDs first:
+
+  ```sh
+  kubectl apply --server-side \
+    -f helm/cuberouter-chart/charts/cloudnative-pg/crds/crds.yaml \
+    -f helm/cuberouter-chart/charts/redis-operator/crds/crds.yaml
+  ```
+
+  (`--server-side` because two CNPG CRDs exceed the 256 KiB client-side-apply limit.)
 - `helm upgrade` is safe: generated passwords are re-read from the existing secret (`lookup`) so they
   stay stable, and the CloudNativePG operator re-applies the app role password whenever the
   `cuberouter-postgres-app-auth` secret changes.

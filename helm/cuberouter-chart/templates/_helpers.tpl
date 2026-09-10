@@ -49,10 +49,30 @@ deployMode=high the per-component value (HA defaults) applies.
 Usage: {{ include "cuberouter.replicas" (dict "root" . "ha" .Values.cubeRouter.replicaCount) }}
 */}}
 {{- define "cuberouter.replicas" -}}
+{{- if ne .root.Values.deployMode "base" -}}
+{{- if ne .root.Values.deployMode "high" -}}
+{{- fail (printf "deployMode must be 'base' or 'high', got %q" .root.Values.deployMode) -}}
+{{- end -}}
+{{- end -}}
 {{- if eq .root.Values.deployMode "base" -}}
 1
 {{- else -}}
 {{ .ha }}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Fail the render when a value that is embedded verbatim in a URI connection
+string (SQL_DSN / REDIS_CONN_STRING) would break the userinfo segment.
+Generated passwords are alphanumeric and always pass; explicit values with
+URI special characters are rejected (instead of being percent-encoded) so
+the rendered DSNs stay predictable for psql, libpq and go-redis alike.
+Usage: {{ include "cuberouter.assertDSNSafe" (dict "value" $pw "label" "secrets.X") }}
+*/}}
+{{- define "cuberouter.assertDSNSafe" -}}
+{{- $v := .value -}}
+{{- if or (contains "'" $v) (contains " " $v) (contains "@" $v) (contains ":" $v) (contains "/" $v) (contains "?" $v) (contains "#" $v) (contains "[" $v) (contains "]" $v) (contains "%" $v) -}}
+{{- fail (printf "%s must not contain single quotes, spaces or URI special characters (@ : / ? # [ ] %%)" .label) -}}
 {{- end -}}
 {{- end -}}
 

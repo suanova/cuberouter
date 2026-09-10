@@ -66,8 +66,15 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
+      {{- if eq .Values.deployMode "base" }}
+      # One replica sharing ReadWriteOnce claims: a surge pod could never
+      # attach the volume (Multi-Attach), so replace the pod in place.
+      maxUnavailable: 1
+      maxSurge: 0
+      {{- else }}
       maxUnavailable: 0
       maxSurge: 1
+      {{- end }}
   template:
     metadata:
       labels:
@@ -142,7 +149,8 @@ spec:
           {{- end }}
           ports:
             - name: http
-              containerPort: 3000
+              # the app listens on config.PORT (same value the probes hit)
+              containerPort: {{ .Values.config.PORT }}
           envFrom:
             - configMapRef:
                 name: {{ $f }}-config

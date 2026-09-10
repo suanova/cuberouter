@@ -40,9 +40,7 @@ home: https://cloudnative-pg.io
 maintainers:
   - name: phisco
     email: p.scorsolini@gmail.com
-dependencies:
-  - name: cluster
-    alias: monitoring
-    condition: monitoring.grafanaDashboard.create
-    version: "0.0"
-    repository: https://cloudnative-pg.github.io/grafana-dashboards
+# Vendoring note: the upstream `dependencies` block (the optional Grafana
+# "cluster" dashboard chart, pulled from a remote repository) was dropped so
+# this chart packages and installs fully offline. The dashboard was not in
+# use, and its `monitoring.grafanaDashboard` values block was removed too.
