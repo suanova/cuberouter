@@ -32,8 +32,9 @@ func TestGenerateTextOtherInfoPluginMarkers(t *testing.T) {
 	common.SetContextKey(ctx, constant.ContextKeyPluginToolCalls, 3)
 
 	other := GenerateTextOtherInfo(ctx, testRelayInfo(), 1, 1, 1, 0, 1, 0, 1)
-	require.Equal(t, "search,weather", other["plugin_slugs"])
-	require.Equal(t, 3, other["plugin_tool_calls"])
+	snap := other.Snapshot()
+	require.Equal(t, "search,weather", snap["plugin_slugs"])
+	require.Equal(t, 3, snap["plugin_tool_calls"])
 }
 
 // TestGenerateTextOtherInfoNoPluginMarkers verifies non-plugin requests do
@@ -44,8 +45,9 @@ func TestGenerateTextOtherInfoNoPluginMarkers(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(nil)
 
 	other := GenerateTextOtherInfo(ctx, testRelayInfo(), 1, 1, 1, 0, 1, 0, 1)
-	_, ok := other["plugin_slugs"]
+	snap := other.Snapshot()
+	_, ok := snap["plugin_slugs"]
 	assert.False(t, ok)
-	_, ok = other["plugin_tool_calls"]
+	_, ok = snap["plugin_tool_calls"]
 	assert.False(t, ok)
 }
