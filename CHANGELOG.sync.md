@@ -1,5 +1,19 @@
 # Upstream Sync Changelog
 
+## 2026-09-09 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `bbd97446c260` | Follow-up fixes for billing integrity (Gemini modality key normalization, Claude cache-creation field sync, negative completion clamping) plus completing the Gemini-to-Claude conversion path and moving stream conversion state onto RelayInfo for clean channel retries | bugfix | medium |
+| `aece11d2f7f0` | Add MiniMax-H3 /v2 video-generation support to the hailuo task plugin via in-plugin branching, and propagate persisted task model identities (ctx.model/ctx.upstreamModel) into polling query hooks that previously lacked relay info. | feature | medium |
+| `d8ca0ed0bb59` | Update agent guidelines so PRs created for the project owner use the standard human PR templates instead of the AI-specific template. | internal | low |
+| `73afad588ca7` | Fix the Hailuo video plugin's usage metering for MiniMax-H3 so that input media consumption (reference image count and input video seconds) is reported in usage facts alongside output duration and resolution. | bugfix | medium |
+| `057f71c2336c` | Isolate privileged/sensitive log metadata by replacing the loosely-typed map[string]interface{} 'other' payload with a typed model.LogOther struct that controls field exposure, updating all log-producing services accordingly. | bugfix | medium |
+| `219c9e06341f` | Reduce duplicate origin requests during anonymous cold start by adding weak-ETag revalidation to public content endpoints and session-hint cookies that let the frontend skip unnecessary session/bootstrap fetches | bugfix | medium |
+| `9f506dd7f905` | Simplify LogOther serialization by removing dead code and receiver mutation, deduplicating the legacy sensitive-key list across write and read paths, and avoiding a re-marshal when user-side projection strips nothing. | refactor | low |
+| `9df450fe54e1` | Rework async-task plugin polling to use a real TaskQueryContext rebuilt from the persisted task row, classify upstream HTTP status before invoking hooks, add an UNKNOWN terminal-status escape hatch, persist plugin-owned state, and fail/refund tasks after a bounded number of consecutive poll failures (TASK_POLL_MAX_FAILURES). | breaking | high |
+| `36dbbf0f77e7` | Make HTTP ETags stable regardless of which JSON serialization library is used by deriving them from a SHA-256 hash of raw content seeded with the Go module path, and centralize weak (RFC 9110) If-None-Match comparison in new common.ETagFor/ETagMatches helpers while simplifying the revalidated-response handler path. | bugfix | medium |
+| `8f5ab8e4048a` | Fix release workflow to derive the version from the triggering git tag (GITHUB_REF) instead of relying on 'git describe --tags', falling back to git describe with a v-prefix match when not on a tag | internal | low |
 ## 2026-09-03 — 9 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
