@@ -1,8 +1,14 @@
 {{/*
 Chart name.
+
+Deliberately NOT .Chart.Name: the chart is packaged and published as
+"cuberouter-chart" (see Chart.yaml and .github/workflows/ci-chart.yml), but
+this value feeds app.kubernetes.io/name in the Deployment selector, which is
+immutable — so it must keep the historical "cuberouter" for existing releases
+to remain upgradeable.
 */}}
 {{- define "cuberouter.name" -}}
-{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- default "cuberouter" .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
 
 {{/*

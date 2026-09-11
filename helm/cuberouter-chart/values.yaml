@@ -12,9 +12,9 @@ nameOverride: ""
 fullnameOverride: ""
 
 # Deployment mode (replica preset):
-#   high (default): HA — app 2, docs 1, PostgreSQL 2 instances,
+#   high (default): HA — app 2, PostgreSQL 2 instances,
 #                   Redis 2 nodes + 3 sentinels
-#   base: a single replica everywhere — app 1, docs 1, PostgreSQL 1
+#   base: a single replica everywhere — app 1, PostgreSQL 1
 #         instance, Redis 1 node + 1 sentinel; the app PDB is not rendered
 # In base mode every replica count below is forced to 1 (the per-component
 # values only apply in high mode).
@@ -96,26 +96,8 @@ cubeRouter:
   waitForRedis: true
 
 # ---------------------------------------------------------------------------
-# Docs site
+# HPA / PDB
 # ---------------------------------------------------------------------------
-docs:
-  enabled: true
-  replicaCount: 1
-  image:
-    repository: harbor.isuanova.com.cn/suanova/cuberouter-docs-user
-    tag: latest
-    pullPolicy: IfNotPresent
-  service:
-    type: ClusterIP
-    port: 80
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      cpu: 200m
-      memory: 256Mi
-
 hpa:
   enabled: false
   minReplicas: 2
@@ -147,13 +129,6 @@ ingress:
   tls:
     enabled: true
     secretName: cuberouter-tls
-  docs:
-    hosts:
-      - docs.cuberouter.com
-      - docs.cuberouter.com
-    tls:
-      enabled: true
-      secretName: cuberouter-docs-tls
 
 # ---------------------------------------------------------------------------
 # PostgreSQL — HA cluster via CloudNativePG (Cluster CR)

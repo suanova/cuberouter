@@ -31,38 +31,4 @@ spec:
         {{- end }}
       secretName: {{ .Values.ingress.tls.secretName }}
   {{- end }}
-{{- if .Values.docs.enabled }}
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: {{ $f }}-docs-ingress
-  labels:
-    {{- include "cuberouter.labels" . | nindent 4 }}
-  annotations:
-    {{- toYaml .Values.ingress.annotations | nindent 4 }}
-spec:
-  ingressClassName: {{ .Values.ingress.className }}
-  rules:
-    {{- range .Values.ingress.docs.hosts }}
-    - host: {{ . | quote }}
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: {{ $f }}-docs
-                port:
-                  number: {{ $.Values.docs.service.port }}
-    {{- end }}
-  {{- if .Values.ingress.docs.tls.enabled }}
-  tls:
-    - hosts:
-        {{- range .Values.ingress.docs.hosts }}
-        - {{ . | quote }}
-        {{- end }}
-      secretName: {{ .Values.ingress.docs.tls.secretName }}
-  {{- end }}
-{{- end }}
 {{- end }}

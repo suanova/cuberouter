@@ -19,3 +19,10 @@ docs/superpowers
 /web/node_modules
 /web/dist
 !THIRD-PARTY-LICENSES.md
+# Docs sites (docs-site/{user,admin}) are built inside the image (see
+# Dockerfile). The blanket *.md rule above must not strip their markdown
+# sources, and local install/build artifacts never belong in the context.
+!docs-site/**/*.md
+node_modules
+docs-site/**/.vitepress/dist
+docs-site/**/.vitepress/cache

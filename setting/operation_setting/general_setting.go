@@ -25,8 +25,10 @@ type GeneralSetting struct {
 
 // 默认配置
 var generalSetting = GeneralSetting{
-	DocsLink:                   "https://docs.newapi.pro",
-	AdminDocsLink:              "",
+	// 内置文档站点随镜像发布,由应用在 /docs/user/ 与 /docs/admin/ 提供
+	// (见 router/docs-router.go 与根 Dockerfile)。
+	DocsLink:                   "/docs/user/",
+	AdminDocsLink:              "/docs/admin/",
 	PingIntervalEnabled:        false,
 	PingIntervalSeconds:        60,
 	QuotaDisplayType:           QuotaDisplayTypeUSD,
