@@ -135,12 +135,12 @@ func TestConvertToRequestPayloadRatioDefault(t *testing.T) {
 func TestParseTaskResultExpiredIsFailure(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 
-	taskInfo, err := adaptor.ParseTaskResult([]byte(`{"id":"t1","status":"expired"}`))
+	taskInfo, err := adaptor.ParseTaskResult(nil, nil, []byte(`{"id":"t1","status":"expired"}`))
 	require.NoError(t, err)
 	assert.Equal(t, model.TaskStatusFailure, taskInfo.Status)
 	assert.NotEmpty(t, taskInfo.Reason)
 
-	taskInfo, err = adaptor.ParseTaskResult([]byte(`{"id":"t1","status":"cancelled","error":{"code":"user_cancel","message":"cancelled by user"}}`))
+	taskInfo, err = adaptor.ParseTaskResult(nil, nil, []byte(`{"id":"t1","status":"cancelled","error":{"code":"user_cancel","message":"cancelled by user"}}`))
 	require.NoError(t, err)
 	assert.Equal(t, model.TaskStatusFailure, taskInfo.Status)
 	assert.Equal(t, "cancelled by user", taskInfo.Reason)

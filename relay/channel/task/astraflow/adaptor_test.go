@@ -259,7 +259,7 @@ func TestParseTaskResult(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			taskInfo, err := adaptor.ParseTaskResult([]byte(tt.body))
+			taskInfo, err := adaptor.ParseTaskResult(nil, nil, []byte(tt.body))
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.wantStatus, taskInfo.Status)
@@ -277,7 +277,7 @@ func TestParseTaskResult(t *testing.T) {
 func TestParseTaskResultRejectsGarbage(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 
-	taskInfo, err := adaptor.ParseTaskResult([]byte(`not json`))
+	taskInfo, err := adaptor.ParseTaskResult(nil, nil, []byte(`not json`))
 
 	require.Error(t, err)
 	assert.Nil(t, taskInfo)
@@ -344,7 +344,7 @@ func TestFetchTaskHitsStatusEndpoint(t *testing.T) {
 	defer server.Close()
 
 	adaptor := &TaskAdaptor{}
-	resp, err := adaptor.FetchTask(server.URL, "sk-test", map[string]any{"task_id": "t_1"}, "")
+	resp, err := adaptor.FetchTask(server.URL, "sk-test", &model.Task{TaskID: "t_1"}, "")
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
 
