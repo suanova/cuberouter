@@ -488,7 +488,11 @@ func AggregatedResetUserPassword(c *gin.Context) {
 	}
 
 	code := common.GenerateVerificationCode(0)
-	common.RegisterVerificationCodeWithKey(user.Email, code, common.PasswordResetPurpose)
+	if err := common.RegisterVerificationCodeWithKey(user.Email, code, common.PasswordResetPurpose); err != nil {
+		common.SysError(fmt.Sprintf("AggregatedResetUserPassword 写入重置验证码失败: %v", err))
+		aggregatedFail(c, "重置密码邮件发送失败")
+		return
+	}
 	link := fmt.Sprintf("%s/user/reset?email=%s&token=%s",
 		system_setting.ServerAddress,
 		url.QueryEscape(user.Email), url.QueryEscape(code))

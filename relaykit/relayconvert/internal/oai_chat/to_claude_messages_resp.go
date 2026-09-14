@@ -62,7 +62,7 @@ func startPendingToolBlocks(state *convmeta.ClaudeConvertInfo) []*dto.ClaudeResp
 			Index: &idx,
 			Type:  "content_block_start",
 			ContentBlock: &dto.ClaudeMediaMessage{
-				Id:    tool.ID,
+				Id:    kitutil.NormalizeToolUseID(tool.ID, tool.Name, state.ToolUseToken(), tool.BlockIndex),
 				Type:  "tool_use",
 				Name:  tool.Name,
 				Input: map[string]interface{}{},
@@ -301,7 +301,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 						Index: &idx,
 						Type:  "content_block_start",
 						ContentBlock: &dto.ClaudeMediaMessage{
-							Id:    tool.ID,
+							Id:    kitutil.NormalizeToolUseID(tool.ID, tool.Name, state.ToolUseToken(), tool.BlockIndex),
 							Type:  "tool_use",
 							Name:  tool.Name,
 							Input: map[string]interface{}{},
@@ -455,6 +455,11 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info convmeta
 		Role:  "assistant",
 		Model: openAIResponse.Model,
 	}
+	// The upstream may derive tool ids from the tool name and a per-response
+	// ordinal; the token keeps the replacement unique across responses and the
+	// counter keeps siblings within this response apart.
+	toolUseIDToken := kitutil.GetUUID()[:8]
+	toolUseOrdinal := 0
 	for _, choice := range openAIResponse.Choices {
 		stopReason = stopReasonOpenAI2Claude(choice.FinishReason)
 		reasoningContent := choice.Message.GetReasoningContent()
@@ -478,7 +483,8 @@ func ResponseOpenAI2Claude(openAIResponse *dto.OpenAITextResponse, info convmeta
 		for _, toolUse := range toolCalls {
 			claudeContent := dto.ClaudeMediaMessage{}
 			claudeContent.Type = "tool_use"
-			claudeContent.Id = toolUse.ID
+			claudeContent.Id = kitutil.NormalizeToolUseID(toolUse.ID, toolUse.Function.Name, toolUseIDToken, toolUseOrdinal)
+			toolUseOrdinal++
 			claudeContent.Name = toolUse.Function.Name
 			mapParams := map[string]interface{}{}
 			if strings.TrimSpace(toolUse.Function.Arguments) != "" {

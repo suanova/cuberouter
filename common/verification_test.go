@@ -11,7 +11,7 @@ import (
 // TestClaimVerificationCodeWithKeySingleWinner 保护重置 token claim 的原子性：
 // 同一 token 被并发请求同时索取时，恰好一个请求成功——这正是"先验证后投递"
 // 会放行两个请求、各自投递不同新密码的并发漏洞的防线。
-func TestClaimVerificationCodeWithKeySingleWinner(t *testing.T) {
+func claimVerificationCodeSingleWinnerBody(t *testing.T) {
 	email := "claim-atomic@test.com"
 	code := GenerateVerificationCode(0)
 	RegisterVerificationCodeWithKey(email, code, PasswordResetPurpose)
@@ -42,7 +42,7 @@ func TestClaimVerificationCodeWithKeySingleWinner(t *testing.T) {
 // TestClaimReleaseConsumeTokenLifecycle 覆盖 claim 的三个状态迁移：
 // claim 后 token 不可再用（投递中）；release 后恢复可用（投递/落库失败可重试）；
 // DeleteKey 消费后彻底失效（密码已提交，禁止重放）。
-func TestClaimReleaseConsumeTokenLifecycle(t *testing.T) {
+func claimReleaseConsumeTokenLifecycleBody(t *testing.T) {
 	email := "claim-lifecycle@test.com"
 	code := GenerateVerificationCode(0)
 	RegisterVerificationCodeWithKey(email, code, PasswordResetPurpose)
@@ -63,7 +63,7 @@ func TestClaimReleaseConsumeTokenLifecycle(t *testing.T) {
 
 // TestReleaseVerificationCodeClaimDoesNotTouchRotatedToken 保护"旧 claim 在途时
 // token 被重新签发"的场景：过期请求释放 claim 不能把新 token 也标记为已占用。
-func TestReleaseVerificationCodeClaimDoesNotTouchRotatedToken(t *testing.T) {
+func releaseDoesNotTouchRotatedTokenBody(t *testing.T) {
 	email := "claim-rotated@test.com"
 	oldCode := GenerateVerificationCode(0)
 	RegisterVerificationCodeWithKey(email, oldCode, PasswordResetPurpose)
@@ -77,4 +77,34 @@ func TestReleaseVerificationCodeClaimDoesNotTouchRotatedToken(t *testing.T) {
 		"旧 claim 的释放不得影响重签发的 token")
 
 	t.Cleanup(func() { DeleteKey(email, PasswordResetPurpose) })
+}
+
+// The contract is a property of the store contract, not of one backend: the map
+// serves single-instance deployments and Redis serves every replica, and the
+// caller cannot tell them apart.
+func TestClaimVerificationCodeWithKeySingleWinner(t *testing.T) {
+	for backend, setup := range verificationBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			setup(t)
+			claimVerificationCodeSingleWinnerBody(t)
+		})
+	}
+}
+
+func TestClaimReleaseConsumeTokenLifecycle(t *testing.T) {
+	for backend, setup := range verificationBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			setup(t)
+			claimReleaseConsumeTokenLifecycleBody(t)
+		})
+	}
+}
+
+func TestReleaseVerificationCodeClaimDoesNotTouchRotatedToken(t *testing.T) {
+	for backend, setup := range verificationBackends(t) {
+		t.Run(backend, func(t *testing.T) {
+			setup(t)
+			releaseDoesNotTouchRotatedTokenBody(t)
+		})
+	}
 }

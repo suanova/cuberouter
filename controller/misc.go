@@ -265,7 +265,10 @@ func SendEmailVerification(c *gin.Context) {
 		return
 	}
 	code := common.GenerateVerificationCode(6)
-	common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose)
+	if err := common.RegisterVerificationCodeWithKey(email, code, common.EmailVerificationPurpose); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	subject := common.WrapBilingualSubject(
 		fmt.Sprintf("%s Email Verification", common.SystemName),
 		fmt.Sprintf("%s邮箱验证邮件", common.SystemName),
@@ -297,15 +300,21 @@ func SendPasswordResetEmail(c *gin.Context) {
 	}
 	if _, err := model.GetUniqueUserByEmail(email); err == nil {
 		code := common.GenerateVerificationCode(0)
-		common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose)
-		link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, url.QueryEscape(email), url.QueryEscape(code))
-		// 链接用于 href 属性与可见文本：HTML 转义防止 &、引号等破坏属性或注入标签。
-		// 模板以 {{.Link}} 原样插入，故传入已转义链接。
-		escapedLink := html.EscapeString(link)
-		subject, content := common.RenderPasswordResetEmail(common.SystemName, escapedLink, common.VerificationValidMinutes)
-		err := common.SendEmail(subject, email, content)
-		if err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
+		if err := common.RegisterVerificationCodeWithKey(email, code, common.PasswordResetPurpose); err != nil {
+			// This branch only runs when the account exists, so reporting the
+			// failure would turn the endpoint into an account-existence oracle.
+			// Log without the address for the same reason.
+			common.SysError("密码重置验证码写入失败: " + err.Error())
+		} else {
+			link := fmt.Sprintf("%s/user/reset?email=%s&token=%s", system_setting.ServerAddress, url.QueryEscape(email), url.QueryEscape(code))
+			// 链接用于 href 属性与可见文本：HTML 转义防止 &、引号等破坏属性或注入标签。
+			// 模板以 {{.Link}} 原样插入，故传入已转义链接。
+			escapedLink := html.EscapeString(link)
+			subject, content := common.RenderPasswordResetEmail(common.SystemName, escapedLink, common.VerificationValidMinutes)
+			err := common.SendEmail(subject, email, content)
+			if err != nil {
+				logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send password reset email to %s: %s", email, err.Error()))
+			}
 		}
 	} else if err != nil && !errors.Is(err, model.ErrEmailNotFound) {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("skip password reset email for %s: %s", email, err.Error()))

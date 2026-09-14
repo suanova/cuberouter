@@ -6,6 +6,7 @@ package convmeta
 
 import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
@@ -67,6 +68,22 @@ type ClaudeConvertInfo struct {
 	ToolCalls              []*ClaudeStreamToolCall
 	ToolCallByIndex        map[int]*ClaudeStreamToolCall
 	ToolCallByID           map[string]*ClaudeStreamToolCall
+
+	// toolUseIDToken backs ToolUseToken; it is generated once per response so
+	// that replacements for name-derived upstream tool ids stay unique.
+	toolUseIDToken string
+}
+
+// ToolUseToken returns a token that is stable for this response and distinct
+// between responses. Converters prefix it onto replacement tool_use ids for
+// upstreams that derive ids from the tool name and repeat them every turn.
+// Safe on a nil receiver; callers that must not emit a bare replacement check
+// the state for nil first.
+func (c *ClaudeConvertInfo) ToolUseToken() string {
+	if c == nil {
+		return ""
+	}
+	return kitutil.ToolUseIDToken(&c.toolUseIDToken)
 }
 
 // ClaudeStreamToolCall tracks one OpenAI tool_calls entry while it is encoded

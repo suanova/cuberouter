@@ -25,6 +25,19 @@ type ResponsesToClaudeStreamState struct {
 	byItemID         map[string]*responsesClaudeStreamBlock
 	lastByKind       map[string]*responsesClaudeStreamBlock
 	usageText        strings.Builder
+
+	// toolUseIDToken backs ToolUseToken; it is generated once per response.
+	toolUseIDToken string
+}
+
+// ToolUseToken returns a token that is stable for this response and distinct
+// between responses. It prefixes replacements for name-derived upstream tool
+// ids. Safe on a nil receiver.
+func (s *ResponsesToClaudeStreamState) ToolUseToken() string {
+	if s == nil {
+		return ""
+	}
+	return kitutil.ToolUseIDToken(&s.toolUseIDToken)
 }
 
 type responsesClaudeStreamBlock struct {
@@ -296,7 +309,12 @@ func (s *ResponsesToClaudeStreamState) startBlock(block *responsesClaudeStreamBl
 		if callID == "" {
 			callID = block.ItemID
 		}
-		content = dto.ClaudeMediaMessage{Type: "tool_use", Id: callID, Name: block.Name, Input: map[string]any{}}
+		content = dto.ClaudeMediaMessage{
+			Type:  "tool_use",
+			Id:    kitutil.NormalizeToolUseID(callID, block.Name, s.ToolUseToken(), block.Index),
+			Name:  block.Name,
+			Input: map[string]any{},
+		}
 		s.sawToolCall = true
 	default:
 		return nil

@@ -25,6 +25,20 @@ type ClaudeResponseInfo struct {
 	// Only snapshots synthesized from partial display usage may be refreshed by
 	// later display deltas. Serialized BillingUsage always remains authoritative.
 	billingUsageSynthesized bool
+
+	// toolUseIDToken backs ToolUseToken; it is generated once per response.
+	toolUseIDToken string
+}
+
+// ToolUseToken returns a token that is stable for this response and distinct
+// between responses. Hosts prefix it onto replacement tool_use ids for
+// upstreams that derive ids from the tool name and repeat them every turn.
+// Safe on a nil receiver.
+func (c *ClaudeResponseInfo) ToolUseToken() string {
+	if c == nil {
+		return ""
+	}
+	return kitutil.ToolUseIDToken(&c.toolUseIDToken)
 }
 
 func StopReasonClaudeToOpenAI(reason string) string {

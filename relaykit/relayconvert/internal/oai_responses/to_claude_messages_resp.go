@@ -26,6 +26,8 @@ func ResponsesResponseToClaudeMessagesResponse(resp *dto.OpenAIResponsesResponse
 		Usage: sharedclaude.UsageFromOpenAI(usage),
 	}
 	sawToolCall := false
+	// Filled on first tool call so a response without one never spends the token.
+	var toolUseIDToken string
 	for index := range resp.Output {
 		output := resp.Output[index]
 		if output.Type == responsesOutputTypeMessage && output.Role != "" && output.Role != "assistant" {
@@ -58,7 +60,7 @@ func ResponsesResponseToClaudeMessagesResponse(resp *dto.OpenAIResponsesResponse
 			}
 			claudeResponse.Content = append(claudeResponse.Content, dto.ClaudeMediaMessage{
 				Type:  "tool_use",
-				Id:    callID,
+				Id:    kitutil.NormalizeToolUseID(callID, output.Name, kitutil.ToolUseIDToken(&toolUseIDToken), index),
 				Name:  output.Name,
 				Input: responsesArgumentsToClaudeInput(output.ArgumentsString()),
 			})
