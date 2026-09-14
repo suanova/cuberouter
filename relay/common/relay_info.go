@@ -119,19 +119,19 @@ type RelayInfo struct {
 	ReasoningEffort    string
 	// ReasoningConversion is the suffix-derived reasoning intent attached
 	// after model mapping. Converters read it via ReasoningState().
-	ReasoningConversion   *dto.ReasoningConversionState
-	UserSetting           dto.UserSetting
-	UserEmail             string
-	UserQuota             int
-	RelayFormat       types.RelayFormat
-	SendResponseCount int
+	ReasoningConversion *dto.ReasoningConversionState
+	UserSetting         dto.UserSetting
+	UserEmail           string
+	UserQuota           int
+	RelayFormat         types.RelayFormat
+	SendResponseCount   int
 	// ClaudeToChatStreamState / ChatToGeminiStreamState hold per-attempt
 	// stream converters. InitChannelMeta nils them so a retry cannot resume a
 	// dirty converter (advanced tool index / finalized).
 	ClaudeToChatStreamState any
 	ChatToGeminiStreamState any
 	ReceivedResponseCount   int
-	FinalPreConsumedQuota int // 最终预消耗的配额
+	FinalPreConsumedQuota   int // 最终预消耗的配额
 	// ForcePreConsume 为 true 时禁用 BillingSession 的信任额度旁路，
 	// 强制预扣全额。用于异步任务（视频/音乐生成等），因为请求返回后任务仍在运行，
 	// 必须在提交前锁定全额。
@@ -1040,16 +1040,17 @@ func (t *TaskSubmitReq) UnmarshalMetadata(v any) error {
 }
 
 type TaskInfo struct {
-	Code             int            `json:"code"`
-	TaskID           string         `json:"task_id"`
-	Status           string         `json:"status"`
-	Reason           string         `json:"reason,omitempty"`
-	Url              string         `json:"url,omitempty"`
-	RemoteUrl        string         `json:"remote_url,omitempty"`
-	Progress         string         `json:"progress,omitempty"`
-	CompletionTokens int            `json:"completion_tokens,omitempty"` // 用于按倍率计费
-	TotalTokens      int            `json:"total_tokens,omitempty"`      // 用于按倍率计费
-	UsageFacts       map[string]any `json:"usage_facts,omitempty"`
+	Code             int             `json:"code"`
+	TaskID           string          `json:"task_id"`
+	Status           string          `json:"status"`
+	Reason           string          `json:"reason,omitempty"`
+	Url              string          `json:"url,omitempty"`
+	RemoteUrl        string          `json:"remote_url,omitempty"`
+	Progress         string          `json:"progress,omitempty"`
+	CompletionTokens int             `json:"completion_tokens,omitempty"` // 用于按倍率计费
+	TotalTokens      int             `json:"total_tokens,omitempty"`      // 用于按倍率计费
+	UsageFacts       map[string]any  `json:"usage_facts,omitempty"`
+	PluginState      json.RawMessage `json:"plugin_state,omitempty"`
 }
 
 func FailTaskInfo(reason string) *TaskInfo {

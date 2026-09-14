@@ -7,7 +7,7 @@ export const meta = {
     en: "MiniMax Hailuo video generation (text-to-video, image-to-video, and MiniMax-H3 multimodal reference)",
     zh: "MiniMax 海螺视频生成（文生视频、图生视频、MiniMax-H3 多模态参考生视频）",
   },
-  version: "1.1.1",
+  version: "1.1.2",
   author: { name: "QuantumNous" },
   channelTypes: [35],
   models: [
@@ -465,8 +465,6 @@ export function buildQueryRequest(ctx) {
 }
 
 export function parseTaskResult(ctx, body) {
-  // The host calls this hook with an empty context, so the response envelope is
-  // the only way to tell a /v2 result from a /v1 one.
   const apiError = h3APIError(body);
   if (apiError) {
     if (apiError.statusCode === 408 || apiError.statusCode === 429 || apiError.statusCode >= 500) throw new Error(apiError.message);
@@ -475,7 +473,10 @@ export function parseTaskResult(ctx, body) {
   const h3Task = h3QueryTask(body);
   if (h3Task) {
     const h3Statuses = { queued: "QUEUED", running: "IN_PROGRESS", succeeded: "SUCCESS", failed: "FAILURE", cancelled: "FAILURE" };
-    const h3Status = h3Statuses[h3Task.status] || "IN_PROGRESS";
+    const h3Status = h3Statuses[h3Task.status];
+    if (!h3Status) {
+      return { status: "UNKNOWN", reason: "unrecognized status: " + String(h3Task.status || "") };
+    }
     const h3Result = { code: 0, status: h3Status, progress: h3Status === "QUEUED" ? "30%" : h3Status === "IN_PROGRESS" ? "50%" : "100%" };
     if (h3Status === "SUCCESS") {
       const url = trimmed(h3Task.content && h3Task.content.url);
@@ -486,11 +487,17 @@ export function parseTaskResult(ctx, body) {
     }
     return h3Result;
   }
+  if (body.base_resp && body.base_resp.status_code !== 0) {
+    return { code: body.base_resp.status_code || 0, status: "FAILURE", progress: "100%", reason: body.base_resp.status_msg || "" };
+  }
   const base = body.base_resp || {};
   const statuses = { Preparing: "IN_PROGRESS", Queueing: "IN_PROGRESS", Processing: "IN_PROGRESS", Success: "SUCCESS", Fail: "FAILURE" };
-  const status = statuses[body.status] || "IN_PROGRESS";
+  const status = statuses[body.status];
+  if (!status) {
+    return { status: "UNKNOWN", reason: "unrecognized status: " + String(body.status || "") };
+  }
   const progress = status === "SUCCESS" || status === "FAILURE" ? "100%" : body.status === "Processing" ? "50%" : "30%";
-  const reason = base.status_code !== 0 ? base.status_msg || "" : status === "FAILURE" ? "task failed" : "";
+  const reason = status === "FAILURE" ? "task failed" : "";
   return { code: base.status_code || 0, status: status, progress: progress, reason: reason };
 }
 
