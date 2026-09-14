@@ -1,5 +1,18 @@
 # Upstream Sync Changelog
 
+## 2026-09-14 — 9 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `bbd97446c260` | Follow-up billing-integrity fixes (Gemini modality-key normalization, Claude cache-creation field sync, usage-merge clamping/estimated-flag handling) plus completion of conversion paths: Claude channel now serves Gemini-format requests, legacy pseudo tool names are decoded, upstream Gemini usage rides the billing_usage sidecar, and per-request stream conversion state moves from gin.Context onto RelayInfo so retries reset cleanly. | bugfix | medium |
+| `aece11d2f7f0` | Add MiniMax-H3 /v2 video generation support to the hailuo task plugin with in-builder request validation, and fix query hooks to receive ctx.model/ctx.upstreamModel from persisted task properties during polling | feature | medium |
+| `d8ca0ed0bb59` | Updates AGENTS.md agent instructions so PRs created for the project owner use the standard human PR templates instead of the agent-specific PR body file. | internal | low |
+| `73afad588ca7` | Fix Hailuo plugin usage accounting so MiniMax-H3 requests also report input media consumption (reference images and input video seconds) in addition to output duration/resolution. | bugfix | medium |
+| `219c9e06341f` | Reduce redundant origin requests on anonymous cold start and public content endpoints by adding weak-ETag/304 revalidation to public JSON responses and client-side session-hint caching | bugfix | medium |
+| `9f506dd7f905` | Simplify LogOther serialization by removing the dead user-visibility branch and mutating normalizeLegacyAdminFields, centralizing legacy sensitive-key filtering in one shared list, and returning original JSON when nothing was stripped (preserving large-integer lexemes); also logs rejected OtherRatios keys instead of silently dropping them. | refactor | low |
+| `9df450fe54e1` | Rebuild task-polling plugin hooks on a persisted TaskQueryContext, classify upstream HTTP statuses in the host before invoking plugins, and fail/refund tasks after a bounded count of consecutive poll failures instead of letting unrecognized or error responses sit IN_PROGRESS until the 24h timeout. | breaking | high |
+| `36dbbf0f77e7` | Centralize HTTP cache revalidation by hashing raw content (seeded with the Go module path) into weak ETags, so ETag values stay stable regardless of which JSON serialization package renders the response. | bugfix | medium |
+| `8f5ab8e4048a` | Fix release workflow to derive the version from the triggering git tag (GITHUB_REF) instead of relying solely on `git describe --tags`, with a `v[0-9]*`-matched describe fallback for non-tag runs. | internal | low |
 ## 2026-09-03 — 9 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
