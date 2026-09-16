@@ -49,7 +49,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
-import type { VideoPrice } from '@/features/pricing/types'
+import type { ImagePrice, VideoPrice } from '@/features/pricing/types'
 import { useMediaQuery } from '@/hooks'
 
 import { safeJsonParse } from '../utils/json-parser'
@@ -83,6 +83,7 @@ type ModelRatioVisualEditorProps = {
   savedBillingMode: string
   savedBillingExpr: string
   savedVideoPrice: string
+  savedImagePrice: string
   modelPrice: string
   modelRatio: string
   cacheRatio: string
@@ -94,6 +95,7 @@ type ModelRatioVisualEditorProps = {
   billingMode: string
   billingExpr: string
   videoPrice: string
+  imagePrice: string
   candidateModelNames?: string[]
   candidateModelsLoading?: boolean
   filterMode?: 'all' | 'unset'
@@ -124,6 +126,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedBillingMode,
     savedBillingExpr,
     savedVideoPrice,
+    savedImagePrice,
     modelPrice,
     modelRatio,
     cacheRatio,
@@ -135,6 +138,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingMode,
     billingExpr,
     videoPrice,
+    imagePrice,
     candidateModelNames,
     candidateModelsLoading,
     filterMode = 'all',
@@ -225,6 +229,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode: savedBillingMode,
       billingExpr: savedBillingExpr,
       videoPrice: savedVideoPrice,
+      imagePrice: savedImagePrice,
     })
     const draftRows = buildModelSnapshots({
       modelPrice,
@@ -238,6 +243,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       videoPrice,
+      imagePrice,
     })
 
     const savedByName = new Map(savedRows.map((row) => [row.name, row]))
@@ -282,6 +288,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedBillingMode,
     savedBillingExpr,
     savedVideoPrice,
+    savedImagePrice,
     modelPrice,
     modelRatio,
     cacheRatio,
@@ -293,6 +300,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingMode,
     billingExpr,
     videoPrice,
+    imagePrice,
   ])
 
   const modeCounts = useMemo(() => {
@@ -301,13 +309,15 @@ const ModelRatioVisualEditorComponent = forwardRef<
       'per-request': 0,
       tiered_expr: 0,
       'video-per-second': 0,
+      'image-per-image': 0,
       [TASK_PRICING_MODE_FILTER]: 0,
     }
     for (const model of models) {
       const mode =
         model.billingMode === 'per-request' ||
         model.billingMode === 'tiered_expr' ||
-        model.billingMode === 'video-per-second'
+        model.billingMode === 'video-per-second' ||
+        model.billingMode === 'image-per-image'
           ? model.billingMode
           : 'per-token'
       counts[mode] += 1
@@ -330,6 +340,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         editBillingMode = 'tiered_expr'
       } else if (editableModel.billingMode === 'video-per-second') {
         editBillingMode = 'video-per-second'
+      } else if (editableModel.billingMode === 'image-per-image') {
+        editBillingMode = 'image-per-image'
       } else if (editableModel.price && editableModel.price !== '') {
         editBillingMode = 'per-request'
       }
@@ -347,6 +359,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr: editableModel.billingExpr,
         requestRuleExpr: editableModel.requestRuleExpr,
         videoPrices: editableModel.videoPrices,
+        imagePrices: editableModel.imagePrices,
       })
       setEditorOpen(true)
       if (isMobile) setSheetOpen(true)
@@ -428,6 +441,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
         !Array.isArray(parsedVideoPrice)
           ? parsedVideoPrice
           : {}
+      const parsedImagePrice = safeJsonParse<ImagePrice>(imagePrice, {
+        fallback: {},
+        silent: true,
+      })
+      const imagePriceMap =
+        parsedImagePrice &&
+        typeof parsedImagePrice === 'object' &&
+        !Array.isArray(parsedImagePrice)
+          ? parsedImagePrice
+          : {}
 
       delete priceMap[name]
       delete ratioMap[name]
@@ -440,6 +463,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete billingModeMap[name]
       delete billingExprMap[name]
       delete videoPriceMap[name]
+      delete imagePriceMap[name]
 
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
@@ -461,6 +485,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         JSON.stringify(billingExprMap, null, 2)
       )
       onChange('VideoPrice', JSON.stringify(videoPriceMap, null, 2))
+      onChange('ImagePrice', JSON.stringify(imagePriceMap, null, 2))
 
       if (editData?.name === name) {
         setEditData(null)
@@ -480,6 +505,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       videoPrice,
+      imagePrice,
       onChange,
       editData,
     ]
@@ -576,6 +602,10 @@ const ModelRatioVisualEditorComponent = forwardRef<
         fallback: {},
         silent: true,
       })
+      const imagePriceMap = safeJsonParse<ImagePrice>(imagePrice, {
+        fallback: {},
+        silent: true,
+      })
 
       const setIfPresent = (
         target: Record<string, number>,
@@ -599,12 +629,18 @@ const ModelRatioVisualEditorComponent = forwardRef<
         delete billingModeMap[name]
         delete billingExprMap[name]
         delete videoPriceMap[name]
+        delete imagePriceMap[name]
 
         if (data.billingMode === 'video-per-second') {
           // An empty table deletes the entry, reverting the model to unset
           // pricing; the backend rejects empty tables on direct submission.
           if (data.videoPrices && data.videoPrices.rows.length > 0) {
             videoPriceMap[name] = data.videoPrices
+          }
+        } else if (data.billingMode === 'image-per-image') {
+          // Same empty-table semantics as video per-second.
+          if (data.imagePrices && data.imagePrices.rows.length > 0) {
+            imagePriceMap[name] = data.imagePrices
           }
         } else if (data.billingMode === 'tiered_expr') {
           const combined = combineBillingExpr(
@@ -660,6 +696,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
         JSON.stringify(billingExprMap, null, 2)
       )
       onChange('VideoPrice', JSON.stringify(videoPriceMap, null, 2))
+      onChange('ImagePrice', JSON.stringify(imagePriceMap, null, 2))
     },
     [
       modelPrice,
@@ -673,6 +710,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       videoPrice,
+      imagePrice,
       onChange,
     ]
   )
@@ -772,6 +810,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
                     label: t('Video per second'),
                     value: 'video-per-second',
                     count: modeCounts['video-per-second'],
+                  },
+                  {
+                    label: t('Image per image'),
+                    value: 'image-per-image',
+                    count: modeCounts['image-per-image'],
                   },
                   {
                     label: 'Expression - Task pricing',
@@ -918,6 +961,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.savedBillingMode === nextProps.savedBillingMode &&
       prevProps.savedBillingExpr === nextProps.savedBillingExpr &&
       prevProps.savedVideoPrice === nextProps.savedVideoPrice &&
+      prevProps.savedImagePrice === nextProps.savedImagePrice &&
       prevProps.modelPrice === nextProps.modelPrice &&
       prevProps.modelRatio === nextProps.modelRatio &&
       prevProps.cacheRatio === nextProps.cacheRatio &&
@@ -929,6 +973,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.billingMode === nextProps.billingMode &&
       prevProps.billingExpr === nextProps.billingExpr &&
       prevProps.videoPrice === nextProps.videoPrice &&
+      prevProps.imagePrice === nextProps.imagePrice &&
       prevProps.candidateModelNames === nextProps.candidateModelNames &&
       prevProps.candidateModelsLoading === nextProps.candidateModelsLoading &&
       prevProps.filterMode === nextProps.filterMode &&

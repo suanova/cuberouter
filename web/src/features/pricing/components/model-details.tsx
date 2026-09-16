@@ -80,6 +80,7 @@ import type {
   TokenUnit,
 } from '../types'
 import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
+import { ImagePriceTable } from './image-price-table'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelDetailsApi } from './model-details-api'
 import { ModelDetailsPerformance } from './model-details-performance'
@@ -634,6 +635,9 @@ function PriceSection(props: {
         groupRatioMultiplier={props.viewerGroupRatio}
       />
     )
+  }
+  if (props.model.image_prices) {
+    return <ImagePriceTable table={props.model.image_prices} />
   }
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'

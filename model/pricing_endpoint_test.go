@@ -345,6 +345,55 @@ func TestPricingVideoPricesPopulatedFromVideoPriceOption(t *testing.T) {
 	assert.Nil(t, turbo.VideoPrices, "unconfigured model must not expose video_prices")
 }
 
+func TestPricingImagePricesPopulatedFromImagePriceOption(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	insertPricingEndpointChannel(t, 502, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	insertPricingEndpointAbility(t, 502, "img-pro")
+	insertPricingEndpointAbility(t, 502, "img-turbo")
+
+	previousOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		// 恢复 OptionMap 与 ratio_setting 全局状态:本包仅此用例写入图片价格表,清空即恢复
+		require.NoError(t, ratio_setting.UpdateImagePriceByJSONString("{}"))
+		common.OptionMap = previousOptionMap
+	})
+
+	require.NoError(t, UpdateOption("ImagePrice", `{
+		"img-pro": {
+			"rows": [
+				{"resolution": "1024x1024", "price": 0.02},
+				{"resolution": "1328x1328", "price": 0.04}
+			]
+		}
+	}`))
+
+	InvalidatePricingCache()
+	pricings := GetPricing()
+
+	var pro, turbo *Pricing
+	for i := range pricings {
+		switch pricings[i].ModelName {
+		case "img-pro":
+			pro = &pricings[i]
+		case "img-turbo":
+			turbo = &pricings[i]
+		}
+	}
+	require.NotNil(t, pro, "img-pro should appear in pricing")
+	require.NotNil(t, turbo, "img-turbo should appear in pricing")
+
+	require.NotNil(t, pro.ImagePrices)
+	require.Len(t, pro.ImagePrices.Rows, 2)
+	assert.Equal(t, "1024x1024", pro.ImagePrices.Rows[0].Resolution)
+	assert.Equal(t, 0.02, pro.ImagePrices.Rows[0].Price)
+	assert.Equal(t, "1328x1328", pro.ImagePrices.Rows[1].Resolution)
+	assert.Equal(t, 0.04, pro.ImagePrices.Rows[1].Price)
+
+	assert.Nil(t, turbo.ImagePrices, "unconfigured model must not expose image_prices")
+}
+
 func TestOffPeakWindowOptionUpdatesWindow(t *testing.T) {
 	resetPricingEndpointTestTables(t)
 

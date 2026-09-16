@@ -162,11 +162,14 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	// Keep n separate from ImagePriceRatio so size/quality and count remain
 	// independent billing dimensions. Fixed-price pre-consume stores this on
 	// PriceData, and image settlement reuses or replaces the same "n" ratio.
+	// ImageSize feeds the per-resolution image price table (see
+	// ratio_setting.GetImagePrice); it is billing metadata, not prompt text.
 	return &types.TokenCountMeta{
 		CombineText:     i.Prompt,
 		MaxTokens:       1584,
 		ImagePriceRatio: sizeRatio * qualityRatio,
 		BillingRatios:   map[string]float64{"n": float64(imageN)},
+		ImageSize:       i.Size,
 	}
 }
 

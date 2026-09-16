@@ -17,7 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-expr'
-import type { VideoPrice, VideoPriceTable } from '@/features/pricing/types'
+import type {
+  ImagePrice,
+  ImagePriceTable,
+  VideoPrice,
+  VideoPriceTable,
+} from '@/features/pricing/types'
 import {
   formatBillingCurrencyFromUSD,
   getBillingCurrency,
@@ -37,6 +42,7 @@ export type ModelPricingSnapshotInput = {
   billingMode: string
   billingExpr: string
   videoPrice: string
+  imagePrice: string
 }
 
 export type ModelPricingSnapshot = {
@@ -54,6 +60,8 @@ export type ModelPricingSnapshot = {
   requestRuleExpr?: string
   /** Per-second video price table, present when the model is billed per second */
   videoPrices?: VideoPriceTable
+  /** Per-image price table, present when the model is billed per image */
+  imagePrices?: ImagePriceTable
   hasConflict: boolean
 }
 
@@ -72,6 +80,7 @@ export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
   !snapshot ||
   (snapshot.billingMode !== 'tiered_expr' &&
     snapshot.billingMode !== 'video-per-second' &&
+    snapshot.billingMode !== 'image-per-image' &&
     !hasPricingValue(snapshot.price) &&
     !hasPricingValue(snapshot.ratio))
 
@@ -102,6 +111,7 @@ export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'tiered_expr') return 'Expression'
   if (mode === 'video-per-second') return 'Video per second'
+  if (mode === 'image-per-image') return 'Image per image'
   return 'Per-token'
 }
 
@@ -111,6 +121,7 @@ export const getModeVariant = (
   if (mode === 'per-request') return 'warning'
   if (mode === 'tiered_expr') return 'info'
   if (mode === 'video-per-second') return 'info'
+  if (mode === 'image-per-image') return 'info'
   return 'success'
 }
 
@@ -134,6 +145,9 @@ export const getPriceSummary = (
   }
   if (row.billingMode === 'video-per-second') {
     return t('Video per second')
+  }
+  if (row.billingMode === 'image-per-image') {
+    return t('Image per image')
   }
   if (row.billingMode === 'per-request') {
     return row.price
@@ -175,6 +189,12 @@ export const getPriceDetail = (
       symbol: getBillingCurrency().symbol,
     })
   }
+  if (row.billingMode === 'image-per-image') {
+    // 图片按张单价:列表只标单位符号,金额由图片表/用户侧另行展示
+    return t('Image price ({{symbol}}/image)', {
+      symbol: getBillingCurrency().symbol,
+    })
+  }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
   }
@@ -210,6 +230,7 @@ export const buildModelSnapshots = ({
   billingMode,
   billingExpr,
   videoPrice,
+  imagePrice,
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
   const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
     fallback: {},
@@ -255,6 +276,10 @@ export const buildModelSnapshots = ({
     fallback: {},
     context: 'video prices',
   })
+  const imagePriceMap = safeJsonParse<ImagePrice>(imagePrice, {
+    fallback: {},
+    context: 'image prices',
+  })
 
   const modelNames = new Set([
     ...Object.keys(priceMap),
@@ -268,6 +293,7 @@ export const buildModelSnapshots = ({
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
     ...Object.keys(videoPriceMap),
+    ...Object.keys(imagePriceMap),
   ])
 
   return [...modelNames].map((name) => {
@@ -287,6 +313,15 @@ export const buildModelSnapshots = ({
         name,
         videoPrices: videoTable,
         billingMode: 'video-per-second',
+        hasConflict: false,
+      }
+    }
+    const imageTable = imagePriceMap[name]
+    if (imageTable) {
+      return {
+        name,
+        imagePrices: imageTable,
+        billingMode: 'image-per-image',
         hasConflict: false,
       }
     }
@@ -350,5 +385,6 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     billingExpr: snapshot.billingExpr || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',
     videoPrices: snapshot.videoPrices ?? null,
+    imagePrices: snapshot.imagePrices ?? null,
   })
 }

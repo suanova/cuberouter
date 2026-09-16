@@ -56,6 +56,7 @@ beforeAll(() => {
     'Cost in {{symbol}} per request, regardless of tokens used.':
       'Cost in {{symbol}} per request, regardless of tokens used.',
     'per request': 'per request',
+    'Image per image': 'Image per image',
   })
 })
 
@@ -135,5 +136,40 @@ describe('model pricing sheet draft exchange-rate rebase', () => {
 
     const data = await act(async () => ref.current?.commitDraft())
     expect(data?.price).toBe('2.5')
+  })
+})
+
+describe('model pricing sheet image tab', () => {
+  test('image-per-image model opens the Image per image tab with its table; commitDraft carries imagePrices', async () => {
+    const ref = createRef<ModelPricingEditorPanelHandle>()
+    render(
+      <ModelPricingEditorPanel
+        ref={ref}
+        editData={{
+          name: 'qwen-image-2512',
+          price: '',
+          ratio: '',
+          billingMode: 'image-per-image',
+          imagePrices: {
+            rows: [{ resolution: '1024x1024', price: 0.0625 }],
+          },
+        }}
+      />
+    )
+
+    // 图片按张模型自动停在 Image per image tab(不被 usage schema 切走)
+    expect(screen.getByRole('tab', { name: 'Image per image' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+
+    // 表内 USD/张 0.0625 原值直通草稿(USD 模式)
+    expect(screen.getByDisplayValue('0.0625')).toBeInTheDocument()
+
+    const data = await act(async () => ref.current?.commitDraft())
+    expect(data?.billingMode).toBe('image-per-image')
+    expect(data?.imagePrices).toEqual({
+      rows: [{ resolution: '1024x1024', price: 0.0625 }],
+    })
   })
 })
