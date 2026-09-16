@@ -19,18 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import { API_ENDPOINTS, GENERATION_TIMEOUT_MS, IMAGE_GENERATION_ENDPOINT } from './constants'
+import { extractImages, type ImageResponseBody } from './lib/image-response'
 import type { GenerationRequestBody } from './lib/request-builder'
 import type { GeneratedImage } from './types'
-
-interface OpenAIImageResponseItem {
-  url?: unknown
-  b64_json?: unknown
-}
-
-interface OpenAIImageResponse {
-  created?: unknown
-  data?: unknown
-}
 
 interface PricingModelItem {
   model_name?: unknown
@@ -79,7 +70,8 @@ export interface GenerationApiResult {
 
 /**
  * 同步图片生成：阻塞直到上游出图（40 秒 ~ 5 分钟）。
- * 响应遵循 OpenAI images 格式 { created, data: [{ url }] }。
+ * 响应遵循 OpenAI images 格式 { created, data: [{ url | b64_json }] }；
+ * b64_json 条目由 extractImages 转换为 data URL。
  */
 export async function generateImages(
   payload: GenerationRequestBody,
@@ -91,14 +83,8 @@ export async function generateImages(
     skipErrorHandler: true,
   } as Record<string, unknown>)
 
-  const body: OpenAIImageResponse = res.data
-  const items = Array.isArray(body?.data) ? body.data : []
-  const images: GeneratedImage[] = []
-  for (const item of items as OpenAIImageResponseItem[]) {
-    if (item && typeof item.url === 'string' && item.url !== '') {
-      images.push({ url: item.url })
-    }
-  }
+  const body: ImageResponseBody = res.data
+  const images = extractImages(body)
   if (images.length === 0) {
     // 2xx 但没有图片：视为上游异常，交给调用方按错误处理
     throw new Error('empty_response')

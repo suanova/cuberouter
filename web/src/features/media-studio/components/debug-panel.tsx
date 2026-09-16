@@ -25,9 +25,22 @@ interface DebugPanelProps {
   rawResponse: unknown
 }
 
+const MAX_DEBUG_STRING_LEN = 200
+
 function toJson(value: unknown): string {
   try {
-    return JSON.stringify(value, null, 2) ?? ''
+    return (
+      JSON.stringify(
+        value,
+        (_key: string, val: unknown) => {
+          if (typeof val === 'string' && val.length > MAX_DEBUG_STRING_LEN) {
+            return `${val.slice(0, MAX_DEBUG_STRING_LEN)}…(${val.length} chars total)`
+          }
+          return val
+        },
+        2
+      ) ?? ''
+    )
   } catch {
     return String(value)
   }
