@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS, GENERATION_TIMEOUT_MS } from './constants'
+import { API_ENDPOINTS, GENERATION_TIMEOUT_MS, IMAGE_GENERATION_ENDPOINT } from './constants'
 import type { GenerationRequestBody } from './lib/request-builder'
 import type { GeneratedImage } from './types'
 
@@ -30,6 +30,45 @@ interface OpenAIImageResponseItem {
 interface OpenAIImageResponse {
   created?: unknown
   data?: unknown
+}
+
+interface PricingModelItem {
+  model_name?: unknown
+  supported_endpoint_types?: unknown
+}
+
+interface PricingResponseData {
+  success?: unknown
+  data?: { pricings?: unknown }
+}
+
+/**
+ * 拉取当前用户可用、且支持图片生成（supported_endpoint_types 含
+ * "image-generation"）的模型名，去重后按名称排序返回。
+ */
+export async function getStudioModels(): Promise<string[]> {
+  const res = await api.get<PricingResponseData>(API_ENDPOINTS.PRICING)
+  const body: PricingResponseData = res.data
+
+  const pricings =
+    body && body.success && body.data && Array.isArray(body.data.pricings)
+      ? (body.data.pricings as PricingModelItem[])
+      : []
+
+  const names = new Set<string>()
+  for (const item of pricings) {
+    if (!item || typeof item.model_name !== 'string' || item.model_name === '') {
+      continue
+    }
+    const endpoints = Array.isArray(item.supported_endpoint_types)
+      ? item.supported_endpoint_types
+      : []
+    if (endpoints.includes(IMAGE_GENERATION_ENDPOINT)) {
+      names.add(item.model_name)
+    }
+  }
+
+  return [...names].sort((a, b) => a.localeCompare(b))
 }
 
 export interface GenerationApiResult {

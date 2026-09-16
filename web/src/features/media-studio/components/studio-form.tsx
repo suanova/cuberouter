@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Dices, RotateCcw } from 'lucide-react'
 
@@ -33,6 +33,10 @@ interface StudioFormProps {
   params: StudioParams
   generating: boolean
   errorText: string | null
+  models: string[]
+  modelsLoading: boolean
+  model: string
+  onModelChange: (model: string) => void
   onChange: (params: StudioParams) => void
   onGenerate: () => void
 }
@@ -48,6 +52,10 @@ export function StudioForm({
   params,
   generating,
   errorText,
+  models,
+  modelsLoading,
+  model,
+  onModelChange,
   onChange,
   onGenerate,
 }: StudioFormProps) {
@@ -58,8 +66,22 @@ export function StudioForm({
     onChange({ ...params, ...patch })
   }
 
+  const hasModel = model !== ''
   const canGenerate =
-    !generating && params.prompt.trim() !== ''
+    !generating && hasModel && params.prompt.trim() !== ''
+
+  let modelOptions: ReactNode
+  if (modelsLoading) {
+    modelOptions = <option value=''>{t('Loading...')}</option>
+  } else if (models.length === 0) {
+    modelOptions = <option value=''>{t('No image models available')}</option>
+  } else {
+    modelOptions = models.map((name) => (
+      <option key={name} value={name}>
+        {name}
+      </option>
+    ))
+  }
 
   const handleSeedRandom = () => {
     update({
@@ -77,6 +99,24 @@ export function StudioForm({
         }
       }}
     >
+      <div>
+        <label
+          htmlFor='studio-model'
+          className='mb-1.5 block text-sm font-medium'
+        >
+          {t('Model')}
+        </label>
+        <select
+          id='studio-model'
+          value={model}
+          disabled={generating || modelsLoading}
+          onChange={(e) => onModelChange(e.target.value)}
+          className='h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          {modelOptions}
+        </select>
+      </div>
+
       <div>
         <label
           htmlFor='studio-prompt'

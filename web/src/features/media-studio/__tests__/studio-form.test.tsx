@@ -25,19 +25,31 @@ import { DEFAULT_PARAMS, LIMITS } from '../constants'
 import type { StudioParams } from '../types'
 import { StudioForm } from '../components/studio-form'
 
+const MODELS = ['qwen-image-2512', 'flux-dev']
+
 function StatefulForm(options: {
   params?: StudioParams
   generating?: boolean
+  models?: string[]
+  modelsLoading?: boolean
   onGenerate?: () => void
+  onModelChangeSpy?: (model: string) => void
   onChangeSpy?: (params: StudioParams) => void
 }) {
   const [params, setParams] = useState<StudioParams>(
     options.params ?? { ...DEFAULT_PARAMS, prompt: '' },
   )
+  const availableModels = options.models ?? MODELS
+  const [model, setModel] = useState(availableModels[0] ?? '')
 
   const handleChange = (next: StudioParams) => {
     setParams(next)
     options.onChangeSpy?.(next)
+  }
+
+  const handleModelChange = (next: string) => {
+    setModel(next)
+    options.onModelChangeSpy?.(next)
   }
 
   return (
@@ -45,8 +57,12 @@ function StatefulForm(options: {
       params={params}
       generating={options.generating ?? false}
       errorText={null}
-      onGenerate={options.onGenerate ?? vi.fn()}
+      models={availableModels}
+      modelsLoading={options.modelsLoading ?? false}
+      model={model}
+      onModelChange={handleModelChange}
       onChange={handleChange}
+      onGenerate={options.onGenerate ?? vi.fn()}
     />
   )
 }
@@ -54,6 +70,7 @@ function StatefulForm(options: {
 describe('StudioForm', () => {
   beforeAll(() => {
     i18next.addResourceBundle('en', 'translation', {
+      'Model': 'Model',
       'Prompt': 'Prompt',
       'Describe the image you want to generate…': 'Describe the image you want to generate…',
       'Image aspect ratio': 'Image aspect ratio',
@@ -67,6 +84,8 @@ describe('StudioForm', () => {
       'Generate image': 'Generate image',
       'Generating…': 'Generating…',
       'Reset to defaults': 'Reset to defaults',
+      'No image models available': 'No image models available',
+      'Loading...': 'Loading...',
     })
   })
 
@@ -78,7 +97,16 @@ describe('StudioForm', () => {
     ).toBeDisabled()
   })
 
-  test('submits on generate when the prompt has content', () => {
+  test('disables the generate button when no image model is available', () => {
+    render(<StatefulForm models={[]} />)
+
+    expect(screen.getByRole('option', { name: 'No image models available' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Generate image' }),
+    ).toBeDisabled()
+  })
+
+  test('submits on generate when a model and prompt are set', () => {
     const onGenerate = vi.fn()
 
     render(<StatefulForm onGenerate={onGenerate} />)
@@ -94,6 +122,17 @@ describe('StudioForm', () => {
     fireEvent.submit(form)
 
     expect(onGenerate).toHaveBeenCalledTimes(1)
+  })
+
+  test('selecting a model reports the choice', () => {
+    const onModelChangeSpy = vi.fn()
+
+    render(<StatefulForm onModelChangeSpy={onModelChangeSpy} />)
+    fireEvent.change(screen.getByLabelText('Model'), {
+      target: { value: 'flux-dev' },
+    })
+
+    expect(onModelChangeSpy).toHaveBeenCalledWith('flux-dev')
   })
 
   test('shows the prompt character count', () => {
@@ -150,10 +189,11 @@ describe('StudioForm', () => {
     expect(next.seed).toBeLessThanOrEqual(LIMITS.seedMax)
   })
 
-  test('disables prompt, ratios and generate while generating', () => {
+  test('disables prompt, model, ratios and generate while generating', () => {
     render(<StatefulForm generating />)
 
     expect(screen.getByLabelText('Prompt')).toBeDisabled()
+    expect(screen.getByLabelText('Model')).toBeDisabled()
     expect(screen.getByRole('radio', { name: '1:1' })).toBeDisabled()
     expect(
       screen.getByRole('button', { name: 'Generating…' }),

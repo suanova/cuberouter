@@ -16,50 +16,56 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sparkles } from 'lucide-react'
 
-import { DEFAULT_PARAMS, STUDIO_MODEL } from './constants'
+import { getStudioModels } from './api'
+import { DEFAULT_PARAMS } from './constants'
 import { useGeneration } from './hooks/use-generation'
-import { clearHistory, loadHistory, saveHistoryEntry } from './lib/history'
-import type { GenerationResult, HistoryEntry, StudioParams } from './types'
+import type { StudioParams } from './types'
 import { DebugPanel } from './components/debug-panel'
-import { HistoryList } from './components/history-list'
 import { PreviewPanel } from './components/preview-panel'
 import { StudioForm } from './components/studio-form'
-
-function createId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
-}
 
 export function MediaStudio() {
   const { t } = useTranslation()
   const [params, setParams] = useState<StudioParams>({ ...DEFAULT_PARAMS })
-  const [history, setHistory] = useState<HistoryEntry[]>(() => loadHistory())
+  const [models, setModels] = useState<string[]>([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [model, setModel] = useState('')
 
-  const { status, elapsedMs, result, error, requestBody, rawResponse, start, restore } =
-    useGeneration({
-      onSuccess: (
-        generated: GenerationResult,
-        elapsed: number,
-        usedParams: StudioParams,
-      ) => {
-        const entry: HistoryEntry = {
-          id: createId(),
-          prompt: usedParams.prompt.trim(),
-          params: { ...usedParams },
-          imageUrls: generated.images.map((image) => image.url),
-          elapsedMs: elapsed,
-          createdAt: Date.now(),
+  const { status, elapsedMs, result, error, requestBody, rawResponse, start } =
+    useGeneration()
+
+  useEffect(() => {
+    let cancelled = false
+    getStudioModels()
+      .then((list) => {
+        if (cancelled) {
+          return
         }
-        setHistory(saveHistoryEntry(entry))
-      },
-    })
+        setModels(list)
+        setModel((current) =>
+          current !== '' && list.includes(current) ? current : (list[0] ?? ''),
+        )
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setModelsLoading(false)
+        }
+      })
+      .catch(() => {
+        // 拉取失败时保持空列表，页面会提示无可用模型
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleGenerate = useCallback(() => {
-    void start(params)
-  }, [params, start])
+    void start(params, model)
+  }, [params, model, start])
 
   let errorText: string | null = null
   if (status === 'error' && error) {
@@ -77,9 +83,7 @@ export function MediaStudio() {
         <div>
           <h1 className='text-lg font-semibold'>{t('Media Studio')}</h1>
           <p className='text-xs text-muted-foreground'>
-            {t('Turn your ideas into images with {{model}}.', {
-              model: STUDIO_MODEL,
-            })}
+            {t('Turn your ideas into images.')}
           </p>
         </div>
       </header>
@@ -90,6 +94,10 @@ export function MediaStudio() {
             params={params}
             generating={status === 'generating'}
             errorText={errorText}
+            models={models}
+            modelsLoading={modelsLoading}
+            model={model}
+            onModelChange={setModel}
             onChange={setParams}
             onGenerate={handleGenerate}
           />
@@ -103,26 +111,12 @@ export function MediaStudio() {
               elapsedMs={elapsedMs}
               result={result}
               error={error}
+              model={model}
             />
           </div>
 
           <div className='rounded-2xl border border-border bg-card p-4'>
             <DebugPanel requestBody={requestBody} rawResponse={rawResponse} />
-          </div>
-
-          <div className='rounded-2xl border border-border bg-card p-4'>
-            <HistoryList
-              entries={history}
-              disabled={status === 'generating'}
-              onSelect={(entry) => {
-                setParams({ ...entry.params })
-                restore(entry)
-              }}
-              onClear={() => {
-                clearHistory()
-                setHistory([])
-              }}
-            />
           </div>
         </div>
       </div>

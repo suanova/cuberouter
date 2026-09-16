@@ -18,11 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { AspectRatio, StudioParams } from './types'
 
-export const STUDIO_MODEL = 'qwen-image-2512'
-
 export const API_ENDPOINTS = {
   IMAGES_GENERATIONS: '/pg/images/generations',
+  PRICING: '/api/pricing',
 } as const
+
+/** 支持图片生成的端点类型（与 /api/pricing 的 supported_endpoint_types 对齐） */
+export const IMAGE_GENERATION_ENDPOINT = 'image-generation'
 
 /**
  * Aspect ratios and their native output dimensions (px),
@@ -71,6 +73,3 @@ export const DEFAULT_PARAMS: StudioParams = {
 
 // 同步生成阻塞 40 秒 ~ 5 分钟，超时放宽到 10 分钟
 export const GENERATION_TIMEOUT_MS = 10 * 60 * 1000
-
-export const HISTORY_KEY = 'cuberouter-media-studio-history'
-export const HISTORY_LIMIT = 8
