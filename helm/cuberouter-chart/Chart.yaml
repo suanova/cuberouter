@@ -2,8 +2,8 @@ apiVersion: v2
 name: cuberouter-chart
 description: CubeRouter (AI API gateway) with high-availability PostgreSQL (CloudNativePG) and Redis (OpsTree redis-operator)
 type: application
-version: 1.0.0
-appVersion: "v1.0.0"
+version: 1.1.0
+appVersion: "v1.1.0"
 home: https://github.com/suanova/cuberouter
 keywords:
   - cuberouter
