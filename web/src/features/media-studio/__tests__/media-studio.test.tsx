@@ -60,8 +60,6 @@ describe('MediaStudio history persistence', () => {
       'Recent generations': 'Recent generations',
       'No generations in this browser yet.':
         'No generations in this browser yet.',
-      'Request and response': 'Request and response',
-      Copy: 'Copy',
     })
   })
 
@@ -133,5 +131,12 @@ describe('MediaStudio history persistence', () => {
     fireEvent.change(prompt, { target: { value: 'a dog' } })
     await waitFor(() => expect(prompt).toHaveValue('a dog'))
     expect(storageFns.saveHistoryEntry).toHaveBeenCalledTimes(1)
+  })
+
+  test('page content is bounded by a vertical scroll container', () => {
+    render(<MediaStudio />)
+
+    const heading = screen.getByRole('heading', { name: 'Media Studio' })
+    expect(heading.closest('.overflow-y-auto')).not.toBeNull()
   })
 })
