@@ -22,7 +22,7 @@ import { ImageIcon } from 'lucide-react'
 
 import { Spinner } from '@/components/ui/spinner'
 
-import { ASPECT_RATIOS, STUDIO_MODEL } from '../constants'
+import { ASPECT_RATIOS } from '../constants'
 import type { GenerationErrorInfo } from '../lib/errors'
 import type { GenerationResult, GenerationStatus, StudioParams } from '../types'
 import { ResultGallery } from './result-gallery'
@@ -33,6 +33,7 @@ interface PreviewPanelProps {
   elapsedMs: number
   result: GenerationResult | null
   error: GenerationErrorInfo | null
+  model: string
 }
 
 function formatElapsed(ms: number): string {
@@ -51,6 +52,7 @@ export function PreviewPanel({
   elapsedMs,
   result,
   error,
+  model,
 }: PreviewPanelProps) {
   const { t } = useTranslation()
 
@@ -125,7 +127,7 @@ export function PreviewPanel({
           {t('Image preview')}
         </h2>
         <span className='rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground'>
-          {STUDIO_MODEL}
+          {model}
         </span>
       </header>
 

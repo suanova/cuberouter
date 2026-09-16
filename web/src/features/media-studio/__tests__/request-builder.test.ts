@@ -22,6 +22,8 @@ import { ASPECT_RATIO_ORDER, DEFAULT_PARAMS } from '../constants'
 import { buildGenerationRequest } from '../lib/request-builder'
 import type { StudioParams } from '../types'
 
+const TEST_MODEL = 'qwen-image-2512'
+
 describe('buildGenerationRequest', () => {
   test('maps every studio parameter onto the agreed request contract', () => {
     const params: StudioParams = {
@@ -33,8 +35,8 @@ describe('buildGenerationRequest', () => {
       cfg: 2.5,
     }
 
-    expect(buildGenerationRequest(params)).toEqual({
-      model: 'qwen-image-2512',
+    expect(buildGenerationRequest(params, TEST_MODEL)).toEqual({
+      model: TEST_MODEL,
       prompt: 'night cafe',
       n: 4,
       size: '3:2',
@@ -45,29 +47,38 @@ describe('buildGenerationRequest', () => {
   })
 
   test('trims surrounding whitespace from the prompt', () => {
-    const body = buildGenerationRequest({
-      ...DEFAULT_PARAMS,
-      prompt: '   a red fox   ',
-    })
+    const body = buildGenerationRequest(
+      {
+        ...DEFAULT_PARAMS,
+        prompt: '   a red fox   ',
+      },
+      TEST_MODEL,
+    )
 
     expect(body.prompt).toBe('a red fox')
   })
 
   test('sends the ratio string as size for every supported ratio', () => {
     for (const ratio of ASPECT_RATIO_ORDER) {
-      const body = buildGenerationRequest({
-        ...DEFAULT_PARAMS,
-        prompt: 'p',
-        ratio,
-      })
+      const body = buildGenerationRequest(
+        {
+          ...DEFAULT_PARAMS,
+          prompt: 'p',
+          ratio,
+        },
+        TEST_MODEL,
+      )
 
       expect(body.size).toBe(ratio)
     }
   })
 
-  test('keeps the fixed model name from the contract', () => {
-    const body = buildGenerationRequest({ ...DEFAULT_PARAMS, prompt: 'p' })
+  test('uses the model selected on the page', () => {
+    const body = buildGenerationRequest(
+      { ...DEFAULT_PARAMS, prompt: 'p' },
+      'other-image-model',
+    )
 
-    expect(body.model).toBe('qwen-image-2512')
+    expect(body.model).toBe('other-image-model')
   })
 })

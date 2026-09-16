@@ -16,12 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { STUDIO_MODEL } from '../constants'
 import type { StudioParams } from '../types'
 
 /**
  * 请求体契约（与渠道侧约定）：
- * - model: 固定 qwen-image-2512
+ * - model: 页面选中的图片模型
  * - size: 比例字符串（如 "16:9"），与机器原生 aspect_ratio 对齐
  * - seed / num_inference_steps / true_cfg_scale: 机器原生扩展字段
  */
@@ -37,9 +36,10 @@ export interface GenerationRequestBody {
 
 export function buildGenerationRequest(
   params: StudioParams,
+  model: string,
 ): GenerationRequestBody {
   return {
-    model: STUDIO_MODEL,
+    model,
     prompt: params.prompt.trim(),
     n: params.count,
     size: params.ratio,

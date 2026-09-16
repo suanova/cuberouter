@@ -38,13 +38,4 @@ export interface GenerationResult {
   raw: unknown
 }
 
-export interface HistoryEntry {
-  id: string
-  prompt: string
-  params: StudioParams
-  imageUrls: string[]
-  elapsedMs: number
-  createdAt: number
-}
-
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error'

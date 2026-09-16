@@ -36,16 +36,17 @@ const params: StudioParams = {
   cfg: 1,
 }
 
-function Harness({
-  onSuccess,
-}: {
-  onSuccess?: (result: unknown, elapsedMs: number, used: StudioParams) => void
-}) {
-  const generation = useGeneration({ onSuccess })
+const TEST_MODEL = 'qwen-image-2512'
+
+function Harness() {
+  const generation = useGeneration()
 
   return (
     <div>
-      <button type='button' onClick={() => void generation.start(params)}>
+      <button
+        type='button'
+        onClick={() => void generation.start(params, TEST_MODEL)}
+      >
         start
       </button>
       <span data-testid='status'>{generation.status}</span>
@@ -88,6 +89,9 @@ describe('useGeneration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'start' }))
 
     expect(screen.getByTestId('status')).toHaveTextContent('generating')
+    expect(generateImages).toHaveBeenCalledWith(
+      expect.objectContaining({ model: TEST_MODEL, n: 2, size: '16:9' }),
+    )
 
     await vi.advanceTimersByTimeAsync(2500)
     expect(screen.getByTestId('elapsed')).toHaveTextContent('2000')
@@ -105,29 +109,6 @@ describe('useGeneration', () => {
     expect(screen.getByTestId('status')).toHaveTextContent('success')
     expect(screen.getByTestId('images')).toHaveTextContent('2')
     expect(screen.getByTestId('elapsed')).toHaveTextContent('2500')
-  })
-
-  test('calls onSuccess with the result, elapsed time and the used parameters', async () => {
-    const onSuccess = vi.fn()
-    const { promise, resolve } = deferred<GenerationApiResult>()
-    vi.mocked(generateImages).mockReturnValueOnce(promise)
-
-    render(<Harness onSuccess={onSuccess} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'start' }))
-    await vi.advanceTimersByTimeAsync(2000)
-    resolve({
-      images: [{ url: 'https://img.test/1.png' }],
-      created: 1700000000,
-      raw: null,
-    })
-    await vi.advanceTimersByTimeAsync(0)
-
-    expect(onSuccess).toHaveBeenCalledTimes(1)
-    const [result, elapsed, used] = onSuccess.mock.calls[0]
-    expect(result.images).toEqual([{ url: 'https://img.test/1.png' }])
-    expect(elapsed).toBe(2000)
-    expect(used).toEqual(params)
   })
 
   test('surfaces server error messages from the gateway response', async () => {
