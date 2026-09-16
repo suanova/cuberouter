@@ -52,6 +52,31 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 })
 
+// Node >= 25 在 global 上定义了被禁用的 localStorage/sessionStorage getter
+// (未传 --localstorage-file 时读值为 undefined)。vitest 的 jsdom 环境对已
+// 存在于 Node global 的 key 不再挂 window 侧实现,zustand persist 因此拿到
+// undefined storage 直接崩溃。这里显式用 jsdom 的实现覆盖;旧版 Node 上
+// global 已是 jsdom 的(非 undefined),此块为无操作。
+type JSDOMWindowLike = {
+  localStorage?: Storage
+  sessionStorage?: Storage
+}
+const jsdomWindowLike = (
+  globalThis as { jsdom?: { window?: JSDOMWindowLike } }
+).jsdom?.window
+for (const storageKey of ['localStorage', 'sessionStorage'] as const) {
+  const domStorage = jsdomWindowLike?.[storageKey]
+  if (
+    domStorage &&
+    typeof (globalThis as Record<string, unknown>)[storageKey] === 'undefined'
+  ) {
+    Object.defineProperty(globalThis, storageKey, {
+      configurable: true,
+      value: domStorage,
+    })
+  }
+}
+
 window.requestAnimationFrame = (callback: FrameRequestCallback) =>
   window.setTimeout(() => callback(performance.now()), 0)
 window.cancelAnimationFrame = (handle: number) => window.clearTimeout(handle)

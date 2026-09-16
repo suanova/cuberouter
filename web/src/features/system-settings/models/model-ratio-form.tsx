@@ -60,6 +60,7 @@ type ModelFormValues = {
   BillingMode: string
   BillingExpr: string
   VideoPrice: string
+  ImagePrice: string
   OffPeakWindow: string
 }
 
@@ -278,6 +279,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
               savedVideoPrice={savedValues.VideoPrice}
+              savedImagePrice={savedValues.ImagePrice}
               modelPrice={form.watch('ModelPrice')}
               modelRatio={form.watch('ModelRatio')}
               cacheRatio={form.watch('CacheRatio')}
@@ -289,6 +291,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               billingMode={form.watch('BillingMode')}
               billingExpr={form.watch('BillingExpr')}
               videoPrice={form.watch('VideoPrice')}
+              imagePrice={form.watch('ImagePrice')}
               candidateModelNames={
                 isUnsetVariant ? enabledModelsQuery.data?.data : undefined
               }

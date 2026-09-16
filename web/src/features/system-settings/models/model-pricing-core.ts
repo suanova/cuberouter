@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
-import type { VideoPriceTable } from '@/features/pricing/types'
+import type { ImagePriceTable, VideoPriceTable } from '@/features/pricing/types'
 import {
   getBillingCurrency,
   localToUsdNumber,
@@ -66,6 +66,7 @@ export type PricingMode =
   | 'per-request'
   | 'tiered_expr'
   | 'video-per-second'
+  | 'image-per-image'
 
 export type LaneKey =
   | 'completion'
@@ -90,6 +91,8 @@ export type ModelRatioData = {
   requestRuleExpr?: string
   /** Per-second video price table, present when the model is billed per second */
   videoPrices?: VideoPriceTable
+  /** Per-image price table (resolution tiers), present when the model is billed per image */
+  imagePrices?: ImagePriceTable
 }
 
 /**
@@ -106,6 +109,12 @@ export function getInitialPricingMode(
     (editData.videoPrices && editData.videoPrices.rows.length > 0)
   ) {
     return 'video-per-second'
+  }
+  if (
+    editData.billingMode === 'image-per-image' ||
+    (editData.imagePrices && editData.imagePrices.rows.length > 0)
+  ) {
+    return 'image-per-image'
   }
   return editData.price ? 'per-request' : 'per-token'
 }
@@ -283,7 +292,8 @@ export function buildPreviewRows(
   lanePrices: Record<LaneKey, string>,
   laneEnabled: Record<LaneKey, boolean>,
   t: (key: string) => string,
-  videoPriceTable?: VideoPriceTable
+  videoPriceTable?: VideoPriceTable,
+  imagePriceTable?: ImagePriceTable
 ): PreviewRow[] {
   if (mode === 'tiered_expr') {
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
@@ -314,6 +324,21 @@ export function buildPreviewRows(
       { key: 'mode', label: t('Mode'), value: t('Video per second') },
       {
         key: 'videoRows',
+        label: t('Resolution'),
+        value:
+          rows.length > 0
+            ? rows.map((row) => row.resolution).join(', ')
+            : t('Empty'),
+      },
+    ]
+  }
+
+  if (mode === 'image-per-image') {
+    const rows = imagePriceTable?.rows ?? []
+    return [
+      { key: 'mode', label: t('Mode'), value: t('Image per image') },
+      {
+        key: 'imageRows',
         label: t('Resolution'),
         value:
           rows.length > 0
@@ -395,6 +420,7 @@ export function buildPricingSubmitData(
     billingExpr: string
     requestRuleExpr: string
     videoPrices?: VideoPriceTable
+    imagePrices?: ImagePriceTable
   }
 ): ModelRatioData {
   // price 为 per-request 美元单价,编辑态是显示货币录入值,落库前折算为 USD;
@@ -423,6 +449,10 @@ export function buildPricingSubmitData(
 
   if (mode === 'video-per-second') {
     data.videoPrices = extra.videoPrices
+  }
+
+  if (mode === 'image-per-image') {
+    data.imagePrices = extra.imagePrices
   }
 
   return data

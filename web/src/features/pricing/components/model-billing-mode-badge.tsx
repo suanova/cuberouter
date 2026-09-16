@@ -40,6 +40,9 @@ export function ModelBillingModeBadge(props: ModelBillingModeBadgeProps) {
   } else if (props.model.video_prices) {
     label = t('Video per second')
     variant = 'info'
+  } else if (props.model.image_prices) {
+    label = t('Image per image')
+    variant = 'info'
   } else if (labelKey === 'Token-based') {
     variant = 'info'
   }

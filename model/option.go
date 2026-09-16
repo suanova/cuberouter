@@ -27,6 +27,7 @@ type Option struct {
 const (
 	defaultVideoPriceOption    = "{}"
 	defaultOffPeakWindowOption = `{"start_hour":22,"end_hour":8,"timezone":"Asia/Shanghai"}`
+	defaultImagePriceOption    = "{}"
 )
 
 func AllOption() ([]*Option, error) {
@@ -176,6 +177,7 @@ func InitOptionMap() {
 	common.OptionMap["ModelRatio"] = ratio_setting.ModelRatio2JSONString()
 	common.OptionMap["ModelPrice"] = ratio_setting.ModelPrice2JSONString()
 	common.OptionMap["VideoPrice"] = defaultVideoPriceOption
+	common.OptionMap["ImagePrice"] = defaultImagePriceOption
 	common.OptionMap["OffPeakWindow"] = defaultOffPeakWindowOption
 	common.OptionMap["CacheRatio"] = ratio_setting.CacheRatio2JSONString()
 	common.OptionMap["CreateCacheRatio"] = ratio_setting.CreateCacheRatio2JSONString()
@@ -664,6 +666,13 @@ func updateOptionMap(key string, value string) (err error) {
 		err = ratio_setting.UpdateVideoPriceByJSONString(value)
 		if err == nil {
 			// 视频价格表变了,公开定价缓存(含 video_prices)需要立即失效,
+			// 否则用户看到旧价表而计费用新价表
+			InvalidatePricingCache()
+		}
+	case "ImagePrice":
+		err = ratio_setting.UpdateImagePriceByJSONString(value)
+		if err == nil {
+			// 图片价格表变了,公开定价缓存(含 image_prices)需要立即失效,
 			// 否则用户看到旧价表而计费用新价表
 			InvalidatePricingCache()
 		}

@@ -130,6 +130,19 @@ export function usePricingColumns(
             </div>
           )
         }
+        const imagePrices = model.image_prices
+        if (imagePrices && imagePrices.rows.length > 0) {
+          return (
+            <div className='max-w-full min-w-0'>
+              <span className='font-mono text-sm tabular-nums'>
+                {formatVideoPriceMoney(imagePrices.rows[0].price)}/{t('image')}
+              </span>
+              <div className='text-muted-foreground/50 text-[10px]'>
+                {t('Image per image')}
+              </div>
+            </div>
+          )
+        }
 
         const dynamicSummary = getDynamicPricingSummary(model, {
           tokenUnit,

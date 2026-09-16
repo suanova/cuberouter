@@ -81,6 +81,15 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		return modelPriceHelperTiered(c, info, billingModelName, promptTokens, meta, groupRatioInfo)
 	}
 
+	// 图片按张定价(分辨率 × 个数):模型配置图片价格表时,锚点(最高价行)作为
+	// 单张 USD 计费基准,size 系数由请求分辨率推导、张数系数由请求 "n" 提供,
+	// 表优先于模型价格/倍率(与视频按秒表同机制)。
+	imagePriceTable, hasImagePriceTable := ratio_setting.GetImagePrice(billingModelName)
+	if hasImagePriceTable {
+		modelPrice = ratio_setting.ImagePriceAnchor(imagePriceTable)
+		usePrice = true
+	}
+
 	var preConsumedQuota int
 	var modelRatio float64
 	var completionRatio float64
@@ -125,8 +134,21 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		}
 		preConsumedQuota = quota
 	} else {
-		if meta.ImagePriceRatio != 0 {
+		// 图片价格表已按分辨率档位定价(锚点为单张 USD 价),
+		// 旧 ImagePriceRatio(dall-e 硬编码 size/quality 系数)不得叠加。
+		if !hasImagePriceTable && meta.ImagePriceRatio != 0 {
 			modelPrice = modelPrice * meta.ImagePriceRatio
+		}
+		// 图片价格表:按请求分辨率推导 size 系数并入 BillingRatios,
+		// 与预扣/结算的通用系数通道(含 "n")同一出口。表外分辨率不加
+		// 系数,即按锚点(最贵档)计费。
+		if hasImagePriceTable {
+			if sizeRatio := ratio_setting.ImagePriceSizeRatio(imagePriceTable, meta.ImageSize); sizeRatio > 0 && sizeRatio != 1 {
+				if meta.BillingRatios == nil {
+					meta.BillingRatios = map[string]float64{}
+				}
+				meta.BillingRatios["size"] = sizeRatio
+			}
 		}
 	}
 
@@ -267,6 +289,10 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 func HasModelBillingConfig(modelName string) bool {
 	// 视频按秒定价:模型配置了视频价格表即有计费配置,避免无价格模型的走 ratio 路径误判
 	if _, ok := ratio_setting.GetVideoPrice(modelName); ok {
+		return true
+	}
+	// 图片按张定价:模型配置了图片价格表即有计费配置
+	if _, ok := ratio_setting.GetImagePrice(modelName); ok {
 		return true
 	}
 	if _, ok := ratio_setting.GetModelPrice(modelName, false); ok {

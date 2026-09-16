@@ -40,6 +40,7 @@ type Pricing struct {
 	BillingUsageSchema     map[string]jsplugin.UsageFieldSchema `json:"billing_usage_schema,omitempty"`
 	BillingUsageExamples   []jsplugin.UsageExample              `json:"billing_usage_examples,omitempty"`
 	VideoPrices            *ratio_setting.VideoPriceTable       `json:"video_prices,omitempty"`
+	ImagePrices            *ratio_setting.ImagePriceTable       `json:"image_prices,omitempty"`
 	PricingVersion         string                               `json:"pricing_version,omitempty"`
 }
 
@@ -422,6 +423,10 @@ func updatePricing() {
 		// 视频按秒定价:模型配置了视频价格表时随定价缓存一并返回
 		if videoPriceTable, ok := ratio_setting.GetVideoPrice(model); ok {
 			pricing.VideoPrices = videoPriceTable
+		}
+		// 图片按张定价(分辨率 × 个数):模型配置了图片价格表时随定价缓存一并返回
+		if imagePriceTable, ok := ratio_setting.GetImagePrice(model); ok {
+			pricing.ImagePrices = imagePriceTable
 		}
 		// 插件 usage schema:插件声明了 usage 字段时随定价缓存一并返回
 		plugin, ok := pluginGeneration.GetByModel(model)

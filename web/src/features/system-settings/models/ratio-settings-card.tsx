@@ -129,6 +129,7 @@ const createModelSchema = (t: Translate) =>
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
     VideoPrice: createJsonStringField(t),
+    ImagePrice: createJsonStringField(t),
     OffPeakWindow: createJsonStringField(t, {
       predicate: isOffPeakWindowJson,
       predicateMessage: 'Expected an off-peak window JSON object',
@@ -212,6 +213,7 @@ export function RatioSettingsCard({
     BillingMode: normalizeJsonString(modelDefaults.BillingMode),
     BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
     VideoPrice: normalizeJsonString(modelDefaults.VideoPrice),
+    ImagePrice: normalizeJsonString(modelDefaults.ImagePrice),
     OffPeakWindow: normalizeJsonString(modelDefaults.OffPeakWindow),
   })
   const [savedModelValues, setSavedModelValues] = useState(
@@ -251,6 +253,7 @@ export function RatioSettingsCard({
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
       VideoPrice: formatJsonForTextarea(modelDefaults.VideoPrice),
+      ImagePrice: formatJsonForTextarea(modelDefaults.ImagePrice),
       OffPeakWindow: formatJsonForTextarea(modelDefaults.OffPeakWindow),
     },
   })
@@ -287,6 +290,7 @@ export function RatioSettingsCard({
       BillingMode: normalizeJsonString(modelDefaults.BillingMode),
       BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
       VideoPrice: normalizeJsonString(modelDefaults.VideoPrice),
+      ImagePrice: normalizeJsonString(modelDefaults.ImagePrice),
       OffPeakWindow: normalizeJsonString(modelDefaults.OffPeakWindow),
     }
     setSavedModelValues(modelNormalizedDefaults.current)
@@ -306,6 +310,7 @@ export function RatioSettingsCard({
       BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
       BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
       VideoPrice: formatJsonForTextarea(modelDefaults.VideoPrice),
+      ImagePrice: formatJsonForTextarea(modelDefaults.ImagePrice),
       OffPeakWindow: formatJsonForTextarea(modelDefaults.OffPeakWindow),
     })
   }, [modelDefaults, modelForm])
@@ -352,6 +357,7 @@ export function RatioSettingsCard({
         BillingMode: normalizeJsonString(values.BillingMode),
         BillingExpr: normalizeJsonString(values.BillingExpr),
         VideoPrice: normalizeJsonString(values.VideoPrice),
+        ImagePrice: normalizeJsonString(values.ImagePrice),
         OffPeakWindow: normalizeJsonString(values.OffPeakWindow),
       }
 

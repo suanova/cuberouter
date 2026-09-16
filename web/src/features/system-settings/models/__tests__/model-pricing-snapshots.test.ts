@@ -86,6 +86,12 @@ const videoRow: ModelPricingSnapshot = {
   hasConflict: false,
 }
 
+const imageRow: ModelPricingSnapshot = {
+  name: 'qwen-image-2512',
+  billingMode: 'image-per-image',
+  hasConflict: false,
+}
+
 beforeEach(resetDisplayCurrency)
 
 describe('getPriceSummary 金额随显示货币 (CNY/7.3)', () => {
@@ -105,6 +111,10 @@ describe('getPriceSummary 金额随显示货币 (CNY/7.3)', () => {
 
   it('视频模型摘要仍为模式文案', () => {
     expect(getPriceSummary(videoRow, t)).toBe('Video per second')
+  })
+
+  it('图片模型摘要仍为模式文案', () => {
+    expect(getPriceSummary(imageRow, t)).toBe('Image per image')
   })
 
   it('无价格时保留 Unset price', () => {
@@ -141,6 +151,10 @@ describe('getPriceDetail 金额随显示货币 (CNY/7.3)', () => {
     expect(getPriceDetail(videoRow, t)).toBe('Video price (¥/s)')
   })
 
+  it('图片模型细节单位符号随货币:Image price (¥/image)', () => {
+    expect(getPriceDetail(imageRow, t)).toBe('Image price (¥/image)')
+  })
+
   it('无额外 lane 时保留 Base input price only', () => {
     expect(getPriceDetail(ratioOnlyRow, t)).toBe('Base input price only')
   })
@@ -153,6 +167,10 @@ describe('getPriceDetail 金额随显示货币 (USD)', () => {
 
   it('视频模型细节单位符号随货币:Video price ($/s)', () => {
     expect(getPriceDetail(videoRow, t)).toBe('Video price ($/s)')
+  })
+
+  it('图片模型细节单位符号随货币:Image price ($/image)', () => {
+    expect(getPriceDetail(imageRow, t)).toBe('Image price ($/image)')
   })
 })
 

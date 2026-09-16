@@ -67,10 +67,11 @@ import {
   createDefaultTaskVisualConfig,
   generateTaskExprFromConfig,
 } from '@/features/pricing/lib/task-expr'
-import type { VideoPriceTable } from '@/features/pricing/types'
+import type { ImagePriceTable, VideoPriceTable } from '@/features/pricing/types'
 import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
+import { ImagePriceEditor } from './image-price-editor'
 import {
   EMPTY_LANE_ENABLED,
   EMPTY_LANE_PRICES,
@@ -169,6 +170,9 @@ export const ModelPricingEditorPanel = forwardRef<
   const [videoPriceTable, setVideoPriceTable] = useState<VideoPriceTable>({
     rows: [],
   })
+  const [imagePriceTable, setImagePriceTable] = useState<ImagePriceTable>({
+    rows: [],
+  })
   const [promptPrice, setPromptPrice] = useState('')
   const [lanePrices, setLanePrices] = useState<Record<LaneKey, string>>({
     ...EMPTY_LANE_PRICES,
@@ -264,6 +268,11 @@ export const ModelPricingEditorPanel = forwardRef<
           ? editData.videoPrices
           : { rows: [] }
       )
+      setImagePriceTable(
+        editData.imagePrices && editData.imagePrices.rows.length > 0
+          ? editData.imagePrices
+          : { rows: [] }
+      )
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
     } else {
@@ -280,6 +289,7 @@ export const ModelPricingEditorPanel = forwardRef<
       })
       setPricingMode('per-token')
       setVideoPriceTable({ rows: [] })
+      setImagePriceTable({ rows: [] })
       setBillingExpr('')
       setRequestRuleExpr('')
     }
@@ -331,9 +341,16 @@ export const ModelPricingEditorPanel = forwardRef<
   useEffect(() => {
     if (!editData) return
     if (editData.billingMode === 'tiered_expr') return
-    // 视频按秒模型保持视频模式,不被 usage schema 自动切到表达式计费。
-    // 用与打开时相同的模式判定:只有 video_prices 表、无显式 billingMode 时也命中
-    if (getInitialPricingMode(editData) === 'video-per-second') return
+    // 视频按秒模型保持视频模式,不被 usage schema 自动切到表达式计费;
+    // 图片按张模型同理。用与打开时相同的模式判定:只有价格表、无显式
+    // billingMode 时也命中
+    const initialMode = getInitialPricingMode(editData)
+    if (
+      initialMode === 'video-per-second' ||
+      initialMode === 'image-per-image'
+    ) {
+      return
+    }
     if (editData.price || editData.ratio) return
 
     const usageSchema = usageSchemaByModel.get(editData.name)
@@ -473,7 +490,8 @@ export const ModelPricingEditorPanel = forwardRef<
         lanePrices,
         laneEnabled,
         t,
-        videoPriceTable
+        videoPriceTable,
+        imagePriceTable
       ),
     [
       resolvedBillingExpr,
@@ -484,6 +502,7 @@ export const ModelPricingEditorPanel = forwardRef<
       requestRuleExpr,
       t,
       videoPriceTable,
+      imagePriceTable,
       watchedValues,
     ]
   )
@@ -568,8 +587,15 @@ export const ModelPricingEditorPanel = forwardRef<
         billingExpr: resolvedBillingExpr,
         requestRuleExpr,
         videoPrices: videoPriceTable,
+        imagePrices: imagePriceTable,
       }),
-    [pricingMode, requestRuleExpr, resolvedBillingExpr, videoPriceTable]
+    [
+      pricingMode,
+      requestRuleExpr,
+      resolvedBillingExpr,
+      videoPriceTable,
+      imagePriceTable,
+    ]
   )
 
   useImperativeHandle(
@@ -653,7 +679,7 @@ export const ModelPricingEditorPanel = forwardRef<
                   onValueChange={handleModeChange}
                   className='gap-4'
                 >
-                  <TabsList className='grid w-full grid-cols-4'>
+                  <TabsList className='grid w-full grid-cols-5'>
                     <TabsTrigger value='per-token'>
                       {t('Per-token')}
                     </TabsTrigger>
@@ -665,6 +691,9 @@ export const ModelPricingEditorPanel = forwardRef<
                     </TabsTrigger>
                     <TabsTrigger value='video-per-second'>
                       {t('Video per second')}
+                    </TabsTrigger>
+                    <TabsTrigger value='image-per-image'>
+                      {t('Image per image')}
                     </TabsTrigger>
                   </TabsList>
 
@@ -812,6 +841,15 @@ export const ModelPricingEditorPanel = forwardRef<
                         key={editorReloadToken}
                         table={videoPriceTable}
                         onChange={setVideoPriceTable}
+                      />
+                    </FieldGroup>
+                  </TabsContent>
+                  <TabsContent value='image-per-image' className='pt-0'>
+                    <FieldGroup className='gap-5'>
+                      <ImagePriceEditor
+                        key={editorReloadToken}
+                        table={imagePriceTable}
+                        onChange={setImagePriceTable}
                       />
                     </FieldGroup>
                   </TabsContent>

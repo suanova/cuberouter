@@ -52,6 +52,7 @@ const defaultBillingSettings: BillingSettings = {
   'billing_setting.billing_mode': '{}',
   'billing_setting.billing_expr': '{}',
   VideoPrice: '{}',
+  ImagePrice: '{}',
   OffPeakWindow: JSON.stringify(DEFAULT_OFF_PEAK_WINDOW),
   'tool_price_setting.prices': '{}',
   TopupGroupRatio: '',

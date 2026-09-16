@@ -88,6 +88,7 @@ import type {
   TokenUnit,
 } from '../types'
 import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
+import { ImagePriceTable } from './image-price-table'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelDetailsApi } from './model-details-api'
 import { ModelDetailsPerformance } from './model-details-performance'
@@ -656,6 +657,14 @@ function PriceSection(props: {
       </section>
     )
   }
+  if (props.model.image_prices) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <ImagePriceTable table={props.model.image_prices} />
+      </section>
+    )
+  }
   const isTokenBased = isTokenBasedModel(props.model)
   const tokenUnitLabel = props.tokenUnit === 'K' ? '1K' : '1M'
   const baseGroupKey = '_base'
@@ -1200,9 +1209,9 @@ function GroupPricingSection(props: {
     )
   }
 
-  if (props.model.video_prices) {
-    // 视频按秒计费:分组展示无「输入/输出」价格概念,
-    // 保留分组与倍率,价格列用占位符,避免展示与按秒计费无关的 per-call 数字
+  if (props.model.video_prices || props.model.image_prices) {
+    // 视频按秒/图片按张计费:分组展示无「输入/输出」价格概念,
+    // 保留分组与倍率,价格列用占位符,避免展示与任务计费无关的 per-call 数字
     return (
       <section>
         <SectionTitle>{t('Pricing by Group')}</SectionTitle>
