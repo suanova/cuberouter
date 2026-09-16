@@ -69,3 +69,49 @@ func Playground(c *gin.Context) {
 
 	Relay(c, types.RelayFormatOpenAI)
 }
+
+// PlaygroundImage 是 /pg/images/generations 的会话鉴权图片生成入口
+// （多媒体 studio 页面使用）。与 Playground 相同：登录会话 + 临时 token
+// 上下文，走标准 OpenAI 图片 relay（同步阻塞，直到上游出图）。
+func PlaygroundImage(c *gin.Context) {
+	var newAPIError *types.NewAPIError
+
+	defer func() {
+		if newAPIError != nil {
+			c.JSON(newAPIError.StatusCode, gin.H{
+				"error": newAPIError.ToOpenAIError(),
+			})
+		}
+	}()
+
+	useAccessToken := c.GetBool("use_access_token")
+	if useAccessToken {
+		newAPIError = types.NewError(errors.New("暂不支持使用 access token"), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+		return
+	}
+
+	relayInfo, err := relaycommon.GenRelayInfo(c, types.RelayFormatOpenAIImage, nil, nil)
+	if err != nil {
+		newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+		return
+	}
+
+	userId := c.GetInt("id")
+
+	// Write user context to ensure acceptUnsetRatio is available
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		newAPIError = types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+		return
+	}
+	userCache.WriteContext(c)
+
+	tempToken := &model.Token{
+		UserId: userId,
+		Name:   fmt.Sprintf("playground-%s", relayInfo.UsingGroup),
+		Group:  relayInfo.UsingGroup,
+	}
+	_ = middleware.SetupContextForToken(c, tempToken)
+
+	Relay(c, types.RelayFormatOpenAIImage)
+}
