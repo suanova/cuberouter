@@ -90,7 +90,7 @@ describe('useGeneration', () => {
 
     expect(screen.getByTestId('status')).toHaveTextContent('generating')
     expect(generateImages).toHaveBeenCalledWith(
-      expect.objectContaining({ model: TEST_MODEL, n: 2, size: '16:9' }),
+      expect.objectContaining({ model: TEST_MODEL, n: 2, size: '1664x928' }),
     )
 
     await vi.advanceTimersByTimeAsync(2500)

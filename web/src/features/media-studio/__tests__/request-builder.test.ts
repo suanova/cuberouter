@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, test } from 'vitest'
 
-import { ASPECT_RATIO_ORDER, DEFAULT_PARAMS } from '../constants'
+import { ASPECT_RATIOS, ASPECT_RATIO_ORDER, DEFAULT_PARAMS } from '../constants'
 import { buildGenerationRequest } from '../lib/request-builder'
 import type { StudioParams } from '../types'
 
@@ -39,7 +39,7 @@ describe('buildGenerationRequest', () => {
       model: TEST_MODEL,
       prompt: 'night cafe',
       n: 4,
-      size: '3:2',
+      size: '1584x1056',
       seed: 1234,
       num_inference_steps: 30,
       true_cfg_scale: 2.5,
@@ -58,8 +58,9 @@ describe('buildGenerationRequest', () => {
     expect(body.prompt).toBe('a red fox')
   })
 
-  test('sends the ratio string as size for every supported ratio', () => {
+  test('sends the native pixel size for every supported ratio', () => {
     for (const ratio of ASPECT_RATIO_ORDER) {
+      const [width, height] = ASPECT_RATIOS[ratio]
       const body = buildGenerationRequest(
         {
           ...DEFAULT_PARAMS,
@@ -69,7 +70,7 @@ describe('buildGenerationRequest', () => {
         TEST_MODEL,
       )
 
-      expect(body.size).toBe(ratio)
+      expect(body.size).toBe(`${width}x${height}`)
     }
   })
 
