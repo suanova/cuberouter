@@ -16,17 +16,23 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Sparkles } from 'lucide-react'
 
 import { getStudioModels } from './api'
 import { DEFAULT_PARAMS } from './constants'
+import { useHistory } from './hooks/use-history'
 import { useGeneration } from './hooks/use-generation'
-import type { StudioParams } from './types'
+import type { GenerationResult, HistoryEntry, StudioParams } from './types'
 import { DebugPanel } from './components/debug-panel'
+import { HistoryList } from './components/history-list'
 import { PreviewPanel } from './components/preview-panel'
 import { StudioForm } from './components/studio-form'
+
+function createId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
 
 export function MediaStudio() {
   const { t } = useTranslation()
@@ -37,6 +43,38 @@ export function MediaStudio() {
 
   const { status, elapsedMs, result, error, requestBody, rawResponse, start } =
     useGeneration()
+
+  const {
+    entries: historyEntries,
+    loading: historyLoading,
+    storageAvailable: historyStorageAvailable,
+    saveEntry,
+    removeEntry,
+    clearEntries,
+  } = useHistory()
+  const savedResultRef = useRef<GenerationResult | null>(null)
+
+  // 生成成功后写入本地历史（图片为自包含 data URL，可跨会话还原）。
+  // 以 result 对象身份去重，避免状态刷新导致重复保存。
+  useEffect(() => {
+    if (status !== 'success' || result === null) {
+      return
+    }
+    if (savedResultRef.current === result) {
+      return
+    }
+    savedResultRef.current = result
+    const entry: HistoryEntry = {
+      id: createId(),
+      prompt: params.prompt.trim(),
+      model,
+      params: { ...params },
+      imageUrls: result.images.map((image) => image.url),
+      elapsedMs,
+      createdAt: Date.now(),
+    }
+    saveEntry(entry)
+  }, [status, result, params, model, elapsedMs, saveEntry])
 
   useEffect(() => {
     let cancelled = false
@@ -117,6 +155,16 @@ export function MediaStudio() {
 
           <div className='rounded-2xl border border-border bg-card p-4'>
             <DebugPanel requestBody={requestBody} rawResponse={rawResponse} />
+          </div>
+
+          <div className='rounded-2xl border border-border bg-card p-4'>
+            <HistoryList
+              entries={historyEntries}
+              loading={historyLoading}
+              storageAvailable={historyStorageAvailable}
+              onDelete={removeEntry}
+              onClear={clearEntries}
+            />
           </div>
         </div>
       </div>

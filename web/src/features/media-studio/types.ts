@@ -39,3 +39,18 @@ export interface GenerationResult {
 }
 
 export type GenerationStatus = 'idle' | 'generating' | 'success' | 'error'
+
+/**
+ * 本地历史条目：生成成功后持久化到浏览器 IndexedDB。
+ * imageUrls 是自包含的 data URL（上游 b64_json 转换而来）或 http(s) URL，
+ * 不依赖任何服务端存储，跨会话、清缓存前均可还原。
+ */
+export interface HistoryEntry {
+  id: string
+  prompt: string
+  model: string
+  params: StudioParams
+  imageUrls: string[]
+  elapsedMs: number
+  createdAt: number
+}
