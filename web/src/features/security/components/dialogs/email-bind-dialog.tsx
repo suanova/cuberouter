@@ -25,9 +25,8 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { sendEmailVerification, bindEmail } from '@/features/profile/api'
 import { useCountdown } from '@/hooks/use-countdown'
-
-import { sendEmailVerification, bindEmail } from '../../api'
 
 // ============================================================================
 // Email Bind Dialog Component
@@ -76,7 +75,7 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to send verification code'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to send verification code'))
     } finally {
       setSendingCode(false)
@@ -104,7 +103,7 @@ export function EmailBindDialog({
       } else {
         toast.error(response.message || t('Failed to bind email'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to bind email'))
     } finally {
       setLoading(false)
@@ -122,6 +121,10 @@ export function EmailBindDialog({
       }
     }
   }
+
+  let sendLabel = t('Send')
+  if (sendingCode) sendLabel = t('Sending...')
+  if (isActive) sendLabel = `${secondsLeft}s`
 
   return (
     <Dialog
@@ -189,11 +192,7 @@ export function EmailBindDialog({
               onClick={handleSendCode}
               disabled={sendingCode || isActive || !email}
             >
-              {isActive
-                ? `${secondsLeft}s`
-                : sendingCode
-                  ? t('Sending...')
-                  : t('Send')}
+              {sendLabel}
             </Button>
           </div>
         </div>

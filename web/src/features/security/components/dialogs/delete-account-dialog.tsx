@@ -28,9 +28,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { logout } from '@/features/auth/api'
+import { deleteUserAccount } from '@/features/profile/api'
 import { clearAuthentication } from '@/lib/api'
-
-import { deleteUserAccount } from '../../api'
 
 // ============================================================================
 // Delete Account Dialog Component

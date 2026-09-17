@@ -42,14 +42,14 @@ import {
 } from '@/components/ui/empty'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
-import { clearAuthenticatedClientState } from '@/lib/api'
-import type { LoginSession } from '@/stores/auth-store'
-
 import {
   getLoginSessions,
   revokeLoginSession,
   revokeOtherLoginSessions,
-} from '../api'
+} from '@/features/profile/api'
+import { clearAuthenticatedClientState } from '@/lib/api'
+import type { LoginSession } from '@/stores/auth-store'
+
 import { LoginSessionDialogs } from './login-session-dialogs'
 import { LoginSessionItem } from './login-session-item'
 

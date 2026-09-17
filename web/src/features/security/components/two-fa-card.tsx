@@ -32,7 +32,7 @@ import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useDialogs } from '@/hooks/use-dialog'
 
-import { useTwoFA } from '../hooks'
+import { useTwoFA } from '../hooks/use-two-fa'
 import { TwoFABackupDialog } from './dialogs/two-fa-backup-dialog'
 import { TwoFADisableDialog } from './dialogs/two-fa-disable-dialog'
 import { TwoFASetupDialog } from './dialogs/two-fa-setup-dialog'

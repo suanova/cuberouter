@@ -26,6 +26,13 @@ var auditContentTemplates = map[string]string{
 	"user.binding_clear":    "Cleared ${bindingType} binding for user ${username}",
 	"user.2fa_disable":      "Force-disabled two-factor authentication for the user",
 	"user.passkey_register": "Registered a passkey",
+	"access_token.generate": "Generated a system access token",
+	"access_token.revoke":   "Revoked the system access token",
+	"user.2fa_setup":        "Started two-factor authentication setup",
+	"user.2fa_enable":       "Enabled two-factor authentication",
+	"user.2fa_disable_self": "Disabled two-factor authentication",
+	"user.2fa_backup_codes": "Regenerated two-factor backup codes",
+	"user.security_verify":  "Completed security verification",
 	"user.passkey_delete":   "Deleted a passkey",
 	"user.reset_passkey":    "Reset the user passkey",
 	"option.update":         "Updated system setting ${key}",
@@ -66,12 +73,12 @@ func auditContentEN(action string, params map[string]interface{}) string {
 }
 
 // auditOperatorInfo 从上下文构建操作者身份信息（管理员 id/用户名/角色）。
-func auditOperatorInfo(c *gin.Context) map[string]interface{} {
-	return map[string]interface{}{
-		"admin_id":       c.GetInt("id"),
-		"admin_username": c.GetString("username"),
-		"admin_role":     c.GetInt("role"),
-		"auth_method":    auditAuthMethod(c),
+func auditOperatorInfo(c *gin.Context) *model.AuditAdminInfo {
+	return &model.AuditAdminInfo{
+		AdminID:       c.GetInt("id"),
+		AdminUsername: c.GetString("username"),
+		AdminRole:     c.GetInt("role"),
+		AuthMethod:    auditAuthMethod(c),
 	}
 }
 
@@ -104,12 +111,12 @@ func recordManageAuditFor(c *gin.Context, targetUserId int, action string, param
 	if _, ok := params["target_user_id"]; !ok && targetUserId > 0 && targetUserId != operatorUserId {
 		params["target_user_id"] = targetUserId
 	}
-	model.RecordOperationAuditLog(operatorUserId, auditContentEN(action, params), c.ClientIP(), action, params, auditOperatorInfo(c), nil)
+	model.RecordOperationAuditLog(operatorUserId, c.GetInt("role"), auditContentEN(action, params), c.ClientIP(), action, params, auditOperatorInfo(c), nil, c)
 	markAuditLogged(c)
 }
 
 // recordUserSecurityAudit 记录普通用户自己的安全敏感操作（如 passkey 绑定/解绑）。
 // 这类日志没有管理员操作者，不写 admin_info；同时不依赖 AdminAuth/RootAuth 的兜底。
 func recordUserSecurityAudit(c *gin.Context, userId int, action string, params map[string]interface{}) {
-	model.RecordOperationAuditLog(userId, auditContentEN(action, params), c.ClientIP(), action, params, nil, nil)
+	model.RecordOperationAuditLog(userId, c.GetInt("role"), auditContentEN(action, params), c.ClientIP(), action, params, nil, nil, c)
 }

@@ -552,6 +552,12 @@ export const STATIC_I18N_KEYS = [
   'The model that was requested',
   'The upstream channel that served the requests',
 
+  // Channel status audit events
+  "View other accounts' audit logs",
+  'View audit records from user and admin roles. Root records are always excluded.',
+  'Updated channel status (ID: {{id}})',
+  'Batch updated channel status ({{count}}/{{total}} changed)',
+
   // Misc
   'Cancel',
   'Status',

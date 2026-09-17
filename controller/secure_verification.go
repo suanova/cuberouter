@@ -65,7 +65,7 @@ func UniversalVerify(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	model.RecordLog(identity.UserID, model.LogTypeSystem, "通用安全验证成功 (验证方式: 2FA)")
+	recordUserSecurityAudit(c, identity.UserID, "user.security_verify", map[string]interface{}{"method": "2fa"})
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "验证成功",
