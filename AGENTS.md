@@ -62,6 +62,15 @@ web/           — Frontend (React 19, Rsbuild, Base UI, Tailwind)
 - A separate function is appropriate when it represents reusable behavior, a required interface/framework callback, an exported API, a test fixture, or complex business logic that deserves direct tests.
 - If a single-use helper is kept, its name must describe a durable domain concept rather than a mechanical step extracted only to shorten the caller.
 
+**License header on new files:** Every newly added source file MUST begin with the project's AGPL license header, which MUST carry both copyright lines in this order:
+
+```
+Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
+```
+
+The `Copyright (C) 2026 CubeRouter` line is part of the protected project identity (see Project Governance) and MUST NOT be omitted from newly created files. Do NOT add it to pre-existing files when modifying them — new files only. For new web files, `bun run copyright` (from `web/`) applies this standard header.
+
 ### Backend Rules
 
 **relaykit module independence:** The `relaykit/` Go module MUST remain independently buildable.
