@@ -175,7 +175,7 @@ func RecordLog(userId int, logType int, content string) {
 }
 
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
-func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
+func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo *AuditAdminInfo, request ...*gin.Context) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
 	}
@@ -187,11 +187,25 @@ func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo m
 		Type:      logType,
 		Content:   content,
 	}
-	if len(adminInfo) > 0 {
-		other := map[string]interface{}{
-			"admin_info": adminInfo,
+	if logType == LogTypeManage {
+		var c *gin.Context
+		if len(request) > 0 {
+			c = request[0]
 		}
-		log.Other = common.MapToJsonStr(other)
+		actorRole := 0
+		if c != nil {
+			actorRole = c.GetInt("role")
+		}
+		RecordAuditLog(c, AuditLog{UserId: userId, Username: username, ActorRole: actorRole, Category: AuditCategoryOperation, Content: content, Other: AuditOther{AdminInfo: adminInfo}, Success: true})
+		return
+	}
+	if adminInfo != nil {
+		data, err := common.Marshal(AuditOther{AdminInfo: adminInfo})
+		if err != nil {
+			common.SysError("failed to encode log admin info: " + err.Error())
+			return
+		}
+		log.Other = string(data)
 	}
 	if err := createLog(log); err != nil {
 		common.SysLog("failed to record log: " + err.Error())
@@ -211,59 +225,46 @@ func buildOpField(action string, params map[string]interface{}) map[string]inter
 	return op
 }
 
-// RecordLoginLog 记录用户登录成功的审计日志（type=LogTypeLogin）。
+// RecordLoginLog writes new login events to the independent audit table.
 // username 由调用方传入（登录流程已持有用户对象），避免额外的数据库查询。
 // content 为英文兜底文本（用于导出）；action+params 供前端本地化渲染。
-// extra 可携带 login_method、user_agent 等附加信息（普通用户可见）。
-func RecordLoginLog(userId int, username string, content string, ip string, action string, params map[string]interface{}, extra map[string]interface{}) {
-	other := map[string]interface{}{}
-	for k, v := range extra {
-		other[k] = v
+// other 包含 login_method、user_agent 等结构化信息。
+func RecordLoginLog(userId, actorRole int, username string, content string, ip string, action string, params map[string]interface{}, other AuditOther, request ...*gin.Context) {
+	other.Op = &AuditOperation{Action: action, Params: params}
+	var c *gin.Context
+	if len(request) > 0 {
+		c = request[0]
 	}
-	other["op"] = buildOpField(action, params)
-	log := &Log{
-		UserId:    userId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeLogin,
-		Content:   content,
-		Ip:        ip,
-		Other:     common.MapToJsonStr(other),
-	}
-	if err := createLog(log); err != nil {
-		common.SysLog("failed to record login log: " + err.Error())
-	}
+	RecordAuditLog(c, AuditLog{UserId: userId, Username: username, ActorRole: actorRole, Category: AuditCategoryLogin, Action: action, Content: content, Ip: ip, Other: other, Success: true})
 }
 
-// RecordOperationAuditLog 记录管理/高危操作审计日志（type=LogTypeManage）。
+// RecordOperationAuditLog writes new operation/security events to the audit table.
 // logUserId 为日志归属者，管理审计日志应归属实际操作者；目标资源/用户放入
 // action params。username 内部按 logUserId 查询。content 为英文兜底文本（供导出使用）。
 // action+params 写入 Other.op，供前端本地化渲染（普通用户可见，不含敏感信息）。
 // adminInfo 存放操作者身份（写入 Other.admin_info，普通用户查询时剥离）；
 // auditInfo 存放路由/方法/结果等中间件兜底信息（写入 Other.audit_info，普通用户查询时剥离）。
-func RecordOperationAuditLog(logUserId int, content string, ip string, action string, params map[string]interface{}, adminInfo map[string]interface{}, auditInfo map[string]interface{}) {
+func RecordOperationAuditLog(logUserId, actorRole int, content string, ip string, action string, params map[string]interface{}, adminInfo *AuditAdminInfo, auditInfo *AuditRequestInfo, request ...*gin.Context) {
 	username, _ := GetUsernameById(logUserId, false)
-	other := map[string]interface{}{
-		"op": buildOpField(action, params),
+	other := AuditOther{
+		Op:        &AuditOperation{Action: action, Params: params},
+		AdminInfo: adminInfo,
+		AuditInfo: auditInfo,
 	}
-	if len(adminInfo) > 0 {
-		other["admin_info"] = adminInfo
+	var c *gin.Context
+	if len(request) > 0 {
+		c = request[0]
 	}
-	if len(auditInfo) > 0 {
-		other["audit_info"] = auditInfo
+	category := AuditCategoryOperation
+	if adminInfo == nil {
+		category = AuditCategorySecurity
 	}
-	log := &Log{
-		UserId:    logUserId,
-		Username:  username,
-		CreatedAt: common.GetTimestamp(),
-		Type:      LogTypeManage,
-		Content:   content,
-		Ip:        ip,
-		Other:     common.MapToJsonStr(other),
+	status, success := 200, true
+	if auditInfo != nil {
+		status = auditInfo.Status
+		success = auditInfo.Success
 	}
-	if err := createLog(log); err != nil {
-		common.SysLog("failed to record operation audit log: " + err.Error())
-	}
+	RecordAuditLog(c, AuditLog{UserId: logUserId, Username: username, ActorRole: actorRole, Category: category, Action: action, Content: content, Ip: ip, Status: status, Success: success, Other: other})
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {

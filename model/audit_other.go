@@ -19,6 +19,17 @@ type AuditOther struct {
 	UserAgent   string            `json:"user_agent,omitempty"`
 }
 
+// logOtherVisibility selects which privileged metadata scopes an audit log
+// projection keeps: users see the event itself, admins keep operator details,
+// and only root keeps root_info.
+type logOtherVisibility int
+
+const (
+	logOtherVisibilityUser logOtherVisibility = iota
+	logOtherVisibilityAdmin
+	logOtherVisibilityRoot
+)
+
 type AuditOperation struct {
 	Action string      `json:"action"`
 	Params AuditFields `json:"params,omitempty"`

@@ -10,7 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 type ChatCompletionsToResponsesPolicy struct {
@@ -69,6 +68,20 @@ var defaultOpenaiSettings = GlobalSettings{
 
 // 全局实例
 var globalSettings = defaultOpenaiSettings
+
+// registeredModelLookup reports whether a name is a model the pricing
+// registry knows about. ratio_setting injects the real lookup in its package
+// init; a direct import would close the cycle
+// reasoning -> model_setting -> ratio_setting -> reasoning. Until then the
+// default treats every name as unregistered, which keeps ambiguous effort
+// tails (qwen3.8-max) verbatim.
+var registeredModelLookup = func(name string) bool { return false }
+
+// SetRegisteredModelLookup installs the pricing registry's registered-model
+// lookup; see registeredModelLookup.
+func SetRegisteredModelLookup(lookup func(name string) bool) {
+	registeredModelLookup = lookup
+}
 
 func init() {
 	// 注册到全局配置管理器
@@ -205,5 +218,5 @@ func ShouldPreserveEffortTail(modelName string) bool {
 	if !found {
 		return false
 	}
-	return !ratio_setting.IsRegisteredModel(base)
+	return !registeredModelLookup(base)
 }

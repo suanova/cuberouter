@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	hostreasoning "github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
@@ -402,6 +403,14 @@ func IsRegisteredModel(name string) bool {
 	}
 	_, ok := modelPriceMap.Get(name)
 	return ok
+}
+
+func init() {
+	// Inject the registry lookup into model_setting's ambiguous effort-tail
+	// disambiguation. model_setting cannot import this package directly: the
+	// reasoning shim depends on model_setting and this package depends on the
+	// shim, so a direct edge would close an import cycle.
+	model_setting.SetRegisteredModelLookup(IsRegisteredModel)
 }
 
 func DefaultModelRatio2JSONString() string {

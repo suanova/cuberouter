@@ -16,22 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  DEFAULT_QUOTA_WARNING_THRESHOLD,
-  NOTIFICATION_METHODS,
-} from '../constants'
+import { DEFAULT_QUOTA_WARNING_THRESHOLD } from '../constants'
 import type { NotifyType, UpdateUserSettingsRequest } from '../types'
-import { parseUserSettings } from './format'
+import { normalizeNotifyType, parseUserSettings } from './format'
 
 export function normalizeUserSettings(
   setting?: string
 ): Required<UpdateUserSettingsRequest> & { notify_type: NotifyType } {
   const parsed = parseUserSettings(setting)
-  const notifyType =
-    NOTIFICATION_METHODS.find((method) => method.value === parsed.notify_type)
-      ?.value ?? 'email'
   return {
-    notify_type: notifyType,
+    // Keep every notify_type the backend can persist, not just the ones the
+    // selector currently offers: the selector hides webhook/bark/gotify but a
+    // user who already stored one must not have it silently rewritten to email
+    // just because an unrelated setting was saved.
+    notify_type: normalizeNotifyType(parsed.notify_type),
     quota_warning_threshold:
       parsed.quota_warning_threshold ?? DEFAULT_QUOTA_WARNING_THRESHOLD,
     notification_email: parsed.notification_email ?? '',
