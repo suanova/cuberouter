@@ -5763,6 +5763,12 @@
     "text": "文字排版",
     "tools": "圖片工具",
     "unavailable": "暫未就緒",
-    "busy": "忙碌"
+    "busy": "忙碌",
+    "Image service is not connected": "圖片服務尚未連接",
+    "Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.": "可以先瀏覽模板及圖生圖設定。管理員連接圖片服務後，即可上載、生成及儲存作品。",
+    "Use basic image generation": "使用基本生圖",
+    "Back to image studio": "返回圖片工作室",
+    "Connect image service to generate": "連接圖片服務後即可生成",
+    "Not connected": "未連接"
   }
 }

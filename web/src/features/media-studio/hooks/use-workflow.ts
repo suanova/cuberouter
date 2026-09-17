@@ -26,7 +26,7 @@ import { isActiveJob } from '../lib/workflow'
 import { workflowAPI } from '../workflow-api'
 import type { WorkflowDraft } from '../workflow-types'
 
-export function useWorkflow() {
+export function useWorkflow(enabled = true) {
   const owner = useAuthStore((state) => state.auth.user?.id)
   const queryClient = useQueryClient()
   const key = ['media-studio', owner, 'jobs']
@@ -34,6 +34,7 @@ export function useWorkflow() {
   const history = useQuery({
     queryKey: key,
     queryFn: workflowAPI.jobs,
+    enabled,
     refetchInterval: (query) =>
       query.state.data?.some(isActiveJob) ? 3000 : 15000,
     retry: 1,
@@ -41,6 +42,7 @@ export function useWorkflow() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: key })
   const generation = useMutation({
     mutationFn: async (draft: WorkflowDraft) => {
+      if (!enabled) throw new Error('Image service is not connected')
       const prepared = await workflowAPI.prepare(draft)
       setSelectedId(prepared.job.id)
       void refresh()
@@ -51,10 +53,13 @@ export function useWorkflow() {
     onSettled: refresh,
   })
   const deletion = useMutation({
-    mutationFn: workflowAPI.remove,
+    mutationFn: async (id: string) => {
+      if (!enabled) throw new Error('Image service is not connected')
+      return workflowAPI.remove(id)
+    },
     onSuccess: refresh,
   })
-  const jobs = history.data ?? []
+  const jobs = enabled ? (history.data ?? []) : []
   const selected = jobs.find((job) => job.id === selectedId) ?? jobs[0]
   return {
     history,

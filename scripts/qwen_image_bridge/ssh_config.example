@@ -1,0 +1,11 @@
+# Copy to .media-studio/ssh/config; supply your own authorized key and trusted known_hosts.
+Host workflow
+    HostName 165.154.125.162
+    User ubuntu
+
+Host *
+    IdentityFile /tmp/studio-ssh/id_ed25519
+    UserKnownHostsFile /tmp/studio-ssh/known_hosts
+    IdentitiesOnly yes
+    StrictHostKeyChecking yes
+    ConnectTimeout 15

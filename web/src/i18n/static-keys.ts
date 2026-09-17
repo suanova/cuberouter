@@ -807,4 +807,10 @@ export const STATIC_I18N_KEYS = [
   'unavailable',
   '{{count}} image',
   '{{count}} image · {{steps}} steps · elapsed {{time}}',
+  'Image service is not connected',
+  'Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.',
+  'Use basic image generation',
+  'Back to image studio',
+  'Connect image service to generate',
+  'Not connected',
 ] as const

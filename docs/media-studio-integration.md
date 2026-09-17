@@ -1,6 +1,12 @@
 # Media Studio integration runbook
 
-Updated 2026-09-17. Local branch `codex/image-studio-integration`, based on `origin/media-studio` / PR #96. This document describes the running development integration, not a production deployment or published PR.
+Updated 2026-09-17. Branch `codex/image-studio-integration`, based on `origin/media-studio` / PR #96, published as [Draft PR #99](https://github.com/suanova/cuberouter/pull/99). This document describes the development integration, not a production deployment.
+
+## Reviewer quick start
+
+A normal build now shows the new gallery and image-to-image settings even without a worker. Missing configuration is shown explicitly; uploads, generation and history remain disabled until connected. Basic image generation is an explicit user choice, not a silent fallback. The initial PR commit `6c61d31b` silently showed the old UI without configuration, so reviewers must rebuild the updated PR head.
+
+For a connected test, use [the packaged Docker Compose setup](../scripts/qwen_image_bridge/README.md#reproduce-the-connected-review-stack). It builds CubeRouter, starts the private Python adapter, optionally creates a verified SSH tunnel to the existing .162 worker, and stores review data in separate named volumes. Configure the two image channels/pricing after normal first-run setup. It does not reuse the author's local database or credentials, and does not install GPU models.
 
 ## User flow
 
@@ -43,7 +49,7 @@ No additional GPU model was loaded. The private gateway/tools are CPU-only and c
 | Item | Location |
 | --- | --- |
 | Native UI, forms, editor and gallery | `web/src/features/media-studio/` |
-| Generated gallery examples | `web/public/media-studio/templates/` |
+| Generated gallery examples | `web/public/studio-templates/` |
 | Authenticated API / relay wrapper | `controller/media_studio.go`, `service/media_studio.go`, routers |
 | Account adapter | `scripts/qwen_image_bridge/bridge.py`, `studio.py` |
 | Local account files | `D:\suanova\local\cuberouter-dev\data\media-studio\{userId}\` |
@@ -79,7 +85,7 @@ Completed GPU jobs retain their CubeRouter request ID for Usage Logs; private st
 & D:\suanova\local\cuberouter-dev\start-detached.ps1 -ImageBridgeOnly
 ```
 
-These external scripts launch hidden processes and record PIDs/logs outside Git; no Windows service or scheduled task is created. The adapter README lists portable environment/channel settings. Point the tunnel at the private gateway. Remove `MEDIA_STUDIO_BRIDGE_URL` and restart Go to restore the basic PR #96 UI, preserving account media. Restart only after active work finishes; interrupted jobs are not replayed.
+These external scripts launch hidden processes and record PIDs/logs outside Git; no Windows service or scheduled task is created. Reviewers should use the packaged Compose setup above. Point the tunnel at the private gateway. Removing `MEDIA_STUDIO_BRIDGE_URL` disables the workflow connection and leaves the new UI visible with an explicit basic-generation option, preserving account media. Restart only after active work finishes; interrupted jobs are not replayed.
 
 ## Production prerequisites
 

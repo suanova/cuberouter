@@ -39,7 +39,11 @@ import type {
   WorkflowJob,
 } from './workflow-types'
 
-export function WorkflowStudio(props: { config: WorkflowConfig }) {
+export function WorkflowStudio(props: {
+  config: WorkflowConfig
+  onBasic?: () => void
+  onReconnect?: () => void
+}) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<WorkflowDraft>({ ...initialDraft })
   const [references, setReferences] = useState<StudioAsset[]>([])
@@ -51,9 +55,11 @@ export function WorkflowStudio(props: { config: WorkflowConfig }) {
     asset: StudioAsset
     parent?: WorkflowJob
   }>()
-  const workflow = useWorkflow()
+  const connected = props.config.enabled !== false
+  const workflow = useWorkflow(connected)
   const upload = useMutation({
     mutationFn: async (files: File[]) => {
+      if (!connected) throw new Error('Image service is not connected')
       if (files.length + draft.references.length > 3) {
         throw new Error('Choose at most three reference images.')
       }
@@ -113,6 +119,33 @@ export function WorkflowStudio(props: { config: WorkflowConfig }) {
             ))}
           </div>
         </header>
+        {!connected && (
+          <section
+            className='bg-muted/50 space-y-3 rounded-xl border p-4'
+            aria-label={t('Image service is not connected')}
+          >
+            <p role='status' className='text-sm font-medium'>
+              {t('Image service is not connected')}
+            </p>
+            <p className='text-muted-foreground text-sm'>
+              {t(
+                'Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.'
+              )}
+            </p>
+            <div className='flex flex-wrap gap-2'>
+              {props.onReconnect && (
+                <Button size='sm' variant='outline' onClick={props.onReconnect}>
+                  {t('Reconnect')}
+                </Button>
+              )}
+              {props.onBasic && (
+                <Button size='sm' variant='outline' onClick={props.onBasic}>
+                  {t('Use basic image generation')}
+                </Button>
+              )}
+            </div>
+          </section>
+        )}
         <div className='grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)] xl:grid-cols-[370px_minmax(0,1fr)]'>
           <aside className='bg-card rounded-2xl border p-4 xl:p-5'>
             <WorkflowComposer
@@ -170,6 +203,7 @@ export function WorkflowStudio(props: { config: WorkflowConfig }) {
                   variant={view === item.id ? 'secondary' : 'ghost'}
                   size='sm'
                   aria-pressed={view === item.id}
+                  disabled={!connected && item.id === 'history'}
                   onClick={() => setView(item.id)}
                 >
                   <item.icon className='size-4' />
@@ -230,12 +264,14 @@ export function WorkflowStudio(props: { config: WorkflowConfig }) {
                 onDelete={(id) => workflow.deletion.mutate(id)}
               />
             )}
-            <p className='text-muted-foreground border-t pt-4 text-[11px] leading-relaxed'>
-              {t(
-                'Your uploads and saved versions belong to your account. Studio copies expire after {{days}} days.',
-                { days: props.config.retention_days }
-              )}
-            </p>
+            {connected && (
+              <p className='text-muted-foreground border-t pt-4 text-[11px] leading-relaxed'>
+                {t(
+                  'Your uploads and saved versions belong to your account. Studio copies expire after {{days}} days.',
+                  { days: props.config.retention_days }
+                )}
+              </p>
+            )}
           </main>
         </div>
       </div>
