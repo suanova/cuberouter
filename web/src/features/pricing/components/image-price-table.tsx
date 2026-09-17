@@ -23,6 +23,7 @@ import { useBillingCurrency } from '@/lib/currency'
 import { cn } from '@/lib/utils'
 
 import { formatVideoPriceMoney } from '../lib/video-price'
+import { imagePriceTierLabelKey } from '../lib/image-price'
 import type { ImagePriceTable } from '../types'
 
 export interface ImagePriceTableProps {
@@ -36,8 +37,9 @@ const headerCellClass =
 
 /**
  * Per-image price table for a model, showing the stored USD/image values
- * converted to the site display currency (symbol in the header). Renders
- * nothing when the table has no rows.
+ * converted to the site display currency (symbol in the header). Rows are
+ * the fixed quality tiers (Fast/Standard/High). Renders nothing when the
+ * table has no rows.
  */
 export function ImagePriceTable(props: ImagePriceTableProps) {
   const { t } = useTranslation()
@@ -54,14 +56,17 @@ export function ImagePriceTable(props: ImagePriceTableProps) {
       tableClassName={props.tableClassName ?? 'text-sm'}
       headerRowClassName='hover:bg-transparent'
       data={rows}
-      getRowKey={(row, index) => row.resolution || `row-${index}`}
+      getRowKey={(row, index) => row.tier || `row-${index}`}
       columns={[
         {
-          id: 'resolution',
-          header: t('Resolution'),
+          id: 'tier',
+          header: t('Quality'),
           className: headerCellClass,
           cellClassName: 'py-2 font-medium',
-          cell: (row) => row.resolution,
+          cell: (row) => {
+            const labelKey = imagePriceTierLabelKey(row.tier)
+            return labelKey ? t(labelKey) : row.tier
+          },
         },
         {
           id: 'price',

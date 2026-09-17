@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { nanoid } from 'nanoid'
 
+import { IMAGE_PRICE_TIER_OPTIONS } from '@/features/pricing/lib/image-price'
 import type { ImagePriceTable } from '@/features/pricing/types'
 import { localToUsdNumber, usdToLocalNumber } from '@/lib/currency'
 
@@ -27,25 +28,27 @@ import { formatPricingNumber, rebaseDisplayPriceDraft } from './pricing-format'
  * 图片价格草稿的货币换算边界(与视频价格草稿同口径):
  * - 加载(表 → 草稿):内部 USD/张 → 显示货币字符串(×rate 入口,formatPricingNumber 归整);
  * - 提交(草稿 → 表):显示货币数值 → USD/张(÷rate 出口)。
+ *
+ * 档位固定为 fast/standard/high 三行(IMAGE_PRICE_TIER_OPTIONS 顺序),
+ * 不可增删;价格为空的档位视为未定价,不进入载荷(后端按锚点计费)。
  */
 export type ImagePriceRowDraft = {
   id: string
-  resolution: string
+  tier: (typeof IMAGE_PRICE_TIER_OPTIONS)[number]['tier']
   price: string
-}
-
-export function createImagePriceRowDraft(): ImagePriceRowDraft {
-  return { id: nanoid(), resolution: '', price: '' }
 }
 
 export function imagePriceDraftsFromTable(
   table: ImagePriceTable
 ): ImagePriceRowDraft[] {
-  return table.rows.map((row) => ({
-    id: nanoid(),
-    resolution: row.resolution,
-    price: formatPricingNumber(usdToLocalNumber(row.price)),
-  }))
+  return IMAGE_PRICE_TIER_OPTIONS.map((option) => {
+    const row = table.rows.find((entry) => entry.tier === option.tier)
+    return {
+      id: nanoid(),
+      tier: option.tier,
+      price: row ? formatPricingNumber(usdToLocalNumber(row.price)) : '',
+    }
+  })
 }
 
 function parsePriceDraft(value: string): number {
@@ -57,8 +60,9 @@ function parsePriceDraft(value: string): number {
 }
 
 /**
- * Emits the table payload for a set of drafts. Fully empty rows are dropped;
- * partially filled rows are kept as-is so backend validation rejects them.
+ * Emits the table payload for the fixed tier drafts. Tiers with an empty
+ * price are dropped (unpriced tiers bill at the anchor); an explicit "0"
+ * is kept as-is so backend validation rejects it.
  * Draft numbers are display currency and come back out as USD per image.
  */
 export function imagePriceTableFromDrafts(
@@ -66,11 +70,9 @@ export function imagePriceTableFromDrafts(
 ): ImagePriceTable {
   return {
     rows: drafts
-      .filter(
-        (draft) => draft.resolution.trim() !== '' || draft.price.trim() !== ''
-      )
+      .filter((draft) => draft.price.trim() !== '')
       .map((draft) => ({
-        resolution: draft.resolution.trim(),
+        tier: draft.tier,
         price: parsePriceDraft(draft.price),
       })),
   }
@@ -78,7 +80,7 @@ export function imagePriceTableFromDrafts(
 
 /**
  * 汇率变化时 rebase 整张草稿表:每行价格串保持其底层 USD 意图换算到新汇率
- * (resolution 不动;空/未完成录入原样保留)。
+ * (档位固定不动;空/未完成录入原样保留)。
  */
 export function rebaseImagePriceDrafts(
   drafts: ImagePriceRowDraft[],
@@ -90,19 +92,6 @@ export function rebaseImagePriceDrafts(
     ...draft,
     price: rebaseDisplayPriceDraft(draft.price, fromRate, toRate),
   }))
-}
-
-export function addImagePriceRowDraft(
-  drafts: ImagePriceRowDraft[]
-): ImagePriceRowDraft[] {
-  return [...drafts, createImagePriceRowDraft()]
-}
-
-export function removeImagePriceRowDraft(
-  drafts: ImagePriceRowDraft[],
-  index: number
-): ImagePriceRowDraft[] {
-  return drafts.filter((_, i) => i !== index)
 }
 
 export function updateImagePriceRowDraft(

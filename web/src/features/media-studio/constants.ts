@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { AspectRatio, StudioParams } from './types'
+import type { AspectRatio, Quality, StudioParams } from './types'
 
 export const API_ENDPOINTS = {
   IMAGES_GENERATIONS: '/pg/images/generations',
@@ -52,23 +52,32 @@ export const ASPECT_RATIO_ORDER: AspectRatio[] = [
 
 export const COUNT_OPTIONS = [1, 2, 3, 4] as const
 
+/** 画质档位 → 推理步数（请求体字段 num_inference_steps）。 */
+export const QUALITY_OPTIONS = [
+  { id: 'fast', labelKey: 'Fast', steps: 20 },
+  { id: 'standard', labelKey: 'Standard', steps: 30 },
+  { id: 'high', labelKey: 'High', steps: 50 },
+] as const
+
+export function qualitySteps(quality: Quality): number {
+  const option = QUALITY_OPTIONS.find((entry) => entry.id === quality)
+  if (!option) {
+    return QUALITY_OPTIONS[1].steps
+  }
+  return option.steps
+}
+
 export const LIMITS = {
   promptMax: 16000,
-  stepsMin: 1,
-  stepsMax: 100,
-  seedMin: 0,
-  seedMax: 2147483647,
-  cfgMin: 0,
-  cfgMax: 10,
 } as const
 
 export const DEFAULT_PARAMS: StudioParams = {
   prompt: '',
   ratio: '16:9',
   count: 1,
-  steps: 40,
+  quality: 'standard',
   seed: 42,
-  cfg: 1,
+  cfg: 4,
 }
 
 // 同步生成阻塞 40 秒 ~ 5 分钟，超时放宽到 10 分钟

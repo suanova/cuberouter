@@ -22,7 +22,7 @@ import { ImageIcon } from 'lucide-react'
 
 import { Spinner } from '@/components/ui/spinner'
 
-import { ASPECT_RATIOS } from '../constants'
+import { ASPECT_RATIOS, qualitySteps } from '../constants'
 import type { GenerationErrorInfo } from '../lib/errors'
 import type { GenerationResult, GenerationStatus, StudioParams } from '../types'
 import { ResultGallery } from './result-gallery'
@@ -84,7 +84,7 @@ export function PreviewPanel({
         <p className='text-xs text-muted-foreground'>
           {t('{{count}} image · {{steps}} steps · elapsed {{time}}', {
             count: result.images.length,
-            steps: params.steps,
+            steps: qualitySteps(params.quality),
             time: formatElapsed(elapsedMs),
           })}
         </p>

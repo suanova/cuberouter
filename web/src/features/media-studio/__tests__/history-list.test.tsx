@@ -33,7 +33,7 @@ function makeEntry(
     prompt,
     ratio: '1:1',
     count,
-    steps: 40,
+    quality: 'standard',
     seed: 42,
     cfg: 1,
   }

@@ -40,7 +40,7 @@ const params: StudioParams = {
   prompt: 'a cat',
   ratio: '1:1',
   count: 1,
-  steps: 40,
+  quality: 'standard',
   seed: 42,
   cfg: 1,
 }

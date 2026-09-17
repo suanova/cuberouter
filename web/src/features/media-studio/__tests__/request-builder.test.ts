@@ -20,7 +20,7 @@ import { describe, expect, test } from 'vitest'
 
 import { ASPECT_RATIOS, ASPECT_RATIO_ORDER, DEFAULT_PARAMS } from '../constants'
 import { buildGenerationRequest } from '../lib/request-builder'
-import type { StudioParams } from '../types'
+import type { Quality, StudioParams } from '../types'
 
 const TEST_MODEL = 'qwen-image-2512'
 
@@ -30,7 +30,7 @@ describe('buildGenerationRequest', () => {
       prompt: '  night cafe  ',
       ratio: '3:2',
       count: 4,
-      steps: 30,
+      quality: 'standard',
       seed: 1234,
       cfg: 2.5,
     }
@@ -43,6 +43,7 @@ describe('buildGenerationRequest', () => {
       seed: 1234,
       num_inference_steps: 30,
       true_cfg_scale: 2.5,
+      quality: 'standard',
     })
   })
 
@@ -81,5 +82,31 @@ describe('buildGenerationRequest', () => {
     )
 
     expect(body.model).toBe('other-image-model')
+  })
+
+  test('maps each quality tier to its step count', () => {
+    const cases: Array<{ quality: Quality; steps: number }> = [
+      { quality: 'fast', steps: 20 },
+      { quality: 'standard', steps: 30 },
+      { quality: 'high', steps: 50 },
+    ]
+    for (const { quality, steps } of cases) {
+      const body = buildGenerationRequest(
+        { ...DEFAULT_PARAMS, prompt: 'p', quality },
+        TEST_MODEL,
+      )
+
+      expect(body.num_inference_steps).toBe(steps)
+      expect(body.quality).toBe(quality)
+    }
+  })
+
+  test('sends true_cfg_scale 4 by default', () => {
+    const body = buildGenerationRequest(
+      { ...DEFAULT_PARAMS, prompt: 'p' },
+      TEST_MODEL,
+    )
+
+    expect(body.true_cfg_scale).toBe(4)
   })
 })

@@ -57,6 +57,11 @@ beforeAll(() => {
       'Cost in {{symbol}} per request, regardless of tokens used.',
     'per request': 'per request',
     'Image per image': 'Image per image',
+    'Image price ({{symbol}}/image)': 'Image price ({{symbol}}/image)',
+    Quality: 'Quality',
+    Fast: 'Fast',
+    Standard: 'Standard',
+    High: 'High',
   })
 })
 
@@ -151,7 +156,7 @@ describe('model pricing sheet image tab', () => {
           ratio: '',
           billingMode: 'image-per-image',
           imagePrices: {
-            rows: [{ resolution: '1024x1024', price: 0.0625 }],
+            rows: [{ tier: 'fast', price: 0.0625 }],
           },
         }}
       />
@@ -169,7 +174,7 @@ describe('model pricing sheet image tab', () => {
     const data = await act(async () => ref.current?.commitDraft())
     expect(data?.billingMode).toBe('image-per-image')
     expect(data?.imagePrices).toEqual({
-      rows: [{ resolution: '1024x1024', price: 0.0625 }],
+      rows: [{ tier: 'fast', price: 0.0625 }],
     })
   })
 })

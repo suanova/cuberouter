@@ -18,11 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 export type AspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
 
+/** 画质档位：映射到 num_inference_steps（见 QUALITY_OPTIONS）。 */
+export type Quality = 'fast' | 'standard' | 'high'
+
 export interface StudioParams {
   prompt: string
   ratio: AspectRatio
   count: number
-  steps: number
+  quality: Quality
   seed: number
   cfg: number
 }
