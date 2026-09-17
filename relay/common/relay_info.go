@@ -497,9 +497,10 @@ func reasoningEffortFromRequest(request dto.Request) string {
 		}
 	case *dto.GeminiChatRequest:
 		if req != nil && req.GenerationConfig.ThinkingConfig != nil {
-			intent, err := kitreasoning.FromGemini(req)
-			if err == nil {
-				effort = string(kitreasoning.EffectiveEffort(intent))
+			config := req.GenerationConfig.ThinkingConfig
+			effort = config.ThinkingLevel
+			if effort == "" && config.ThinkingBudget != nil {
+				effort = string(kitreasoning.EffortFromBudget(*config.ThinkingBudget))
 			}
 		}
 	}

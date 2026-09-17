@@ -35,14 +35,19 @@ func ApplyReasoning(ctx context.Context, req *dto.ClaudeRequest, info convmeta.M
 	// accounting metadata, but do not run the capability renderer or rewrite
 	// provider-native controls.
 	if !crossProtocol && source.IsEmpty() && suffix.IsEmpty() {
-		native, err := reasoning.FromClaude(req)
-		if err != nil {
-			return err
-		}
 		if info != nil {
-			if effort := reasoning.EffectiveEffort(native); effort != "" {
-				info.SetReasoningEffort(string(effort))
+			effort := req.GetEfforts()
+			if effort == "" && req.Thinking != nil {
+				switch {
+				case req.Thinking.Type == "disabled":
+					effort = string(reasoning.EffortNone)
+				case req.Thinking.BudgetTokens != nil:
+					effort = string(reasoning.EffortFromBudget(*req.Thinking.BudgetTokens))
+				case req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive":
+					effort = string(reasoning.EffortHigh)
+				}
 			}
+			info.SetReasoningEffort(effort)
 		}
 		return nil
 	}

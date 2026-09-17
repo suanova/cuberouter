@@ -249,6 +249,18 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeAzure {
 		request.StreamOptions = nil
 	}
+	// Nested reasoning is an OpenRouter-compatible input dialect and needs
+	// projection even without a protocol conversion hop. Native top-level
+	// reasoning_effort stays untouched unless a modifier or conversion applies.
+	// OpenRouter retains its own dialect normalization below.
+	preserveSuffix := model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) || model_setting.ShouldPreserveThinkingSuffix(info.UpstreamModelName)
+	upstreamEffort, _ := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.UpstreamModelName)
+	originEffort, _ := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.OriginModelName)
+	renderReasoning := len(request.Reasoning) > 0 || len(info.RequestConversionChain) > 1 || request.ReasoningConversion != nil || info.ReasoningState() != nil ||
+		!preserveSuffix && (upstreamEffort != "" || originEffort != "")
+	if info.ChannelType != constant.ChannelTypeOpenRouter && !renderReasoning {
+		info.SetReasoningEffort(request.ReasoningEffort)
+	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
 		initialIntent, err := kitreasoning.FromOpenAIChat(request)
 		if err != nil {
@@ -273,7 +285,6 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			request.Usage = json.RawMessage(`{"include":true}`)
 		}
 		// 合并 effort 尾巴产生的意图
-		preserveSuffix := model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) || model_setting.ShouldPreserveThinkingSuffix(info.UpstreamModelName)
 		mergeEffortSuffix := func(modelName string) error {
 			rawEffort, _ := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(modelName)
 			if rawEffort == "" {
@@ -374,8 +385,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 
-	if info.ChannelType != constant.ChannelTypeOpenRouter {
-		preserveSuffix := model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) || model_setting.ShouldPreserveThinkingSuffix(info.UpstreamModelName)
+	if info.ChannelType != constant.ChannelTypeOpenRouter && renderReasoning {
 		effort, baseModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.UpstreamModelName)
 		if preserveSuffix {
 			effort = ""
@@ -412,7 +422,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			info.UpstreamModelName = baseModel
 			request.Model = baseModel
 		}
-		if canonicalEffort := kitreasoning.OpenAIEffort(kitreasoning.EffectiveEffort(currentIntent)); canonicalEffort != "" {
+		if canonicalEffort := kitreasoning.EffectiveEffort(currentIntent); canonicalEffort != "" {
 			request.ReasoningEffort = string(canonicalEffort)
 			info.SetReasoningEffort(string(canonicalEffort))
 		}
@@ -666,6 +676,21 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if preserveSuffix {
 		effort = ""
 	}
+	originEffort := ""
+	if info != nil && !preserveSuffix {
+		originEffort, _ = reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.OriginModelName)
+	}
+	crossProtocol := info != nil && len(info.RequestConversionChain) > 1
+	if (info == nil || info.ChannelType != constant.ChannelTypeOpenRouter) && !crossProtocol && effort == "" && originEffort == "" && request.ReasoningConversion == nil && info.ReasoningState() == nil {
+		if info != nil {
+			rawEffort := ""
+			if request.Reasoning != nil {
+				rawEffort = request.Reasoning.Effort
+			}
+			info.SetReasoningEffort(rawEffort)
+		}
+		return request, nil
+	}
 	currentIntent, err := kitreasoning.FromOpenAIResponses(&request)
 	if err != nil {
 		return nil, kitreasoning.AsClientError(err)
@@ -700,7 +725,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 			info.UpstreamModelName = originModel
 		}
 	}
-	if canonicalEffort := kitreasoning.OpenAIEffort(kitreasoning.EffectiveEffort(currentIntent)); canonicalEffort != "" {
+	if canonicalEffort := kitreasoning.EffectiveEffort(currentIntent); canonicalEffort != "" {
 		if request.Reasoning == nil {
 			request.Reasoning = &dto.Reasoning{}
 		}
