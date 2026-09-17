@@ -16,13 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ASPECT_RATIOS } from '../constants'
-import type { StudioParams } from '../types'
+import { ASPECT_RATIOS, qualitySteps } from '../constants'
+import type { Quality, StudioParams } from '../types'
 
 /**
  * 请求体契约（与渠道侧约定）：
  * - model: 页面选中的图片模型
  * - size: 像素尺寸 "WxH"（如 "1328x1328"），由选中比例映射为机器原生分辨率
+ * - quality: 画质档位（fast/standard/high），按张计费价目表的计价档位
  * - seed / num_inference_steps / true_cfg_scale: 机器原生扩展字段
  */
 export interface GenerationRequestBody {
@@ -33,6 +34,7 @@ export interface GenerationRequestBody {
   seed: number
   num_inference_steps: number
   true_cfg_scale: number
+  quality: Quality
 }
 
 export function buildGenerationRequest(
@@ -46,7 +48,8 @@ export function buildGenerationRequest(
     n: params.count,
     size: `${width}x${height}`,
     seed: params.seed,
-    num_inference_steps: params.steps,
+    num_inference_steps: qualitySteps(params.quality),
     true_cfg_scale: params.cfg,
+    quality: params.quality,
   }
 }

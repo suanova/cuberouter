@@ -31,7 +31,7 @@ const params: StudioParams = {
   prompt: 'a lighthouse',
   ratio: '16:9',
   count: 2,
-  steps: 40,
+  quality: 'standard',
   seed: 42,
   cfg: 1,
 }

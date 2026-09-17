@@ -363,8 +363,8 @@ func TestPricingImagePricesPopulatedFromImagePriceOption(t *testing.T) {
 	require.NoError(t, UpdateOption("ImagePrice", `{
 		"img-pro": {
 			"rows": [
-				{"resolution": "1024x1024", "price": 0.02},
-				{"resolution": "1328x1328", "price": 0.04}
+				{"tier": "fast", "price": 0.02},
+				{"tier": "high", "price": 0.04}
 			]
 		}
 	}`))
@@ -386,9 +386,9 @@ func TestPricingImagePricesPopulatedFromImagePriceOption(t *testing.T) {
 
 	require.NotNil(t, pro.ImagePrices)
 	require.Len(t, pro.ImagePrices.Rows, 2)
-	assert.Equal(t, "1024x1024", pro.ImagePrices.Rows[0].Resolution)
+	assert.Equal(t, "fast", pro.ImagePrices.Rows[0].Tier)
 	assert.Equal(t, 0.02, pro.ImagePrices.Rows[0].Price)
-	assert.Equal(t, "1328x1328", pro.ImagePrices.Rows[1].Resolution)
+	assert.Equal(t, "high", pro.ImagePrices.Rows[1].Tier)
 	assert.Equal(t, 0.04, pro.ImagePrices.Rows[1].Price)
 
 	assert.Nil(t, turbo.ImagePrices, "unconfigured model must not expose image_prices")

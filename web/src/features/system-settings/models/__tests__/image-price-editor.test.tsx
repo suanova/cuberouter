@@ -44,13 +44,17 @@ function setDisplay(type: CurrencyDisplayType, rate: number): void {
   }))
 }
 
-const squareRow: ImagePriceTable = {
-  rows: [{ resolution: '1024x1024', price: 0.75 }],
+const fastRow: ImagePriceTable = {
+  rows: [{ tier: 'fast', price: 0.75 }],
 }
 
 beforeAll(() => {
   i18next.addResourceBundle('en', 'translation', {
     'Image price ({{symbol}}/image)': 'Image price ({{symbol}}/image)',
+    Quality: 'Quality',
+    Fast: 'Fast',
+    Standard: 'Standard',
+    High: 'High',
   })
 })
 
@@ -60,25 +64,60 @@ beforeEach(() => {
   }))
 })
 
+describe('image price editor fixed quality tiers', () => {
+  test('renders the three fixed tier rows with no add/remove controls', () => {
+    render(<ImagePriceEditor table={fastRow} onChange={vi.fn()} />)
+
+    expect(screen.getByText('Quality')).toBeInTheDocument()
+    expect(screen.getByText('Fast')).toBeInTheDocument()
+    expect(screen.getByText('Standard')).toBeInTheDocument()
+    expect(screen.getByText('High')).toBeInTheDocument()
+    // 固定档位:无添加/删除控件
+    expect(
+      screen.queryByRole('button', { name: 'Add resolution' })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
+    // 每行一个价格输入框
+    expect(screen.getAllByRole('textbox')).toHaveLength(3)
+  })
+
+  test('empty tier prices emit an empty table (unpriced tiers bill at anchor)', () => {
+    const onChange = vi.fn()
+    render(<ImagePriceEditor table={{ rows: [] }} onChange={onChange} />)
+
+    fireEvent.change(screen.getAllByRole('textbox')[1], {
+      target: { value: '2' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith({
+      rows: [{ tier: 'standard', price: 2 }],
+    })
+
+    fireEvent.change(screen.getAllByRole('textbox')[1], {
+      target: { value: '' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith({ rows: [] })
+  })
+})
+
 describe('image price editor display currency', () => {
   test('CNY mode:USD/张 表按汇率显示为 ¥ 草稿,表头与占位示例同随 ¥', () => {
     setDisplay('CNY', 7.3)
-    render(<ImagePriceEditor table={squareRow} onChange={vi.fn()} />)
+    render(<ImagePriceEditor table={fastRow} onChange={vi.fn()} />)
 
     // 加载边界:USD/张 0.75 → 草稿字符串 5.475(×7.3 后归整)
     expect(screen.getByDisplayValue('5.475')).toBeInTheDocument()
     expect(screen.getByText('Image price (¥/image)')).toBeInTheDocument()
 
-    // 空行的占位示例也按显示货币给出(0.02 USD 的本地示例)
+    // 空档行的占位示例也按显示货币给出(0.02 USD 的本地示例)
     const priceGroup = screen
       .getByDisplayValue('5.475')
       .parentElement as HTMLElement
     expect(within(priceGroup).getByText('¥')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('0.146')).toBeInTheDocument()
+    expect(screen.getAllByPlaceholderText('0.146')).toHaveLength(3)
   })
 
   test('USD mode:原值直通草稿,$ 表头与前缀保持', () => {
-    render(<ImagePriceEditor table={squareRow} onChange={vi.fn()} />)
+    render(<ImagePriceEditor table={fastRow} onChange={vi.fn()} />)
 
     expect(screen.getByDisplayValue('0.75')).toBeInTheDocument()
     expect(screen.getByText('Image price ($/image)')).toBeInTheDocument()
@@ -87,13 +126,13 @@ describe('image price editor display currency', () => {
       .getByDisplayValue('0.75')
       .parentElement as HTMLElement
     expect(within(priceGroup).getByText('$')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('0.02')).toBeInTheDocument()
+    expect(screen.getAllByPlaceholderText('0.02')).toHaveLength(3)
   })
 
   test('CNY mode:编辑草稿后 onChange 以 USD/张 发出(÷汇率出口)', () => {
     setDisplay('CNY', 7.3)
     const onChange = vi.fn()
-    render(<ImagePriceEditor table={squareRow} onChange={onChange} />)
+    render(<ImagePriceEditor table={fastRow} onChange={onChange} />)
 
     // ¥7.3/张 的输入在载荷里回到 1 USD/张
     fireEvent.change(screen.getByDisplayValue('5.475'), {
@@ -101,14 +140,14 @@ describe('image price editor display currency', () => {
     })
 
     expect(onChange).toHaveBeenLastCalledWith({
-      rows: [{ resolution: '1024x1024', price: 1 }],
+      rows: [{ tier: 'fast', price: 1 }],
     })
   })
 
   test('挂载中汇率变化:草稿 rebase 保留 USD 意图,随后编辑按新汇率发出正确载荷', () => {
     setDisplay('CNY', 7.3)
     const onChange = vi.fn()
-    render(<ImagePriceEditor table={squareRow} onChange={onChange} />)
+    render(<ImagePriceEditor table={fastRow} onChange={onChange} />)
 
     // CNY 加载:0.75 USD/张 → ¥5.475 草稿
     expect(screen.getByDisplayValue('5.475')).toBeInTheDocument()
@@ -124,21 +163,7 @@ describe('image price editor display currency', () => {
       target: { value: '1.5' },
     })
     expect(onChange).toHaveBeenLastCalledWith({
-      rows: [{ resolution: '1024x1024', price: 1.5 }],
+      rows: [{ tier: 'fast', price: 1.5 }],
     })
-  })
-
-  test('add/remove resolution:发出的表只含非空行', () => {
-    const onChange = vi.fn()
-    render(<ImagePriceEditor table={squareRow} onChange={onChange} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Add resolution' }))
-    // 新空行仍可编辑但被过滤出载荷
-    expect(onChange).toHaveBeenLastCalledWith({
-      rows: [{ resolution: '1024x1024', price: 0.75 }],
-    })
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[0])
-    expect(onChange).toHaveBeenLastCalledWith({ rows: [] })
   })
 })

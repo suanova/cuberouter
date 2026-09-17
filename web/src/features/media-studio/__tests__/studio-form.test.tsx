@@ -21,7 +21,7 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import i18next from 'i18next'
 import { beforeAll, describe, expect, test, vi } from 'vitest'
 
-import { DEFAULT_PARAMS, LIMITS } from '../constants'
+import { DEFAULT_PARAMS } from '../constants'
 import type { StudioParams } from '../types'
 import { StudioForm } from '../components/studio-form'
 
@@ -76,11 +76,10 @@ describe('StudioForm', () => {
       'Image aspect ratio': 'Image aspect ratio',
       'Images per batch': 'Images per batch',
       '{{count}} image': '{{count}} image',
-      'Advanced settings': 'Advanced settings',
-      'Steps': 'Steps',
-      'Seed': 'Seed',
-      'Randomize seed': 'Randomize seed',
-      'CFG scale': 'CFG scale',
+      'Quality': 'Quality',
+      'Fast': 'Fast',
+      'Standard': 'Standard',
+      'High': 'High',
       'Generate image': 'Generate image',
       'Generating…': 'Generating…',
       'Reset to defaults': 'Reset to defaults',
@@ -165,7 +164,7 @@ describe('StudioForm', () => {
       ...DEFAULT_PARAMS,
       prompt: 'something',
       count: 3,
-      steps: 77,
+      quality: 'fast',
       seed: 9,
       cfg: 2,
     }
@@ -176,17 +175,26 @@ describe('StudioForm', () => {
     expect(onChangeSpy).toHaveBeenCalledWith({ ...DEFAULT_PARAMS, prompt: '' })
   })
 
-  test('randomize seed fills a value within the allowed range', () => {
+  test('renders the quality options with the default selection', () => {
+    render(<StatefulForm />)
+
+    expect(screen.getByRole('radio', { name: 'Fast' })).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+    expect(screen.getByRole('radio', { name: 'High' })).not.toBeChecked()
+  })
+
+  test('selecting a quality reports the change with the full parameter set', () => {
     const onChangeSpy = vi.fn()
 
     render(<StatefulForm onChangeSpy={onChangeSpy} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Advanced settings' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Randomize seed' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'High' }))
 
     expect(onChangeSpy).toHaveBeenCalledTimes(1)
-    const next = onChangeSpy.mock.calls[0][0]
-    expect(next.seed).toBeGreaterThanOrEqual(LIMITS.seedMin)
-    expect(next.seed).toBeLessThanOrEqual(LIMITS.seedMax)
+    expect(onChangeSpy).toHaveBeenCalledWith({
+      ...DEFAULT_PARAMS,
+      prompt: '',
+      quality: 'high',
+    })
   })
 
   test('disables prompt, model, ratios and generate while generating', () => {
@@ -195,6 +203,10 @@ describe('StudioForm', () => {
     expect(screen.getByLabelText('Prompt')).toBeDisabled()
     expect(screen.getByLabelText('Model')).toBeDisabled()
     expect(screen.getByRole('radio', { name: '1:1' })).toBeDisabled()
+    expect(screen.getByRole('radio', { name: 'Fast' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    )
     expect(
       screen.getByRole('button', { name: 'Generating…' }),
     ).toBeDisabled()

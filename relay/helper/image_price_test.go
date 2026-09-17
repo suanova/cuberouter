@@ -12,15 +12,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// seedImagePrice 写入图片按张价格表。
+// seedImagePrice 写入图片按张价格表(固定画质档位)。
 // 档位价均为精确二进制小数(0.0625=1/16, 0.125=1/8),
 // 与 QuotaPerUnit(500000) 相乘无浮点截断误差,断言可精确到整数 quota。
 func seedImagePrice(t *testing.T) {
 	t.Helper()
 	require.NoError(t, ratio_setting.UpdateImagePriceByJSONString(`{
 		"img-price-model": {"rows": [
-			{"resolution": "1024x1024", "price": 0.0625},
-			{"resolution": "1328x1328", "price": 0.125}
+			{"tier": "fast", "price": 0.0625},
+			{"tier": "high", "price": 0.125}
 		]}
 	}`))
 	t.Cleanup(func() {
@@ -42,65 +42,65 @@ func TestModelPriceHelperImagePriceTable(t *testing.T) {
 		}
 	}
 
-	t.Run("size and count ratios multiply anchor price", func(t *testing.T) {
+	t.Run("tier and count ratios multiply anchor price", func(t *testing.T) {
 		ctx, info := newInfo("img-price-model")
 		meta := &types.TokenCountMeta{
 			BillingRatios: map[string]float64{"n": 2},
-			ImageSize:     "1024x1024",
+			ImageQuality:  "fast",
 		}
 		priceData, err := ModelPriceHelper(ctx, info, 1000, meta)
 		require.NoError(t, err)
 		require.True(t, priceData.UsePrice)
-		// 锚点 0.125 × 500000 × n=2 × size=0.5 = 62500
+		// 锚点 0.125 × 500000 × n=2 × tier=0.5 = 62500
 		require.Equal(t, 62500, priceData.QuotaToPreConsume)
 		assert.Equal(t, float64(2), priceData.OtherRatios()["n"])
-		assert.Equal(t, 0.5, priceData.OtherRatios()["size"])
+		assert.Equal(t, 0.5, priceData.OtherRatios()["quality"])
 		// 结算复用同一 PriceData:OtherRatios 与 info.PriceData 一致
 		assert.Equal(t, priceData.OtherRatios(), info.PriceData.OtherRatios())
 	})
 
-	t.Run("anchor resolution row carries no size ratio", func(t *testing.T) {
+	t.Run("anchor tier row carries no tier ratio", func(t *testing.T) {
 		ctx, info := newInfo("img-price-model")
 		meta := &types.TokenCountMeta{
 			BillingRatios: map[string]float64{"n": 1},
-			ImageSize:     "1328x1328",
+			ImageQuality:  "high",
 		}
 		priceData, err := ModelPriceHelper(ctx, info, 1000, meta)
 		require.NoError(t, err)
 		require.Equal(t, 62500, priceData.QuotaToPreConsume)
-		assert.False(t, priceData.HasOtherRatio("size"))
+		assert.False(t, priceData.HasOtherRatio("quality"))
 	})
 
-	t.Run("unknown resolution bills at anchor", func(t *testing.T) {
+	t.Run("unknown quality bills at anchor", func(t *testing.T) {
 		ctx, info := newInfo("img-price-model")
 		meta := &types.TokenCountMeta{
 			BillingRatios: map[string]float64{"n": 2},
-			ImageSize:     "2048x2048",
+			ImageQuality:  "2048x2048",
 		}
 		priceData, err := ModelPriceHelper(ctx, info, 1000, meta)
 		require.NoError(t, err)
 		// 锚点 0.125 × 500000 × n=2 = 125000
 		require.Equal(t, 125000, priceData.QuotaToPreConsume)
-		assert.False(t, priceData.HasOtherRatio("size"))
+		assert.False(t, priceData.HasOtherRatio("quality"))
 	})
 
-	t.Run("normalized resolution matches table row", func(t *testing.T) {
+	t.Run("normalized tier matches table row", func(t *testing.T) {
 		ctx, info := newInfo("img-price-model")
 		meta := &types.TokenCountMeta{
 			BillingRatios: map[string]float64{"n": 1},
-			ImageSize:     " 1024*1024 ",
+			ImageQuality:  " FAST ",
 		}
 		priceData, err := ModelPriceHelper(ctx, info, 1000, meta)
 		require.NoError(t, err)
 		require.Equal(t, 31250, priceData.QuotaToPreConsume)
-		assert.Equal(t, 0.5, priceData.OtherRatios()["size"])
+		assert.Equal(t, 0.5, priceData.OtherRatios()["quality"])
 	})
 
 	t.Run("legacy ImagePriceRatio is not stacked on the table", func(t *testing.T) {
 		ctx, info := newInfo("img-price-model")
 		meta := &types.TokenCountMeta{
 			BillingRatios:   map[string]float64{"n": 1},
-			ImageSize:       "1328x1328",
+			ImageQuality:    "high",
 			ImagePriceRatio: 2,
 		}
 		priceData, err := ModelPriceHelper(ctx, info, 1000, meta)
@@ -109,7 +109,7 @@ func TestModelPriceHelperImagePriceTable(t *testing.T) {
 		require.Equal(t, 62500, priceData.QuotaToPreConsume)
 	})
 
-	t.Run("empty size bills at anchor", func(t *testing.T) {
+	t.Run("missing quality bills at anchor", func(t *testing.T) {
 		ctx, info := newInfo("img-price-model")
 		meta := &types.TokenCountMeta{
 			BillingRatios: map[string]float64{"n": 1},
@@ -117,7 +117,7 @@ func TestModelPriceHelperImagePriceTable(t *testing.T) {
 		priceData, err := ModelPriceHelper(ctx, info, 1000, meta)
 		require.NoError(t, err)
 		require.Equal(t, 62500, priceData.QuotaToPreConsume)
-		assert.False(t, priceData.HasOtherRatio("size"))
+		assert.False(t, priceData.HasOtherRatio("quality"))
 	})
 }
 

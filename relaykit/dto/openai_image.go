@@ -20,6 +20,9 @@ type ImageRequest struct {
 	N                 *uint           `json:"n,omitempty"`
 	Size              string          `json:"size,omitempty"`
 	Quality           string          `json:"quality,omitempty"`
+	NumInferenceSteps *int            `json:"num_inference_steps,omitempty"`
+	Seed              *int64          `json:"seed,omitempty"`
+	TrueCfgScale      *float64        `json:"true_cfg_scale,omitempty"`
 	ResponseFormat    string          `json:"response_format,omitempty"`
 	Style             json.RawMessage `json:"style,omitempty"`
 	User              json.RawMessage `json:"user,omitempty"`
@@ -162,7 +165,7 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	// Keep n separate from ImagePriceRatio so size/quality and count remain
 	// independent billing dimensions. Fixed-price pre-consume stores this on
 	// PriceData, and image settlement reuses or replaces the same "n" ratio.
-	// ImageSize feeds the per-resolution image price table (see
+	// ImageQuality feeds the per-quality-tier image price table (see
 	// ratio_setting.GetImagePrice); it is billing metadata, not prompt text.
 	return &types.TokenCountMeta{
 		CombineText:     i.Prompt,
@@ -170,6 +173,7 @@ func (i *ImageRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		ImagePriceRatio: sizeRatio * qualityRatio,
 		BillingRatios:   map[string]float64{"n": float64(imageN)},
 		ImageSize:       i.Size,
+		ImageQuality:    i.Quality,
 	}
 }
 

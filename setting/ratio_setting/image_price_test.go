@@ -9,7 +9,7 @@ import (
 
 func TestUpdateImagePriceValidation(t *testing.T) {
 	// 先写入一个合法表,校验失败的更新必须整体回滚,已有配置不受影响
-	valid := `{"img-model":{"rows":[{"resolution":"1024x1024","price":0.0625}]}}`
+	valid := `{"img-model":{"rows":[{"tier":"fast","price":0.0625}]}}`
 	require.NoError(t, UpdateImagePriceByJSONString(valid))
 
 	tests := []struct {
@@ -18,9 +18,11 @@ func TestUpdateImagePriceValidation(t *testing.T) {
 	}{
 		{"empty_rows", `{"m":{"rows":[]}}`},
 		{"nil_table", `{"m":null}`},
-		{"empty_resolution", `{"m":{"rows":[{"resolution":"  ","price":0.1}]}}`},
-		{"zero_price", `{"m":{"rows":[{"resolution":"1024x1024","price":0}]}}`},
-		{"negative_price", `{"m":{"rows":[{"resolution":"1024x1024","price":-0.1}]}}`},
+		{"empty_tier", `{"m":{"rows":[{"tier":"  ","price":0.1}]}}`},
+		{"unknown_tier", `{"m":{"rows":[{"tier":"1024x1024","price":0.1}]}}`},
+		{"zero_price", `{"m":{"rows":[{"tier":"fast","price":0}]}}`},
+		{"negative_price", `{"m":{"rows":[{"tier":"fast","price":-0.1}]}}`},
+		{"duplicate_tier", `{"m":{"rows":[{"tier":"fast","price":0.1},{"tier":"FAST","price":0.2}]}}`},
 		{"malformed_json", `not-json`},
 	}
 	for _, tt := range tests {
@@ -36,60 +38,50 @@ func TestUpdateImagePriceValidation(t *testing.T) {
 	}
 }
 
-func TestImagePriceAnchorAndSizeRatio(t *testing.T) {
+func TestImagePriceAnchorAndTierRatio(t *testing.T) {
 	require.NoError(t, UpdateImagePriceByJSONString(`{
 		"img-anchor-model": {"rows": [
-			{"resolution": "1024x1024", "price": 0.0625},
-			{"resolution": "1328x1328", "price": 0.125},
-			{"resolution": "1024x1536", "price": 0.1}
+			{"tier": "fast", "price": 0.0625},
+			{"tier": "high", "price": 0.125},
+			{"tier": "standard", "price": 0.1}
 		]}
 	}`))
 	table, ok := GetImagePrice("img-anchor-model")
 	require.True(t, ok)
 
-	// 锚点 = 最高价行,保证 size 系数 ≤ 1
+	// 锚点 = 最高价行,保证档位系数 ≤ 1
 	assert.Equal(t, 0.125, ImagePriceAnchor(table))
-	assert.Equal(t, 1.0, ImagePriceSizeRatio(table, "1328x1328"))
-	assert.Equal(t, 0.5, ImagePriceSizeRatio(table, "1024x1024"))
+	assert.Equal(t, 1.0, ImagePriceTierRatio(table, "high"))
+	assert.Equal(t, 0.5, ImagePriceTierRatio(table, "fast"))
 	// 与测试内同一浮点运算,结果必然一致
-	assert.Equal(t, 0.1/0.125, ImagePriceSizeRatio(table, "1024x1536"))
-	// 未配置的分辨率没有系数(调用方按锚点计费),空分辨率同理
-	assert.Equal(t, 0.0, ImagePriceSizeRatio(table, "2048x2048"))
-	assert.Equal(t, 0.0, ImagePriceSizeRatio(table, ""))
+	assert.Equal(t, 0.1/0.125, ImagePriceTierRatio(table, "standard"))
+	// 未配置的档位没有系数(调用方按锚点计费),空档位同理
+	assert.Equal(t, 0.0, ImagePriceTierRatio(table, ""))
 	_, ok = GetImagePrice("no-table")
 	assert.False(t, ok)
 }
 
-func TestNormalizeImageResolution(t *testing.T) {
-	tests := []struct {
-		in   string
-		want string
-	}{
-		{"1024x1024", "1024x1024"},
-		{"  1328x1328  ", "1328x1328"},
-		{"1328X1328", "1328x1328"},
-		{"1024*1024", "1024x1024"},
-		{"1024 x 1024", "1024x1024"},
-		{"", ""},
-		{"   ", ""},
-	}
-	for _, tt := range tests {
-		assert.Equal(t, tt.want, NormalizeImageResolution(tt.in))
-	}
+func TestNormalizeImagePriceTier(t *testing.T) {
+	assert.Equal(t, "fast", NormalizeImagePriceTier("Fast"))
+	assert.Equal(t, "standard", NormalizeImagePriceTier("  STANDARD "))
+	assert.Equal(t, "high", NormalizeImagePriceTier("High"))
+	assert.Equal(t, "", NormalizeImagePriceTier("   "))
+
 	// 归一化后,请求侧写法与配置写法等价
-	require.NoError(t, UpdateImagePriceByJSONString(`{"img-norm-model":{"rows":[{"resolution":"1024x1024","price":0.5}]}}`))
+	require.NoError(t, UpdateImagePriceByJSONString(`{"img-norm-model":{"rows":[{"tier":" fast ","price":0.5}]}}`))
 	table, ok := GetImagePrice("img-norm-model")
 	require.True(t, ok)
-	assert.Equal(t, 1.0, ImagePriceSizeRatio(table, "1024*1024"))
-	assert.Equal(t, 1.0, ImagePriceSizeRatio(table, " 1024X1024 "))
+	assert.Equal(t, "fast", table.Rows[0].Tier)
+	assert.Equal(t, 1.0, ImagePriceTierRatio(table, "FAST"))
+	assert.Equal(t, 1.0, ImagePriceTierRatio(table, " fast "))
 }
 
 func TestUpdateImagePriceEmptyClears(t *testing.T) {
-	require.NoError(t, UpdateImagePriceByJSONString(`{"img-clear-model":{"rows":[{"resolution":"1024x1024","price":0.1}]}}`))
+	require.NoError(t, UpdateImagePriceByJSONString(`{"img-clear-model":{"rows":[{"tier":"high","price":0.1}]}}`))
 	_, ok := GetImagePrice("img-clear-model")
 	require.True(t, ok)
 	// 空串清空全部价格表(与 VideoPrice 语义一致)
 	require.NoError(t, UpdateImagePriceByJSONString(""))
 	_, ok = GetImagePrice("img-clear-model")
-	require.False(t, ok)
+	assert.False(t, ok)
 }

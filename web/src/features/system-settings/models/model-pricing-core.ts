@@ -91,7 +91,7 @@ export type ModelRatioData = {
   requestRuleExpr?: string
   /** Per-second video price table, present when the model is billed per second */
   videoPrices?: VideoPriceTable
-  /** Per-image price table (resolution tiers), present when the model is billed per image */
+  /** Per-image price table (quality tiers), present when the model is billed per image */
   imagePrices?: ImagePriceTable
 }
 
@@ -339,10 +339,10 @@ export function buildPreviewRows(
       { key: 'mode', label: t('Mode'), value: t('Image per image') },
       {
         key: 'imageRows',
-        label: t('Resolution'),
+        label: t('Quality'),
         value:
           rows.length > 0
-            ? rows.map((row) => row.resolution).join(', ')
+            ? rows.map((row) => row.tier).join(', ')
             : t('Empty'),
       },
     ]

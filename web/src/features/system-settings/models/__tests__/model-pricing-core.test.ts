@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { beforeEach, describe, expect, it, test } from 'vitest'
 
+import type { ImagePriceTable } from '@/features/pricing/types'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -77,10 +78,10 @@ const videoTable = {
   ],
 }
 
-const imageTable = {
+const imageTable: ImagePriceTable = {
   rows: [
-    { resolution: '1024x1024', price: 0.75 },
-    { resolution: '1328x1328', price: 1.5 },
+    { tier: 'fast', price: 0.75 },
+    { tier: 'high', price: 1.5 },
   ],
 }
 
@@ -215,7 +216,7 @@ describe('buildPreviewRows video branch', () => {
 })
 
 describe('buildPreviewRows image branch', () => {
-  test('lists the configured resolutions for image-per-image mode', () => {
+  test('lists the configured quality tiers for image-per-image mode', () => {
     const rows = buildPreviewRows(
       emptyValues,
       'image-per-image',
@@ -231,7 +232,7 @@ describe('buildPreviewRows image branch', () => {
 
     expect(rows).toEqual([
       { key: 'mode', label: 'Mode', value: 'Image per image' },
-      { key: 'imageRows', label: 'Resolution', value: '1024x1024, 1328x1328' },
+      { key: 'imageRows', label: 'Quality', value: 'fast, high' },
     ])
   })
 

@@ -37,6 +37,7 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
+import { imagePriceTierLabelKey } from '../lib/image-price'
 import { isTokenBasedModel } from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { getTaskNumberFields } from '../lib/task-expr'
@@ -122,22 +123,27 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
       </>
     )
   } else if (props.model.image_prices) {
-    // 图片按张计费:与视频同样窄列堆叠,分辨率 + 单价/张。
+    // 图片按张计费:与视频同样窄列堆叠,画质档位 + 单价/张。
     const { rows } = props.model.image_prices
     priceSummary = (
       <div className='mt-2 w-full min-w-0'>
         <div className='space-y-1'>
-          {rows.map((row) => (
-            <div
-              key={row.resolution || row.price}
-              className='flex items-baseline justify-between gap-x-2 text-xs whitespace-nowrap'
-            >
-              <span className='text-muted-foreground'>{row.resolution}</span>
-              <span className='text-foreground font-mono tabular-nums'>
-                {formatVideoPriceMoney(row.price)}/{t('image')}
-              </span>
-            </div>
-          ))}
+          {rows.map((row) => {
+            const tierLabelKey = imagePriceTierLabelKey(row.tier)
+            return (
+              <div
+                key={row.tier || row.price}
+                className='flex items-baseline justify-between gap-x-2 text-xs whitespace-nowrap'
+              >
+                <span className='text-muted-foreground'>
+                  {tierLabelKey ? t(tierLabelKey) : row.tier}
+                </span>
+                <span className='text-foreground font-mono tabular-nums'>
+                  {formatVideoPriceMoney(row.price)}/{t('image')}
+                </span>
+              </div>
+            )
+          })}
         </div>
       </div>
     )

@@ -16,25 +16,21 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Plus, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { FieldGroup } from '@/components/ui/field'
-import { Input } from '@/components/ui/input'
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
 } from '@/components/ui/input-group'
+import { imagePriceTierLabelKey } from '@/features/pricing/lib/image-price'
 import type { ImagePriceTable } from '@/features/pricing/types'
 import { useBillingCurrency } from '@/lib/currency'
 
 import {
-  addImagePriceRowDraft,
   rebaseImagePriceDrafts,
-  removeImagePriceRowDraft,
   updateImagePriceRowDraft,
   imagePriceDraftsFromTable,
   imagePriceTableFromDrafts,
@@ -48,6 +44,10 @@ export type ImagePriceEditorProps = {
   onChange: (table: ImagePriceTable) => void
 }
 
+/**
+ * 图片按张计费编辑器:固定 Fast/Standard/High 三个画质档位行(不可增删),
+ * 每行填单张价格;留空的档位视为未定价,提交时不带该档(后端按锚点计费)。
+ */
 export const ImagePriceEditor = function ImagePriceEditor(
   props: ImagePriceEditorProps
 ) {
@@ -79,73 +79,43 @@ export const ImagePriceEditor = function ImagePriceEditor(
     handleDraftsChange(updateImagePriceRowDraft(drafts, index, patch))
   }
 
-  const handleAddRow = () => handleDraftsChange(addImagePriceRowDraft(drafts))
-
-  const handleRemoveRow = (id: string) => {
-    const index = drafts.findIndex((draft) => draft.id === id)
-    if (index === -1) return
-    handleDraftsChange(removeImagePriceRowDraft(drafts, index))
-  }
-
   const rowGridClass =
-    'grid grid-cols-[minmax(0,1fr)_minmax(100px,150px)_auto] items-center gap-2'
+    'grid grid-cols-[minmax(0,1fr)_minmax(100px,150px)] items-center gap-2'
 
   return (
     <FieldGroup className='gap-4'>
       <div className='space-y-2'>
         <div className={rowGridClass}>
-          <span className='text-muted-foreground text-xs'>
-            {t('Resolution')}
-          </span>
+          <span className='text-muted-foreground text-xs'>{t('Quality')}</span>
           <span className='text-muted-foreground text-xs'>
             {t('Image price ({{symbol}}/image)', { symbol: currencySymbol })}
           </span>
-          <span />
         </div>
-        {drafts.map((draft) => (
-          <div key={draft.id} className={rowGridClass}>
-            <Input
-              value={draft.resolution}
-              placeholder='1024x1024'
-              onChange={(event) =>
-                handleRowChange(draft.id, { resolution: event.target.value })
-              }
-            />
-            <InputGroup>
-              <InputGroupAddon>{currencySymbol}</InputGroupAddon>
-              <InputGroupInput
-                inputMode='decimal'
-                value={draft.price}
-                placeholder={usdPriceToDisplay(0.02)}
-                onChange={(event) => {
-                  const value = event.target.value
-                  if (numericDraftRegex.test(value)) {
-                    handleRowChange(draft.id, { price: value })
-                  }
-                }}
-              />
-            </InputGroup>
-            <Button
-              variant='ghost'
-              size='icon'
-              onClick={() => handleRemoveRow(draft.id)}
-              aria-label={t('Delete')}
-            >
-              <Trash2 className='text-destructive h-4 w-4' />
-            </Button>
-          </div>
-        ))}
+        {drafts.map((draft) => {
+          const labelKey = imagePriceTierLabelKey(draft.tier)
+          return (
+            <div key={draft.id} className={rowGridClass}>
+              <span className='text-sm'>
+                {labelKey ? t(labelKey) : draft.tier}
+              </span>
+              <InputGroup>
+                <InputGroupAddon>{currencySymbol}</InputGroupAddon>
+                <InputGroupInput
+                  inputMode='decimal'
+                  value={draft.price}
+                  placeholder={usdPriceToDisplay(0.02)}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    if (numericDraftRegex.test(value)) {
+                      handleRowChange(draft.id, { price: value })
+                    }
+                  }}
+                />
+              </InputGroup>
+            </div>
+          )
+        })}
       </div>
-      <Button
-        type='button'
-        variant='outline'
-        size='sm'
-        onClick={handleAddRow}
-        className='w-fit'
-      >
-        <Plus data-icon='inline-start' />
-        {t('Add resolution')}
-      </Button>
     </FieldGroup>
   )
 }

@@ -35,8 +35,9 @@ function samplePayload(): GenerationRequestBody {
     n: 1,
     size: '1328x1328',
     seed: 42,
-    num_inference_steps: 40,
-    true_cfg_scale: 1,
+    num_inference_steps: 30,
+    true_cfg_scale: 4,
+    quality: 'standard',
   }
 }
 

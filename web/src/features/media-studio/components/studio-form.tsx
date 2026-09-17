@@ -16,17 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Dices, RotateCcw } from 'lucide-react'
+import { RotateCcw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Spinner } from '@/components/ui/spinner'
 import { Textarea } from '@/components/ui/textarea'
 
-import { COUNT_OPTIONS, DEFAULT_PARAMS, LIMITS } from '../constants'
-import type { AspectRatio, StudioParams } from '../types'
+import { COUNT_OPTIONS, DEFAULT_PARAMS, LIMITS, QUALITY_OPTIONS } from '../constants'
+import type { AspectRatio, Quality, StudioParams } from '../types'
 import { RatioGrid } from './ratio-grid'
 
 interface StudioFormProps {
@@ -41,13 +41,6 @@ interface StudioFormProps {
   onGenerate: () => void
 }
 
-function clamp(value: number, min: number, max: number): number {
-  if (Number.isNaN(value)) {
-    return min
-  }
-  return Math.min(max, Math.max(min, value))
-}
-
 export function StudioForm({
   params,
   generating,
@@ -60,7 +53,6 @@ export function StudioForm({
   onGenerate,
 }: StudioFormProps) {
   const { t } = useTranslation()
-  const [advancedOpen, setAdvancedOpen] = useState(false)
 
   const update = (patch: Partial<StudioParams>) => {
     onChange({ ...params, ...patch })
@@ -81,12 +73,6 @@ export function StudioForm({
         {name}
       </option>
     ))
-  }
-
-  const handleSeedRandom = () => {
-    update({
-      seed: Math.floor(Math.random() * (LIMITS.seedMax + 1)),
-    })
   }
 
   return (
@@ -172,110 +158,33 @@ export function StudioForm({
         </select>
       </div>
 
-      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-        <CollapsibleTrigger className='flex w-full items-center justify-between text-sm font-medium text-muted-foreground hover:text-foreground'>
-          {t('Advanced settings')}
-          <svg
-            aria-hidden='true'
-            viewBox='0 0 16 16'
-            className={`size-4 transition-transform ${advancedOpen ? 'rotate-180' : ''}`}
-          >
-            <path
-              d='M4 6l4 4 4-4'
-              fill='none'
-              stroke='currentColor'
-              strokeWidth='1.5'
-              strokeLinecap='round'
-              strokeLinejoin='round'
-            />
-          </svg>
-        </CollapsibleTrigger>
-        <CollapsibleContent className='mt-3 grid grid-cols-3 gap-3'>
-          <div>
-            <label
-              htmlFor='studio-steps'
-              className='mb-1.5 block text-xs font-medium'
-            >
-              {t('Steps')}
-            </label>
-            <input
-              id='studio-steps'
-              type='number'
-              inputMode='numeric'
-              min={LIMITS.stepsMin}
-              max={LIMITS.stepsMax}
-              value={params.steps}
-              disabled={generating}
-              onChange={(e) =>
-                update({
-                  steps: Math.round(clamp(Number(e.target.value), LIMITS.stepsMin, LIMITS.stepsMax)),
-                })
-              }
-              className='h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
-            />
-          </div>
-          <div>
-            <label
-              htmlFor='studio-seed'
-              className='mb-1.5 block text-xs font-medium'
-            >
-              {t('Seed')}
-            </label>
-            <div className='flex gap-1'>
-              <input
-                id='studio-seed'
-                type='number'
-                inputMode='numeric'
-                min={LIMITS.seedMin}
-                max={LIMITS.seedMax}
-                value={params.seed}
-                disabled={generating}
-                onChange={(e) =>
-                  update({
-                    seed: Math.round(clamp(Number(e.target.value), LIMITS.seedMin, LIMITS.seedMax)),
-                  })
-                }
-                className='h-9 w-full min-w-0 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
+      <div>
+        <span className='mb-1.5 block text-sm font-medium'>
+          {t('Quality')}
+        </span>
+        <RadioGroup
+          aria-label={t('Quality')}
+          value={params.quality}
+          onValueChange={(value) => update({ quality: value as Quality })}
+          disabled={generating}
+          className='grid-cols-3'
+        >
+          {QUALITY_OPTIONS.map((option) => (
+            <div key={option.id} className='flex items-center gap-2'>
+              <RadioGroupItem
+                value={option.id}
+                id={`studio-quality-${option.id}`}
               />
-              <Button
-                type='button'
-                variant='outline'
-                size='icon-sm'
-                onClick={handleSeedRandom}
-                disabled={generating}
-                aria-label={t('Randomize seed')}
-                title={t('Randomize seed')}
+              <label
+                htmlFor={`studio-quality-${option.id}`}
+                className='cursor-pointer text-sm'
               >
-                <Dices aria-hidden='true' />
-              </Button>
+                {t(option.labelKey)}
+              </label>
             </div>
-          </div>
-          <div>
-            <label
-              htmlFor='studio-cfg'
-              className='mb-1.5 block text-xs font-medium'
-            >
-              {t('CFG scale')}
-            </label>
-            <input
-              id='studio-cfg'
-              type='number'
-              inputMode='decimal'
-              min={LIMITS.cfgMin}
-              max={LIMITS.cfgMax}
-              step='0.1'
-              value={params.cfg}
-              disabled={generating}
-              onChange={(e) =>
-                update({
-                  cfg: clamp(Number(e.target.value), LIMITS.cfgMin, LIMITS.cfgMax),
-                })
-              }
-              className='h-9 w-full rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50'
-            />
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+          ))}
+        </RadioGroup>
+      </div>
 
       <div className='flex items-center gap-2'>
         <Button
