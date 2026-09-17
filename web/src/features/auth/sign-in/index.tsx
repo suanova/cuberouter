@@ -22,7 +22,6 @@ import { useTranslation } from 'react-i18next'
 import { useStatus } from '@/hooks/use-status'
 
 import { AuthLayout } from '../auth-layout'
-import { TermsFooter } from '../components/terms-footer'
 import { UserAuthForm } from './components/user-auth-form'
 
 export function SignIn() {
@@ -53,12 +52,6 @@ export function SignIn() {
         </div>
 
         <UserAuthForm redirectTo={redirect} />
-
-        <TermsFooter
-          variant='sign-in'
-          status={status}
-          className='text-center'
-        />
       </div>
     </AuthLayout>
   )
