@@ -26,6 +26,10 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
+	studioRouter := apiRouter.Group("/media-studio", middleware.UserAuth())
+	studioRouter.GET("/*resource", controller.MediaStudio)
+	studioRouter.POST("/*resource", controller.MediaStudio)
+	studioRouter.DELETE("/*resource", controller.MediaStudio)
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	{
 		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据
