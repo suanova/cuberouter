@@ -4,6 +4,54 @@ Native CubeRouter Media Studio with account-owned uploads/history, generation, e
 
 ## Configure
 
+### Reviewing PR #99 after a normal Docker build
+
+The new UI is always visible at `/media-studio`, including the template gallery and **Image to image** tab. Without an image service it shows a connection notice, disables uploads/generation/history, and offers an explicit **Use basic image generation** action. It no longer silently replaces the new UI with the old page.
+
+The initial PR commit `6c61d31b` did silently fall back when `MEDIA_STUDIO_BRIDGE_URL` was absent. If you still see only the old page, rebuild the updated PR head (not the base `media-studio` branch), recreate the running container, and refresh the browser. There is no frontend build flag to enable image-to-image.
+
+Template assets live under `/studio-templates/`, separate from the `/media-studio` page route. The original asset directory collided with the embedded Go static server and could cause a redirect loop on direct navigation. After rebuilding, `curl -I http://127.0.0.1:3001/media-studio` must return `200`, not a directory `301`. If a browser cached the original redirect, clear that site's cache or test in a fresh browser session.
+
+### Reproduce the connected review stack
+
+Use Docker Engine/Desktop with Compose v2+ and Python 3.10+ for the one-time configuration helper. Run commands from the repository root. This stack uses new named volumes and port 3001; it does not reuse an existing CubeRouter database or automatically copy its channels/users.
+
+1. Generate a local configuration (secrets are written to an ignored file, never printed; existing files are not overwritten):
+
+   ```sh
+   python scripts/qwen_image_bridge/init_deployment.py
+   ```
+
+2. For the existing .162 worker, create `.media-studio/ssh/` with `config` (copy `scripts/qwen_image_bridge/ssh_config.example`), your authorized deployment key as `id_ed25519`, and a trusted `known_hosts` file. These files are ignored by Git and excluded from the root Docker build. The key must work noninteractively. The tunnel copies it into private temporary storage to handle Windows mount permissions. Do not disable host-key verification. For a jump host, add `ProxyJump jump` under `Host workflow`, define `Host jump`, and supply the corresponding trusted host keys. Existing SSH credentials are not included in this repository.
+
+3. Build and start all three components:
+
+   ```sh
+   docker compose --env-file .env.media-studio -f docker-compose.media-studio.yml --profile ssh up -d --build
+   docker compose --env-file .env.media-studio -f docker-compose.media-studio.yml exec studio-adapter python check_deployment.py --web-origin http://127.0.0.1:3000
+   ```
+
+   The first command builds the actual CubeRouter Dockerfile plus the packaged adapter and SSH client. The second checks adapter authentication and all three upstream services without generating an image. A healthy adapter container alone does not prove the worker is reachable. If your deployment already has a private reachable workflow origin, set `QWEN_WORKFLOW_ORIGIN` in `.env.media-studio` and omit `--profile ssh`.
+
+4. Open `http://127.0.0.1:3001`, complete CubeRouter's normal first-run setup/login, and configure **two OpenAI image channels** in the admin UI:
+
+   | Setting | Create channel | Edit channel |
+   | --- | --- | --- |
+   | Model | `qwen-image-2512` | `qwen-image-edit-2511` |
+   | Base URL (no `/v1` suffix) | `http://127.0.0.1:18163` | `http://127.0.0.1:18163` |
+   | Channel key | `MEDIA_STUDIO_BRIDGE_KEY` from the local env file | Same key |
+   | Endpoint type | `image-generation` | `image-generation` |
+
+   Enable the channels for the logged-in user's group; configure image pricing and sufficient account quota using existing CubeRouter settings. Do not enable model mapping or body overrides. The containers share a network namespace, so this loopback address works **inside the CubeRouter container**, not on the host. The adapter/tunnel have no published ports. Only the web port is published, bound to localhost by default. For deliberate network access set `STUDIO_BIND_ADDRESS` to the desired interface and keep normal CubeRouter authentication.
+
+5. Open `/media-studio`: confirm service status, generate one image, then use **Continue editing** or upload a reference in **Image to image**. Confirm saved history and the associated request in Usage Logs. A worker health check does not verify channel pricing, quota or generation quality.
+
+The worker is an **external prerequisite**: .162 already runs the private workflow gateway on loopback 8002, tools on 8191 and GPU model services on 8188/8189. This Compose file reuses those services; it does not download weights, install the full OCR/GPU worker or expose the old public demo. It does not depend on Patrick's Windows process, local database or local SSH tunnel. An empty machine without the worker can review the UI but cannot generate images.
+
+To stop the review stack, use the same Compose command with `--profile ssh down` (without `-v`, to retain accounts and media). If you recreate only the CubeRouter container, recreate the adapter/tunnel too because they share its network namespace. Do not share the review volumes between independent deployments.
+
+### Existing CubeRouter deployment / run without Docker
+
 Python 3.10+, standard library only. Set process environment variables and run `python bridge.py`:
 
 | Variable | Purpose |
@@ -16,7 +64,7 @@ Python 3.10+, standard library only. Set process environment variables and run `
 
 On CubeRouter's Go process, set `MEDIA_STUDIO_BRIDGE_URL=http://127.0.0.1:18163` and `MEDIA_STUDIO_BRIDGE_KEY` to the same secret. Create OpenAI channels for `qwen-image-2512` and `qwen-image-edit-2511`, with that base URL/key and `image-generation` endpoint metadata. Set model image prices through existing CubeRouter pricing. Do not enable model mapping, body overrides or pass-through transformations: submitted requests must exactly match their preparation. Secrets stay outside Git.
 
-The adapter binds to loopback. Never expose its private `/studio/{owner}/...` routes to browsers. The current SSH tunnel forwards local `18162` to .162 **loopback 8002**, backed by private workflow/tools **8191**, sharing existing GPU models **8188/8189**. Do not use the old public demo as the workflow origin; it has shared public history. Without `MEDIA_STUDIO_BRIDGE_URL`, the frontend retains PR #96's basic Media Studio. No database migration is needed.
+The adapter binds to loopback. Never expose its private `/studio/{owner}/...` routes to browsers. The current SSH tunnel forwards local `18162` to .162 **loopback 8002**, backed by private workflow/tools **8191**, sharing existing GPU models **8188/8189**. Do not use the old public demo as the workflow origin; it has shared public history. Without `MEDIA_STUDIO_BRIDGE_URL`, the new frontend remains visible with a connection notice and an explicit basic-generation option. No database migration is needed.
 
 ## Contract
 

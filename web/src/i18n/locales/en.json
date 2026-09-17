@@ -5765,6 +5765,12 @@
     "text": "text",
     "tools": "tools",
     "unavailable": "unavailable",
-    "busy": "Busy"
+    "busy": "Busy",
+    "Image service is not connected": "Image service is not connected",
+    "Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.": "Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.",
+    "Use basic image generation": "Use basic image generation",
+    "Back to image studio": "Back to image studio",
+    "Connect image service to generate": "Connect image service to generate",
+    "Not connected": "Not connected"
   }
 }

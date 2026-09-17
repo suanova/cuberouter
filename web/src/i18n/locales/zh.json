@@ -5765,6 +5765,12 @@
     "text": "文字排版",
     "tools": "圖片工具",
     "unavailable": "暫未就緒",
-    "busy": "忙碌"
+    "busy": "忙碌",
+    "Image service is not connected": "图片服务尚未连接",
+    "Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.": "可以先浏览模板和图生图设置。管理员连接图片服务后，即可上传、生成和保存作品。",
+    "Use basic image generation": "使用基础生图",
+    "Back to image studio": "返回图片工作室",
+    "Connect image service to generate": "连接图片服务后即可生成",
+    "Not connected": "未连接"
   }
 }

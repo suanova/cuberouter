@@ -56,10 +56,16 @@ export function WorkflowComposer(props: {
   })
   const editing = props.draft.mode !== 'create'
   const locked = props.busy || props.uploading
+  const connected = props.config.enabled !== false
   const update = (patch: Partial<WorkflowDraft>) =>
     props.onChange({ ...props.draft, ...patch })
   return (
-    <form onSubmit={form.handleSubmit(props.onGenerate)} className='space-y-5'>
+    <form
+      onSubmit={form.handleSubmit(() => {
+        if (connected) props.onGenerate()
+      })}
+      className='space-y-5'
+    >
       <div
         className='bg-muted flex rounded-xl p-1'
         aria-label={t('Creation mode')}
@@ -155,7 +161,7 @@ export function WorkflowComposer(props: {
                 type='button'
                 variant='outline'
                 className='aspect-square h-auto flex-col border-dashed'
-                disabled={locked}
+                disabled={locked || !connected}
                 onClick={() => upload.current?.click()}
               >
                 <Upload className='size-5' />
@@ -172,7 +178,9 @@ export function WorkflowComposer(props: {
             multiple
             className='hidden'
             aria-label={t('Upload reference images')}
+            disabled={locked || !connected}
             onChange={(event) => {
+              if (!connected) return
               props.onUpload([...(event.target.files ?? [])])
               event.target.value = ''
             }}
@@ -319,13 +327,16 @@ export function WorkflowComposer(props: {
         type='submit'
         className='h-11 w-full gap-2'
         disabled={
+          !connected ||
           locked ||
           !props.draft.prompt.trim() ||
           (editing && !props.draft.references.length)
         }
       >
         <ImagePlus className='size-4' />
-        {t(props.busy ? 'Generation in progress…' : 'Generate image')}
+        {!connected && t('Connect image service to generate')}
+        {connected &&
+          t(props.busy ? 'Generation in progress…' : 'Generate image')}
       </Button>
       <div className='flex justify-between text-xs'>
         <button
