@@ -135,6 +135,8 @@ Do NOT directly import or call `encoding/json` in business code. `json.RawMessag
 - Avoid hand-written assertion helpers unless they encode a reusable project-specific invariant.
 - When cleaning tests, preserve meaningful regression coverage. If a deleted test covered a real contract indirectly, replace it with a smaller test that asserts that contract directly.
 
+**Documentation files:** Do NOT add new files under `docs/` or any of its subdirectories unless the user explicitly requests it.
+
 ### Frontend Rules
 
 - Use `bun` as the preferred package manager and script runner for the frontend (`web/`):
