@@ -4,7 +4,9 @@ Native CubeRouter Media Studio with account-owned uploads/history, generation, e
 
 ## Configure
 
-### Reviewing PR #99 after a normal Docker build
+### Reviewing the replacement for PR #99 after a normal Docker build
+
+Use branch `codex/image-studio-main`, based on the current `main`. PR #96 has merged and the old `media-studio` base branch was deleted, closing PR #99 without merging its changes. This branch carries the original Studio workflow, deployment fixes and channel readiness fix through `71555ecf`; it does not include the separate local prompt-rewrite experiment.
 
 The new UI is always visible at `/media-studio`, including the template gallery and **Image to image** tab. Without an image service it shows a connection notice, disables uploads/generation/history, and offers an explicit **Use basic image generation** action. It no longer silently replaces the new UI with the old page.
 

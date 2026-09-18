@@ -1,6 +1,6 @@
 # Media Studio integration runbook
 
-Updated 2026-09-17. Branch `codex/image-studio-integration`, based on `origin/media-studio` / PR #96, published as [Draft PR #99](https://github.com/suanova/cuberouter/pull/99). This document describes the development integration, not a production deployment.
+Updated 2026-09-18. Branch `codex/image-studio-main`, based on `main` after [PR #96](https://github.com/suanova/cuberouter/pull/96) merged. This replaces the closed [PR #99](https://github.com/suanova/cuberouter/pull/99), preserving its three implementation commits through `71555ecf`. The replacement is a regular, non-draft PR. This document describes the integration and its deployment prerequisites.
 
 ## Reviewer quick start
 
