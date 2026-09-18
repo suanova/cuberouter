@@ -5770,5 +5770,9 @@
     "Back to image studio": "Back to image studio",
     "Connect image service to generate": "Connect image service to generate",
     "Not connected": "Not connected"
-  }
+  },
+  "{{target}} connection check passed": "{{target}} connection check passed",
+  "Model service is ready. No image was generated; test generation and editing in Image Studio.": "Model service is ready. No image was generated; test generation and editing in Image Studio.",
+  "Connection check: {{duration}}": "Connection check: {{duration}}",
+  "Connected": "Connected"
 }

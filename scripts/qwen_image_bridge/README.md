@@ -64,6 +64,14 @@ Python 3.10+, standard library only. Set process environment variables and run `
 
 On CubeRouter's Go process, set `MEDIA_STUDIO_BRIDGE_URL=http://127.0.0.1:18163` and `MEDIA_STUDIO_BRIDGE_KEY` to the same secret. Create OpenAI channels for `qwen-image-2512` and `qwen-image-edit-2511`, with that base URL/key and `image-generation` endpoint metadata. Set model image prices through existing CubeRouter pricing. Do not enable model mapping, body overrides or pass-through transformations: submitted requests must exactly match their preparation. Secrets stay outside Git.
 
+### Testing these channels
+
+In **Channels → Test**, leave **Endpoint Type = Auto detect** and **Stream Mode = Off**. For OpenAI channels whose base URL matches `MEDIA_STUDIO_BRIDGE_URL`, CubeRouter checks the selected channel key against the adapter, then verifies that the requested model and workflow tools report ready. The result is marked **Connected**, with an explicit notice that no image was generated. The displayed duration is the connection/readiness check duration, not GPU inference latency. Scheduled channel checks use the same readiness probe and do not generate images or consume inference quota.
+
+To validate generation, editing, pricing and consumption logs, submit a real request in **Image Studio**; editing requires an uploaded or previously generated reference image. Readiness alone does not validate those operations. A 404 on `/v1/chat/completions` means the running CubeRouter backend predates this Studio channel-test integration: rebuild/restart the updated backend as well as the frontend. Manually choosing the generic image test on an older build is insufficient: its fixed `1024x1024` request is unsupported by this adapter, and an edit needs a prepared account-owned job.
+
+For local development, both channels use `http://127.0.0.1:18163` (no `/v1` suffix); the adapter reaches `.162` through the private `18162` tunnel. In a deployed container, loopback means that container's network namespace. Use the supplied Compose layout or a privately reachable adapter origin, and use that identical origin for the channel base URL and `MEDIA_STUDIO_BRIDGE_URL`. Do not register the public `.162` demo webpage as an API endpoint.
+
 The adapter binds to loopback. Never expose its private `/studio/{owner}/...` routes to browsers. The current SSH tunnel forwards local `18162` to .162 **loopback 8002**, backed by private workflow/tools **8191**, sharing existing GPU models **8188/8189**. Do not use the old public demo as the workflow origin; it has shared public history. Without `MEDIA_STUDIO_BRIDGE_URL`, the new frontend remains visible with a connection notice and an explicit basic-generation option. No database migration is needed.
 
 ## Contract

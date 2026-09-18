@@ -183,6 +183,7 @@ export interface ChannelOpsResponse {
 
 export interface ChannelTestResponse {
   success: boolean
+  test_mode?: 'studio-readiness' | ''
   message?: string
   error_code?: string
   time?: number

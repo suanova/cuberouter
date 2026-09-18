@@ -117,6 +117,7 @@ type TestStatus = 'idle' | 'testing' | 'success' | 'error'
 
 type TestResult = {
   status: TestStatus
+  testMode?: string
   responseTime?: number
   completedAt?: number
   error?: string
@@ -564,7 +565,7 @@ function ChannelTestDialogContent({
             stream: effectiveStreamTest || undefined,
             silent,
           },
-          (success, responseTime, error, errorCode) => {
+          (success, responseTime, error, errorCode, testMode) => {
             const completedAt = Date.now()
             finalResult = {
               status: success ? 'success' : 'error',
@@ -572,6 +573,7 @@ function ChannelTestDialogContent({
               completedAt,
               error,
               errorCode,
+              testMode,
             }
             updateTestResult(model, finalResult)
           }
@@ -1207,6 +1209,15 @@ function TestStatusCell({ result }: { result?: TestResult }) {
   }
 
   if (result.status === 'success') {
+    if (result.testMode === 'studio-readiness') {
+      return (
+        <StatusBadge
+          label={t('Connected')}
+          variant='success'
+          copyable={false}
+        />
+      )
+    }
     return (
       <StatusBadge label={t('Success')} variant='success' copyable={false} />
     )
@@ -1240,6 +1251,24 @@ function TestResultCell({
   }
 
   if (result.status === 'success') {
+    if (result.testMode === 'studio-readiness') {
+      return (
+        <div className='text-muted-foreground space-y-1 text-xs whitespace-normal'>
+          <p>
+            {t(
+              'Model service is ready. No image was generated; test generation and editing in Image Studio.'
+            )}
+          </p>
+          {typeof result.responseTime === 'number' && (
+            <p>
+              {t('Connection check: {{duration}}', {
+                duration: formatResponseTime(result.responseTime, t),
+              })}
+            </p>
+          )}
+        </div>
+      )
+    }
     return typeof result.responseTime === 'number' ? (
       <span className='text-muted-foreground text-sm'>
         {formatResponseTime(result.responseTime, t)}
