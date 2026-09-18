@@ -39,6 +39,7 @@ type testResult struct {
 	context     *gin.Context
 	localErr    error
 	newAPIError *types.NewAPIError
+	testMode    string
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, endpointType string) string {
@@ -106,6 +107,12 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 				testModel = "gpt-4o-mini"
 			}
 		}
+	}
+
+	// Studio edits require an account-owned reference image and a prepared job.
+	// Check this configured worker's readiness instead of sending a chat prompt.
+	if origin := service.StudioBridgeOrigin(); origin != "" && channel.Type == constant.ChannelTypeOpenAI && strings.TrimRight(channel.GetBaseURL(), "/") == origin {
+		return testStudioChannel(ctx, c, channel, testUserID, testModel, endpointType, isStream)
 	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, endpointType)
@@ -877,9 +884,10 @@ func TestChannel(c *gin.Context) {
 	result := testChannel(requestCtx, channel, testUserID, testModel, endpointType, isStream)
 	if result.localErr != nil {
 		resp := gin.H{
-			"success": false,
-			"message": result.localErr.Error(),
-			"time":    0.0,
+			"success":   false,
+			"message":   result.localErr.Error(),
+			"time":      0.0,
+			"test_mode": result.testMode,
 		}
 		if result.newAPIError != nil {
 			resp["error_code"] = result.newAPIError.GetErrorCode()
@@ -897,13 +905,15 @@ func TestChannel(c *gin.Context) {
 			"message":    result.newAPIError.Error(),
 			"time":       consumedTime,
 			"error_code": result.newAPIError.GetErrorCode(),
+			"test_mode":  result.testMode,
 		})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "",
-		"time":    consumedTime,
+		"success":   true,
+		"message":   "",
+		"time":      consumedTime,
+		"test_mode": result.testMode,
 	})
 }
 

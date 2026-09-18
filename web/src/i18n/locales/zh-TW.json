@@ -5772,5 +5772,9 @@
     "Back to image studio": "返回圖片工作室",
     "Connect image service to generate": "連接圖片服務後即可生成",
     "Not connected": "未連接"
-  }
+  },
+  "{{target}} connection check passed": "{{target}} 連線檢查通過",
+  "Model service is ready. No image was generated; test generation and editing in Image Studio.": "模型服務已就緒。本次未生成圖片；請在 Image Studio 測試生成和編輯。",
+  "Connection check: {{duration}}": "連線檢查：{{duration}}",
+  "Connected": "已連線"
 }
