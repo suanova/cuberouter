@@ -37,7 +37,7 @@ vi.mock('../lib/history-storage', () => ({
     [...entries].sort((a, b) => b.createdAt - a.createdAt),
 }))
 
-import { MediaStudio } from '../index'
+import { BasicMediaStudio as MediaStudio } from '../basic-studio'
 import type { HistoryEntry } from '../types'
 
 describe('MediaStudio history persistence', () => {
@@ -50,10 +50,10 @@ describe('MediaStudio history persistence', () => {
       'Image aspect ratio': 'Image aspect ratio',
       'Images per batch': 'Images per batch',
       '{{count}} image': '{{count}} image',
-      'Quality': 'Quality',
-      'Fast': 'Fast',
-      'Standard': 'Standard',
-      'High': 'High',
+      Quality: 'Quality',
+      Fast: 'Fast',
+      Standard: 'Standard',
+      High: 'High',
       'Generate image': 'Generate image',
       'Image preview': 'Image preview',
       'Your images will appear here.': 'Your images will appear here.',

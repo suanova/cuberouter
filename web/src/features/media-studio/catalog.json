@@ -1,0 +1,294 @@
+{
+  "version": 2,
+  "templates": [
+    {
+      "id": "animal-infographic",
+      "title": "Animal infographic",
+      "category": "Animals",
+      "collection": "animals",
+      "mode": "create",
+      "size": "3:4",
+      "previewFit": "contain",
+      "description": "Animal illustration with an information layout. Verify facts and typeset small text separately.",
+      "tip": "This example contains meaningless small text. Use it for composition only; facts and typography need review. No web search is performed.",
+      "fields": [
+        {
+          "key": "animal",
+          "label": "Animal name",
+          "value": "WHALE"
+        },
+        {
+          "key": "facts",
+          "label": "Three short fact labels",
+          "value": "MAMMAL; SEA; AIR"
+        },
+        {
+          "key": "palette",
+          "label": "Palette and mood",
+          "value": "深海藍底、青藍光線、米白色大字"
+        }
+      ],
+      "prompt": "A beautifully designed vertical natural history poster about {{animal}}. Color palette: {{palette}}. Large title at the top, exact text: {{animal}}. One elegant, full-body illustration of {{animal}} occupies the center, with natural proportions, realistic anatomy and dramatic underwater lighting when appropriate. Across the bottom, three clean rectangular typography panels, with NO illustrations or pictograms inside the panels. Each panel contains exactly one label, centered in large clean capital letters. The three labels are: {{facts}}. They describe animal class, habitat and breathing. Render only the title and these three labels. Use a minimal layout with ample space, no extra text, no small print, no diagrams, no numbers and no watermark.",
+      "preview": "/studio-templates/animal-infographic-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 4,
+      "fact_sources": [
+        "https://www.fisheries.noaa.gov/species/humpback-whale",
+        "https://www.fisheries.noaa.gov/feature-story/whales-and-carbon-sequestration-can-whales-store-carbon"
+      ]
+    },
+    {
+      "id": "chibi-animal",
+      "title": "Chibi animal sticker",
+      "category": "Animals",
+      "collection": "animals",
+      "mode": "create",
+      "size": "1:1",
+      "description": "Turn an animal into an expressive character with a sticker border.",
+      "tip": "One sticker-style image. Change the animal, action and expression.",
+      "fields": [
+        {
+          "key": "animal",
+          "label": "Animal appearance",
+          "value": "一隻圓滾滾的橘白色小貓，大眼睛、粉紅耳朵"
+        },
+        {
+          "key": "action",
+          "label": "Action and expression",
+          "value": "兩隻前爪抱住一條藍色玩具魚，坐著開心微笑，周圍有小愛心"
+        },
+        {
+          "key": "color",
+          "label": "Background color",
+          "value": "柔和櫻花粉"
+        }
+      ],
+      "prompt": "設計一張精緻的 Chibi 可愛動物貼圖，{{animal}}，{{action}}。大頭小身、短短四肢、圓潤輪廓，線條俐落有粗細，色彩鮮明，柔和立體陰影，角色外圍有乾淨白色貼紙邊框。{{color}}純色背景，完整角色置中，周圍留白。只畫一個主角，不做多格，不加文字或水印。",
+      "preview": "/studio-templates/chibi-animal-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "pet-comic",
+      "title": "Pet comic strip",
+      "category": "Animals",
+      "collection": "animals",
+      "mode": "edit",
+      "size": "1024x1024",
+      "previewFit": "contain",
+      "description": "Upload your pet and tell a story in four panels.",
+      "tip": "Upload one clear pet photo. Four comic panels form a single output image.",
+      "fields": [
+        {
+          "key": "story",
+          "label": "Four-panel story",
+          "value": "第一格：發現一條藍色玩具魚；第二格：好奇伸爪輕碰；第三格：開心抱住玩具魚；第四格：抱著玩具魚滿足地睡著"
+        },
+        {
+          "key": "style",
+          "label": "Comic style",
+          "value": "日系彩色漫畫，粗線條、鮮明暖色塊、少量網點陰影"
+        }
+      ],
+      "prompt": "以第一張參考照片中的寵物作為唯一主角，保留牠的毛色、臉部特徵、耳朵和花紋，改畫成一張 2×2 四格漫畫，每格是同一隻寵物。畫風：{{style}}。故事按左上、右上、左下、右下順序：{{story}}。各格有整齊邊框與白色間距，用姿勢與表情講故事，沒有對白或文字。保持角色樣貌一致，不加入人類或其他動物，不加水印。",
+      "preview": "/studio-templates/pet-comic-v1.jpg",
+      "before": "/studio-templates/pet-comic-before-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "pet-flash",
+      "title": "Pet night flash",
+      "category": "Animals",
+      "collection": "animals",
+      "mode": "edit",
+      "size": "auto",
+      "description": "Keep your pet and recreate a direct-flash night photograph.",
+      "tip": "Upload your own pet photo and describe the scene and mood.",
+      "fields": [
+        {
+          "key": "scene",
+          "label": "Night scene",
+          "value": "香港夜晚的小街，遠處有彩色霓虹燈和微濕的路面"
+        },
+        {
+          "key": "mood",
+          "label": "Photo mood",
+          "value": "可愛、自然、像朋友用隨身相機抓拍的一刻"
+        }
+      ],
+      "prompt": "將第一張參考照片中的寵物放到新場景：{{scene}}。保留原本寵物的毛色、花紋、臉部特徵與可辨識的樣貌，移除原照片的室內背景和坐墊。採用近距離直接閃光燈的夜拍攝影效果，主角明亮、背景較暗，毛髮細節清楚，輕微廣角透視和自然相機顆粒，陰影合理。氣氛：{{mood}}。只出現這一隻寵物，不加文字或水印。",
+      "preview": "/studio-templates/pet-flash-v1.jpg",
+      "before": "/studio-templates/pet-flash-before-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "product-studio",
+      "title": "Studio product photo",
+      "category": "Design",
+      "mode": "create",
+      "size": "1:1",
+      "description": "A product concept with soft lighting and clean composition.",
+      "tip": "To preserve an actual product or logo, use Replace product background with a reference photo.",
+      "fields": [
+        {
+          "key": "subject",
+          "label": "Product subject",
+          "value": "一瓶琥珀色玻璃香水，簡潔米白色標籤"
+        },
+        {
+          "key": "setting",
+          "label": "Background and palette",
+          "value": "暖米色背景、石灰岩台座，旁邊一小枝橄欖葉"
+        }
+      ],
+      "prompt": "高級商業產品攝影，主角是{{subject}}。場景：{{setting}}。單一產品置於畫面中央偏下，柔和側光，真實玻璃反射，細膩材質，乾淨的自然陰影，上方留白，克制優雅的構圖。不要額外文字、水印或拼貼。",
+      "preview": "/studio-templates/product-studio-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "travel-poster",
+      "title": "City travel poster",
+      "category": "Design",
+      "mode": "create",
+      "size": "3:4",
+      "description": "A vintage illustrated poster with one headline.",
+      "tip": "Upload a real landmark photo for accurate references. Review the poster text after generation.",
+      "fields": [
+        {
+          "key": "scene",
+          "label": "City or scene",
+          "value": "香港海港，綠白色渡輪、層疊高樓、遠山與海浪"
+        },
+        {
+          "key": "title",
+          "label": "Poster title",
+          "value": "HONG KONG"
+        },
+        {
+          "key": "palette",
+          "label": "Color palette",
+          "value": "孔雀藍、珊瑚橙與暖米白"
+        }
+      ],
+      "prompt": "設計一張精緻的直式復古旅行海報。場景：{{scene}}。絲網印刷插畫風格，簡潔幾何色塊，細微紙張顆粒，配色為{{palette}}，有深度的層次與清楚的視覺中心。頂部以清晰醒目的字體寫出唯一標題「{{title}}」。留出優雅邊距，不加其他文字或水印。",
+      "preview": "/studio-templates/travel-poster-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "storybook",
+      "title": "Storybook illustration",
+      "category": "Design",
+      "mode": "create",
+      "size": "4:3",
+      "description": "Give your character a story and a world to explore.",
+      "tip": "Describe what the character is doing for a more specific composition.",
+      "fields": [
+        {
+          "key": "character",
+          "label": "Story character",
+          "value": "一隻穿芥末黃色雨衣的小狐狸"
+        },
+        {
+          "key": "action",
+          "label": "What is happening?",
+          "value": "提著一盞小燈，走過長滿蘑菇和蕨類的森林小徑"
+        }
+      ],
+      "prompt": "兒童繪本跨頁插畫，{{character}}，{{action}}。細膩的水粉與彩色鉛筆質感，溫柔森林綠與暖橙色，微光穿過樹葉，角色表情好奇友善，前景植物與遠景層次豐富，畫面有呼吸感。不要文字、邊框或水印。",
+      "preview": "/studio-templates/storybook-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "mini-room",
+      "title": "Miniature room",
+      "category": "Design",
+      "mode": "create",
+      "size": "1:1",
+      "description": "Present a space as a detailed miniature model.",
+      "tip": "Choose three to five main objects to keep the scene focused.",
+      "fields": [
+        {
+          "key": "room",
+          "label": "Room or space",
+          "value": "舒適的咖啡閱讀角落"
+        },
+        {
+          "key": "objects",
+          "label": "Main objects",
+          "value": "木書架、墨綠色扶手椅、圓形小桌、一杯咖啡與盆栽"
+        }
+      ],
+      "prompt": "一個{{room}}的精緻微縮立體模型，等距三分之四俯視角，可見兩面牆與地板，獨立放在暖米白色背景上。主要物件：{{objects}}。柔和黏土與木材質感，圓潤邊緣，暖色窗光，細緻小物件，乾淨的環境陰影，完整模型置中呈現。不要文字或水印。",
+      "preview": "/studio-templates/mini-room-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "product-background",
+      "title": "Replace product background",
+      "category": "Image editing",
+      "mode": "edit",
+      "size": "auto",
+      "description": "Upload a product photo and change the surrounding scene.",
+      "tip": "Your existing references are kept. Template examples are not added as reference images.",
+      "fields": [
+        {
+          "key": "background",
+          "label": "New background",
+          "value": "清晨的綠色植物園，石台、柔焦蕨葉與淡淡陽光"
+        },
+        {
+          "key": "preserve",
+          "label": "Details to preserve",
+          "value": "產品形狀、琥珀色玻璃、瓶蓋、標籤與產品的主體比例"
+        }
+      ],
+      "prompt": "以第一張參考圖的產品為主體，將周圍場景更換為{{background}}。保留{{preserve}}。讓新背景的光線、產品反射和接觸陰影自然一致，呈現真實商業產品攝影。不要添加新產品、額外文字或水印。",
+      "preview": "/studio-templates/product-background-v1.jpg",
+      "before": "/studio-templates/product-background-before-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    },
+    {
+      "id": "watercolor",
+      "title": "Photo to watercolor",
+      "category": "Image editing",
+      "mode": "edit",
+      "size": "auto",
+      "description": "Preserve your subject while changing the artistic medium.",
+      "tip": "Specify the details you want to keep when transforming the photo.",
+      "fields": [
+        {
+          "key": "style",
+          "label": "Art style and colors",
+          "value": "透明水彩、暖色調、自然暈染與細微紙張紋理"
+        },
+        {
+          "key": "preserve",
+          "label": "Details to preserve",
+          "value": "主角樣貌、姿勢、物件位置與整體構圖"
+        }
+      ],
+      "prompt": "將第一張參考照片轉換成精緻的手繪插畫，畫風：{{style}}。保留{{preserve}}，讓主體清楚可辨，呈現自然筆觸及有層次的色彩。不添加新人物或物件，不加入文字或水印。",
+      "preview": "/studio-templates/watercolor-v1.jpg",
+      "before": "/studio-templates/watercolor-before-v1.jpg",
+      "seed": 42,
+      "steps": 40,
+      "cfg": 1
+    }
+  ]
+}
