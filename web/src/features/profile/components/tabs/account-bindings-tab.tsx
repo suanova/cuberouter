@@ -38,6 +38,9 @@ import {
   markOAuthBindPopup,
 } from '@/features/auth/lib/oauth-callback-mode'
 import type { CustomOAuthProviderInfo } from '@/features/auth/types'
+import { EmailBindDialog } from '@/features/security/components/dialogs/email-bind-dialog'
+import { TelegramBindDialog } from '@/features/security/components/dialogs/telegram-bind-dialog'
+import { WeChatBindDialog } from '@/features/security/components/dialogs/wechat-bind-dialog'
 import { useDialogs } from '@/hooks/use-dialog'
 import { useStatus } from '@/hooks/use-status'
 import { api } from '@/lib/api'
@@ -52,10 +55,7 @@ import {
 
 import { getSelfOAuthBindings, unbindCustomOAuth } from '../../api'
 import type { UserProfile, BindingItem } from '../../types'
-import { EmailBindDialog } from '../dialogs/email-bind-dialog'
 import { PhoneBindDialog } from '../dialogs/phone-bind-dialog'
-import { TelegramBindDialog } from '../dialogs/telegram-bind-dialog'
-import { WeChatBindDialog } from '../dialogs/wechat-bind-dialog'
 
 // ============================================================================
 // Account Bindings Tab Component

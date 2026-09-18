@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 import type { CustomOAuthBinding } from '@/lib/oauth'
 import type { LoginSession } from '@/stores/auth-store'
 
+import { normalizeUserSettings } from './lib/user-settings'
 import type {
   ApiResponse,
   UserProfile,
@@ -60,7 +61,12 @@ export async function updateUserProfile(
 export async function updateUserSettings(
   data: UpdateUserSettingsRequest
 ): Promise<ApiResponse> {
-  const res = await api.put('/api/user/setting', data)
+  const profile = await getUserProfile()
+  if (!profile.success || !profile.data) {
+    return { success: false, message: profile.message }
+  }
+  const settings = normalizeUserSettings(profile.data.setting)
+  const res = await api.put('/api/user/setting', { ...settings, ...data })
   return res.data
 }
 
@@ -81,14 +87,6 @@ export async function deleteUserAccount(
   data?: DeleteAccountRequest
 ): Promise<ApiResponse> {
   const res = await api.delete('/api/user/self', { data })
-  return res.data
-}
-
-/**
- * Generate/regenerate system access token
- */
-export async function generateAccessToken(): Promise<ApiResponse<string>> {
-  const res = await api.get('/api/user/token')
   return res.data
 }
 

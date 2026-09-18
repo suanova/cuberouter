@@ -1,12 +1,15 @@
 package model_setting
 
 import (
+	"fmt"
+	"regexp"
 	"slices"
 	"strings"
+	"sync"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 type ChatCompletionsToResponsesPolicy struct {
@@ -37,6 +40,8 @@ func (p ChatCompletionsToResponsesPolicy) IsChannelEnabled(channelID int, channe
 type GlobalSettings struct {
 	PassThroughRequestEnabled        bool                             `json:"pass_through_request_enabled"`
 	ThinkingModelBlacklist           []string                         `json:"thinking_model_blacklist"`
+	// EffortTailModelIDs lists real model IDs that sit inside the GPT/o-series
+	// family whitelist but whose names already end in an effort word.
 	EffortTailModelIDs               []string                         `json:"effort_tail_model_ids"`
 	ChatCompletionsToResponsesPolicy ChatCompletionsToResponsesPolicy `json:"chat_completions_to_responses_policy"`
 }
@@ -64,6 +69,20 @@ var defaultOpenaiSettings = GlobalSettings{
 // 全局实例
 var globalSettings = defaultOpenaiSettings
 
+// registeredModelLookup reports whether a name is a model the pricing
+// registry knows about. ratio_setting injects the real lookup in its package
+// init; a direct import would close the cycle
+// reasoning -> model_setting -> ratio_setting -> reasoning. Until then the
+// default treats every name as unregistered, which keeps ambiguous effort
+// tails (qwen3.8-max) verbatim.
+var registeredModelLookup = func(name string) bool { return false }
+
+// SetRegisteredModelLookup installs the pricing registry's registered-model
+// lookup; see registeredModelLookup.
+func SetRegisteredModelLookup(lookup func(name string) bool) {
+	registeredModelLookup = lookup
+}
+
 func init() {
 	// 注册到全局配置管理器
 	config.GlobalConfig.Register("global", &globalSettings)
@@ -73,15 +92,86 @@ func GetGlobalSettings() *GlobalSettings {
 	return &globalSettings
 }
 
-// ShouldPreserveThinkingSuffix 判断模型是否配置为保留 thinking/-nothinking/-low/-high/-medium 后缀
+const thinkingBlacklistRegexPrefix = "re:"
+
+type thinkingBlacklistCompiled struct {
+	source  string
+	exact   []string
+	regexes []*regexp.Regexp
+}
+
+var (
+	thinkingBlacklistMu    sync.RWMutex
+	thinkingBlacklistCache thinkingBlacklistCompiled
+)
+
+func thinkingBlacklistSourceKey(entries []string) string {
+	return strings.Join(entries, "\x00")
+}
+
+func compiledThinkingBlacklist() ([]string, []*regexp.Regexp) {
+	entries := globalSettings.ThinkingModelBlacklist
+	key := thinkingBlacklistSourceKey(entries)
+
+	thinkingBlacklistMu.RLock()
+	if thinkingBlacklistCache.source == key {
+		exact, regexes := thinkingBlacklistCache.exact, thinkingBlacklistCache.regexes
+		thinkingBlacklistMu.RUnlock()
+		return exact, regexes
+	}
+	thinkingBlacklistMu.RUnlock()
+
+	thinkingBlacklistMu.Lock()
+	defer thinkingBlacklistMu.Unlock()
+	if thinkingBlacklistCache.source == key {
+		return thinkingBlacklistCache.exact, thinkingBlacklistCache.regexes
+	}
+
+	exact := make([]string, 0, len(entries))
+	var regexes []*regexp.Regexp
+	for _, entry := range entries {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		if strings.HasPrefix(entry, thinkingBlacklistRegexPrefix) {
+			pattern := strings.TrimPrefix(entry, thinkingBlacklistRegexPrefix)
+			if pattern == "" {
+				common.SysError(fmt.Sprintf("invalid thinking_model_blacklist regex %q: pattern is empty", entry))
+				continue
+			}
+			re, err := regexp.Compile(pattern)
+			if err != nil {
+				common.SysError(fmt.Sprintf("invalid thinking_model_blacklist regex %q: %v", entry, err))
+				continue
+			}
+			regexes = append(regexes, re)
+			continue
+		}
+		exact = append(exact, entry)
+	}
+	thinkingBlacklistCache = thinkingBlacklistCompiled{source: key, exact: exact, regexes: regexes}
+	return exact, regexes
+}
+
+// ShouldPreserveThinkingSuffix reports whether the full model name is exempt
+// from host thinking-suffix and @-modifier parsing. Exact blacklist entries
+// match the complete name; entries prefixed with re: are Go regular expressions
+// matched with MatchString against the same full name.
 func ShouldPreserveThinkingSuffix(modelName string) bool {
 	target := strings.TrimSpace(modelName)
 	if target == "" {
 		return false
 	}
 
-	for _, entry := range globalSettings.ThinkingModelBlacklist {
-		if strings.TrimSpace(entry) == target {
+	exact, regexes := compiledThinkingBlacklist()
+	for _, entry := range exact {
+		if entry == target {
+			return true
+		}
+	}
+	for _, re := range regexes {
+		if re.MatchString(target) {
 			return true
 		}
 	}
@@ -128,5 +218,5 @@ func ShouldPreserveEffortTail(modelName string) bool {
 	if !found {
 		return false
 	}
-	return !ratio_setting.IsRegisteredModel(base)
+	return !registeredModelLookup(base)
 }

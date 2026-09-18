@@ -1,5 +1,19 @@
 # Upstream Sync Changelog
 
+## 2026-09-17 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `32c261923a97` | Improve 503 'no available channel' error to name the claiming task plugin and suggest disabling/overriding it when a plugin-owned model has no enabled channel, keeping the generic message otherwise. | bugfix | medium |
+| `3a9f41ee85cc` | Temporarily disables the Claude token-counting endpoint by commenting out the POST /messages/count_tokens route registration (and deleting its router test), taking the endpoint offline until controller.CountClaudeTokens is fixed. | breaking | high |
+| `7c044d7c5c2d` | Rebuilds model-name post-processing around an explicit trailing @key:value modifier syntax (thinking/effort/temperature/topp) with family-whitelisted legacy alias parsing and a canonical billing-identity resolution ladder in ModelPriceHelper; drops the OpenRouter host-invented '-thinking' alias (explicitly breaking). | breaking | high |
+| `6b659fd61c50` | Stop implicitly rewriting/parsing thinking-suffix model names when a model is configured to preserve its suffix, so the user's reasoning effort passes through unchanged across DeepSeek, OpenAI, Volcengine, xAI, Claude, and Gemini adaptors. | bugfix | medium |
+| `d5803532bdcc` | Add contributor/agent guidance requiring new built-in model prices to be defined as self-contained billing expressions in setting/billing_setting/builtin_billing.go (real USD per million tokens) instead of legacy ratio tables, preserving admin overrides and mandating coverage of context-length thresholds and cache categories. | internal | low |
+| `eb99ab1b4034` | Introduce built-in expression-based billing defaults (including pricing for the new gpt-6-astra model) and expose the effective billing mode/expression maps through the admin options endpoint, even when not explicitly persisted. | feature | medium |
+| `2cf177ac487e` | Performance optimization: add a jinzhu/copier TypeConverter to common.DeepCopy so json.RawMessage fields are bulk-copied via bytes.Clone instead of byte-by-byte reflection, with comprehensive regression tests for request cloning. | refactor | medium |
+| `49ec46966825` | Fix OpenAI chat capability detection so gpt-5+ generation models (e.g., gpt-6-astra) get max_completion_tokens conversion and unsupported-parameter (temperature/top_p/logprobs) stripping instead of matching only the literal 'gpt-5' prefix | bugfix | medium |
+| `d8cb177440ce` | Add a dedicated security center with access-token status/rotation/revocation plus persisted audit logging, audit.read authorization, and an audit log viewer, while upgrading the ClickHouse driver. | feature | medium |
+| `9a8674425c5a` | Prevent redundant schema migrations on application restart by upgrading the SQLite GORM driver and normalizing dialect-specific type/default metadata during migration comparison. | bugfix | medium |
 ## 2026-09-14 — 9 commits from new-api#main
 
 | SHA | Intent | Type | Risk |

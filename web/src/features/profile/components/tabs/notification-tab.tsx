@@ -107,7 +107,12 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
   const handleSave = async () => {
     try {
       setLoading(true)
-      const response = await updateUserSettings(settings)
+      // record_ip_log is owned by the security page's privacy card. This form
+      // hydrates it from a possibly stale profile prop, so it must not be sent:
+      // updateUserSettings merges the server's current settings first, and
+      // forwarding the stale value would undo a toggle made on the other page.
+      const { record_ip_log: _recordIpLog, ...notificationSettings } = settings
+      const response = await updateUserSettings(notificationSettings)
 
       if (response.success) {
         toast.success(t('Settings updated successfully'))
@@ -382,22 +387,6 @@ export function NotificationTab({ profile, onUpdate }: NotificationTabProps) {
             />
           </div>
         )}
-
-        {/* Record IP Log */}
-        <div className='flex items-start justify-between gap-3 rounded-lg border p-3 sm:items-center sm:p-4'>
-          <div className='space-y-0.5'>
-            <Label htmlFor='recordIp'>{t('Record IP Address')}</Label>
-            <p className='text-muted-foreground text-xs sm:text-sm'>
-              {t('Log IP address for usage and error logs')}
-            </p>
-          </div>
-          <Switch
-            id='recordIp'
-            className='shrink-0'
-            checked={settings.record_ip_log}
-            onCheckedChange={(checked) => updateField('record_ip_log', checked)}
-          />
-        </div>
       </div>
 
       {/* Save Button */}

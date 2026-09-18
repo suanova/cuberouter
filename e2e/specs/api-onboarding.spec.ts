@@ -480,7 +480,9 @@ test.describe('API onboarding (v4.5 deck)', () => {
     await page.getByRole('button', { name: 'Sign in' }).click()
     await page.waitForURL('**/dashboard**')
 
-    await page.goto('/profile')
+    // The security centre owns password changes; the profile page no longer
+    // hosts the account security controls.
+    await page.goto('/security')
     await page.getByRole('button', { name: 'Change Password' }).click()
 
     const changedPassword = 'ChangedPass789'
