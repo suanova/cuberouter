@@ -136,9 +136,24 @@ export const organizationDetailSearchSchema = z.object({
   auditAction: freeArrayParam().optional(),
   auditTargetType: freeArrayParam().optional(),
 
-  // Billing / usage
+  // Billing / usage — the Usage tab's three panels
+  // (service/organization_billing_summary.go). Each panel keeps its own keys
+  // because they mean different things: the per-member panel asks for a month
+  // *range*, the monthly panel for a count of months, and the records panel for
+  // a single month. One shared key would let a link open a panel whose filter
+  // reads as something else.
+  billingTab: z.enum(['user', 'monthly', 'details']).optional().catch('user'),
+  billingStartMonth: z.string().optional().catch(''),
+  billingEndMonth: z.string().optional().catch(''),
+  billingMonths: z.number().optional().catch(undefined),
+  // The records endpoint matches `model_name` with LIKE and the rest exactly
+  // (`applyOrganizationBillingDetailFilters`), so all of these are keywords.
   billingMonth: z.string().optional().catch(''),
-  billingFilter: z.string().optional().catch(''),
+  billingToken: z.string().optional().catch(''),
+  billingModel: z.string().optional().catch(''),
+  billingGroup: z.string().optional().catch(''),
+  billingRequest: z.string().optional().catch(''),
+  billingResponsible: z.string().optional().catch(''),
 
   // Time window shared by logs, tasks, usage and audit
   startTime: z.number().optional().catch(undefined),

@@ -57,3 +57,69 @@ export function emptyPagedResult<T>(
 ): PagedResult<T> {
   return { page: 1, page_size: pageSize, total: 0, items: [] }
 }
+
+/**
+ * The largest page the backend will answer with.
+ *
+ * `common.GetPageQuery` clamps `page_size` to 100 and does so silently, so a
+ * request for more is answered with 100 rows and no indication that the rest
+ * were left out.
+ */
+export const ORGANIZATION_MAX_PAGE_SIZE = 100
+
+/**
+ * How many rows an export may assemble, and how many are asked for at a time.
+ *
+ * The cap is a bound on requests rather than on the data: an export that needs
+ * more than this many pages reports what it managed instead of holding the tab
+ * open indefinitely.
+ */
+export const ORGANIZATION_EXPORT_MAX_ROWS = 5000
+
+export interface CollectedOrganizationRows<T> {
+  items: T[]
+  /** The endpoint's own count of the whole filtered set. */
+  total: number
+  /** The set was larger than the cap, so `items` is a leading slice of it. */
+  truncated: boolean
+}
+
+/**
+ * Reads a whole filtered set, one page at a time.
+ *
+ * A single request cannot do this: `page_size` is clamped to 100 by the backend,
+ * so an export of a busy month has to be assembled. The walk stops on the first
+ * page that comes back shorter than the page it was asked for — measured against
+ * the size the response reports rather than the size requested, because the
+ * backend answers a request above its cap with a shorter page rather than an
+ * error, and reading that as the end of the data would export a hundred rows of
+ * a set that holds thousands.
+ */
+export async function collectOrganizationRows<T>(
+  fetchPage: (page: number, pageSize: number) => Promise<PagedResult<T>>,
+  options: { pageSize?: number; maxRows?: number } = {}
+): Promise<CollectedOrganizationRows<T>> {
+  const pageSize = Math.min(
+    options.pageSize ?? ORGANIZATION_MAX_PAGE_SIZE,
+    ORGANIZATION_MAX_PAGE_SIZE
+  )
+  const maxRows = options.maxRows ?? ORGANIZATION_EXPORT_MAX_ROWS
+  const items: T[] = []
+  let total = 0
+  let page = 1
+
+  while (items.length < maxRows) {
+    const result = await fetchPage(page, pageSize)
+    total = result.total ?? 0
+    const batch = result.items ?? []
+    items.push(...batch.slice(0, maxRows - items.length))
+    const answered = result.page_size > 0 ? result.page_size : pageSize
+    if (batch.length < answered) break
+    // A set that the last page happened to fill completely; the count is what
+    // says so, and it is only trusted when the endpoint actually reported one.
+    if (total > 0 && items.length >= total) break
+    page += 1
+  }
+
+  return { items, total, truncated: total > items.length }
+}

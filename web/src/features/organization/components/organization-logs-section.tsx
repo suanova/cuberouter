@@ -41,7 +41,6 @@ import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/com
 import { LogCostDisplay } from '@/features/usage-logs/components/log-cost-display'
 import {
   LogsFilterField,
-  LogsFilterInput,
   LogsFilterToolbar,
 } from '@/features/usage-logs/components/logs-filter-toolbar'
 import { ModelBadge } from '@/features/usage-logs/components/model-badge'
@@ -61,6 +60,7 @@ import {
   useOrganizationResourceSection,
 } from '../hooks/use-organization-paged-query'
 import {
+  organizationColumnFilterValue,
   organizationLogModelInfo,
   organizationLogResponsibleName,
   organizationLogTimeRangeParams,
@@ -69,9 +69,11 @@ import {
   organizationLogTypeMeta,
   ORGANIZATION_LOG_TYPE,
   ORGANIZATION_LOG_TYPE_FILTER_OPTIONS,
+  setOrganizationTextFilter,
 } from '../lib'
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationLogRow, OrganizationLogStats } from '../types'
+import { OrganizationTextFilter } from './organization-filter-fields'
 import { OrganizationLogDetailsDialog } from './organization-log-details-dialog'
 import {
   OrganizationSection,
@@ -83,16 +85,6 @@ const route = getRouteApi(
 )
 
 const LOG_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-log-column-visibility'
-
-/** The backend filters on one value per field, so a multi-select sends its first. */
-function firstFilterValue(
-  columnFilters: Array<{ id: string; value: unknown }>,
-  columnId: string
-): string | undefined {
-  const value = columnFilters.find((filter) => filter.id === columnId)?.value
-  if (Array.isArray(value)) return value[0] as string | undefined
-  return typeof value === 'string' && value ? value : undefined
-}
 
 type OrganizationLogsSectionProps = {
   organizationId: number
@@ -153,13 +145,13 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
   const timeRange = organizationLogTimeRangeParams(window.start, window.end)
 
   const filters = {
-    type: parseLogType(firstFilterValue(columnFilters, 'type')),
-    model_name: firstFilterValue(columnFilters, 'model_name'),
-    token_name: firstFilterValue(columnFilters, 'token_name'),
-    group: firstFilterValue(columnFilters, 'group'),
-    request_id: firstFilterValue(columnFilters, 'request_id'),
+    type: parseLogType(organizationColumnFilterValue(columnFilters, 'type')),
+    model_name: organizationColumnFilterValue(columnFilters, 'model_name'),
+    token_name: organizationColumnFilterValue(columnFilters, 'token_name'),
+    group: organizationColumnFilterValue(columnFilters, 'group'),
+    request_id: organizationColumnFilterValue(columnFilters, 'request_id'),
     responsible_name: props.canViewWideData
-      ? firstFilterValue(columnFilters, 'responsible_user_id')
+      ? organizationColumnFilterValue(columnFilters, 'responsible_user_id')
       : undefined,
   }
 
@@ -272,11 +264,11 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                     }
                   />
                 </LogsFilterField>
-                <TextLogFilter
+                <OrganizationTextFilter
                   value={filters.model_name}
                   placeholder={t('Model')}
                   onChange={(value) =>
-                    setTextFilter(
+                    setOrganizationTextFilter(
                       onColumnFiltersChange,
                       columnFilters,
                       'model_name',
@@ -284,11 +276,11 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                     )
                   }
                 />
-                <TextLogFilter
+                <OrganizationTextFilter
                   value={filters.token_name}
                   placeholder={t('Key name')}
                   onChange={(value) =>
-                    setTextFilter(
+                    setOrganizationTextFilter(
                       onColumnFiltersChange,
                       columnFilters,
                       'token_name',
@@ -296,11 +288,11 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                     )
                   }
                 />
-                <TextLogFilter
+                <OrganizationTextFilter
                   value={filters.group}
                   placeholder={t('Group')}
                   onChange={(value) =>
-                    setTextFilter(
+                    setOrganizationTextFilter(
                       onColumnFiltersChange,
                       columnFilters,
                       'group',
@@ -308,11 +300,11 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                     )
                   }
                 />
-                <TextLogFilter
+                <OrganizationTextFilter
                   value={filters.request_id}
                   placeholder={t('Request ID')}
                   onChange={(value) =>
-                    setTextFilter(
+                    setOrganizationTextFilter(
                       onColumnFiltersChange,
                       columnFilters,
                       'request_id',
@@ -321,11 +313,11 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                   }
                 />
                 {props.canViewWideData ? (
-                  <TextLogFilter
+                  <OrganizationTextFilter
                     value={filters.responsible_name}
                     placeholder={t('Responsible user')}
                     onChange={(value) =>
-                      setTextFilter(
+                      setOrganizationTextFilter(
                         onColumnFiltersChange,
                         columnFilters,
                         'responsible_user_id',
@@ -341,7 +333,7 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                 <LogTypeFilter
                   value={filters.type}
                   onChange={(value) =>
-                    setTextFilter(
+                    setOrganizationTextFilter(
                       onColumnFiltersChange,
                       columnFilters,
                       'type',
@@ -365,34 +357,6 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
 }
 
 /** One of the text filters above the table. */
-function TextLogFilter(props: {
-  value?: string
-  placeholder: string
-  onChange: (value: string) => void
-}) {
-  return (
-    <LogsFilterField>
-      <LogsFilterInput
-        value={props.value ?? ''}
-        placeholder={props.placeholder}
-        onChange={(event) => props.onChange(event.target.value)}
-      />
-    </LogsFilterField>
-  )
-}
-
-/** A text filter, written into the one-element array the table stores. */
-function setTextFilter(
-  onChange: (filters: Array<{ id: string; value: unknown }>) => void,
-  current: Array<{ id: string; value: unknown }>,
-  columnId: string,
-  value: string
-): void {
-  const others = current.filter((filter) => filter.id !== columnId)
-  const trimmed = value.trim()
-  onChange(trimmed ? [...others, { id: columnId, value: trimmed }] : others)
-}
-
 /**
  * The type, as the endpoint wants it.
  *
