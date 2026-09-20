@@ -44,14 +44,13 @@ func IsDuplicateKeyError(db *gorm.DB, err error) bool {
 	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }
 
-// IsOrganizationNameDuplicateError 判断 err 是否来自 organizations.name_normalized
-// 上的唯一索引冲突。
-//
-// 这里不能像其它唯一键那样只看 "是不是重复键错误"：组织创建会同时写 name_normalized
-// 和 slug 两个唯一列，而只有前者代表"组织重名"。冲突可能是 slug 撞了（重试即可），
-// 也可能是名字撞了（要报 409 organization_name_conflict），所以必须按约束名区分，
-// 三个驱动各自暴露约束名的方式都不一样。
-func IsOrganizationNameDuplicateError(err error) bool {
+// organizationSlugIndex 是 organizations.slug 上由 GORM 的 uniqueIndex 标签建的索引名。
+const organizationSlugIndex = "idx_organizations_slug"
+
+// organizationUniqueIndexConflict 判断 err 是否来自 organizations 上指定的唯一索引。
+// 三个驱动暴露约束名的方式都不一样：MySQL 把它塞在 1062 的消息里，PostgreSQL 有独立的
+// ConstraintName 字段，SQLite 只给列名。
+func organizationUniqueIndexConflict(err error, index string, column string) bool {
 	var mysqlErr *mysql.MySQLError
 	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
 		_, key, found := strings.Cut(mysqlErr.Message, " for key ")
@@ -62,12 +61,12 @@ func IsOrganizationNameDuplicateError(err error) bool {
 		if separator := strings.LastIndexByte(key, '.'); separator >= 0 {
 			key = key[separator+1:]
 		}
-		return key == organizationNameNormalizedIndex
+		return key == index
 	}
 
 	var postgresErr *pgconn.PgError
 	if errors.As(err, &postgresErr) {
-		return postgresErr.Code == "23505" && postgresErr.ConstraintName == organizationNameNormalizedIndex
+		return postgresErr.Code == "23505" && postgresErr.ConstraintName == index
 	}
 
 	var sqliteErr interface {
@@ -76,5 +75,25 @@ func IsOrganizationNameDuplicateError(err error) bool {
 	}
 	return errors.As(err, &sqliteErr) &&
 		sqliteErr.Code() == 2067 &&
-		strings.Contains(sqliteErr.Error(), "UNIQUE constraint failed: organizations.name_normalized")
+		strings.Contains(sqliteErr.Error(), "UNIQUE constraint failed: organizations."+column)
+}
+
+// IsOrganizationNameDuplicateError 判断 err 是否来自 organizations.name_normalized
+// 上的唯一索引冲突。
+//
+// 这里不能像其它唯一键那样只看 "是不是重复键错误"：组织创建会同时写 name_normalized
+// 和 slug 两个唯一列，而只有前者代表"组织重名"。冲突可能是 slug 撞了（重试即可），
+// 也可能是名字撞了（要报 409 organization_name_conflict），所以必须按约束名区分，
+// 三个驱动各自暴露约束名的方式都不一样。
+func IsOrganizationNameDuplicateError(err error) bool {
+	return organizationUniqueIndexConflict(err, organizationNameNormalizedIndex, "name_normalized")
+}
+
+// IsOrganizationSlugDuplicateError 判断 err 是否来自 organizations.slug 上的唯一索引冲突。
+//
+// slug 由组织名派生，"先查后插"（generateUniqueOrganizationSlug）在并发下挡不住：两个
+// 同名请求会算出同一个 slug，各自查到不存在，然后一起插入。这种冲突重试一次就能拿到
+// 带后缀的 slug；若两次其实同名，下一轮的名字校验会返回 ErrOrganizationNameConflict。
+func IsOrganizationSlugDuplicateError(err error) bool {
+	return organizationUniqueIndexConflict(err, organizationSlugIndex, "slug")
 }

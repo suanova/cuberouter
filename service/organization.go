@@ -40,6 +40,10 @@ import (
 // 例如 410 organization_dissolved）。改这里的文案会连带改掉对外契约。
 const maxActiveOrganizationsPerUser = 20
 
+// organizationSlugConflictRetries 是创建组织时因 slug 唯一键冲突而重开事务的次数。
+// slug 由组织名派生，并发同名创建必然撞同一个 slug，一次重试就足够分出胜负。
+const organizationSlugConflictRetries = 3
+
 var ErrOrganizationNameConflict = errors.New("organization name conflict")
 
 type CreateOrganizationRequest struct {
@@ -84,58 +88,68 @@ func CreateOrganization(operatorUserId int, req CreateOrganizationRequest, audit
 	}
 	normalized := model.NormalizeOrganizationName(name)
 
-	now := common.GetTimestamp()
 	organization := &model.Organization{}
-	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		var creator model.User
-		if err := model.LockForUpdate(tx).Select("id").Where("id = ?", operatorUserId).First(&creator).Error; err != nil {
-			return err
+	var err error
+	for attempt := 0; attempt <= organizationSlugConflictRetries; attempt++ {
+		now := common.GetTimestamp()
+		organization = &model.Organization{}
+		err = model.DB.Transaction(func(tx *gorm.DB) error {
+			var creator model.User
+			if err := model.LockForUpdate(tx).Select("id").Where("id = ?", operatorUserId).First(&creator).Error; err != nil {
+				return err
+			}
+			count, err := countUserActiveOrganizationsWithTx(tx, operatorUserId)
+			if err != nil {
+				return err
+			}
+			if count >= maxActiveOrganizationsPerUser {
+				return errors.New("organization limit exceeded")
+			}
+			if err := ensureOrganizationNameAvailableWithTx(tx, normalized, 0); err != nil {
+				return err
+			}
+			slug, err := generateUniqueOrganizationSlug(tx, name)
+			if err != nil {
+				return err
+			}
+			organization = &model.Organization{
+				Name:           name,
+				NameNormalized: normalized,
+				Slug:           slug,
+				Description:    strings.TrimSpace(req.Description),
+				Status:         model.OrganizationStatusActive,
+				Quota:          model.OrganizationDefaultQuota,
+				CreatedBy:      operatorUserId,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			if err := tx.Create(organization).Error; err != nil {
+				return err
+			}
+			member := &model.OrganizationMember{
+				OrganizationId: organization.Id,
+				UserId:         operatorUserId,
+				Role:           model.OrganizationRoleOwner,
+				Status:         model.OrganizationMemberStatusActive,
+				CreatedAt:      now,
+				UpdatedAt:      now,
+			}
+			if err := tx.Create(member).Error; err != nil {
+				return err
+			}
+			return recordOrganizationAudit(tx, organization, operatorUserId, model.OrganizationRoleOwner, organizationAuditActionCreate, "organization", organization.Id, nil, organization, "", auditMetadata...)
+		})
+		if err == nil {
+			return organization, nil
 		}
-		count, err := countUserActiveOrganizationsWithTx(tx, operatorUserId)
-		if err != nil {
-			return err
+		// slug 冲突说明另一个并发请求刚占用了同一个 slug（同名时两者派生出的 slug 相同）。
+		// 事务已回滚，重开一次就能重新生成带后缀的 slug；若那次其实同名，下一轮的名字校验
+		// 会返回 ErrOrganizationNameConflict，落到下面的映射里。
+		if !model.IsOrganizationSlugDuplicateError(err) {
+			break
 		}
-		if count >= maxActiveOrganizationsPerUser {
-			return errors.New("organization limit exceeded")
-		}
-		if err := ensureOrganizationNameAvailableWithTx(tx, normalized, 0); err != nil {
-			return err
-		}
-		slug, err := generateUniqueOrganizationSlug(tx, name)
-		if err != nil {
-			return err
-		}
-		organization = &model.Organization{
-			Name:           name,
-			NameNormalized: normalized,
-			Slug:           slug,
-			Description:    strings.TrimSpace(req.Description),
-			Status:         model.OrganizationStatusActive,
-			Quota:          model.OrganizationDefaultQuota,
-			CreatedBy:      operatorUserId,
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		}
-		if err := tx.Create(organization).Error; err != nil {
-			return err
-		}
-		member := &model.OrganizationMember{
-			OrganizationId: organization.Id,
-			UserId:         operatorUserId,
-			Role:           model.OrganizationRoleOwner,
-			Status:         model.OrganizationMemberStatusActive,
-			CreatedAt:      now,
-			UpdatedAt:      now,
-		}
-		if err := tx.Create(member).Error; err != nil {
-			return err
-		}
-		return recordOrganizationAudit(tx, organization, operatorUserId, model.OrganizationRoleOwner, organizationAuditActionCreate, "organization", organization.Id, nil, organization, "", auditMetadata...)
-	})
-	if err != nil {
-		return nil, mapOrganizationNameWriteError(err)
 	}
-	return organization, nil
+	return nil, mapOrganizationNameWriteError(err)
 }
 
 func ListUserOrganizations(userId int, includeDissolved bool) ([]UserOrganizationView, error) {
