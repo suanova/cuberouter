@@ -23,6 +23,10 @@ import { t } from 'i18next'
 import { publishAuthSessionEvent } from '@/lib/auth-session-sync'
 import { hasSessionHint } from '@/lib/session-hint'
 import {
+  getAccountContextHeaders,
+  useAccountContextStore,
+} from '@/stores/account-context-store'
+import {
   useAuthStore,
   type AuthBootstrapState,
   type AuthBundle,
@@ -190,6 +194,9 @@ export function clearAuthentication(
   const sid = useAuthStore.getState().auth.session?.sid
   authEpoch += 1
   useAuthStore.getState().auth.reset(bootstrapState)
+  // 账号上下文是按用户存的（localStorage）。不清掉，同一台机器上换个账号登录会继续
+  // 带着上一个人的组织上下文，后端会按那个组织解析权限。
+  useAccountContextStore.getState().accountContext.reset()
   if (synchronizeTabs && sid) {
     publishAuthSessionEvent('signed_out', sid)
   }
@@ -414,6 +421,9 @@ export function getCommonHeaders(): Record<string, string> {
   if (accessToken) {
     headers.Authorization = `Bearer ${accessToken}`
   }
+  // 走 axios 之外的请求（流式响应、第三方模型列表）也要带上账号上下文，
+  // 否则同一个页面里两套请求会落在不同的账号下。
+  Object.assign(headers, getAccountContextHeaders())
   return headers
 }
 

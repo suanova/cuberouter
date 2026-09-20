@@ -25,7 +25,15 @@ import {
   clearAuthentication,
   refreshAuthentication,
 } from '@/lib/auth-session'
-import { getServerErrorMessageKey } from '@/lib/server-error-message'
+import {
+  getServerErrorCode,
+  getServerErrorMessageKey,
+} from '@/lib/server-error-message'
+import {
+  getAccountContextCacheKey,
+  getAccountContextHeaders,
+  useAccountContextStore,
+} from '@/stores/account-context-store'
 import { useAuthStore } from '@/stores/auth-store'
 
 declare module 'axios' {
@@ -36,6 +44,7 @@ declare module 'axios' {
     skipAuthRefresh?: boolean
     authRetry?: boolean
     acceptAuthRotation?: boolean
+    skipAccountContext?: boolean
   }
 }
 
@@ -57,7 +66,10 @@ api.get = ((url: string, config: ApiRequestConfig = {}) => {
 
   const params = config.params ? JSON.stringify(config.params) : '{}'
   const sessionSID = useAuthStore.getState().auth.session?.sid || 'anonymous'
-  const key = `${sessionSID}:${url}?${params}`
+  // 账号上下文走请求头，不在 url/params 里，所以必须并进去：否则切到组织后立刻
+  // 发出的同 URL 请求会命中个人上下文那次还在途中的请求。
+  const accountContextKey = getAccountContextCacheKey()
+  const key = `${sessionSID}:${accountContextKey}:${url}?${params}`
   const existingRequest = inFlightGet.get(key)
   if (existingRequest) return existingRequest
 
@@ -67,6 +79,14 @@ api.get = ((url: string, config: ApiRequestConfig = {}) => {
   inFlightGet.set(key, request)
   return request
 }) as typeof api.get
+
+/**
+ * 平台管理接口是跨组织的，组织由路径里的 id 决定，不由上下文决定。带上上下文反而
+ * 会被后端当成另一次权限解析，所以按前缀整体排除。
+ */
+function isPlatformAdminRequest(url: string | undefined): boolean {
+  return typeof url === 'string' && url.startsWith('/api/admin')
+}
 
 function redirectToSignIn(): void {
   if (
@@ -129,6 +149,12 @@ api.interceptors.response.use(
         toast.error(t('Session expired!'))
       }
     } else if (!skipErrorHandler) {
+      if (getServerErrorCode(error) === 'organization_context_mismatch') {
+        // 服务端说本地选的上下文已经不能用了（组织被解散、成员被移出、或者本地存的
+        // 上下文和请求路径里的组织对不上）。这里只把本地选中项清回个人，怎么恢复交给
+        // 发起请求的页面——组织页知道自己该提示什么、该退到哪一步，拦截器不知道。
+        useAccountContextStore.getState().accountContext.setCurrent(null)
+      }
       const messageKey = getServerErrorMessageKey(error)
       const message = messageKey
         ? t(messageKey)
@@ -145,6 +171,13 @@ api.interceptors.request.use((config) => {
   const accessToken = useAuthStore.getState().auth.accessToken
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
+  }
+
+  // 个人上下文下 getAccountContextHeaders 返回空对象，等同于不声明，后端按个人处理。
+  if (!config.skipAccountContext && !isPlatformAdminRequest(config.url)) {
+    for (const [name, value] of Object.entries(getAccountContextHeaders())) {
+      config.headers[name] = value
+    }
   }
   return config
 })

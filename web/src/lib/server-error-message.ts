@@ -32,6 +32,53 @@ const serverErrorMessageKeys = {
   TELEGRAM_BIND_USER_DELETED: 'This user account no longer exists.',
   TELEGRAM_BIND_USER_DISABLED: 'This user account is disabled.',
   TELEGRAM_BIND_INTERNAL_ERROR: 'Telegram binding failed. Please try again.',
+
+  // 组织相关的错误码。后端刻意只回稳定 code 加英文 message（见 types/organization_error.go），
+  // 界面文案由前端按 code 决定，这样多语言和措辞调整都不用动后端。
+  // 注意这里的键必须和 types.ErrorCode 的取值逐字相同（小写蛇形），不能跟着上面的
+  // 大写风格走：查找是按 payload.code 精确匹配的。
+  organization_context_mismatch:
+    'Your account context changed. Reload the page and try again.',
+  organization_access_denied:
+    'You do not have permission to perform this action in this organization.',
+  organization_disabled:
+    'This organization is disabled. Contact a platform administrator.',
+  organization_dissolved:
+    'This organization has been dissolved and can no longer be used.',
+  organization_limit_exceeded:
+    'You have reached the maximum number of organizations you can create or join.',
+  organization_name_conflict:
+    'An organization with this name already exists.',
+  insufficient_organization_quota:
+    'The organization does not have enough quota for this request.',
+  organization_idempotency_conflict:
+    'This request conflicts with an earlier one. Reload and try again.',
+  organization_idempotency_key_required:
+    'This action requires an idempotency key.',
+  organization_confirmation_mismatch:
+    'The confirmation text does not match. Enter the exact organization name.',
+  organization_billing_session_conflict:
+    'The organization is settling another request. Try again in a moment.',
+  organization_member_operation_forbidden:
+    'That member operation is not allowed for this organization.',
+  organization_operation_blocked:
+    'This operation is blocked. Resolve the listed blockers and try again.',
+  organization_invite_unavailable:
+    'This invitation is no longer available. Ask an administrator for a new one.',
+  organization_invite_delivery_failed:
+    'The invitation email could not be delivered.',
+  organization_invite_delivery_in_progress:
+    'The invitation is still being delivered. Try again shortly.',
+  organization_invite_recipient_rejected:
+    'The mail server rejected the invitation recipient.',
+  organization_invite_already_sent:
+    'An invitation for this email address is already pending.',
+  organization_token_responsible_member_disabled:
+    'The member responsible for this key is disabled.',
+  organization_token_responsible_user_disabled:
+    'The user responsible for this key is disabled.',
+  organization_token_enable_forbidden:
+    'This key cannot be enabled while a blocker is active.',
 } as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -57,4 +104,17 @@ export function getServerErrorMessageKey(value: unknown): string | null {
       payload.code as keyof typeof serverErrorMessageKeys
     ] ?? null
   )
+}
+
+/**
+ * 取出后端返回的稳定错误码。
+ *
+ * 和后端的约定是「永远只回稳定 code + 英文 message」（见 types/organization_error.go）：
+ * 调用方按 code 做分支判断，message 只用于日志。文案表上面那份是给用户看的，
+ * 这里只关心 code 本身，两者不要混用。
+ */
+export function getServerErrorCode(value: unknown): string | null {
+  const payload = serverErrorPayload(value)
+  if (!payload || typeof payload.code !== 'string' || !payload.code) return null
+  return payload.code
 }

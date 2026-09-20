@@ -32,6 +32,20 @@ export {
   AuthRotationError,
 } from '@/lib/auth-session'
 export type { AuthTokenRotation, RefreshOutcome } from '@/lib/auth-session'
+export {
+  ACCOUNT_CONTEXT_ID_HEADER,
+  ACCOUNT_CONTEXT_TYPE,
+  ACCOUNT_CONTEXT_TYPE_HEADER,
+  accountContextSchema,
+  isOrganizationContext,
+  refreshAccountContexts,
+  switchAccountContext,
+} from '@/lib/account-context'
+export type {
+  AccountContext,
+  AccountContextType,
+  OrganizationCapabilities,
+} from '@/lib/account-context'
 export { api }
 export type { ApiRequestConfig } from '@/lib/http-client'
 
