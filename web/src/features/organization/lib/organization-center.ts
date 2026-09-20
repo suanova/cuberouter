@@ -319,42 +319,82 @@ export interface OrganizationMemberOption {
   value: number
 }
 
+/** The member fields the pickers below read. The list endpoint joins the user
+ * record in, so the display fields are present on a member row. */
+type MemberOptionSource = Partial<OrganizationMember> & {
+  username?: string
+  display_name?: string
+  email?: string
+  user_status?: number
+}
+
+/**
+ * An active membership held by a user whose platform account is enabled.
+ *
+ * Both halves are required by the backend wherever a member is named as the
+ * holder of something — `activeOrganizationMemberWithEnabledUserQuery` joins the
+ * user row on the same two conditions — so a picker that offered only one of
+ * them would produce refusals the operator cannot act on.
+ */
+function hasEnabledActiveAccount(member: MemberOptionSource): boolean {
+  return (
+    Number(member?.user_id ?? 0) > 0 &&
+    String(member?.status ?? '').toLowerCase() === 'active' &&
+    Number(member?.user_status ?? 1) === 1
+  )
+}
+
+function toMemberOption(member: MemberOptionSource): OrganizationMemberOption {
+  return {
+    label:
+      member.username ||
+      member.display_name ||
+      member.email ||
+      String(member.user_id),
+    value: Number(member.user_id),
+  }
+}
+
 /**
  * Members who could take over ownership: active admins or owners other than the
  * one stepping down. A user whose platform account is disabled cannot be an
  * owner, so they are excluded too.
  */
 export function getOrganizationTransferMemberOptions(
-  members: Array<
-    Partial<OrganizationMember> & {
-      username?: string
-      display_name?: string
-      email?: string
-      user_status?: number
-    }
-  > = [],
+  members: MemberOptionSource[] = [],
   excludedUserId?: number
 ): OrganizationMemberOption[] {
   const excluded = Number(excludedUserId ?? 0)
   return members
-    .filter((member) => {
-      const userId = Number(member?.user_id ?? 0)
-      return (
-        userId > 0 &&
-        userId !== excluded &&
-        String(member?.status ?? '').toLowerCase() === 'active' &&
-        Number(member?.user_status ?? 1) === 1 &&
+    .filter(
+      (member) =>
+        hasEnabledActiveAccount(member) &&
+        Number(member.user_id) !== excluded &&
         ['owner', 'admin'].includes(normalizeRole(member?.role))
-      )
-    })
-    .map((member) => ({
-      label:
-        member.username ||
-        member.display_name ||
-        member.email ||
-        String(member.user_id),
-      value: Number(member.user_id),
-    }))
+    )
+    .map(toMemberOption)
+}
+
+/**
+ * Members who could hold an organization key.
+ *
+ * Any member of standing may hold a private key, but a published one has to be
+ * held by the owner or an administrator: a key every member can use must still
+ * have someone able to disable it, and its holder is the only member who could
+ * otherwise do so.
+ */
+export function getOrganizationTokenResponsibleOptions(
+  members: MemberOptionSource[] = [],
+  visibility: string
+): OrganizationMemberOption[] {
+  const publicKey = visibility === 'public'
+  return members
+    .filter(
+      (member) =>
+        hasEnabledActiveAccount(member) &&
+        (!publicKey || ['owner', 'admin'].includes(normalizeRole(member?.role)))
+    )
+    .map(toMemberOption)
 }
 
 // ============================================================================
@@ -371,10 +411,14 @@ export interface OrganizationTokenBatchDeletePlan {
  * Batch deletion is all-or-nothing: if any selected key is outside the caller's
  * authority the whole request is withheld, so the UI can ask the user to drop
  * the offending rows instead of half-deleting.
+ *
+ * Generic in the row type so a caller holding full key rows can pass its own
+ * predicate — a predicate that reads only `id` would otherwise force the caller
+ * to widen its safety check down to the id.
  */
-export function getOrganizationTokenBatchDeletePlan(
-  selectedKeys: Array<{ id: number }> = [],
-  canDeleteToken: (token: { id: number }) => boolean = () => true
+export function getOrganizationTokenBatchDeletePlan<T extends { id: number }>(
+  selectedKeys: T[] = [],
+  canDeleteToken: (token: T) => boolean = () => true
 ): OrganizationTokenBatchDeletePlan {
   const ids = selectedKeys.map((token) => token.id)
   const unauthorizedCount = selectedKeys.filter(

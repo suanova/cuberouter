@@ -27,6 +27,7 @@ import { OrganizationMembersSection } from './organization-members-section'
 import { OrganizationOverviewSection } from './organization-overview-section'
 import { OrganizationSectionEmpty } from './organization-section'
 import { OrganizationSettingsSection } from './organization-settings-section'
+import { OrganizationTokensSection } from './organization-tokens-section'
 
 type OrganizationSectionsProps = {
   detail: OrganizationDetail
@@ -100,6 +101,19 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           canViewInvites={capabilities.can_view_invites}
           canCreateInvites={capabilities.can_create_invites}
           canRevokeInvites={capabilities.can_revoke_invites}
+          readOnly={props.readOnly}
+          onForbidden={props.onForbidden}
+        />
+      )
+    case 'tokens':
+      return (
+        <OrganizationTokensSection
+          organizationId={organization.id}
+          organizationGroup={organization.group ?? ''}
+          canView={capabilities.can_view_organization_tokens}
+          canManageAllTokens={capabilities.can_manage_all_tokens}
+          currentUserId={actor.user_id}
+          isOrganizationMember={actor.is_organization_member}
           readOnly={props.readOnly}
           onForbidden={props.onForbidden}
         />

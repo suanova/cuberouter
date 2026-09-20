@@ -23,6 +23,7 @@ import { getAccountContextCacheKey } from '@/stores/account-context-store'
 
 import { listOrganizationMembers } from '../api'
 import {
+  getOrganizationTokenResponsibleOptions,
   getOrganizationTransferMemberOptions,
   type OrganizationMemberOption,
 } from '../lib'
@@ -63,16 +64,16 @@ async function listAllMembers(organizationId: number): Promise<OrganizationMembe
 }
 
 /**
- * The members who could take over an administrator's keys, as select options.
+ * The whole roster, for the pickers that need to offer members.
  *
  * Fetched lazily — `enabled` is driven by whether a dialog is open — because
- * most visits to the members list never open one.
+ * most visits to a list never open one. Shared between the pickers so opening
+ * two of them does not walk the member list twice.
  */
-export function useOrganizationMemberOptions(
+function useOrganizationRoster(
   organizationId: number,
-  excludedUserId: number | undefined,
   enabled: boolean
-): { options: OrganizationMemberOption[]; isLoading: boolean } {
+): { members: OrganizationMemberRow[]; isLoading: boolean } {
   const { data, isLoading } = useQuery({
     queryKey: [
       'organization-member-options',
@@ -84,15 +85,45 @@ export function useOrganizationMemberOptions(
         return await listAllMembers(organizationId)
       } catch {
         // The interceptor has already reported it; an empty picker is the right
-        // degradation, and the dialog stays usable without a transfer target.
+        // degradation, and the dialog stays usable without a target.
         return []
       }
     },
     enabled,
   })
 
+  return { members: data ?? [], isLoading }
+}
+
+/** The members who could take over an administrator's keys. */
+export function useOrganizationMemberOptions(
+  organizationId: number,
+  excludedUserId: number | undefined,
+  enabled: boolean
+): { options: OrganizationMemberOption[]; isLoading: boolean } {
+  const { members, isLoading } = useOrganizationRoster(organizationId, enabled)
+
   return {
-    options: getOrganizationTransferMemberOptions(data ?? [], excludedUserId),
+    options: getOrganizationTransferMemberOptions(members, excludedUserId),
+    isLoading,
+  }
+}
+
+/**
+ * The members who could hold an organization key.
+ *
+ * Narrowed by the key's visibility, so switching a key to public drops the
+ * members who cannot hold one before they can be chosen.
+ */
+export function useOrganizationTokenResponsibleOptions(
+  organizationId: number,
+  visibility: string,
+  enabled: boolean
+): { options: OrganizationMemberOption[]; isLoading: boolean } {
+  const { members, isLoading } = useOrganizationRoster(organizationId, enabled)
+
+  return {
+    options: getOrganizationTokenResponsibleOptions(members, visibility),
     isLoading,
   }
 }
