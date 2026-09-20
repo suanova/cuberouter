@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
@@ -50,13 +49,13 @@ import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import { useOrganizationPagedSection } from '../hooks/use-organization-paged-query'
 import type { OrganizationAuditLogRow } from '../types'
 import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
+import {
   OrganizationSection,
   OrganizationSectionEmpty,
 } from './organization-section'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 const AUDIT_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-audit-column-visibility'
 
@@ -89,6 +88,8 @@ export function OrganizationAuditSection(props: OrganizationAuditSectionProps) {
   // The translate helpers are plain functions so they can be unit tested; this
   // adapts the component's `t` to that narrower signature.
   const translate: Translate = (key, options) => t(key, options)
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
   const {
     columnFilters,
     onColumnFiltersChange,
@@ -96,8 +97,8 @@ export function OrganizationAuditSection(props: OrganizationAuditSectionProps) {
     onPaginationChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search,
+    navigate,
     pagination: { defaultPage: 1, defaultPageSize: ORGANIZATION_DEFAULT_PAGE_SIZE },
     globalFilter: { enabled: false },
     columnFilters: [
@@ -118,11 +119,12 @@ export function OrganizationAuditSection(props: OrganizationAuditSectionProps) {
   }
 
   const audit = useOrganizationPagedSection<OrganizationAuditLogRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'audit-logs',
     params,
     query: () =>
-      listOrganizationAuditLogs(props.organizationId, {
+      listOrganizationAuditLogs(surface, props.organizationId, {
         p: params.p,
         page_size: params.page_size,
         action_type: params.action_type,

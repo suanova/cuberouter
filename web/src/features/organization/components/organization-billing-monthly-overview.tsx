@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import { Activity, CalendarDays, Coins, Download, TrendingUp } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -63,11 +62,11 @@ import type {
   OrganizationBillingMonthlySummaryItem,
   OrganizationBillingMonthlySummaryResponse,
 } from '../types'
+import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
 import { OrganizationSectionRefresh } from './organization-section'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 type OrganizationBillingMonthlyOverviewProps = {
   organizationId: number
@@ -89,19 +88,24 @@ export function OrganizationBillingMonthlyOverview(
   props: OrganizationBillingMonthlyOverviewProps
 ) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
 
   const months = normalizeOrganizationBillingMonths(search.billingMonths)
 
   const params = { months }
   const summaries = useOrganizationResourceSection<OrganizationBillingMonthlySummaryResponse>(
     {
+      surface,
       organizationId: props.organizationId,
       resource: 'billing-monthly-summaries',
       params,
       query: () =>
-        listOrganizationBillingMonthlySummaries(props.organizationId, params),
+        listOrganizationBillingMonthlySummaries(
+          surface,
+          props.organizationId,
+          params
+        ),
       onForbidden: props.onForbidden,
     }
   )

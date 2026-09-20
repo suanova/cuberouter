@@ -28,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { dissolveOrganization } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import { createIdempotencyKey, isOrganizationSlugConfirmed } from '../lib'
+import { useOrganizationSurface } from './organization-page-provider'
 
 /** The fields the confirmation needs; an `Organization` satisfies this. */
 type DissolvableOrganization = {
@@ -60,6 +61,10 @@ export function OrganizationDissolveConfirm(
   props: OrganizationDissolveConfirmProps
 ) {
   const { t } = useTranslation()
+  // The organization center's row action opens this from outside any detail
+  // page, so this resolves to the member surface there and to the page's own
+  // surface when the settings tab opens it.
+  const surface = useOrganizationSurface()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [confirmSlug, setConfirmSlug] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey)
@@ -81,6 +86,7 @@ export function OrganizationDissolveConfirm(
     setIsSubmitting(true)
     try {
       const result = await dissolveOrganization(
+        surface,
         organization.id,
         { confirm_name: confirmSlug.trim() },
         idempotencyKey

@@ -27,6 +27,7 @@ import {
   getOrganizationTransferMemberOptions,
   type OrganizationMemberOption,
 } from '../lib'
+import type { OrganizationSurface } from '../lib/organization-surface'
 import type { OrganizationMemberRow } from '../types'
 
 /** The page size the exhaustive walk uses; the endpoint caps what it returns. */
@@ -43,12 +44,15 @@ const MAX_PAGES = 20
  * the choice is about who takes over keys, which has nothing to do with where
  * they happen to sort.
  */
-async function listAllMembers(organizationId: number): Promise<OrganizationMemberRow[]> {
+async function listAllMembers(
+  surface: OrganizationSurface,
+  organizationId: number
+): Promise<OrganizationMemberRow[]> {
   const collected: OrganizationMemberRow[] = []
   let total = Number.POSITIVE_INFINITY
 
   for (let page = 1; page <= MAX_PAGES && collected.length < total; page += 1) {
-    const result = await listOrganizationMembers(organizationId, {
+    const result = await listOrganizationMembers(surface, organizationId, {
       p: page,
       page_size: PAGE_SIZE,
     })
@@ -71,18 +75,20 @@ async function listAllMembers(organizationId: number): Promise<OrganizationMembe
  * two of them does not walk the member list twice.
  */
 function useOrganizationRoster(
+  surface: OrganizationSurface,
   organizationId: number,
   enabled: boolean
 ): { members: OrganizationMemberRow[]; isLoading: boolean } {
   const { data, isLoading } = useQuery({
     queryKey: [
       'organization-member-options',
+      surface,
       organizationId,
       getAccountContextCacheKey(),
     ],
     queryFn: async () => {
       try {
-        return await listAllMembers(organizationId)
+        return await listAllMembers(surface, organizationId)
       } catch {
         // The interceptor has already reported it; an empty picker is the right
         // degradation, and the dialog stays usable without a target.
@@ -97,11 +103,16 @@ function useOrganizationRoster(
 
 /** The members who could take over an administrator's keys. */
 export function useOrganizationMemberOptions(
+  surface: OrganizationSurface,
   organizationId: number,
   excludedUserId: number | undefined,
   enabled: boolean
 ): { options: OrganizationMemberOption[]; isLoading: boolean } {
-  const { members, isLoading } = useOrganizationRoster(organizationId, enabled)
+  const { members, isLoading } = useOrganizationRoster(
+    surface,
+    organizationId,
+    enabled
+  )
 
   return {
     options: getOrganizationTransferMemberOptions(members, excludedUserId),
@@ -116,11 +127,16 @@ export function useOrganizationMemberOptions(
  * members who cannot hold one before they can be chosen.
  */
 export function useOrganizationTokenResponsibleOptions(
+  surface: OrganizationSurface,
   organizationId: number,
   visibility: string,
   enabled: boolean
 ): { options: OrganizationMemberOption[]; isLoading: boolean } {
-  const { members, isLoading } = useOrganizationRoster(organizationId, enabled)
+  const { members, isLoading } = useOrganizationRoster(
+    surface,
+    organizationId,
+    enabled
+  )
 
   return {
     options: getOrganizationTokenResponsibleOptions(members, visibility),

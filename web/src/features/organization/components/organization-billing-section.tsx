@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -31,11 +30,8 @@ import {
 import { OrganizationBillingDetails } from './organization-billing-details'
 import { OrganizationBillingMonthlyOverview } from './organization-billing-monthly-overview'
 import { OrganizationBillingUserOverview } from './organization-billing-user-overview'
+import { useOrganizationSectionRoute } from './organization-page-provider'
 import { OrganizationSection, OrganizationSectionEmpty } from './organization-section'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 /**
  * The three ways of reading the same ledger.
@@ -76,8 +72,7 @@ type OrganizationBillingSectionProps = {
  */
 export function OrganizationBillingSection(props: OrganizationBillingSectionProps) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
   const panel = normalizeOrganizationBillingPanel(search.billingTab)
 
   if (!props.canView) {

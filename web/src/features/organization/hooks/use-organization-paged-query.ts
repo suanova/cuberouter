@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getAccountContextCacheKey } from '@/stores/account-context-store'
 
 import type { PagedResult } from '../lib'
+import type { OrganizationSurface } from '../lib/organization-surface'
 import type { OrganizationApiResponse } from '../types'
 
 /** The HTTP status the backend uses when the caller may not read this section. */
@@ -32,6 +33,16 @@ function statusOf(error: unknown): number | undefined {
 }
 
 type SectionQueryOptions<T> = {
+  /**
+   * Which API surface the read goes through.
+   *
+   * Not the account context: an administrator reading the platform surface
+   * answers the same question from their personal context, and the two can
+   * disagree — the member surface refuses a caller who is not a member, while
+   * the platform surface allows them. Sharing a cache entry between the two
+   * would turn the first refusal into an empty table for the other.
+   */
+  surface: OrganizationSurface
   organizationId: number
   /** Which list this is, so two sections never share a cache entry. */
   resource: string
@@ -74,6 +85,7 @@ function useOrganizationSectionQuery<T>(
     // cannot tell one context from another, so the context is part of the key.
     queryKey: [
       'organization-section',
+      options.surface,
       options.resource,
       options.organizationId,
       getAccountContextCacheKey(),

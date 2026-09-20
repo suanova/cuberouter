@@ -77,6 +77,7 @@ import type {
   OrganizationTokenRow,
 } from '../types'
 import { OrganizationTokenKeyCell } from './organization-token-key-cell'
+import { useOrganizationSurface } from './organization-page-provider'
 
 const TOKEN_FORM_ID = 'organization-token-form'
 
@@ -116,6 +117,7 @@ export function OrganizationTokenFormDialog(
   props: OrganizationTokenFormDialogProps
 ) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [created, setCreated] =
     useState<OrganizationTokenBatchCreateResult | null>(null)
@@ -137,6 +139,7 @@ export function OrganizationTokenFormDialog(
 
   const { options: responsibleOptions, isLoading: isLoadingResponsible } =
     useOrganizationTokenResponsibleOptions(
+      surface,
       props.organizationId,
       visibility,
       props.open && props.canManageAllTokens
@@ -204,6 +207,7 @@ export function OrganizationTokenFormDialog(
 
     if (isUpdate && editing) {
       const result = await updateOrganizationToken(
+        surface,
         props.organizationId,
         editing.id,
         payload
@@ -220,6 +224,7 @@ export function OrganizationTokenFormDialog(
         isOrganizationTokenHandover(editing, values.responsible_user_id)
       ) {
         await updateOrganizationTokenResponsibility(
+          surface,
           props.organizationId,
           editing.id,
           { responsible_user_id: Number(values.responsible_user_id) }

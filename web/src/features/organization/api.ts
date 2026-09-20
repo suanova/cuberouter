@@ -20,6 +20,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import { withOrganizationIdempotencyKey } from './lib/organization-idempotency'
+import {
+  organizationResourceBase,
+  type OrganizationSurface,
+} from './lib/organization-surface'
 import type {
   OrganizationApiResponse,
   OrganizationAuditLogRow,
@@ -74,16 +78,18 @@ export async function createOrganization(data: {
  * handles the failure itself.
  */
 export async function getOrganization(
+  surface: OrganizationSurface,
   organizationId: number,
   options: { silent?: boolean } = {}
 ): Promise<OrganizationDetailResponse> {
-  const res = await api.get(`/api/organizations/${organizationId}`, {
+  const res = await api.get(organizationResourceBase(surface, organizationId), {
     skipErrorHandler: options.silent,
   })
   return res.data
 }
 
 export async function updateOrganization(
+  surface: OrganizationSurface,
   organizationId: number,
   data: {
     name: string
@@ -92,7 +98,10 @@ export async function updateOrganization(
     reason?: string
   }
 ): Promise<OrganizationResponse> {
-  const res = await api.patch(`/api/organizations/${organizationId}`, data)
+  const res = await api.patch(
+    organizationResourceBase(surface, organizationId),
+    data
+  )
   return res.data
 }
 
@@ -102,11 +111,12 @@ export async function updateOrganization(
  * what keeps a mis-clicked dialog from taking an organization offline.
  */
 export async function updateOrganizationStatus(
+  surface: OrganizationSurface,
   organizationId: number,
   data: { status: 'active' | 'disabled'; confirm_name: string; reason?: string }
 ): Promise<ApiEnvelope> {
   const res = await api.patch(
-    `/api/organizations/${organizationId}/status`,
+    `${organizationResourceBase(surface, organizationId)}/status`,
     data
   )
   return res.data
@@ -117,11 +127,12 @@ export async function updateOrganizationStatus(
  * `Idempotency-Key` that it reuses when retrying the same intent.
  */
 export async function dissolveOrganization(
+  surface: OrganizationSurface,
   organizationId: number,
   data: { confirm_name: string; reason?: string },
   idempotencyKey: string
 ): Promise<ApiEnvelope> {
-  const res = await api.delete(`/api/organizations/${organizationId}`, {
+  const res = await api.delete(organizationResourceBase(surface, organizationId), {
     data,
     headers: { 'Idempotency-Key': idempotencyKey },
   })
@@ -129,13 +140,18 @@ export async function dissolveOrganization(
 }
 
 export async function transferOrganizationOwner(
+  surface: OrganizationSurface,
   organizationId: number,
   data: { owner_user_id: number; reason?: string },
   idempotencyKey: string
 ): Promise<ApiEnvelope> {
-  const res = await api.put(`/api/organizations/${organizationId}/owner`, data, {
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
+  const res = await api.put(
+    `${organizationResourceBase(surface, organizationId)}/owner`,
+    data,
+    {
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }
+  )
   return res.data
 }
 
@@ -146,17 +162,48 @@ export async function getOrganizationGroups(
   return res.data
 }
 
+/**
+ * The groups a key in this organization may be assigned to, whichever page is
+ * asking.
+ *
+ * The member surface answers from the organization itself: a member may use the
+ * groups the organization was granted, and the endpoint carries each one's
+ * description. The admin surface has no such endpoint — an outside
+ * administrator is not a member, so there is no organization-relative set to
+ * resolve — and reads the platform's group list instead, which is the same set
+ * of names without the descriptions. The shape is normalized here so the
+ * pickers upstream cannot tell the two apart.
+ */
+export async function getOrganizationGroupSource(
+  surface: OrganizationSurface,
+  organizationId: number
+): Promise<OrganizationGroupsResponse> {
+  if (surface !== 'admin') return getOrganizationGroups(organizationId)
+
+  const res = await api.get('/api/group/')
+  const names: string[] = res.data?.data ?? []
+  return {
+    success: res.data?.success ?? true,
+    message: res.data?.message,
+    data: Object.fromEntries(names.map((name) => [name, { desc: '', ratio: '' }])),
+  }
+}
+
 // ============================================================================
 // Members
 // ============================================================================
 
 export async function listOrganizationMembers(
+  surface: OrganizationSurface,
   organizationId: number,
   params: { p: number; page_size: number }
 ): Promise<OrganizationApiResponse<PagedResult<OrganizationMemberRow>>> {
-  const res = await api.get(`/api/organizations/${organizationId}/members`, {
-    params,
-  })
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/members`,
+    {
+      params,
+    }
+  )
   return res.data
 }
 
@@ -184,6 +231,7 @@ export async function addOrganizationMember(
  * for one action.
  */
 export async function updateOrganizationMember(
+  surface: OrganizationSurface,
   organizationId: number,
   userId: number,
   data: {
@@ -193,12 +241,10 @@ export async function updateOrganizationMember(
     reason?: string
   }
 ): Promise<ApiEnvelope> {
+  const path = `${organizationResourceBase(surface, organizationId)}/members/${userId}`
   const requiresIdempotency = data.status === 'disabled'
   if (!requiresIdempotency) {
-    const res = await api.patch(
-      `/api/organizations/${organizationId}/members/${userId}`,
-      data
-    )
+    const res = await api.patch(path, data)
     return res.data
   }
 
@@ -207,17 +253,16 @@ export async function updateOrganizationMember(
     `${organizationId}:${userId}`,
     data,
     async (idempotencyKey) => {
-      const res = await api.patch(
-        `/api/organizations/${organizationId}/members/${userId}`,
-        data,
-        { headers: { 'Idempotency-Key': idempotencyKey } }
-      )
+      const res = await api.patch(path, data, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+      })
       return res.data
     }
   )
 }
 
 export async function removeOrganizationMember(
+  surface: OrganizationSurface,
   organizationId: number,
   userId: number,
   data: { transfer_to_user_id?: number; reason?: string } = {}
@@ -228,7 +273,7 @@ export async function removeOrganizationMember(
     data,
     async (idempotencyKey) => {
       const res = await api.delete(
-        `/api/organizations/${organizationId}/members/${userId}`,
+        `${organizationResourceBase(surface, organizationId)}/members/${userId}`,
         {
           data,
           headers: { 'Idempotency-Key': idempotencyKey },
@@ -382,21 +427,24 @@ export interface OrganizationTokenListParams {
 }
 
 export async function listOrganizationTokens(
+  surface: OrganizationSurface,
   organizationId: number,
   params: OrganizationTokenListParams
 ): Promise<OrganizationApiResponse<PagedResult<OrganizationTokenRow>>> {
-  const res = await api.get(`/api/organizations/${organizationId}/tokens`, {
-    params,
-  })
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/tokens`,
+    { params }
+  )
   return res.data
 }
 
 export async function getOrganizationToken(
+  surface: OrganizationSurface,
   organizationId: number,
   tokenId: number
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/tokens/${tokenId}`
+    `${organizationResourceBase(surface, organizationId)}/tokens/${tokenId}`
   )
   return res.data
 }
@@ -437,29 +485,32 @@ export async function batchCreateOrganizationTokens(
 }
 
 export async function updateOrganizationToken(
+  surface: OrganizationSurface,
   organizationId: number,
   tokenId: number,
   data: OrganizationTokenPayload
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
   const res = await api.patch(
-    `/api/organizations/${organizationId}/tokens/${tokenId}`,
+    `${organizationResourceBase(surface, organizationId)}/tokens/${tokenId}`,
     data
   )
   return res.data
 }
 
 export async function deleteOrganizationToken(
+  surface: OrganizationSurface,
   organizationId: number,
   tokenId: number
 ): Promise<ApiEnvelope> {
   const res = await api.delete(
-    `/api/organizations/${organizationId}/tokens/${tokenId}`
+    `${organizationResourceBase(surface, organizationId)}/tokens/${tokenId}`
   )
   return res.data
 }
 
 /** Returns the number of keys actually deleted. */
 export async function batchDeleteOrganizationTokens(
+  surface: OrganizationSurface,
   organizationId: number,
   ids: number[]
 ): Promise<OrganizationApiResponse<number>> {
@@ -470,7 +521,7 @@ export async function batchDeleteOrganizationTokens(
     data,
     async (idempotencyKey) => {
       const res = await api.post(
-        `/api/organizations/${organizationId}/token-deletions`,
+        `${organizationResourceBase(surface, organizationId)}/token-deletions`,
         data,
         { headers: { 'Idempotency-Key': idempotencyKey } }
       )
@@ -480,12 +531,13 @@ export async function batchDeleteOrganizationTokens(
 }
 
 export async function updateOrganizationTokenResponsibility(
+  surface: OrganizationSurface,
   organizationId: number,
   tokenId: number,
   data: { responsible_user_id: number; reason?: string }
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
   const res = await api.patch(
-    `/api/organizations/${organizationId}/tokens/${tokenId}/responsible-user`,
+    `${organizationResourceBase(surface, organizationId)}/tokens/${tokenId}/responsible-user`,
     data
   )
   return res.data
@@ -500,11 +552,12 @@ export async function updateOrganizationTokenResponsibility(
  * than 30 days with `success: false`, so the caller picks the granularity.
  */
 export async function getOrganizationQuotaData(
+  surface: OrganizationSurface,
   organizationId: number,
   params: { start_timestamp?: number; end_timestamp?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationQuotaDataRow[]>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/quota-data`,
+    `${organizationResourceBase(surface, organizationId)}/quota-data`,
     { params }
   )
   return res.data
@@ -526,22 +579,26 @@ export interface OrganizationLogListParams {
 }
 
 export async function listOrganizationLogs(
+  surface: OrganizationSurface,
   organizationId: number,
   params: OrganizationLogListParams
 ): Promise<OrganizationApiResponse<PagedResult<OrganizationLogRow>>> {
-  const res = await api.get(`/api/organizations/${organizationId}/logs`, {
-    params,
-  })
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/logs`,
+    { params }
+  )
   return res.data
 }
 
 export async function getOrganizationLogStats(
+  surface: OrganizationSurface,
   organizationId: number,
   params: Omit<OrganizationLogListParams, 'p' | 'page_size'> = {}
 ): Promise<OrganizationApiResponse<OrganizationLogStats>> {
-  const res = await api.get(`/api/organizations/${organizationId}/logs/stats`, {
-    params,
-  })
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/logs/stats`,
+    { params }
+  )
   return res.data
 }
 
@@ -557,23 +614,26 @@ export interface OrganizationTaskListParams {
 }
 
 export async function listOrganizationTasks(
+  surface: OrganizationSurface,
   organizationId: number,
   params: OrganizationTaskListParams
 ): Promise<OrganizationApiResponse<PagedResult<OrganizationTaskRow>>> {
-  const res = await api.get(`/api/organizations/${organizationId}/tasks`, {
-    params,
-  })
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/tasks`,
+    { params }
+  )
   return res.data
 }
 
 export async function listOrganizationMidjourneyTasks(
+  surface: OrganizationSurface,
   organizationId: number,
   params: { p: number; page_size: number; mj_id?: string; channel_id?: string }
 ): Promise<
   OrganizationApiResponse<PagedResult<OrganizationMidjourneyTaskRow>>
 > {
   const res = await api.get(
-    `/api/organizations/${organizationId}/midjourney-tasks`,
+    `${organizationResourceBase(surface, organizationId)}/midjourney-tasks`,
     { params }
   )
   return res.data
@@ -597,11 +657,12 @@ export interface OrganizationAuditLogParams {
 }
 
 export async function listOrganizationAuditLogs(
+  surface: OrganizationSurface,
   organizationId: number,
   params: OrganizationAuditLogParams
 ): Promise<OrganizationApiResponse<PagedResult<OrganizationAuditLogRow>>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/audit-logs`,
+    `${organizationResourceBase(surface, organizationId)}/audit-logs`,
     { params }
   )
   return res.data
@@ -620,10 +681,11 @@ export async function listAllOrganizationAuditLogs(
 // ============================================================================
 
 export async function getOrganizationBillingSummary(
+  surface: OrganizationSurface,
   organizationId: number
 ): Promise<OrganizationApiResponse<OrganizationBillingSummary>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/billing/summary`
+    `${organizationResourceBase(surface, organizationId)}/billing/summary`
   )
   return res.data
 }
@@ -639,22 +701,24 @@ export async function getMyOrganizationMemberBilling(
 }
 
 export async function listOrganizationBillingUserSummaries(
+  surface: OrganizationSurface,
   organizationId: number,
   params: { month?: string; start_month?: string; end_month?: string } = {}
 ): Promise<OrganizationApiResponse<OrganizationBillingUserSummaryResponse>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/billing/user-summaries`,
+    `${organizationResourceBase(surface, organizationId)}/billing/user-summaries`,
     { params }
   )
   return res.data
 }
 
 export async function listOrganizationBillingMonthlySummaries(
+  surface: OrganizationSurface,
   organizationId: number,
   params: { months?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationBillingMonthlySummaryResponse>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/billing/monthly-summaries`,
+    `${organizationResourceBase(surface, organizationId)}/billing/monthly-summaries`,
     { params }
   )
   return res.data
@@ -674,11 +738,12 @@ export interface OrganizationBillingDetailParams {
 }
 
 export async function listOrganizationBillingDetails(
+  surface: OrganizationSurface,
   organizationId: number,
   params: OrganizationBillingDetailParams
 ): Promise<OrganizationApiResponse<PagedResult<OrganizationBillingRecord>>> {
   const res = await api.get(
-    `/api/organizations/${organizationId}/billing/records`,
+    `${organizationResourceBase(surface, organizationId)}/billing/records`,
     { params }
   )
   return res.data

@@ -38,6 +38,7 @@ import { formatNumber, formatQuota, formatTimestamp } from '@/lib/format'
 import { getOrganizationQuotaData } from '../api'
 import { useOrganizationResourceSection } from '../hooks/use-organization-paged-query'
 import type { Organization, OrganizationQuotaDataRow } from '../types'
+import { useOrganizationSurface } from './organization-page-provider'
 import { OrganizationSection, OrganizationSectionEmpty } from './organization-section'
 
 /**
@@ -69,6 +70,7 @@ export function OrganizationOverviewSection(
   props: OrganizationOverviewSectionProps
 ) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [range, setRange] = useState(() => defaultWindow())
 
   // A window the operator dragged past the limit is clamped rather than
@@ -83,10 +85,11 @@ export function OrganizationOverviewSection(
   }
 
   const usage = useOrganizationResourceSection<OrganizationQuotaDataRow[]>({
+    surface,
     organizationId: props.organization.id,
     resource: 'quota-data',
     params,
-    query: () => getOrganizationQuotaData(props.organization.id, params),
+    query: () => getOrganizationQuotaData(surface, props.organization.id, params),
     enabled: props.canViewUsage,
     onForbidden: props.onForbidden,
   })

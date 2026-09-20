@@ -18,7 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Plus, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -45,7 +44,7 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { formatQuota, formatTimestamp } from '@/lib/format'
 
 import {
-  getOrganizationGroups,
+  getOrganizationGroupSource,
   listOrganizationTokens,
   updateOrganizationToken,
 } from '../api'
@@ -74,10 +73,10 @@ import { OrganizationTokenKeyCell } from './organization-token-key-cell'
 import { OrganizationTokensBulkActions } from './organization-token-bulk-actions'
 import { OrganizationTokenDeleteDialog } from './organization-token-delete-dialogs'
 import { OrganizationTokenFormDialog } from './organization-token-form-dialog'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
+import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
 
 const TOKENS_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-tokens-column-visibility'
 
@@ -119,6 +118,8 @@ type OrganizationTokensSectionProps = {
  */
 export function OrganizationTokensSection(props: OrganizationTokensSectionProps) {
   const { t } = useTranslation()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<OrganizationTokenRow | null>(null)
   const [deleting, setDeleting] = useState<OrganizationTokenRow | null>(null)
@@ -132,8 +133,8 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
     onColumnFiltersChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search,
+    navigate,
     pagination: {
       defaultPage: 1,
       defaultPageSize: ORGANIZATION_DEFAULT_PAGE_SIZE,
@@ -166,10 +167,11 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
   }
 
   const tokens = useOrganizationPagedSection<OrganizationTokenRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'tokens',
     params,
-    query: () => listOrganizationTokens(props.organizationId, params),
+    query: () => listOrganizationTokens(surface, props.organizationId, params),
     enabled: props.canView,
     onForbidden: props.onForbidden,
   })
@@ -178,8 +180,8 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
   // refuses a key whose group is outside that set, so listing every group a
   // deployment defines would offer choices that cannot be saved.
   const { data: groupsData } = useQuery({
-    queryKey: ['organization-groups', props.organizationId],
-    queryFn: () => getOrganizationGroups(props.organizationId),
+    queryKey: ['organization-groups', surface, props.organizationId],
+    queryFn: () => getOrganizationGroupSource(surface, props.organizationId),
     enabled: props.canView,
     staleTime: 5 * 60 * 1000,
   })
@@ -192,6 +194,7 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
   // key only ever belongs to an owner or an administrator.
   const { options: responsibleFilterOptions } =
     useOrganizationTokenResponsibleOptions(
+      surface,
       props.organizationId,
       'private',
       props.canView
@@ -213,6 +216,7 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
   const changeStatus = async (token: OrganizationTokenRow, status: number) => {
     try {
       const result = await updateOrganizationToken(
+        surface,
         props.organizationId,
         token.id,
         buildOrganizationTokenStatusPayload(token, status)

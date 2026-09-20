@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Download } from 'lucide-react'
 import { useState } from 'react'
@@ -63,10 +62,10 @@ import {
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationBillingRecord } from '../types'
 import { OrganizationTextFilter } from './organization-filter-fields'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
+import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
 
 const BILLING_COLUMN_VISIBILITY_STORAGE_KEY =
   'organization-billing-column-visibility'
@@ -97,8 +96,8 @@ type OrganizationBillingDetailsProps = {
  */
 export function OrganizationBillingDetails(props: OrganizationBillingDetailsProps) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
   const [isExporting, setIsExporting] = useState(false)
 
   const {
@@ -168,10 +167,12 @@ export function OrganizationBillingDetails(props: OrganizationBillingDetailsProp
   }
 
   const records = useOrganizationPagedSection<OrganizationBillingRecord>({
+    surface,
     organizationId: props.organizationId,
     resource: 'billing-records',
     params: listParams,
-    query: () => listOrganizationBillingDetails(props.organizationId, listParams),
+    query: () =>
+      listOrganizationBillingDetails(surface, props.organizationId, listParams),
     onForbidden: props.onForbidden,
   })
 
@@ -249,6 +250,7 @@ export function OrganizationBillingDetails(props: OrganizationBillingDetailsProp
       const collected = await collectOrganizationRows<OrganizationBillingRecord>(
         async (page, pageSize) => {
           const response = await listOrganizationBillingDetails(
+            surface,
             props.organizationId,
             { ...filters, p: page, page_size: pageSize }
           )

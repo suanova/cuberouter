@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
@@ -44,11 +43,11 @@ import {
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationMidjourneyTaskRow } from '../types'
 import { OrganizationTextFilter } from './organization-filter-fields'
+import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
 import { buildOrganizationTaskColumns } from './organization-task-columns'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 const MIDJOURNEY_COLUMN_VISIBILITY_STORAGE_KEY =
   'organization-midjourney-column-visibility'
@@ -79,8 +78,8 @@ export function OrganizationMidjourneyTaskList(
   props: OrganizationMidjourneyTaskListProps
 ) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
 
   const {
     columnFilters,
@@ -126,11 +125,16 @@ export function OrganizationMidjourneyTaskList(
   }
 
   const tasks = useOrganizationPagedSection<OrganizationMidjourneyTaskRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'midjourney-tasks',
     params: listParams,
     query: () =>
-      listOrganizationMidjourneyTasks(props.organizationId, listParams),
+      listOrganizationMidjourneyTasks(
+        surface,
+        props.organizationId,
+        listParams
+      ),
     onForbidden: props.onForbidden,
   })
 

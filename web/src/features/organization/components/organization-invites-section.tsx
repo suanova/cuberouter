@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Loader2, MailPlus, RotateCw, Trash2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -52,14 +51,14 @@ import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationInviteRow } from '../types'
 import { OrganizationInviteDialog } from './organization-invite-dialog'
 import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
+import {
   OrganizationSection,
   OrganizationSectionEmpty,
   OrganizationSectionRefresh,
 } from './organization-section'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 const INVITES_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-invites-column-visibility'
 
@@ -86,14 +85,16 @@ export function OrganizationInvitesSection(
   props: OrganizationInvitesSectionProps
 ) {
   const { t } = useTranslation()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
   const [isInviteOpen, setIsInviteOpen] = useState(false)
   const [revoking, setRevoking] = useState<OrganizationInviteRow | null>(null)
   const [isRevoking, setIsRevoking] = useState(false)
   const [retryingId, setRetryingId] = useState<number | null>(null)
 
   const { pagination, onPaginationChange, ensurePageInRange } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search,
+    navigate,
     pagination: {
       defaultPage: 1,
       defaultPageSize: ORGANIZATION_DEFAULT_PAGE_SIZE,
@@ -108,6 +109,7 @@ export function OrganizationInvitesSection(
   }
 
   const invites = useOrganizationPagedSection<OrganizationInviteRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'invitations',
     params,

@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -29,15 +28,12 @@ import {
   type OrganizationTaskPanel,
 } from '../lib'
 import { OrganizationMidjourneyTaskList } from './organization-midjourney-task-list'
+import { useOrganizationSectionRoute } from './organization-page-provider'
 import {
   OrganizationSection,
   OrganizationSectionEmpty,
 } from './organization-section'
 import { OrganizationTaskList } from './organization-task-list'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 /**
  * The two task tables.
@@ -76,8 +72,7 @@ type OrganizationTasksSectionProps = {
  */
 export function OrganizationTasksSection(props: OrganizationTasksSectionProps) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
   const panel = normalizeOrganizationTaskPanel(search.taskTab)
 
   if (!props.canView) {

@@ -54,7 +54,10 @@ export async function alignOrganizationAccountContext(
   }
 
   try {
-    await getOrganization(organizationId, { silent: true })
+    // Always the member surface: this probes what the *account context* can
+    // read, and the platform admin console answers from the administrator's own
+    // account without one. There is nothing for an administrator to align.
+    await getOrganization('member', organizationId, { silent: true })
     // Readable as-is: either the caller is on their personal context and has
     // read access, or the organization is in a state that skips the check.
     return false

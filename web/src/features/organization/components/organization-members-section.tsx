@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { Power, PowerOff, Trash2, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -68,10 +67,10 @@ import {
   OrganizationExitDialog,
   OrganizationRemoveMemberDialog,
 } from './organization-member-dialogs'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
+import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
 
 const MEMBERS_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-members-column-visibility'
 
@@ -103,6 +102,8 @@ type OrganizationMembersSectionProps = {
  */
 export function OrganizationMembersSection(props: OrganizationMembersSectionProps) {
   const { t } = useTranslation()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [isExiting, setIsExiting] = useState(false)
   const [removing, setRemoving] = useState<OrganizationMemberRow | null>(null)
@@ -113,8 +114,8 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
     onPaginationChange,
     ensurePageInRange,
   } = useTableUrlState({
-    search: route.useSearch(),
-    navigate: route.useNavigate(),
+    search,
+    navigate,
     pagination: {
       defaultPage: 1,
       defaultPageSize: ORGANIZATION_DEFAULT_PAGE_SIZE,
@@ -129,10 +130,11 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
   }
 
   const members = useOrganizationPagedSection<OrganizationMemberRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'members',
     params,
-    query: () => listOrganizationMembers(props.organizationId, params),
+    query: () => listOrganizationMembers(surface, props.organizationId, params),
     enabled: props.canView,
     onForbidden: props.onForbidden,
   })
@@ -149,6 +151,7 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
       return
     }
     const result = await updateOrganizationMember(
+      surface,
       props.organizationId,
       member.user_id,
       buildOrganizationMemberRoleUpdatePayload(member, nextRole)
@@ -166,6 +169,7 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
     status: 'active' | 'disabled'
   ) => {
     const result = await updateOrganizationMember(
+      surface,
       props.organizationId,
       member.user_id,
       { status }

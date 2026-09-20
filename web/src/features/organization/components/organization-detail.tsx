@@ -44,6 +44,7 @@ import {
   normalizeOrganizationTabKey,
 } from '../lib'
 import { OrganizationDissolveConfirm } from './organization-dissolve-confirm'
+import { OrganizationPageProvider } from './organization-page-provider'
 import { OrganizationSections } from './organization-sections'
 
 const route = getRouteApi(
@@ -62,9 +63,10 @@ export function OrganizationDetail() {
   const { t } = useTranslation()
   const { organizationId, section } = route.useParams()
   const navigate = route.useNavigate()
+  const search = route.useSearch()
   const queryClient = useQueryClient()
   const activeTab = normalizeOrganizationTabKey(section)
-  const { detail, refetch } = useOrganizationDetail(organizationId)
+  const { detail, refetch } = useOrganizationDetail('member', organizationId)
   const [isDissolving, setIsDissolving] = useState(false)
 
   /**
@@ -211,14 +213,20 @@ export function OrganizationDetail() {
           </Tabs>
 
           <div className='min-h-0 flex-1'>
-            <OrganizationSections
-              detail={detail}
-              tab={currentTab}
-              readOnly={readOnly}
-              onForbidden={handleForbidden}
-              onUpdated={refetch}
-              onLeftOrganization={leaveOrganization}
-            />
+            <OrganizationPageProvider
+              surface='member'
+              search={search}
+              navigate={navigate}
+            >
+              <OrganizationSections
+                detail={detail}
+                tab={currentTab}
+                readOnly={readOnly}
+                onForbidden={handleForbidden}
+                onUpdated={refetch}
+                onLeftOrganization={leaveOrganization}
+              />
+            </OrganizationPageProvider>
           </div>
         </div>
       </SectionPageLayout.Content>

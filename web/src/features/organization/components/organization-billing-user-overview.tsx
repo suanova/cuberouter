@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import { Activity, Coins, Download, UserCheck, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -65,11 +64,8 @@ import type {
   OrganizationBillingUserSummaryItem,
   OrganizationBillingUserSummaryResponse,
 } from '../types'
+import { useOrganizationSectionRoute, useOrganizationSurface } from './organization-page-provider'
 import { OrganizationSectionRefresh } from './organization-section'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 type OrganizationBillingUserOverviewProps = {
   organizationId: number
@@ -91,8 +87,8 @@ export function OrganizationBillingUserOverview(
   props: OrganizationBillingUserOverviewProps
 ) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
 
   const range = organizationBillingMonthRange(
     search.billingStartMonth,
@@ -103,11 +99,12 @@ export function OrganizationBillingUserOverview(
   const params = { start_month: range.start, end_month: range.end }
   const summaries = useOrganizationResourceSection<OrganizationBillingUserSummaryResponse>(
     {
+      surface,
       organizationId: props.organizationId,
       resource: 'billing-user-summaries',
       params,
       query: () =>
-        listOrganizationBillingUserSummaries(props.organizationId, params),
+        listOrganizationBillingUserSummaries(surface, props.organizationId, params),
       onForbidden: props.onForbidden,
     }
   )

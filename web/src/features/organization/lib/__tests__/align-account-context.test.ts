@@ -91,7 +91,9 @@ describe('alignOrganizationAccountContext', () => {
     await expect(
       alignOrganizationAccountContext(42, makeQueryClient())
     ).resolves.toBe(false)
-    expect(getOrganizationMock).toHaveBeenCalledWith(42, { silent: true })
+    expect(getOrganizationMock).toHaveBeenCalledWith('member', 42, {
+      silent: true,
+    })
     expect(switchAccountContext).not.toHaveBeenCalled()
   })
 

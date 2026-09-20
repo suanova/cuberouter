@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query'
 import { getAccountContextCacheKey } from '@/stores/account-context-store'
 
 import { getOrganization } from '../api'
+import type { OrganizationSurface } from '../lib/organization-surface'
 import type { OrganizationDetail } from '../types'
 
 /**
@@ -29,9 +30,11 @@ import type { OrganizationDetail } from '../types'
  * the API error interceptor has already reported why.
  *
  * The payload is resolved against the account context, so the context is part of
- * the identity of the cached value.
+ * the identity of the cached value — and so is the surface, which decides
+ * whether the caller's own membership is what grants the read.
  */
 export function useOrganizationDetail(
+  surface: OrganizationSurface,
   organizationId: string | number | undefined
 ): {
   detail: OrganizationDetail | null | undefined
@@ -42,9 +45,9 @@ export function useOrganizationDetail(
   const validId = Number.isFinite(id) && id > 0
 
   const { data, refetch } = useQuery({
-    queryKey: ['organization', id, getAccountContextCacheKey()],
+    queryKey: ['organization', surface, id, getAccountContextCacheKey()],
     queryFn: async (): Promise<OrganizationDetail | null> => {
-      const result = await getOrganization(id)
+      const result = await getOrganization(surface, id)
       return result.success && result.data ? result.data : null
     },
     enabled: validId,

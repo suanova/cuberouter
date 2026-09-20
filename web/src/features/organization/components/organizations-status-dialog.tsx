@@ -58,7 +58,7 @@ export function OrganizationsStatusDialog() {
     const status = isEnabling ? 'active' : 'disabled'
     setIsSubmitting(true)
     try {
-      const result = await updateOrganizationStatus(currentRow.id, {
+      const result = await updateOrganizationStatus('member', currentRow.id, {
         status,
         confirm_name: confirmSlug.trim(),
       })

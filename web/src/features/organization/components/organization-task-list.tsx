@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
@@ -50,10 +49,10 @@ import {
   OrganizationTextFilter,
 } from './organization-filter-fields'
 import { buildOrganizationTaskColumns } from './organization-task-columns'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
+import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
 
 const TASK_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-task-column-visibility'
 
@@ -82,8 +81,8 @@ type OrganizationTaskListProps = {
  */
 export function OrganizationTaskList(props: OrganizationTaskListProps) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
 
   const {
     columnFilters,
@@ -136,10 +135,12 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
   }
 
   const tasks = useOrganizationPagedSection<OrganizationTaskRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'tasks',
     params: listParams,
-    query: () => listOrganizationTasks(props.organizationId, listParams),
+    query: () =>
+      listOrganizationTasks(surface, props.organizationId, listParams),
     onForbidden: props.onForbidden,
   })
 

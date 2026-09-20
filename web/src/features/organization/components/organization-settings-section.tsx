@@ -51,6 +51,7 @@ import {
   type OrganizationFormValues,
 } from '../lib'
 import type { Organization } from '../types'
+import { useOrganizationSurface } from './organization-page-provider'
 import { OrganizationSection, OrganizationSectionEmpty } from './organization-section'
 
 type OrganizationSettingsSectionProps = {
@@ -75,6 +76,7 @@ export function OrganizationSettingsSection(
   props: OrganizationSettingsSectionProps
 ) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const form = useForm<OrganizationFormValues>({
@@ -104,7 +106,7 @@ export function OrganizationSettingsSection(
   const onSubmit = async (values: OrganizationFormValues) => {
     setIsSubmitting(true)
     try {
-      const result = await updateOrganization(props.organization.id, {
+      const result = await updateOrganization(surface, props.organization.id, {
         name: values.name.trim(),
         description: values.description?.trim() ?? '',
       })

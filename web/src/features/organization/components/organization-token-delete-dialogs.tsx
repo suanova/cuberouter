@@ -29,6 +29,7 @@ import {
 } from '../api'
 import { organizationTokenErrorText } from '../lib'
 import type { OrganizationTokenRow } from '../types'
+import { useOrganizationSurface } from './organization-page-provider'
 
 type OrganizationTokenDeleteDialogProps = {
   organizationId: number
@@ -49,6 +50,7 @@ export function OrganizationTokenDeleteDialog(
   props: OrganizationTokenDeleteDialogProps
 ) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [isDeleting, setIsDeleting] = useState(false)
   const token = props.token
 
@@ -57,6 +59,7 @@ export function OrganizationTokenDeleteDialog(
     setIsDeleting(true)
     try {
       const result = await deleteOrganizationToken(
+        surface,
         props.organizationId,
         token.id
       )
@@ -119,6 +122,7 @@ export function OrganizationTokensBatchDeleteDialog(
   props: OrganizationTokensBatchDeleteDialogProps
 ) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [isDeleting, setIsDeleting] = useState(false)
   const isOpen = props.tokens.length > 0
 
@@ -127,6 +131,7 @@ export function OrganizationTokensBatchDeleteDialog(
     setIsDeleting(true)
     try {
       const result = await batchDeleteOrganizationTokens(
+        surface,
         props.organizationId,
         props.tokens.map((token) => token.id)
       )

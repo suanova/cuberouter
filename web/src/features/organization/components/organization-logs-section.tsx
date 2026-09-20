@@ -17,7 +17,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getRouteApi } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -76,13 +75,13 @@ import type { OrganizationLogRow, OrganizationLogStats } from '../types'
 import { OrganizationTextFilter } from './organization-filter-fields'
 import { OrganizationLogDetailsDialog } from './organization-log-details-dialog'
 import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
+import {
   OrganizationSection,
   OrganizationSectionEmpty,
 } from './organization-section'
-
-const route = getRouteApi(
-  '/_authenticated/organizations/$organizationId/$section'
-)
 
 const LOG_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-log-column-visibility'
 
@@ -110,8 +109,8 @@ type OrganizationLogsSectionProps = {
  */
 export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
   const { t } = useTranslation()
-  const search = route.useSearch()
-  const navigate = route.useNavigate()
+  const { search, navigate } = useOrganizationSectionRoute()
+  const surface = useOrganizationSurface()
 
   const {
     columnFilters,
@@ -163,20 +162,23 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
   }
 
   const logs = useOrganizationPagedSection<OrganizationLogRow>({
+    surface,
     organizationId: props.organizationId,
     resource: 'logs',
     params: listParams,
-    query: () => listOrganizationLogs(props.organizationId, listParams),
+    query: () => listOrganizationLogs(surface, props.organizationId, listParams),
     enabled: props.canView,
     onForbidden: props.onForbidden,
   })
 
   const statsParams = { ...filters, ...timeRange }
   const stats = useOrganizationResourceSection<OrganizationLogStats>({
+    surface,
     organizationId: props.organizationId,
     resource: 'log-stats',
     params: statsParams,
-    query: () => getOrganizationLogStats(props.organizationId, statsParams),
+    query: () =>
+      getOrganizationLogStats(surface, props.organizationId, statsParams),
     enabled: props.canView,
     onForbidden: props.onForbidden,
   })

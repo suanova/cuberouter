@@ -64,6 +64,7 @@ import {
   type OrganizationMemberOption,
 } from '../lib'
 import type { OrganizationMemberRow } from '../types'
+import { useOrganizationSurface } from './organization-page-provider'
 
 /** How long the user picker waits after the last keystroke before searching. */
 const USER_SEARCH_DEBOUNCE_MS = 300
@@ -449,9 +450,11 @@ export function OrganizationRemoveMemberDialog(props: {
   onRemoved: () => Promise<unknown> | unknown
 }) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const member = props.member
   const { options, isLoading } = useOrganizationMemberOptions(
+    surface,
     props.organizationId,
     member?.user_id,
     member !== null
@@ -468,6 +471,7 @@ export function OrganizationRemoveMemberDialog(props: {
     setIsSubmitting(true)
     try {
       const result = await removeOrganizationMember(
+        surface,
         props.organizationId,
         member.user_id,
         {
@@ -592,9 +596,11 @@ export function OrganizationDemoteAdminDialog(props: {
   onDemoted: () => Promise<unknown> | unknown
 }) {
   const { t } = useTranslation()
+  const surface = useOrganizationSurface()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const member = props.member
   const { options, isLoading } = useOrganizationMemberOptions(
+    surface,
     props.organizationId,
     member?.user_id,
     member !== null
@@ -611,6 +617,7 @@ export function OrganizationDemoteAdminDialog(props: {
     setIsSubmitting(true)
     try {
       const result = await updateOrganizationMember(
+        surface,
         props.organizationId,
         member.user_id,
         buildOrganizationMemberRoleUpdatePayload(member, 'member', {

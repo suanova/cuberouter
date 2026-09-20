@@ -69,6 +69,16 @@ export {
 } from './organization-detail-search'
 
 // ============================================================================
+// API Surface
+// ============================================================================
+export {
+  DEFAULT_ORGANIZATION_SURFACE,
+  organizationResourceBase,
+  ORGANIZATION_SURFACES,
+  type OrganizationSurface,
+} from './organization-surface'
+
+// ============================================================================
 // Paging
 // ============================================================================
 export {

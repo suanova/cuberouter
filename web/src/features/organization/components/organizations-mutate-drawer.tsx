@@ -130,7 +130,7 @@ export function OrganizationsMutateDrawer({
           organizationId: currentRow.id,
           includeGroup: canChangeGroup,
         })
-        const result = await updateOrganization(currentRow.id, payload)
+        const result = await updateOrganization('member', currentRow.id, payload)
         if (!result.success) {
           toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
           return
