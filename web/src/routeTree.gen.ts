@@ -44,6 +44,7 @@ import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authentica
 import { Route as AuthenticatedMediaStudioIndexRouteImport } from './routes/_authenticated/media-studio/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
 import { Route as AuthenticatedModelsSectionRouteImport } from './routes/_authenticated/models/$section'
+import { Route as AuthenticatedOrganizationsIndexRouteImport } from './routes/_authenticated/organizations/index'
 import { Route as AuthenticatedPlaygroundIndexRouteImport } from './routes/_authenticated/playground/index'
 import { Route as AuthenticatedPluginsIndexRouteImport } from './routes/_authenticated/plugins/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
@@ -59,6 +60,7 @@ import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenti
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
 import { Route as AuthenticatedOpsCampaignIndexRouteImport } from './routes/_authenticated/ops/campaign/index'
 import { Route as AuthenticatedOpsInviteHistoryIndexRouteImport } from './routes/_authenticated/ops/invite-history/index'
+import { Route as AuthenticatedOrganizationsOrganizationIdSectionRouteImport } from './routes/_authenticated/organizations/$organizationId/$section'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
 import { Route as AuthenticatedSystemSettingsAuthSectionRouteImport } from './routes/_authenticated/system-settings/auth/$section'
 import { Route as AuthenticatedSystemSettingsBillingIndexRouteImport } from './routes/_authenticated/system-settings/billing/index'
@@ -256,6 +258,12 @@ const AuthenticatedModelsSectionRoute =
     path: '/models/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedOrganizationsIndexRoute =
+  AuthenticatedOrganizationsIndexRouteImport.update({
+    id: '/organizations/',
+    path: '/organizations/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedPlaygroundIndexRoute =
   AuthenticatedPlaygroundIndexRouteImport.update({
     id: '/playground/',
@@ -342,6 +350,12 @@ const AuthenticatedOpsInviteHistoryIndexRoute =
   AuthenticatedOpsInviteHistoryIndexRouteImport.update({
     id: '/ops/invite-history/',
     path: '/ops/invite-history/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedOrganizationsOrganizationIdSectionRoute =
+  AuthenticatedOrganizationsOrganizationIdSectionRouteImport.update({
+    id: '/organizations/$organizationId/$section',
+    path: '/organizations/$organizationId/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedSystemSettingsAuthIndexRoute =
@@ -464,6 +478,7 @@ export interface FileRoutesByFullPath {
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/media-studio/': typeof AuthenticatedMediaStudioIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
+  '/organizations/': typeof AuthenticatedOrganizationsIndexRoute
   '/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/plugins/': typeof AuthenticatedPluginsIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
@@ -476,6 +491,7 @@ export interface FileRoutesByFullPath {
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
+  '/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -527,6 +543,7 @@ export interface FileRoutesByTo {
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/media-studio': typeof AuthenticatedMediaStudioIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
+  '/organizations': typeof AuthenticatedOrganizationsIndexRoute
   '/playground': typeof AuthenticatedPlaygroundIndexRoute
   '/plugins': typeof AuthenticatedPluginsIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
@@ -539,6 +556,7 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
+  '/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -594,6 +612,7 @@ export interface FileRoutesById {
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/media-studio/': typeof AuthenticatedMediaStudioIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
+  '/_authenticated/organizations/': typeof AuthenticatedOrganizationsIndexRoute
   '/_authenticated/playground/': typeof AuthenticatedPlaygroundIndexRoute
   '/_authenticated/plugins/': typeof AuthenticatedPluginsIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
@@ -606,6 +625,7 @@ export interface FileRoutesById {
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
+  '/_authenticated/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/_authenticated/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -660,6 +680,7 @@ export interface FileRouteTypes {
     | '/keys/'
     | '/media-studio/'
     | '/models/'
+    | '/organizations/'
     | '/playground/'
     | '/plugins/'
     | '/profile/'
@@ -672,6 +693,7 @@ export interface FileRouteTypes {
     | '/users/'
     | '/wallet/'
     | '/pricing/$modelId/'
+    | '/organizations/$organizationId/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
@@ -723,6 +745,7 @@ export interface FileRouteTypes {
     | '/keys'
     | '/media-studio'
     | '/models'
+    | '/organizations'
     | '/playground'
     | '/plugins'
     | '/profile'
@@ -735,6 +758,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/wallet'
     | '/pricing/$modelId'
+    | '/organizations/$organizationId/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
@@ -789,6 +813,7 @@ export interface FileRouteTypes {
     | '/_authenticated/keys/'
     | '/_authenticated/media-studio/'
     | '/_authenticated/models/'
+    | '/_authenticated/organizations/'
     | '/_authenticated/playground/'
     | '/_authenticated/plugins/'
     | '/_authenticated/profile/'
@@ -801,6 +826,7 @@ export interface FileRouteTypes {
     | '/_authenticated/users/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
+    | '/_authenticated/organizations/$organizationId/$section'
     | '/_authenticated/system-settings/auth/$section'
     | '/_authenticated/system-settings/billing/$section'
     | '/_authenticated/system-settings/content/$section'
@@ -1085,6 +1111,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedModelsSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/organizations/': {
+      id: '/_authenticated/organizations/'
+      path: '/organizations'
+      fullPath: '/organizations/'
+      preLoaderRoute: typeof AuthenticatedOrganizationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/playground/': {
       id: '/_authenticated/playground/'
       path: '/playground'
@@ -1188,6 +1221,13 @@ declare module '@tanstack/react-router' {
       path: '/ops/invite-history'
       fullPath: '/ops/invite-history/'
       preLoaderRoute: typeof AuthenticatedOpsInviteHistoryIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/organizations/$organizationId/$section': {
+      id: '/_authenticated/organizations/$organizationId/$section'
+      path: '/organizations/$organizationId/$section'
+      fullPath: '/organizations/$organizationId/$section'
+      preLoaderRoute: typeof AuthenticatedOrganizationsOrganizationIdSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/system-settings/auth/': {
@@ -1388,6 +1428,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedMediaStudioIndexRoute: typeof AuthenticatedMediaStudioIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
+  AuthenticatedOrganizationsIndexRoute: typeof AuthenticatedOrganizationsIndexRoute
   AuthenticatedPlaygroundIndexRoute: typeof AuthenticatedPlaygroundIndexRoute
   AuthenticatedPluginsIndexRoute: typeof AuthenticatedPluginsIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
@@ -1398,6 +1439,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
+  AuthenticatedOrganizationsOrganizationIdSectionRoute: typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   AuthenticatedOpsCampaignIndexRoute: typeof AuthenticatedOpsCampaignIndexRoute
   AuthenticatedOpsInviteHistoryIndexRoute: typeof AuthenticatedOpsInviteHistoryIndexRoute
 }
@@ -1417,6 +1459,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedMediaStudioIndexRoute: AuthenticatedMediaStudioIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,
+  AuthenticatedOrganizationsIndexRoute: AuthenticatedOrganizationsIndexRoute,
   AuthenticatedPlaygroundIndexRoute: AuthenticatedPlaygroundIndexRoute,
   AuthenticatedPluginsIndexRoute: AuthenticatedPluginsIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
@@ -1428,6 +1471,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
+  AuthenticatedOrganizationsOrganizationIdSectionRoute:
+    AuthenticatedOrganizationsOrganizationIdSectionRoute,
   AuthenticatedOpsCampaignIndexRoute: AuthenticatedOpsCampaignIndexRoute,
   AuthenticatedOpsInviteHistoryIndexRoute:
     AuthenticatedOpsInviteHistoryIndexRoute,
