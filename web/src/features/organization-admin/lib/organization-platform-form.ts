@@ -23,11 +23,11 @@ import {
   ORGANIZATION_DESCRIPTION_MAX_LENGTH,
   ORGANIZATION_NAME_MAX_LENGTH,
 } from '@/features/organization/lib'
-import type { OrganizationManagementView } from '@/features/organization/types'
 
 import {
   platformOrganizationQuotaDelta,
   platformOrganizationRemainingQuota,
+  type PlatformOrganizationEditTarget,
 } from './organization-platform'
 
 /**
@@ -89,9 +89,9 @@ export type PlatformOrganizationEditValues = z.infer<
   typeof platformOrganizationEditSchema
 >
 
-/** The form's starting point, taken from the row being edited. */
+/** The form's starting point, taken from the organization being edited. */
 export function transformPlatformOrganizationToFormDefaults(
-  organization: OrganizationManagementView
+  organization: PlatformOrganizationEditTarget
 ): PlatformOrganizationEditValues {
   return {
     name: organization.name,
@@ -113,7 +113,7 @@ export function transformPlatformOrganizationToFormDefaults(
  */
 export function transformPlatformOrganizationEditToRequests(
   values: PlatformOrganizationEditValues,
-  organization: OrganizationManagementView
+  organization: PlatformOrganizationEditTarget
 ): {
   edit: { name: string; description: string; group: string; reason: string }
   quotaDelta: number | null

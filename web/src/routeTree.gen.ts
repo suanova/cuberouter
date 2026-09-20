@@ -76,6 +76,7 @@ import { Route as AuthenticatedSystemSettingsSecurityIndexRouteImport } from './
 import { Route as AuthenticatedSystemSettingsSecuritySectionRouteImport } from './routes/_authenticated/system-settings/security/$section'
 import { Route as AuthenticatedSystemSettingsSiteIndexRouteImport } from './routes/_authenticated/system-settings/site/index'
 import { Route as AuthenticatedSystemSettingsSiteSectionRouteImport } from './routes/_authenticated/system-settings/site/$section'
+import { Route as AuthenticatedAdminOrganizationsOrganizationIdSectionRouteImport } from './routes/_authenticated/admin/organizations/$organizationId/$section'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -449,6 +450,12 @@ const AuthenticatedSystemSettingsSiteSectionRoute =
     path: '/site/$section',
     getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
   } as any)
+const AuthenticatedAdminOrganizationsOrganizationIdSectionRoute =
+  AuthenticatedAdminOrganizationsOrganizationIdSectionRouteImport.update({
+    id: '/admin/organizations/$organizationId/$section',
+    path: '/admin/organizations/$organizationId/$section',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -516,6 +523,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/operations/': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/system-settings/security/': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/system-settings/site/': typeof AuthenticatedSystemSettingsSiteIndexRoute
+  '/admin/organizations/$organizationId/$section': typeof AuthenticatedAdminOrganizationsOrganizationIdSectionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -582,6 +590,7 @@ export interface FileRoutesByTo {
   '/system-settings/operations': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/system-settings/security': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/system-settings/site': typeof AuthenticatedSystemSettingsSiteIndexRoute
+  '/admin/organizations/$organizationId/$section': typeof AuthenticatedAdminOrganizationsOrganizationIdSectionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -652,6 +661,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/operations/': typeof AuthenticatedSystemSettingsOperationsIndexRoute
   '/_authenticated/system-settings/security/': typeof AuthenticatedSystemSettingsSecurityIndexRoute
   '/_authenticated/system-settings/site/': typeof AuthenticatedSystemSettingsSiteIndexRoute
+  '/_authenticated/admin/organizations/$organizationId/$section': typeof AuthenticatedAdminOrganizationsOrganizationIdSectionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -721,6 +731,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations/'
     | '/system-settings/security/'
     | '/system-settings/site/'
+    | '/admin/organizations/$organizationId/$section'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -787,6 +798,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations'
     | '/system-settings/security'
     | '/system-settings/site'
+    | '/admin/organizations/$organizationId/$section'
   id:
     | '__root__'
     | '/'
@@ -856,6 +868,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/operations/'
     | '/_authenticated/system-settings/security/'
     | '/_authenticated/system-settings/site/'
+    | '/_authenticated/admin/organizations/$organizationId/$section'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1348,6 +1361,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSystemSettingsSiteSectionRouteImport
       parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
     }
+    '/_authenticated/admin/organizations/$organizationId/$section': {
+      id: '/_authenticated/admin/organizations/$organizationId/$section'
+      path: '/admin/organizations/$organizationId/$section'
+      fullPath: '/admin/organizations/$organizationId/$section'
+      preLoaderRoute: typeof AuthenticatedAdminOrganizationsOrganizationIdSectionRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
   }
 }
 
@@ -1463,6 +1483,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedAdminOrganizationsIndexRoute: typeof AuthenticatedAdminOrganizationsIndexRoute
   AuthenticatedOpsCampaignIndexRoute: typeof AuthenticatedOpsCampaignIndexRoute
   AuthenticatedOpsInviteHistoryIndexRoute: typeof AuthenticatedOpsInviteHistoryIndexRoute
+  AuthenticatedAdminOrganizationsOrganizationIdSectionRoute: typeof AuthenticatedAdminOrganizationsOrganizationIdSectionRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -1499,6 +1520,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedOpsCampaignIndexRoute: AuthenticatedOpsCampaignIndexRoute,
   AuthenticatedOpsInviteHistoryIndexRoute:
     AuthenticatedOpsInviteHistoryIndexRoute,
+  AuthenticatedAdminOrganizationsOrganizationIdSectionRoute:
+    AuthenticatedAdminOrganizationsOrganizationIdSectionRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

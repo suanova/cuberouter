@@ -31,6 +31,7 @@ import { OrganizationSectionEmpty } from './organization-section'
 import { OrganizationSettingsSection } from './organization-settings-section'
 import { OrganizationTasksSection } from './organization-tasks-section'
 import { OrganizationTokensSection } from './organization-tokens-section'
+import { useOrganizationSurface } from './organization-page-provider'
 
 type OrganizationSectionsProps = {
   detail: OrganizationDetail
@@ -59,10 +60,19 @@ type OrganizationSectionsProps = {
  * it. The sections are switched here rather than routed individually because
  * they share the page's header, its organization payload and its account
  * context; a nested route per section would re-fetch all three.
+ *
+ * Two of the bodies behave differently for an administrator standing outside the
+ * organization, because two things genuinely are different there: the role
+ * hierarchy that decides which member rows are editable does not apply to
+ * someone with no role, and key creation happens under the caller's own account
+ * context, which an administrator does not have here. Both arrive as flags
+ * rather than as a second implementation of these sections.
  */
 export function OrganizationSections(props: OrganizationSectionsProps) {
+  const surface = useOrganizationSurface()
   const { organization, actor } = props.detail
   const capabilities = actor.capabilities
+  const isPlatformSurface = surface === 'admin'
 
   switch (props.tab) {
     case 'overview':
@@ -92,6 +102,7 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           canManageMembers={capabilities.can_manage_members}
           canAddMembersDirectly={capabilities.can_add_members_directly}
           canExitOrganization={capabilities.can_exit_organization}
+          isPlatformAdministrator={isPlatformSurface && actor.is_platform_admin}
           readOnly={props.readOnly}
           onForbidden={props.onForbidden}
           onLeftOrganization={props.onLeftOrganization}
@@ -115,6 +126,7 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           organizationGroup={organization.group ?? ''}
           canView={capabilities.can_view_organization_tokens}
           canManageAllTokens={capabilities.can_manage_all_tokens}
+          canCreate={!isPlatformSurface}
           currentUserId={actor.user_id}
           isOrganizationMember={actor.is_organization_member}
           readOnly={props.readOnly}

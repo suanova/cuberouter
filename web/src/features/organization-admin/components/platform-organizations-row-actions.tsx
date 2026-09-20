@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Pencil, Power, PowerOff, Trash2 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { Eye, Pencil, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
@@ -44,8 +45,8 @@ interface PlatformOrganizationsRowActionsProps {
  * Every entry is offered only when the backend would accept it — the menu is
  * built from the organization's status and the caller's platform role, so there
  * is no control here that answers with a refusal. A dissolved organization has
- * no menu at all: nothing about it can change, and the record itself is the only
- * thing left to read.
+ * no menu beyond View: nothing about it can change, and the record itself is the
+ * only thing left to read.
  */
 export function PlatformOrganizationsRowActions({
   organization,
@@ -56,10 +57,6 @@ export function PlatformOrganizationsRowActions({
 
   const flags = getPlatformOrganizationActionFlags(organization, { isRoot })
 
-  if (flags.readOnly) {
-    return <span className='text-muted-foreground text-sm'>-</span>
-  }
-
   const openDialog = (type: 'edit' | 'status' | 'dissolve') => {
     setCurrentRow(organization)
     setOpen(type)
@@ -68,46 +65,66 @@ export function PlatformOrganizationsRowActions({
   return (
     <DataTableRowActionMenu ariaLabel={t('Open menu')} contentClassName='w-48'>
       <DropdownMenuItem
-        onSelect={() => openDialog('edit')}
-        disabled={!flags.canEdit}
+        render={
+          <Link
+            to='/admin/organizations/$organizationId/$section'
+            params={{ organizationId: String(organization.id), section: 'overview' }}
+          />
+        }
       >
-        {t('Edit')}
+        {t('View')}
         <DropdownMenuShortcut>
-          <Pencil size={16} />
+          <Eye size={16} />
         </DropdownMenuShortcut>
       </DropdownMenuItem>
 
-      {flags.canEnable ? (
-        <DropdownMenuItem onSelect={() => openDialog('status')}>
-          {t('Enable')}
-          <DropdownMenuShortcut>
-            <Power size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
-      ) : (
-        <DropdownMenuItem
-          onSelect={() => openDialog('status')}
-          disabled={!flags.canDisable}
-        >
-          {t('Disable')}
-          <DropdownMenuShortcut>
-            <PowerOff size={16} />
-          </DropdownMenuShortcut>
-        </DropdownMenuItem>
-      )}
+      {!flags.readOnly && <DropdownMenuSeparator />}
 
-      {flags.canDissolve && (
+      {!flags.readOnly && (
         <>
-          <DropdownMenuSeparator />
           <DropdownMenuItem
-            onSelect={() => openDialog('dissolve')}
-            className='text-destructive focus:text-destructive'
+            onSelect={() => openDialog('edit')}
+            disabled={!flags.canEdit}
           >
-            {t('Dissolve')}
+            {t('Edit')}
             <DropdownMenuShortcut>
-              <Trash2 size={16} />
+              <Pencil size={16} />
             </DropdownMenuShortcut>
           </DropdownMenuItem>
+
+          {flags.canEnable ? (
+            <DropdownMenuItem onSelect={() => openDialog('status')}>
+              {t('Enable')}
+              <DropdownMenuShortcut>
+                <Power size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onSelect={() => openDialog('status')}
+              disabled={!flags.canDisable}
+            >
+              {t('Disable')}
+              <DropdownMenuShortcut>
+                <PowerOff size={16} />
+              </DropdownMenuShortcut>
+            </DropdownMenuItem>
+          )}
+
+          {flags.canDissolve && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={() => openDialog('dissolve')}
+                className='text-destructive focus:text-destructive'
+              >
+                {t('Dissolve')}
+                <DropdownMenuShortcut>
+                  <Trash2 size={16} />
+                </DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </>
+          )}
         </>
       )}
     </DataTableRowActionMenu>

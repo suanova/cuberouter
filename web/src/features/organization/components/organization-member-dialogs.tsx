@@ -61,6 +61,7 @@ import {
 import { useOrganizationMemberOptions } from '../hooks/use-organization-member-options'
 import {
   buildOrganizationMemberRoleUpdatePayload,
+  isOrganizationMemberDemotion,
   type OrganizationMemberOption,
 } from '../lib'
 import type { OrganizationMemberRow } from '../types'
@@ -696,6 +697,280 @@ export function OrganizationDemoteAdminDialog(props: {
                     value={field.value ?? ''}
                   />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </form>
+      </Form>
+    </Dialog>
+  )
+}
+
+// ============================================================================
+// Edit Member (platform surface)
+// ============================================================================
+
+const EDIT_MEMBER_FORM_ID = 'organization-edit-member-form'
+
+/**
+ * The reason is required here, though the backend accepts an empty one on a
+ * promotion and falls back to its own wording on a demotion.
+ *
+ * That is deliberate: this dialog belongs to the platform surface, where every
+ * change is made to an organization the caller does not belong to, and the
+ * reason is the only part of it the organization's own members read.
+ */
+const editMemberSchema = z.object({
+  role: z.enum(['admin', 'member']),
+  status: z.enum(['active', 'disabled']),
+  transfer_to_user_id: z.number().optional(),
+  reason: z.string().trim().min(1, 'Enter an operation reason.'),
+})
+
+type EditMemberValues = z.infer<typeof editMemberSchema>
+
+const EMPTY_EDIT_VALUES: EditMemberValues = {
+  role: 'member',
+  status: 'active',
+  transfer_to_user_id: undefined,
+  reason: '',
+}
+
+/**
+ * Changes a member's role and status together, on the platform surface.
+ *
+ * The organization center changes a role from the row itself and a status from
+ * the row's menu, and neither asks why. That is fine for an organization
+ * deciding its own business; it is not fine for an administrator reaching into
+ * an organization they are not part of, where the reason is the entire account
+ * of the change as far as its members are concerned. So on the platform surface
+ * both go through this dialog, and the reason is required.
+ *
+ * Only what actually moved is sent. The endpoint refuses a request that carries
+ * neither a role nor a status, and sending an unchanged role alongside a status
+ * change would make the audit entry claim a role change that did not happen.
+ */
+export function OrganizationMemberEditDialog(props: {
+  organizationId: number
+  member: OrganizationMemberRow | null
+  onOpenChange: (open: boolean) => void
+  onUpdated: () => Promise<unknown> | unknown
+}) {
+  const { t } = useTranslation()
+  const surface = useOrganizationSurface()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const member = props.member
+
+  const form = useForm<EditMemberValues>({
+    resolver: zodResolver(editMemberSchema),
+    defaultValues: EMPTY_EDIT_VALUES,
+  })
+
+  useEffect(() => {
+    if (!member) return
+    form.reset({
+      // An owner's row never reaches this dialog — the backend refuses every
+      // member operation against it — so the fallback is only here to keep an
+      // unexpected role from blanking the picker.
+      role: member.role === 'member' ? 'member' : 'admin',
+      status: member.status === 'disabled' ? 'disabled' : 'active',
+      transfer_to_user_id: undefined,
+      reason: '',
+    })
+  }, [member, form])
+
+  const role = form.watch('role')
+  const status = form.watch('status')
+  const isDemoting = member ? isOrganizationMemberDemotion(member, role) : false
+  // Demotion can strand the keys this member was responsible for, which is what
+  // makes a transfer target worth asking for before the request is refused. The
+  // picker only loads while the dialog is actually offering it.
+  const { options, isLoading } = useOrganizationMemberOptions(
+    surface,
+    props.organizationId,
+    member?.user_id,
+    member !== null && isDemoting
+  )
+
+  if (!member) return null
+
+  const hasChanges = role !== member.role || status !== member.status
+  // A member the organization disabled can be re-enabled by the organization; a
+  // member the platform switched off cannot, which is why the note below says so
+  // rather than leaving the picker to explain it.
+  const isPlatformDisabled =
+    member.status === 'disabled' && member.disabled_source === 'platform'
+
+  const onSubmit = async (values: EditMemberValues) => {
+    const payload: {
+      role?: string
+      status?: string
+      transfer_to_user_id?: number
+      reason: string
+    } = { reason: values.reason.trim() }
+
+    if (values.role !== member.role) payload.role = values.role
+    if (values.status !== member.status) payload.status = values.status
+    if (payload.role === undefined && payload.status === undefined) return
+    // Only a demotion moves keys; disabling on its own leaves them where they
+    // are and switches them off, so a target would be a choice with no effect.
+    if (isDemoting && values.transfer_to_user_id !== undefined) {
+      payload.transfer_to_user_id = values.transfer_to_user_id
+    }
+
+    setIsSubmitting(true)
+    try {
+      const result = await updateOrganizationMember(
+        surface,
+        props.organizationId,
+        member.user_id,
+        payload
+      )
+      if (!result.success) {
+        toast.error(result.message || t('Failed to update the member'))
+        return
+      }
+      toast.success(t('Member updated'))
+      props.onOpenChange(false)
+      await props.onUpdated()
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) props.onOpenChange(false)
+      }}
+      title={t('Edit member')}
+      description={t(
+        'Change the role or status of this member. The change is recorded in the organization audit log.'
+      )}
+      bodyClassName='space-y-4'
+      footer={
+        <>
+          <Button
+            type='button'
+            variant='outline'
+            onClick={() => props.onOpenChange(false)}
+            disabled={isSubmitting}
+          >
+            {t('Cancel')}
+          </Button>
+          <Button
+            type='submit'
+            form={EDIT_MEMBER_FORM_ID}
+            disabled={isSubmitting || !hasChanges}
+          >
+            {isSubmitting ? <Loader2 className='animate-spin' /> : null}
+            {isSubmitting ? t('Saving...') : t('Save')}
+          </Button>
+        </>
+      }
+    >
+      <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm'>
+        <dt className='text-muted-foreground'>{t('Username')}</dt>
+        <dd className='truncate'>{member.username || '-'}</dd>
+        <dt className='text-muted-foreground'>{t('Email')}</dt>
+        <dd className='truncate'>{member.email || '-'}</dd>
+      </dl>
+
+      <Form {...form}>
+        <form
+          id={EDIT_MEMBER_FORM_ID}
+          onSubmit={form.handleSubmit(onSubmit)}
+          className='space-y-4'
+        >
+          <FormField
+            control={form.control}
+            name='role'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Role')}</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {ORGANIZATION_ASSIGNABLE_ROLES.map((role) => (
+                      <SelectItem key={role} value={role}>
+                        {t(organizationRoleLabelKey(role))}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='status'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Status')}</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger className='w-full'>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value='active'>{t('Active')}</SelectItem>
+                    <SelectItem value='disabled'>{t('Disabled')}</SelectItem>
+                  </SelectContent>
+                </Select>
+                {status === 'disabled' && (
+                  <FormDescription>
+                    {t(
+                      'Their API keys in this organization stop working. Disabling from here is recorded as a platform action, so the organization cannot undo it by itself.'
+                    )}
+                  </FormDescription>
+                )}
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {isPlatformDisabled && (
+            <p className='text-muted-foreground text-sm'>
+              {t(
+                'This member was disabled by the platform. The organization cannot re-enable them by itself.'
+              )}
+            </p>
+          )}
+
+          {isDemoting && (
+            <TransferTargetField
+              control={form.control}
+              options={options}
+              isLoading={isLoading}
+              emptyOptionLabel={t('Transfer responsible API keys to the owner')}
+            />
+          )}
+
+          <FormField
+            control={form.control}
+            name='reason'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Reason')}</FormLabel>
+                <FormControl>
+                  <Textarea
+                    rows={3}
+                    placeholder={t('Why is this change being made?')}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t('Recorded in the organization audit log.')}
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}

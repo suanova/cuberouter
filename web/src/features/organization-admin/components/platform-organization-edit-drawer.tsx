@@ -62,20 +62,20 @@ import {
   updateOrganization,
 } from '@/features/organization/api'
 import { buildOrganizationGroupOptions } from '@/features/organization/lib'
-import type { OrganizationManagementView } from '@/features/organization/types'
 
 import {
   platformOrganizationEditSchema,
   transformPlatformOrganizationEditToRequests,
   transformPlatformOrganizationToFormDefaults,
+  type PlatformOrganizationEditTarget,
   type PlatformOrganizationEditValues,
 } from '../lib'
-import { usePlatformOrganizations } from './platform-organizations-provider'
 
 type PlatformOrganizationEditDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  organization: OrganizationManagementView | null
+  organization: PlatformOrganizationEditTarget | null
+  /** The organization changed and whatever is showing it is stale. */
   onSaved: () => void
 }
 
@@ -105,7 +105,6 @@ export function PlatformOrganizationEditDrawer(
   props: PlatformOrganizationEditDrawerProps
 ) {
   const { t } = useTranslation()
-  const { triggerRefresh } = usePlatformOrganizations()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const organization = props.organization
 
@@ -158,9 +157,9 @@ export function PlatformOrganizationEditDrawer(
             adjustment.message ||
               t('The organization was saved, but the quota adjustment failed')
           )
-          // The fields did change, so the list behind the drawer is stale
+          // The fields did change, so whatever shows the organization is stale
           // whatever happened to the adjustment.
-          triggerRefresh()
+          props.onSaved()
           return
         }
       }

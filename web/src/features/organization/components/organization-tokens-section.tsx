@@ -98,6 +98,17 @@ type OrganizationTokensSectionProps = {
   canView: boolean
   /** The caller may publish keys and hand them to anyone; otherwise only their own. */
   canManageAllTokens: boolean
+  /**
+   * The caller may create keys in this organization.
+   *
+   * Not the same question as `canManageAllTokens`, which is about keys that
+   * already exist. Creation happens through the organization's own key
+   * endpoint, which resolves the caller's account context; a platform
+   * administrator browsing from the outside has no context in this organization
+   * to open a key under, so the create control is absent for them even while
+   * they can edit and delete what is there.
+   */
+  canCreate: boolean
   currentUserId: number
   isOrganizationMember: boolean
   /** The caller may not write to this organization. */
@@ -309,7 +320,7 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
             onClick={() => void tokens.refetch()}
             isFetching={tokens.isFetching}
           />
-          {!props.readOnly ? (
+          {!props.readOnly && props.canCreate ? (
             <Button size='sm' onClick={() => setCreating(true)}>
               <Plus data-icon='inline-start' />
               {t('Create key')}
@@ -396,17 +407,19 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
         }
       />
 
-      <OrganizationTokenFormDialog
-        organizationId={props.organizationId}
-        open={creating}
-        onOpenChange={setCreating}
-        editing={null}
-        canManageAllTokens={props.canManageAllTokens}
-        currentUserId={props.currentUserId}
-        isOrganizationMember={props.isOrganizationMember}
-        groupOptions={groupOptions}
-        onSaved={() => tokens.refetch()}
-      />
+      {props.canCreate && (
+        <OrganizationTokenFormDialog
+          organizationId={props.organizationId}
+          open={creating}
+          onOpenChange={setCreating}
+          editing={null}
+          canManageAllTokens={props.canManageAllTokens}
+          currentUserId={props.currentUserId}
+          isOrganizationMember={props.isOrganizationMember}
+          groupOptions={groupOptions}
+          onSaved={() => tokens.refetch()}
+        />
+      )}
 
       <OrganizationTokenFormDialog
         organizationId={props.organizationId}

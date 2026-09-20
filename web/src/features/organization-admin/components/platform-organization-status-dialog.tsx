@@ -30,7 +30,15 @@ import { updateOrganizationStatus } from '@/features/organization/api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '@/features/organization/constants'
 import { isOrganizationSlugConfirmed } from '@/features/organization/lib'
 
-import { usePlatformOrganizations } from './platform-organizations-provider'
+import type { PlatformOrganizationTarget } from '../lib'
+
+type PlatformOrganizationStatusDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  organization: PlatformOrganizationTarget | null
+  /** The status changed; the page behind the dialog is stale. */
+  onCompleted: () => void
+}
 
 /**
  * Takes an organization's traffic offline, or puts it back.
@@ -42,33 +50,34 @@ import { usePlatformOrganizations } from './platform-organizations-provider'
  * act on.
  *
  * The switch is only offered in the direction the organization is not already
- * in — the menu builds the buttons from the current status — so this dialog
+ * in — the caller builds the button from the current status — so this dialog
  * never shows an enable for an organization that is already active.
  */
-export function PlatformOrganizationStatusDialog() {
+export function PlatformOrganizationStatusDialog(
+  props: PlatformOrganizationStatusDialogProps
+) {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = usePlatformOrganizations()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [confirmSlug, setConfirmSlug] = useState('')
   const [reason, setReason] = useState('')
 
-  const isOpen = open === 'status'
-  const isEnabling = currentRow?.status === 'disabled'
+  const organization = props.organization
+  const isEnabling = organization?.status === 'disabled'
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!props.open) return
     setConfirmSlug('')
     setReason('')
-  }, [isOpen])
+  }, [props.open])
 
-  if (!currentRow) return null
+  if (!organization) return null
 
   const isReasonMissing = reason.trim().length === 0
   const handleConfirm = async () => {
     if (isReasonMissing) return
     setIsSubmitting(true)
     try {
-      const result = await updateOrganizationStatus('admin', currentRow.id, {
+      const result = await updateOrganizationStatus('admin', organization.id, {
         status: isEnabling ? 'active' : 'disabled',
         confirm_name: confirmSlug.trim(),
         reason: reason.trim(),
@@ -80,8 +89,8 @@ export function PlatformOrganizationStatusDialog() {
       toast.success(
         t(isEnabling ? SUCCESS_MESSAGES.ENABLED : SUCCESS_MESSAGES.DISABLED)
       )
-      setOpen(null)
-      triggerRefresh()
+      props.onOpenChange(false)
+      props.onCompleted()
     } catch (error) {
       toast.error(
         error instanceof Error && error.message
@@ -95,25 +104,25 @@ export function PlatformOrganizationStatusDialog() {
 
   return (
     <ConfirmDialog
-      open={isOpen}
-      onOpenChange={(value) => !value && setOpen(null)}
+      open={props.open}
+      onOpenChange={(value) => !value && props.onOpenChange(false)}
       title={isEnabling ? t('Enable Organization') : t('Disable Organization')}
       desc={
         isEnabling
           ? t(
               'Enabling {{name}} restores API access for its members and its API keys.',
-              { name: currentRow.name }
+              { name: organization.name }
             )
           : t(
               'Disabling {{name}} stops all API traffic for the organization and its API keys. Its data is kept, and the organization can be enabled again.',
-              { name: currentRow.name }
+              { name: organization.name }
             )
       }
       confirmText={isSubmitting ? t('Saving...') : t(isEnabling ? 'Enable' : 'Disable')}
       destructive={!isEnabling}
       disabled={
         isReasonMissing ||
-        !isOrganizationSlugConfirmed(currentRow.slug, confirmSlug)
+        !isOrganizationSlugConfirmed(organization.slug, confirmSlug)
       }
       isLoading={isSubmitting}
       handleConfirm={handleConfirm}
@@ -138,7 +147,7 @@ export function PlatformOrganizationStatusDialog() {
         <div className='flex flex-col gap-2'>
           <Label htmlFor='platform-organization-status-confirm-slug'>
             {t('Type the organization slug to confirm:')}{' '}
-            <span className='font-semibold'>{currentRow.slug}</span>
+            <span className='font-semibold'>{organization.slug}</span>
           </Label>
           <Input
             id='platform-organization-status-confirm-slug'

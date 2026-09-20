@@ -17,7 +17,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { OrganizationManagementView } from '@/features/organization/types'
+import type {
+  OrganizationManagementView,
+  OrganizationStatus,
+} from '@/features/organization/types'
+
+/**
+ * An organization as one of the platform actions sees it.
+ *
+ * Narrowed rather than typed as the whole `OrganizationManagementView` because
+ * the list and the detail page carry different payloads for the same
+ * organization: a list row adds the owner's name and the member and key counts,
+ * while the detail page answers with the organization record itself. Both
+ * satisfy this, so the dialogs work on either page without either one having to
+ * invent fields it does not have.
+ */
+export interface PlatformOrganizationTarget {
+  id: number
+  name: string
+  slug: string
+  status: OrganizationStatus
+}
+
+/** The same organization, plus the fields the platform edit form reads. */
+export interface PlatformOrganizationEditTarget
+  extends PlatformOrganizationTarget {
+  description?: string
+  group?: string
+  quota: number
+  used_quota: number
+}
 
 /**
  * The statuses the platform list filters on.

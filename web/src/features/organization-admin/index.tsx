@@ -30,6 +30,8 @@ import {
 } from './components/platform-organizations-provider'
 import { PlatformOrganizationsTable } from './components/platform-organizations-table'
 
+export { PlatformOrganizationDetail } from './components/platform-organization-detail'
+
 /**
  * The platform's organization list.
  *
@@ -61,8 +63,18 @@ function PlatformOrganizationsContent() {
         organization={currentRow}
         onSaved={triggerRefresh}
       />
-      <PlatformOrganizationStatusDialog />
-      <PlatformOrganizationDissolveDialog />
+      <PlatformOrganizationStatusDialog
+        open={open === 'status'}
+        onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+        organization={currentRow}
+        onCompleted={triggerRefresh}
+      />
+      <PlatformOrganizationDissolveDialog
+        open={open === 'dissolve'}
+        onOpenChange={(isOpen) => !isOpen && setOpen(null)}
+        organization={currentRow}
+        onCompleted={triggerRefresh}
+      />
     </>
   )
 }

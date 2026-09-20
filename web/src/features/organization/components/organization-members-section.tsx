@@ -18,7 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Power, PowerOff, Trash2, UserPlus } from 'lucide-react'
+import { Pencil, Power, PowerOff, Trash2, UserPlus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -65,6 +65,7 @@ import {
   OrganizationAddMemberDialog,
   OrganizationDemoteAdminDialog,
   OrganizationExitDialog,
+  OrganizationMemberEditDialog,
   OrganizationRemoveMemberDialog,
 } from './organization-member-dialogs'
 import {
@@ -85,6 +86,16 @@ type OrganizationMembersSectionProps = {
   canManageMembers: boolean
   canAddMembersDirectly: boolean
   canExitOrganization: boolean
+  /**
+   * The caller reaches this organization from the platform rather than from
+   * inside it.
+   *
+   * Such a caller has no organization role, so the row-by-row role hierarchy
+   * cannot decide what they may touch, and every change they make carries a
+   * reason. Both are handled here: the rules for them come from the backend, and
+   * their edits go through a dialog that asks why.
+   */
+  isPlatformAdministrator: boolean
   /** The caller may not write to this organization. */
   readOnly: boolean
   /** Leaves the page when the backend refuses the read. */
@@ -108,6 +119,7 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
   const [isExiting, setIsExiting] = useState(false)
   const [removing, setRemoving] = useState<OrganizationMemberRow | null>(null)
   const [demoting, setDemoting] = useState<OrganizationMemberRow | null>(null)
+  const [editing, setEditing] = useState<OrganizationMemberRow | null>(null)
 
   const {
     pagination,
@@ -193,8 +205,10 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
         readOnly: props.readOnly,
         actorRole: props.actorRole,
         currentUserId: props.currentUserId,
+        isPlatformAdministrator: props.isPlatformAdministrator,
         onChangeRole: (member, nextRole) => void changeRole(member, nextRole),
         onChangeStatus: (member, status) => void changeStatus(member, status),
+        onEdit: (member) => setEditing(member),
         onRemove: (member) => setRemoving(member),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -204,6 +218,7 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
       props.readOnly,
       props.actorRole,
       props.currentUserId,
+      props.isPlatformAdministrator,
       props.organizationId,
       members.refetch,
     ]
@@ -296,6 +311,13 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
         onDemoted={() => members.refetch()}
       />
 
+      <OrganizationMemberEditDialog
+        organizationId={props.organizationId}
+        member={editing}
+        onOpenChange={(open) => !open && setEditing(null)}
+        onUpdated={() => members.refetch()}
+      />
+
       <OrganizationExitDialog
         organizationId={props.organizationId}
         open={isExiting}
@@ -312,11 +334,13 @@ type MemberColumnContext = {
   currentUserId: number
   canManageMembers: boolean
   readOnly: boolean
+  isPlatformAdministrator: boolean
   onChangeRole: (member: OrganizationMemberRow, nextRole: string) => void
   onChangeStatus: (
     member: OrganizationMemberRow,
     status: 'active' | 'disabled'
   ) => void
+  onEdit: (member: OrganizationMemberRow) => void
   onRemove: (member: OrganizationMemberRow) => void
 }
 
@@ -358,7 +382,10 @@ function buildMemberColumns(
       size: 150,
       cell: ({ row }) => {
         const flags = memberActionFlags(context, row.original)
-        if (!flags.canChangeRole) {
+        // The platform surface changes roles from the edit dialog, together
+        // with the reason the change is being made; an inline picker would send
+        // the role on its own and record nothing about why.
+        if (!flags.canChangeRole || context.isPlatformAdministrator) {
           return t(organizationRoleLabelKey(row.original.role))
         }
         return (
@@ -434,6 +461,7 @@ function memberActionFlags(
     canManageMembers: context.canManageMembers,
     readOnly: context.readOnly,
     isCurrentUser: member.user_id === context.currentUserId,
+    platformAdministrator: context.isPlatformAdministrator,
   })
 }
 
@@ -441,6 +469,11 @@ function memberActionFlags(
  * The row's own menu, which is absent rather than disabled when the actor may
  * not touch this row: an owner's row and one's own row are both untouchable, and
  * a greyed-out menu would suggest otherwise.
+ *
+ * On the platform surface the menu is Edit and Remove. There is no one-click
+ * status switch there — a platform change to a membership is recorded with the
+ * operator's reason, so both ways of changing this row open a dialog that asks
+ * for one.
  */
 function MemberRowActions(props: {
   context: MemberColumnContext
@@ -448,6 +481,38 @@ function MemberRowActions(props: {
 }) {
   const { t } = useTranslation()
   const flags = memberActionFlags(props.context, props.member)
+  const canEdit = flags.canChangeRole && flags.canChangeStatus
+
+  if (props.context.isPlatformAdministrator) {
+    if (!canEdit && !flags.canRemove) return null
+
+    return (
+      <DataTableRowActionMenu ariaLabel={t('Open menu')} contentClassName='w-40'>
+        <DropdownMenuItem
+          onSelect={() => props.context.onEdit(props.member)}
+          disabled={!canEdit}
+        >
+          {t('Edit')}
+          <DropdownMenuShortcut>
+            <Pencil size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem
+          onSelect={() => props.context.onRemove(props.member)}
+          className='text-destructive focus:text-destructive'
+          disabled={!flags.canRemove}
+        >
+          {t('Remove')}
+          <DropdownMenuShortcut>
+            <Trash2 size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+      </DataTableRowActionMenu>
+    )
+  }
 
   if (!flags.canChangeStatus && !flags.canRemove) return null
 

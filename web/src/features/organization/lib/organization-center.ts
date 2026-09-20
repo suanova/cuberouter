@@ -242,6 +242,19 @@ export interface OrganizationMemberActionInput {
   canManageMembers?: boolean
   readOnly?: boolean
   isCurrentUser?: boolean
+  /**
+   * The caller administers this organization from the platform rather than
+   * belonging to it.
+   *
+   * Such a caller has no organization role at all — the backend reports an empty
+   * `organization_role` for a platform administrator who is not a member — so
+   * the role hierarchy below cannot speak for them and the owner/admin/member
+   * comparison would deny every row. What actually limits them is the backend:
+   * `ensureOrganizationMemberTargetAllowed` refuses any operation against the
+   * owner's own membership, for every role, so the owner's row stays untouchable
+   * here too.
+   */
+  platformAdministrator?: boolean
 }
 
 function normalizeRole(role: unknown): string {
@@ -261,6 +274,7 @@ export function getOrganizationMemberActionFlags({
   canManageMembers = false,
   readOnly = false,
   isCurrentUser = false,
+  platformAdministrator = false,
 }: OrganizationMemberActionInput): OrganizationMemberActionFlags {
   const denied: OrganizationMemberActionFlags = {
     canChangeRole: false,
@@ -269,8 +283,14 @@ export function getOrganizationMemberActionFlags({
   }
   if (!canManageMembers || readOnly || isCurrentUser) return denied
 
-  const actor = normalizeRole(actorRole)
   const target = normalizeRole(targetRole)
+  if (platformAdministrator) {
+    return target === 'owner'
+      ? denied
+      : { canChangeRole: true, canChangeStatus: true, canRemove: true }
+  }
+
+  const actor = normalizeRole(actorRole)
   const canManageTarget =
     (actor === 'owner' && (target === 'admin' || target === 'member')) ||
     (actor === 'admin' && target === 'member')

@@ -25,7 +25,28 @@ export {
   platformOrganizationRemainingQuota,
   platformOrganizationStatusParam,
   type PlatformOrganizationActionFlags,
+  type PlatformOrganizationEditTarget,
+  type PlatformOrganizationTarget,
 } from './organization-platform'
+
+export {
+  getPlatformOrganizationDetailActions,
+  getPlatformOrganizationDetailPath,
+  getPlatformOrganizationOwnerOptions,
+  getPlatformOrganizationTabs,
+  isPlatformOrganizationReadOnly,
+  normalizePlatformOrganizationTabKey,
+  platformOrganizationOwnerTransferSchema,
+  PLATFORM_ORGANIZATION_DEFAULT_TAB,
+  PLATFORM_ORGANIZATION_LEGACY_TAB_ALIASES,
+  PLATFORM_ORGANIZATION_TAB_KEYS,
+  PLATFORM_ORGANIZATION_TAB_LABEL_KEYS,
+  transformPlatformOrganizationOwnerTransfer,
+  type PlatformOrganizationDetailActions,
+  type PlatformOrganizationOwnerTransferValues,
+  type PlatformOrganizationTabKey,
+  type PlatformOrganizationTabSpec,
+} from './organization-platform-detail'
 
 export {
   platformOrganizationEditSchema,

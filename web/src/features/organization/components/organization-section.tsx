@@ -64,6 +64,12 @@ const ORGANIZATION_SECTION_ICONS: Record<
 
 type OrganizationSectionProps = {
   icon: OrganizationDetailTabKey
+  /**
+   * Takes the place of `icon`, for a section that has no tab of its own — the
+   * platform's owner repair sits on the administrator's page rather than in the
+   * organization center, so there is no entry in the tab enum to name it by.
+   */
+  iconComponent?: LucideIcon
   title: string
   /** One line explaining what the section holds; omitted when obvious. */
   description?: string
@@ -87,7 +93,7 @@ type OrganizationSectionProps = {
  * and pagination, and those belong to the table, not to the section.
  */
 export function OrganizationSection(props: OrganizationSectionProps) {
-  const Icon = ORGANIZATION_SECTION_ICONS[props.icon]
+  const Icon = props.iconComponent ?? ORGANIZATION_SECTION_ICONS[props.icon]
 
   return (
     <div className='flex h-full min-h-0 flex-col gap-3'>

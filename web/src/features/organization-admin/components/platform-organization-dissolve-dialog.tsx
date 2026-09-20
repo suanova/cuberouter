@@ -33,7 +33,15 @@ import {
   isOrganizationSlugConfirmed,
 } from '@/features/organization/lib'
 
-import { usePlatformOrganizations } from './platform-organizations-provider'
+import type { PlatformOrganizationTarget } from '../lib'
+
+type PlatformOrganizationDissolveDialogProps = {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  organization: PlatformOrganizationTarget | null
+  /** The organization was dissolved; whatever showed it is now stale. */
+  onCompleted: () => void
+}
 
 /**
  * Dissolves an organization from the platform side.
@@ -46,30 +54,30 @@ import { usePlatformOrganizations } from './platform-organizations-provider'
  * one thing a key exists to absorb.
  *
  * Restricted on the backend to the platform root role (`dissolve_organization`
- * is granted only to `platform_root`); the row menu only offers it to a caller
- * who holds that role.
+ * is granted only to `platform_root`); the caller only offers it to a visitor
+ * whose capabilities say so.
  */
-export function PlatformOrganizationDissolveDialog() {
+export function PlatformOrganizationDissolveDialog(
+  props: PlatformOrganizationDissolveDialogProps
+) {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } =
-    usePlatformOrganizations()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [confirmSlug, setConfirmSlug] = useState('')
   const [reason, setReason] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey)
 
-  const isOpen = open === 'dissolve'
+  const organization = props.organization
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!props.open) return
     setConfirmSlug('')
     setReason('')
     // One key per intent: retrying from this dialog replays the same request,
     // and reopening the dialog starts a new intent.
     setIdempotencyKey(createIdempotencyKey())
-  }, [isOpen])
+  }, [props.open])
 
-  if (!currentRow) return null
+  if (!organization) return null
 
   const isReasonMissing = reason.trim().length === 0
   const handleConfirm = async () => {
@@ -78,7 +86,7 @@ export function PlatformOrganizationDissolveDialog() {
     try {
       const result = await dissolveOrganization(
         'admin',
-        currentRow.id,
+        organization.id,
         { confirm_name: confirmSlug.trim(), reason: reason.trim() },
         idempotencyKey
       )
@@ -87,8 +95,8 @@ export function PlatformOrganizationDissolveDialog() {
         return
       }
       toast.success(t(SUCCESS_MESSAGES.DISSOLVED))
-      setOpen(null)
-      triggerRefresh()
+      props.onOpenChange(false)
+      props.onCompleted()
     } catch (error) {
       toast.error(
         error instanceof Error && error.message
@@ -102,14 +110,14 @@ export function PlatformOrganizationDissolveDialog() {
 
   return (
     <ConfirmDialog
-      open={isOpen}
-      onOpenChange={(value) => !value && setOpen(null)}
+      open={props.open}
+      onOpenChange={(value) => !value && props.onOpenChange(false)}
       title={t('Dissolve Organization')}
       desc={
         <>
           {t(
             'Dissolving {{name}} permanently closes the organization. Members lose access, its API keys stop working, and the action cannot be undone.',
-            { name: currentRow.name }
+            { name: organization.name }
           )}{' '}
           {t('Its logs and billing records are retained for auditing.')}
         </>
@@ -118,7 +126,7 @@ export function PlatformOrganizationDissolveDialog() {
       destructive
       disabled={
         isReasonMissing ||
-        !isOrganizationSlugConfirmed(currentRow.slug, confirmSlug)
+        !isOrganizationSlugConfirmed(organization.slug, confirmSlug)
       }
       isLoading={isSubmitting}
       handleConfirm={handleConfirm}
@@ -140,7 +148,7 @@ export function PlatformOrganizationDissolveDialog() {
         <div className='flex flex-col gap-2'>
           <Label htmlFor='platform-organization-dissolve-confirm-slug'>
             {t('Type the organization slug to confirm:')}{' '}
-            <span className='font-semibold'>{currentRow.slug}</span>
+            <span className='font-semibold'>{organization.slug}</span>
           </Label>
           <Input
             id='platform-organization-dissolve-confirm-slug'
