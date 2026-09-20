@@ -29,6 +29,7 @@ import { OrganizationMembersSection } from './organization-members-section'
 import { OrganizationOverviewSection } from './organization-overview-section'
 import { OrganizationSectionEmpty } from './organization-section'
 import { OrganizationSettingsSection } from './organization-settings-section'
+import { OrganizationTasksSection } from './organization-tasks-section'
 import { OrganizationTokensSection } from './organization-tokens-section'
 
 type OrganizationSectionsProps = {
@@ -138,6 +139,15 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           onForbidden={props.onForbidden}
         />
       )
+    case 'tasks':
+      return (
+        <OrganizationTasksSection
+          organizationId={organization.id}
+          canView={capabilities.can_view_organization_logs}
+          canViewWideData={capabilities.can_view_organization_wide_data}
+          onForbidden={props.onForbidden}
+        />
+      )
     case 'audit-logs':
       return (
         <OrganizationAuditSection
@@ -158,7 +168,11 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
  * shape, and says plainly that it is unfinished rather than showing an empty
  * list that reads as "there is no data".
  */
-function OrganizationSectionPlaceholder({ tab }: { tab: OrganizationDetailTabKey }) {
+function OrganizationSectionPlaceholder({
+  tab,
+}: {
+  tab: OrganizationDetailTabKey
+}) {
   const { t } = useTranslation()
   return (
     <OrganizationSectionEmpty

@@ -125,11 +125,21 @@ export const organizationDetailSearchSchema = z.object({
   logRequest: z.string().optional().catch(''),
   logResponsible: z.string().optional().catch(''),
 
-  // Tasks and Midjourney tasks (OrganizationTaskListRequest).
+  // Tasks — the panel, then the async task filters the endpoint accepts
+  // (OrganizationTaskListRequest in service/organization_task.go). Platform
+  // stays a keyword rather than an enumeration: the set is whatever task
+  // plugins the installation has installed, not the six the frontend ships.
+  taskTab: z.enum(['tasks', 'midjourney']).optional().catch('tasks'),
   taskId: z.string().optional().catch(''),
-  taskPlatform: freeArrayParam().optional(),
+  taskPlatform: z.string().optional().catch(''),
   taskStatus: z.string().optional().catch(''),
   taskAction: z.string().optional().catch(''),
+
+  // Midjourney tasks — a different record with its own two filters
+  // (OrganizationMidjourneyTaskListRequest). `mj_id` and `task_id` are not the
+  // same key, so they are not the same parameter.
+  mjId: z.string().optional().catch(''),
+  mjChannel: z.string().optional().catch(''),
 
   // Audit trail — exact matches, no keyword search
   // (service/organization_audit_query.go compares with `=`).

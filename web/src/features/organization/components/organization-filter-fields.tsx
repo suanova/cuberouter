@@ -17,6 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useTranslation } from 'react-i18next'
+
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   LogsFilterField,
   LogsFilterInput,
@@ -42,5 +51,49 @@ export function OrganizationTextFilter(props: {
         onChange={(event) => props.onChange(event.target.value)}
       />
     </LogsFilterField>
+  )
+}
+
+/** Stands in for "every value" in the selects below. */
+const ANY_VALUE = ''
+
+/**
+ * One of the closed-set filters.
+ *
+ * A single select rather than a faceted box, because the endpoint compares one
+ * value exactly. The options carry the same labels the tables badge their cells
+ * with, so a state cannot be named one way in the column and another in the
+ * filter that selects it.
+ *
+ * "Every value" is the absence of a choice rather than a choice of its own: the
+ * sentinel below never reaches the URL, it clears the filter.
+ */
+export function OrganizationSelectFilter(props: {
+  value?: string
+  placeholder: string
+  /** The value the endpoint compares, and the label to show for it. */
+  options: Array<{ value: string; label: string }>
+  allLabel: string
+  onChange: (value: string) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Select
+      value={props.value ?? ANY_VALUE}
+      onValueChange={(next) => props.onChange(next ?? ANY_VALUE)}
+    >
+      <SelectTrigger className='h-8 w-full' size='sm'>
+        <SelectValue placeholder={props.placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={ANY_VALUE}>{props.allLabel}</SelectItem>
+        {props.options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {t(option.label)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
