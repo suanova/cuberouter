@@ -105,7 +105,9 @@ function timingTextColorClass(
   return 'text-rose-600'
 }
 
-function DetailRow(props: {
+/** A label/value line. Exported so the organization logs dialog can lay out its
+ * own rows with the same spacing. */
+export function DetailRow(props: {
   label: React.ReactNode
   value: React.ReactNode
   mono?: boolean
@@ -129,7 +131,8 @@ function DetailRow(props: {
   )
 }
 
-function DetailSection(props: {
+/** A titled block of rows. Exported alongside `DetailRow`. */
+export function DetailSection(props: {
   icon?: React.ReactNode
   iconTone?: IconBadgeTone
   label: string
@@ -218,13 +221,21 @@ function quotaSaturationKindLabel(
   return t('Invalid (NaN)')
 }
 
-function BillingBreakdown(props: {
-  log: UsageLog
+/**
+ * The pricing rows behind one charge.
+ *
+ * Exported for the organization logs dialog, which shows the same breakdown for
+ * an organization's own log records. It reads a single value off the log — the
+ * quota it settles on — so this takes that number rather than a whole record,
+ * which is what lets both callers share it.
+ */
+export function BillingBreakdown(props: {
+  quota: number
   other: LogOtherData
   isAdmin: boolean
 }) {
   const { t } = useTranslation()
-  const { log, other, isAdmin } = props
+  const { quota, other, isAdmin } = props
   const isPerCall = isPerCallBilling(other.model_price)
   const isClaude = other.claude === true
   const isTieredExpr = other.billing_mode === 'tiered_expr'
@@ -419,7 +430,7 @@ function BillingBreakdown(props: {
       )}
       <DetailRow
         label={t('Total Cost')}
-        value={formatLogQuota(log.quota)}
+        value={formatLogQuota(quota)}
         mono
       />
     </DetailSection>
@@ -1154,7 +1165,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
         {/* Billing breakdown (consume type) */}
         {isConsume && other && !isViolation && (
           <BillingBreakdown
-            log={props.log}
+            quota={props.log.quota}
             other={other}
             isAdmin={props.isAdmin}
           />

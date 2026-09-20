@@ -115,8 +115,10 @@ export const organizationDetailSearchSchema = z.object({
   tokenResponsible: freeArrayParam().optional(),
 
   // Logs — every field the log endpoint filters on
-  // (OrganizationLogListRequest in service/organization_log.go).
-  logType: freeArrayParam().optional(),
+  // (OrganizationLogListRequest in service/organization_log.go). All of them are
+  // single-valued, and a single-valued filter that is offered as a multi-select
+  // would put a spelling in the URL the endpoint cannot read.
+  logType: z.string().optional().catch(''),
   logModel: z.string().optional().catch(''),
   logToken: z.string().optional().catch(''),
   logGroup: z.string().optional().catch(''),

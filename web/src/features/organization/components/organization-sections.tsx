@@ -23,6 +23,7 @@ import type { OrganizationDetailTabKey } from '../constants'
 import type { OrganizationDetail } from '../types'
 import { OrganizationAuditSection } from './organization-audit-section'
 import { OrganizationInvitesSection } from './organization-invites-section'
+import { OrganizationLogsSection } from './organization-logs-section'
 import { OrganizationMembersSection } from './organization-members-section'
 import { OrganizationOverviewSection } from './organization-overview-section'
 import { OrganizationSectionEmpty } from './organization-section'
@@ -115,6 +116,15 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           currentUserId={actor.user_id}
           isOrganizationMember={actor.is_organization_member}
           readOnly={props.readOnly}
+          onForbidden={props.onForbidden}
+        />
+      )
+    case 'logs':
+      return (
+        <OrganizationLogsSection
+          organizationId={organization.id}
+          canView={capabilities.can_view_organization_logs}
+          canViewWideData={capabilities.can_view_organization_wide_data}
           onForbidden={props.onForbidden}
         />
       )
