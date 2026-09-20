@@ -887,7 +887,9 @@ func BatchDeleteOrganizationTokens(operatorUserId, organizationId int, accessMod
 				return err
 			}
 		}
-		query := tx
+		// 同 service/quota.go loadTokenForQuotaTx：读取必须走独立 statement，否则这些作用域
+		// 条件会留在 tx 上，下面那次 Updates 在 PostgreSQL 上会渲染出重复表名的 UPDATE。
+		query := tx.Session(&gorm.Session{NewDB: true})
 		if replayDelete {
 			query = query.Unscoped()
 		}

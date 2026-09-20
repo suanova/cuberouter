@@ -414,7 +414,16 @@ func loadTokenForQuotaTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo) (*model.
 		return nil, nil
 	}
 	var token model.Token
-	query := tx
+	// 必须另起一个 statement：tx 往往已经执行过（clone 归零），直接 Where 会把作用域条件
+	// 写回调用方的 Statement，调用方随后的 Updates 会带上这些条件。MySQL/SQLite 只是把
+	// UPDATE 收窄，PostgreSQL 的 UpdateClauses 含 FROM，会渲染出
+	// `UPDATE ... FROM "tokens"` 直接报 42712。
+	query := tx.Session(&gorm.Session{NewDB: true})
+	// NewDB 会重建 Statement，而 Unscoped 默认不跨 Statement 继承（除非配置
+	// PropagateUnscoped）。结算路径故意传 tx.Unscoped() 来读被软删的令牌，这里必须带上。
+	if tx.Statement.Unscoped {
+		query = query.Unscoped()
+	}
 	if relayInfo.ScopeType == model.TokenScopeOrganization {
 		if relayInfo.OrganizationId <= 0 {
 			return nil, errors.New("organization token quota scope is invalid")
