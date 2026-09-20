@@ -144,6 +144,18 @@ export type OrganizationDetail = z.infer<typeof organizationDetailSchema>
 // Response Envelopes
 // ============================================================================
 
+/**
+ * Every organization endpoint answers with the same envelope, so the tab APIs
+ * differ only in the payload. `success: false` carries the localized message and
+ * sometimes a machine-readable `code` (see types/organization_error.go).
+ */
+export interface OrganizationApiResponse<T> {
+  success: boolean
+  message?: string
+  code?: string
+  data?: T
+}
+
 export interface OrganizationListResponse {
   success: boolean
   message?: string
@@ -166,6 +178,399 @@ export interface OrganizationGroupsResponse {
   success: boolean
   message?: string
   data?: Record<string, { desc: string; ratio: number | string }>
+}
+
+// ============================================================================
+// Members
+// ============================================================================
+
+/**
+ * A member row. The backend joins the user record in, so the display fields are
+ * present even though they are not part of the membership itself.
+ */
+export interface OrganizationMemberRow {
+  id: number
+  organization_id: number
+  user_id: number
+  role: OrganizationRole
+  status: string
+  disabled_source?: string
+  invited_by?: number
+  joined_at?: number
+  last_active_at?: number
+  created_at?: number
+  updated_at?: number
+  disabled_at?: number
+  exited_at?: number
+  removed_at?: number
+  username?: string
+  display_name?: string
+  email?: string
+  /** Platform account status; `1` is active. */
+  user_status?: number
+}
+
+// ============================================================================
+// Invitations
+// ============================================================================
+
+export interface OrganizationInviteRow {
+  id: number
+  organization_id: number
+  type?: string
+  target_email: string
+  role: OrganizationRole
+  /** `pending` | `accepted` | `expired` | `revoked`. */
+  status: string
+  inviter_user_id?: number
+  accepted_user_id?: number
+  created_at?: number
+  updated_at?: number
+  expired_at?: number
+  accepted_at?: number
+  revoked_at?: number
+  reason?: string
+  /** `pending` | `sent` | `rejected` | `unknown`. */
+  delivery_status?: string
+  delivery_attempts?: number
+  delivered_at?: number
+  inviter_username?: string
+  inviter_display_name?: string
+}
+
+/**
+ * The invitation as an unauthenticated visitor sees it.
+ *
+ * `email_matched` is the server's verdict on whether the signed-in viewer may
+ * accept this invitation; it is false when nobody is signed in.
+ */
+export interface OrganizationInvitePublicView {
+  id: number
+  organization_id: number
+  organization_name: string
+  organization_slug: string
+  role: OrganizationRole
+  target_email: string
+  status: string
+  inviter_user_id?: number
+  inviter_username?: string
+  inviter_display_name?: string
+  current_user_id?: number
+  current_user_email?: string
+  email_matched: boolean
+  expired_at?: number
+}
+
+// ============================================================================
+// Organization API Keys
+// ============================================================================
+
+/**
+ * An organization key. The list endpoint returns the plaintext `key` as well —
+ * the organization administrator is allowed to see it — while `key_preview` is
+ * the masked form used in the table.
+ */
+export interface OrganizationTokenRow {
+  id: number
+  /** The responsible member's user id, not the owner of a personal key. */
+  user_id: number
+  key: string
+  key_preview?: string
+  status: number
+  name: string
+  created_time: number
+  accessed_time: number
+  expired_time: number
+  remain_quota: number
+  unlimited_quota: boolean
+  model_limits_enabled: boolean
+  model_limits: string
+  allow_ips?: string | null
+  used_quota: number
+  group: string
+  cross_group_retry: boolean
+  scope_type?: string
+  scope_id?: number
+  /** `private` keys are only usable by their responsible member. */
+  visibility: string
+  organization_id?: number
+  creator_user_id?: number
+  responsible_user_id?: number
+  transfer_reason?: string
+  updated_at?: number
+  disabled_by_systems?: boolean
+  system_disabled_reason?: string
+  system_disabled_ref_id?: number
+  system_disabled_at?: number
+  previous_status?: number
+  responsible_username?: string
+  responsible_display_name?: string
+  /** Why the key is currently force-disabled, if anything disabled it. */
+  unavailable_reasons?: string[]
+}
+
+/**
+ * Batch creation is idempotent, so a replay returns the tokens the first call
+ * created. `secret_available` says whether their plaintext keys came back with
+ * them — the dialog only offers the full secret when it is true.
+ */
+export interface OrganizationTokenBatchCreateResult {
+  tokens: OrganizationTokenRow[]
+  token_count: number
+  secret_available: boolean
+}
+
+// ============================================================================
+// Logs
+// ============================================================================
+
+export interface OrganizationLogRow {
+  id: number
+  user_id: number
+  created_at: number
+  type: number
+  /** Blanked by the backend for organization reads; use the other fields. */
+  content?: string
+  username?: string
+  token_name?: string
+  model_name?: string
+  quota: number
+  prompt_tokens: number
+  completion_tokens: number
+  use_time: number
+  is_stream: boolean
+  channel?: number
+  channel_name?: string
+  token_id?: number
+  group?: string
+  ip?: string
+  request_id?: string
+  upstream_request_id?: string
+  other?: string
+  creator_user_id?: number
+  creator_name?: string
+  responsible_user_id?: number
+  responsible_name?: string
+  responsible_username?: string
+  responsible_display_name?: string
+}
+
+export interface OrganizationLogStats {
+  quota: number
+  rpm: number
+  tpm: number
+}
+
+// ============================================================================
+// Tasks
+// ============================================================================
+
+export interface OrganizationTaskRow {
+  id: number
+  created_at: number
+  updated_at: number
+  task_id: string
+  platform: string
+  user_id: number
+  group?: string
+  channel_id?: number
+  quota: number
+  token_id?: number
+  token_name?: string
+  token_unlimited?: boolean
+  request_id?: string
+  actor_user_id?: number
+  creator_user_id?: number
+  creator_name?: string
+  responsible_user_id?: number
+  responsible_name?: string
+  action?: string
+  status: string
+  fail_reason?: string
+  submit_time?: number
+  start_time?: number
+  finish_time?: number
+  progress?: string
+  properties?: {
+    input?: string
+    upstream_model_name?: string
+    origin_model_name?: string
+  }
+  username?: string
+  data?: unknown
+}
+
+export interface OrganizationMidjourneyTaskRow {
+  id: number
+  code?: number
+  user_id: number
+  action?: string
+  mj_id?: string
+  prompt?: string
+  prompt_en?: string
+  description?: string
+  state?: string
+  submit_time?: number
+  start_time?: number
+  finish_time?: number
+  image_url?: string
+  video_url?: string
+  video_urls?: string
+  status?: string
+  progress?: string
+  fail_reason?: string
+  channel_id?: number
+  quota: number
+  buttons?: string
+  properties?: string
+  token_name?: string
+  token_unlimited?: boolean
+  group?: string
+  request_id?: string
+  responsible_user_id?: number
+  responsible_name?: string
+}
+
+// ============================================================================
+// Audit Logs
+// ============================================================================
+
+export interface OrganizationAuditLogRow {
+  id: number
+  organization_id: number
+  organization_name?: string
+  organization_slug?: string
+  operator_user_id?: number
+  operator_username?: string
+  operator_display_name?: string
+  operator_role?: string
+  /** A dotted key such as `organization.member.remove`. */
+  action_type: string
+  /** `organization` | `member` | `token` | `invite` | `quota_adjustment` | … */
+  target_type?: string
+  target_id?: number
+  target_name?: string
+  /** JSON-encoded string, not an object. */
+  target_metadata?: string
+  /** JSON-encoded snapshots; both are strings, not objects. */
+  before_data?: string
+  after_data?: string
+  reason?: string
+  ip?: string
+  user_agent?: string
+  created_at: number
+}
+
+// ============================================================================
+// Quota Dashboard
+// ============================================================================
+
+export interface OrganizationQuotaDataRow {
+  id: number
+  user_id: number
+  username?: string
+  model_name: string
+  created_at: number
+  use_group?: string
+  token_id?: number
+  channel_id?: number
+  token_used?: number
+  count: number
+  quota: number
+  responsible_user_id?: number
+}
+
+// ============================================================================
+// Billing
+// ============================================================================
+
+export interface OrganizationMemberBillingItem {
+  responsible_user_id: number
+  quota: number
+  request_count: number
+  token_count: number
+}
+
+export interface OrganizationBillingSummary {
+  quota: number
+  used_quota: number
+  available_quota: number
+  current_month_quota: number
+  organization_keys: number
+  members: OrganizationMemberBillingItem[]
+}
+
+export interface OrganizationMemberBillingSummary {
+  responsible_user_id: number
+  responsible_key_count: number
+  current_month_quota: number
+  request_count: number
+}
+
+export interface OrganizationBillingUserSummaryItem {
+  responsible_user_id: number
+  responsible_username?: string
+  responsible_display_name?: string
+  role?: string
+  status?: string
+  quota: number
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  token_count: number
+}
+
+export interface OrganizationBillingUserSummaryResponse {
+  month: string
+  month_start: number
+  month_end: number
+  items: OrganizationBillingUserSummaryItem[]
+}
+
+export interface OrganizationBillingMonthlySummaryItem {
+  month: string
+  month_start: number
+  month_end: number
+  quota: number
+  request_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  token_count: number
+  responsible_user_count: number
+}
+
+export interface OrganizationBillingMonthlySummaryResponse {
+  items: OrganizationBillingMonthlySummaryItem[]
+}
+
+export interface OrganizationBillingRecord {
+  id: number
+  organization_id: number
+  session_id: number
+  record_key: string
+  request_id?: string
+  task_id?: string
+  record_type?: string
+  quota_delta: number
+  used_quota_delta: number
+  usage_quota: number
+  quota_before: number
+  quota_after: number
+  used_quota_before: number
+  used_quota_after: number
+  token_id?: number
+  token_name?: string
+  responsible_user_id?: number
+  creator_user_id?: number
+  model_name?: string
+  group?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+  token_count?: number
+  created_at: number
+  responsible_username?: string
+  responsible_display_name?: string
+  ledger_quota_delta: number
 }
 
 // ============================================================================
