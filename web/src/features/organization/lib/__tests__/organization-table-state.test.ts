@@ -54,6 +54,26 @@ describe('organizationColumnFilterValue', () => {
     ).toBeUndefined()
   })
 
+  test('whitespace is not a filter, and padding is trimmed off one', () => {
+    // The endpoints compare the value exactly, so a box holding a space would
+    // match no record at all rather than every one.
+    expect(
+      organizationColumnFilterValue(
+        [{ id: 'model_name', value: '   ' }],
+        'model_name'
+      )
+    ).toBeUndefined()
+    expect(
+      organizationColumnFilterValue(
+        [{ id: 'model_name', value: '  gpt-4o  ' }],
+        'model_name'
+      )
+    ).toBe('gpt-4o')
+    expect(
+      organizationColumnFilterValue([{ id: 'group', value: ['  '] }], 'group')
+    ).toBeUndefined()
+  })
+
   test('a filter that was never set reads as absent', () => {
     expect(organizationColumnFilterValue([], 'model_name')).toBeUndefined()
     expect(

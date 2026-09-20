@@ -32,6 +32,7 @@ import {
   PlugZap,
   Puzzle,
   Radio,
+  ScrollText,
   ServerCog,
   Settings,
   Ticket,
@@ -161,6 +162,14 @@ export function useSidebarData(): SidebarData {
             title: t('Organization Management'),
             url: '/admin/organizations',
             icon: Building2,
+          },
+          {
+            // What the organizations did, rather than which ones exist, so it
+            // is its own entry: an administrator looking for one member's
+            // history is not looking at the list.
+            title: t('Organization Audit Log'),
+            url: '/admin/organization-audit-logs',
+            icon: ScrollText,
           },
           {
             title: t('Redemption Codes'),

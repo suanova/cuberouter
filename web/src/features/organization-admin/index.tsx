@@ -30,6 +30,7 @@ import {
 } from './components/platform-organizations-provider'
 import { PlatformOrganizationsTable } from './components/platform-organizations-table'
 
+export { PlatformOrganizationAuditLog } from './components/platform-organization-audit-log'
 export { PlatformOrganizationDetail } from './components/platform-organization-detail'
 
 /**

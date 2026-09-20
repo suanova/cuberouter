@@ -17,37 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
-import { StatusBadge } from '@/components/status-badge'
-import { TableId } from '@/components/table-id'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { formatTimestamp } from '@/lib/format'
 
 import { listOrganizationAuditLogs } from '../api'
 import {
-  buildOrganizationAuditTargetView,
-  formatOrganizationAuditReason,
-  organizationAuditActionLabelKey,
   organizationAuditActionOptions,
-  organizationAuditActionTone,
-  organizationAuditTargetTone,
-  organizationAuditTargetTypeLabelKey,
   organizationAuditTargetTypeOptions,
-  type OrganizationAuditTargetView,
+  organizationColumnFilterValue,
   type Translate,
 } from '../lib'
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import { useOrganizationPagedSection } from '../hooks/use-organization-paged-query'
 import type { OrganizationAuditLogRow } from '../types'
+import { buildOrganizationAuditColumns } from './organization-audit-columns'
 import {
   useOrganizationSectionRoute,
   useOrganizationSurface,
@@ -58,16 +43,6 @@ import {
 } from './organization-section'
 
 const AUDIT_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-audit-column-visibility'
-
-/** The backend filters on one value per field, so a multi-select sends its first. */
-function firstFilterValue(
-  columnFilters: Array<{ id: string; value: unknown }>,
-  columnId: string
-): string | undefined {
-  const value = columnFilters.find((filter) => filter.id === columnId)?.value
-  if (Array.isArray(value)) return value[0] as string | undefined
-  return typeof value === 'string' && value ? value : undefined
-}
 
 type OrganizationAuditSectionProps = {
   organizationId: number
@@ -114,8 +89,8 @@ export function OrganizationAuditSection(props: OrganizationAuditSectionProps) {
   const params = {
     p: pagination.pageIndex + 1,
     page_size: pagination.pageSize,
-    action_type: firstFilterValue(columnFilters, 'action_type'),
-    target_type: firstFilterValue(columnFilters, 'target_type'),
+    action_type: organizationColumnFilterValue(columnFilters, 'action_type'),
+    target_type: organizationColumnFilterValue(columnFilters, 'target_type'),
   }
 
   const audit = useOrganizationPagedSection<OrganizationAuditLogRow>({
@@ -134,7 +109,7 @@ export function OrganizationAuditSection(props: OrganizationAuditSectionProps) {
     onForbidden: props.onForbidden,
   })
 
-  const columns = buildAuditColumns(translate)
+  const columns = buildOrganizationAuditColumns(translate)
 
   const { table } = useDataTable({
     data: audit.items,
@@ -204,130 +179,3 @@ export function OrganizationAuditSection(props: OrganizationAuditSectionProps) {
   )
 }
 
-function buildAuditColumns(translate: Translate): ColumnDef<OrganizationAuditLogRow>[] {
-  const t = translate
-  return [
-    {
-      accessorKey: 'id',
-      header: t('ID'),
-      enableSorting: false,
-      enableHiding: false,
-      size: 90,
-      cell: ({ row }) => <TableId value={row.original.id} className='w-[60px]' />,
-    },
-    {
-      accessorKey: 'created_at',
-      header: t('Time'),
-      enableSorting: false,
-      size: 180,
-      cell: ({ row }) => (
-        <span className='text-muted-foreground text-sm whitespace-nowrap'>
-          {row.original.created_at ? formatTimestamp(row.original.created_at) : '-'}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'action_type',
-      header: t('Action'),
-      enableSorting: false,
-      size: 190,
-      cell: ({ row }) => (
-        <StatusBadge
-          label={t(organizationAuditActionLabelKey(row.original.action_type))}
-          variant={organizationAuditActionTone(row.original.action_type)}
-          copyable={false}
-        />
-      ),
-    },
-    {
-      accessorKey: 'operator_username',
-      header: t('Operator'),
-      enableSorting: false,
-      size: 170,
-      cell: ({ row }) => (
-        <span className='font-medium whitespace-nowrap'>
-          {row.original.operator_display_name ||
-            row.original.operator_username ||
-            '-'}
-        </span>
-      ),
-    },
-    {
-      accessorKey: 'target_type',
-      header: t('Target Type'),
-      enableSorting: false,
-      size: 150,
-      cell: ({ row }) => (
-        <StatusBadge
-          label={t(
-            organizationAuditTargetTypeLabelKey(row.original.target_type)
-          )}
-          variant={organizationAuditTargetTone(row.original.target_type)}
-          copyable={false}
-        />
-      ),
-    },
-    {
-      accessorKey: 'target_id',
-      header: t('Target'),
-      enableSorting: false,
-      size: 280,
-      cell: ({ row }) => (
-        <AuditTargetCell target={buildOrganizationAuditTargetView(t, row.original)} />
-      ),
-    },
-    {
-      accessorKey: 'reason',
-      header: t('Reason'),
-      enableSorting: false,
-      size: 180,
-      cell: ({ row }) => {
-        const reason = formatOrganizationAuditReason(t, row.original.reason)
-        if (reason === '-') {
-          return <span className='text-muted-foreground'>-</span>
-        }
-        return <span className='text-sm'>{reason}</span>
-      },
-    },
-  ]
-}
-
-/**
- * The target is a name on screen and a record on hover.
- *
- * The audit trail exists to answer "what exactly changed", and the row's own
- * columns cannot carry that — the ids, the previous role, the masked key all
- * come from the row's snapshots, which are shown together in the tooltip rather
- * than squeezed into the cell.
- */
-function AuditTargetCell(props: { target: OrganizationAuditTargetView }) {
-  if (props.target.details.length === 0) {
-    return <span className='text-sm'>{props.target.main}</span>
-  }
-
-  return (
-    <TooltipProvider delay={150}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <span className='text-primary inline-flex max-w-full cursor-help truncate align-middle text-sm' />
-          }
-        >
-          {props.target.main}
-        </TooltipTrigger>
-        <TooltipContent className='max-w-[360px]'>
-          <div className='flex flex-col gap-1'>
-            {props.target.details.map((line) => (
-              <div key={line.label} className='flex min-w-0 gap-2'>
-                <span className='shrink-0 opacity-70'>{line.label}</span>
-                <span className={line.nowrap ? 'whitespace-nowrap' : 'break-all'}>
-                  {line.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}

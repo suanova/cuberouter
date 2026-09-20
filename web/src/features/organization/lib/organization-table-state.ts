@@ -22,20 +22,22 @@ For commercial licensing, please contact support@quantumnous.com
  *
  * Every organization read endpoint takes one value per field, so a filter held
  * as an array — which is how the shared table state represents a multi-select —
- * contributes its first entry. An empty array, an empty string and an absent
- * filter all mean "not filtering", and all read as `undefined` so a caller can
- * tell a chosen value from a cleared one with a single check.
+ * contributes its first entry. An empty array, an empty string, a string of
+ * nothing but whitespace and an absent filter all mean "not filtering", and all
+ * read as `undefined` so a caller can tell a chosen value from a cleared one
+ * with a single check. Padding is trimmed on the way out for the same reason
+ * {@link setOrganizationTextFilter} trims it on the way in: the endpoints
+ * compare the value exactly, so a box holding a space would match no record
+ * rather than every one.
  */
 export function organizationColumnFilterValue(
   columnFilters: Array<{ id: string; value: unknown }>,
   columnId: string
 ): string | undefined {
   const value = columnFilters.find((filter) => filter.id === columnId)?.value
-  if (Array.isArray(value)) {
-    const first = value[0]
-    return typeof first === 'string' && first ? first : undefined
-  }
-  return typeof value === 'string' && value ? value : undefined
+  const chosen = Array.isArray(value) ? value[0] : value
+  if (typeof chosen !== 'string') return undefined
+  return chosen.trim() || undefined
 }
 
 /**
