@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import type { OrganizationDetailTabKey } from '../constants'
 import type { OrganizationDetail } from '../types'
 import { OrganizationAuditSection } from './organization-audit-section'
+import { OrganizationMembersSection } from './organization-members-section'
 import { OrganizationOverviewSection } from './organization-overview-section'
 import { OrganizationSectionEmpty } from './organization-section'
 import { OrganizationSettingsSection } from './organization-settings-section'
@@ -35,6 +36,14 @@ type OrganizationSectionsProps = {
   onForbidden: () => void
   /** Reload the detail payload after a write that changed it. */
   onUpdated: () => Promise<unknown> | unknown
+  /**
+   * The caller left the organization of their own accord.
+   *
+   * Kept separate from `onForbidden` because the two are not the same event:
+   * leaving is deliberate and already reported to the caller, while a refusal
+   * means access was taken away and has to be explained.
+   */
+  onLeftOrganization: () => Promise<unknown> | unknown
 }
 
 /**
@@ -66,6 +75,21 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           canUpdate={capabilities.can_update_organization}
           readOnly={props.readOnly}
           onUpdated={props.onUpdated}
+        />
+      )
+    case 'members':
+      return (
+        <OrganizationMembersSection
+          organizationId={organization.id}
+          actorRole={actor.organization_role || actor.role}
+          currentUserId={actor.user_id}
+          canView={capabilities.can_view_organization}
+          canManageMembers={capabilities.can_manage_members}
+          canAddMembersDirectly={capabilities.can_add_members_directly}
+          canExitOrganization={capabilities.can_exit_organization}
+          readOnly={props.readOnly}
+          onForbidden={props.onForbidden}
+          onLeftOrganization={props.onLeftOrganization}
         />
       )
     case 'audit-logs':

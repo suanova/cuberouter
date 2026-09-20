@@ -107,6 +107,34 @@ export const ORGANIZATION_ASSIGNABLE_ROLES: OrganizationRole[] = [
 /** The caller may browse the organization but not write to it. */
 export const ORGANIZATION_ACCESS_MODE_READ_ONLY = 'read_only'
 
+// ============================================================================
+// Membership Statuses
+// ============================================================================
+
+/**
+ * `organization_members.status`.
+ *
+ * `exited` and `removed` both end a membership, but they are not the same
+ * event — one is the member's own decision — so they keep separate labels.
+ */
+export const ORGANIZATION_MEMBER_STATUSES = {
+  active: { labelKey: 'Active', variant: 'success' as StatusVariant },
+  disabled: { labelKey: 'Disabled', variant: 'warning' as StatusVariant },
+  exited: { labelKey: 'Exited', variant: 'neutral' as StatusVariant },
+  removed: { labelKey: 'Removed', variant: 'neutral' as StatusVariant },
+} as const
+
+export type OrganizationMemberStatus =
+  keyof typeof ORGANIZATION_MEMBER_STATUSES
+
+export const organizationMemberStatusMeta = (
+  status?: string
+): { labelKey: string; variant: StatusVariant } => {
+  const meta =
+    ORGANIZATION_MEMBER_STATUSES[status as OrganizationMemberStatus] ?? null
+  return meta ?? { labelKey: 'Unknown status', variant: 'neutral' }
+}
+
 /**
  * How many non-dissolved organizations one user may create. Mirrors
  * `maxActiveOrganizationsPerUser` in service/organization.go, which counts

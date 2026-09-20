@@ -217,6 +217,7 @@ export function OrganizationDetail() {
               readOnly={readOnly}
               onForbidden={handleForbidden}
               onUpdated={refetch}
+              onLeftOrganization={leaveOrganization}
             />
           </div>
         </div>
