@@ -20,12 +20,15 @@ For commercial licensing, please contact support@quantumnous.com
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { OrganizationDetail } from '@/features/organization'
-import { normalizeOrganizationTabKey } from '@/features/organization/lib'
+import {
+  alignOrganizationAccountContext,
+  normalizeOrganizationTabKey,
+} from '@/features/organization/lib'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$organizationId/$section'
 )({
-  beforeLoad: ({ params }) => {
+  beforeLoad: async ({ params, context }) => {
     // An unknown section, or one of the legacy aliases, resolves to its
     // canonical tab rather than to a 404 — the URL is user-editable and older
     // links are still around.
@@ -37,6 +40,13 @@ export const Route = createFileRoute(
         replace: true,
       })
     }
+
+    // The organization's own read endpoints require the request to carry its
+    // account context, so a deep link has to adopt it before the page loads.
+    await alignOrganizationAccountContext(
+      Number(params.organizationId),
+      context.queryClient
+    )
   },
   component: OrganizationDetail,
 })

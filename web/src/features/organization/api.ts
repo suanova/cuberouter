@@ -49,10 +49,18 @@ export async function createOrganization(data: {
   return res.data
 }
 
+/**
+ * `silent` keeps the API error interceptor from toasting: the caller is probing
+ * whether the organization is readable in the current account context and
+ * handles the failure itself.
+ */
 export async function getOrganization(
-  organizationId: number
+  organizationId: number,
+  options: { silent?: boolean } = {}
 ): Promise<OrganizationDetailResponse> {
-  const res = await api.get(`/api/organizations/${organizationId}`)
+  const res = await api.get(`/api/organizations/${organizationId}`, {
+    skipErrorHandler: options.silent,
+  })
   return res.data
 }
 
