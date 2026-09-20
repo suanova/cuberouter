@@ -48,27 +48,90 @@ const (
 const TaskRefundLegacyCutoff int64 = 1771718400 // 2026-02-22 00:00:00 UTC
 
 type Task struct {
-	ID         int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
-	CreatedAt  int64                 `json:"created_at" gorm:"index"`
-	UpdatedAt  int64                 `json:"updated_at"`
-	TaskID     string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
-	Platform   constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
-	UserId     int                   `json:"user_id" gorm:"index"`
-	Group      string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
-	ChannelId  int                   `json:"channel_id" gorm:"index"`
-	Quota      int                   `json:"quota"`
-	Action     string                `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
-	Status     TaskStatus            `json:"status" gorm:"type:varchar(20);index"` // 任务状态
-	FailReason string                `json:"fail_reason"`
-	SubmitTime int64                 `json:"submit_time" gorm:"index"`
-	StartTime  int64                 `json:"start_time" gorm:"index"`
-	FinishTime int64                 `json:"finish_time" gorm:"index"`
-	Progress   string                `json:"progress" gorm:"type:varchar(20);index"`
-	Properties Properties            `json:"properties" gorm:"type:json"`
-	Username   string                `json:"username,omitempty" gorm:"-"`
+	ID        int64                 `json:"id" gorm:"primary_key;AUTO_INCREMENT"`
+	CreatedAt int64                 `json:"created_at" gorm:"index"`
+	UpdatedAt int64                 `json:"updated_at"`
+	TaskID    string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
+	Platform  constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
+	UserId    int                   `json:"user_id" gorm:"index"`
+	Group     string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
+	ChannelId int                   `json:"channel_id" gorm:"index"`
+	Quota     int                   `json:"quota"`
+
+	TokenId        int    `json:"token_id" gorm:"index;default:0"`
+	TokenName      string `json:"token_name" gorm:"index;default:''"`
+	TokenKey       string `json:"-" gorm:"type:varchar(128);default:''"`
+	TokenUnlimited bool   `json:"token_unlimited" gorm:"default:false"`
+	RequestId      string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_tasks_request_id;default:''"`
+
+	ScopeType                     string `json:"scope_type" gorm:"type:varchar(16);index;default:'personal'"`
+	ScopeId                       int    `json:"scope_id" gorm:"index;default:0"`
+	BillingAccountType            string `json:"billing_account_type" gorm:"type:varchar(16);index;default:'personal'"`
+	BillingAccountId              int    `json:"billing_account_id" gorm:"index;default:0"`
+	OrganizationId                int    `json:"organization_id" gorm:"index;default:0"`
+	OrganizationName              string `json:"organization_name" gorm:"type:varchar(128);default:''"`
+	ActorUserId                   int    `json:"actor_user_id" gorm:"index;default:0"`
+	CreatorUserId                 int    `json:"creator_user_id" gorm:"index;default:0"`
+	CreatorName                   string `json:"creator_name" gorm:"type:varchar(128);default:''"`
+	ResponsibleUserId             int    `json:"responsible_user_id" gorm:"index;default:0"`
+	ResponsibleName               string `json:"responsible_name" gorm:"type:varchar(128);default:''"`
+	OrganizationBillingSessionId  int    `json:"organization_billing_session_id" gorm:"index;default:0"`
+	OrganizationBillingSessionKey string `json:"organization_billing_session_key" gorm:"type:varchar(191);index;default:''"`
+
+	Action     string     `json:"action" gorm:"type:varchar(40);index"` // 任务类型, song, lyrics, description-mode
+	Status     TaskStatus `json:"status" gorm:"type:varchar(20);index"` // 任务状态
+	FailReason string     `json:"fail_reason"`
+	SubmitTime int64      `json:"submit_time" gorm:"index"`
+	StartTime  int64      `json:"start_time" gorm:"index"`
+	FinishTime int64      `json:"finish_time" gorm:"index"`
+	Progress   string     `json:"progress" gorm:"type:varchar(20);index"`
+	Properties Properties `json:"properties" gorm:"type:json"`
+	Username   string     `json:"username,omitempty" gorm:"-"`
 	// 禁止返回给用户，内部可能包含key等隐私信息
 	PrivateData TaskPrivateData `json:"-" gorm:"column:private_data;type:json"`
 	Data        json.RawMessage `json:"data" gorm:"type:json"`
+}
+
+// NormalizeTaskBillingScope 把旧行或未显式设置作用域的行归一到个人作用域，
+// 保证组织计费只作用于显式带组织上下文的请求。
+func NormalizeTaskBillingScope(task *Task) {
+	if task == nil {
+		return
+	}
+	if task.ScopeType == "" {
+		task.ScopeType = AccountContextTypePersonal
+	}
+	if task.BillingAccountType == "" {
+		task.BillingAccountType = AccountContextTypePersonal
+	}
+	if task.ScopeType == AccountContextTypePersonal {
+		if task.ScopeId == 0 {
+			task.ScopeId = task.UserId
+		}
+		if task.BillingAccountId == 0 {
+			task.BillingAccountId = task.UserId
+		}
+		if task.ActorUserId == 0 {
+			task.ActorUserId = task.UserId
+		}
+		if task.CreatorUserId == 0 {
+			task.CreatorUserId = task.UserId
+		}
+		if task.ResponsibleUserId == 0 {
+			task.ResponsibleUserId = task.UserId
+		}
+	}
+	if task.ScopeType == AccountContextTypeOrganization {
+		if task.ScopeId == 0 {
+			task.ScopeId = task.OrganizationId
+		}
+		if task.BillingAccountId == 0 {
+			task.BillingAccountId = task.OrganizationId
+		}
+		if task.OrganizationId == 0 {
+			task.OrganizationId = task.ScopeId
+		}
+	}
 }
 
 func (t *Task) SetData(data any) {

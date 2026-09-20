@@ -23,6 +23,34 @@ type QuotaData struct {
 	TokenUsed int    `json:"token_used" gorm:"default:0"`
 	Count     int    `json:"count" gorm:"default:0"`
 	Quota     int    `json:"quota" gorm:"default:0"`
+
+	ScopeType          string `json:"scope_type" gorm:"type:varchar(16);index;default:'personal'"`
+	ScopeId            int    `json:"scope_id" gorm:"index;default:0"`
+	BillingAccountType string `json:"billing_account_type" gorm:"type:varchar(16);index;default:'personal'"`
+	BillingAccountId   int    `json:"billing_account_id" gorm:"index;default:0"`
+	OrganizationId     int    `json:"organization_id" gorm:"index;default:0"`
+	ResponsibleUserId  int    `json:"responsible_user_id" gorm:"index;default:0"`
+}
+
+func NormalizeQuotaDataScope(quotaData *QuotaData) {
+	if quotaData == nil {
+		return
+	}
+	if quotaData.ScopeType == "" {
+		quotaData.ScopeType = AccountContextTypePersonal
+	}
+	if quotaData.ScopeId == 0 && quotaData.ScopeType == AccountContextTypePersonal {
+		quotaData.ScopeId = quotaData.UserID
+	}
+	if quotaData.BillingAccountType == "" {
+		quotaData.BillingAccountType = AccountContextTypePersonal
+	}
+	if quotaData.BillingAccountId == 0 && quotaData.BillingAccountType == AccountContextTypePersonal {
+		quotaData.BillingAccountId = quotaData.UserID
+	}
+	if quotaData.ResponsibleUserId == 0 && quotaData.ScopeType == AccountContextTypePersonal {
+		quotaData.ResponsibleUserId = quotaData.UserID
+	}
 }
 
 type QuotaDataLogParams struct {

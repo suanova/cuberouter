@@ -47,6 +47,10 @@ func invalidateTokenCacheForMutation(key string) error {
 	return common.RDB.Del(ctx, getTokenCacheKey(key)).Err()
 }
 
+// tokenCacheScopeVersion 是缓存哈希里组织作用域字段的模式版本。版本之前的哈希没有这些字段，
+// 读出来是零值（组织令牌会被当成个人令牌，进而错误地扣个人钱包），因此必须拒绝。
+const tokenCacheScopeVersion = 1
+
 // cacheInitToken publishes a database snapshot only when no mutation fence is
 // active and the hash is cold. An existing hash only gets its TTL refreshed:
 // its RemainQuota may already be ahead of this snapshot because atomic
@@ -61,12 +65,13 @@ func cacheInitToken(token Token) (int, error) {
 	if token.AllowIps != nil {
 		allowIps = *token.AllowIps
 	}
+	// 哈希字段名必须与 Token 的 Go 字段名一致：RedisHGetObj 是按字段名回填的。
 	const script = `
 if redis.call('EXISTS', KEYS[2]) == 1 then
   return 0
 end
 if redis.call('EXISTS', KEYS[1]) == 1 then
-  redis.call('EXPIRE', KEYS[1], ARGV[17])
+  redis.call('EXPIRE', KEYS[1], ARGV[30])
   return 2
 end
 redis.call('HSET', KEYS[1],
@@ -74,8 +79,13 @@ redis.call('HSET', KEYS[1],
   'CreatedTime', ARGV[5], 'AccessedTime', ARGV[6], 'ExpiredTime', ARGV[7],
   'UnlimitedQuota', ARGV[8], 'ModelLimitsEnabled', ARGV[9], 'ModelLimits', ARGV[10],
   'AllowIps', ARGV[11], 'Group', ARGV[12], 'CrossGroupRetry', ARGV[13],
-  'AutoGroups', ARGV[14], 'RemainQuota', ARGV[15], 'UsedQuota', ARGV[16])
-redis.call('EXPIRE', KEYS[1], ARGV[17])
+  'AutoGroups', ARGV[14], 'RemainQuota', ARGV[15], 'UsedQuota', ARGV[16],
+  'ScopeType', ARGV[17], 'ScopeId', ARGV[18], 'Visibility', ARGV[19],
+  'OrganizationId', ARGV[20], 'CreatorUserId', ARGV[21], 'ResponsibleUserId', ARGV[22],
+  'TransferReason', ARGV[23], 'DisabledBySystems', ARGV[24], 'SystemDisabledReason', ARGV[25],
+  'SystemDisabledRefId', ARGV[26], 'SystemDisabledAt', ARGV[27], 'PreviousStatus', ARGV[28],
+  'CacheScopeVersion', ARGV[29])
+redis.call('EXPIRE', KEYS[1], ARGV[30])
 return 1`
 
 	return common.RDB.Eval(context.Background(), script, []string{
@@ -86,6 +96,11 @@ return 1`
 		strconv.FormatBool(token.UnlimitedQuota), strconv.FormatBool(token.ModelLimitsEnabled),
 		token.ModelLimits, allowIps, token.Group, strconv.FormatBool(token.CrossGroupRetry),
 		token.AutoGroups, token.RemainQuota, token.UsedQuota,
+		token.ScopeType, token.ScopeId, token.Visibility,
+		token.OrganizationId, token.CreatorUserId, token.ResponsibleUserId,
+		token.TransferReason, strconv.FormatBool(token.DisabledBySystems), token.SystemDisabledReason,
+		token.SystemDisabledRefId, token.SystemDisabledAt, token.PreviousStatus,
+		tokenCacheScopeVersion,
 		tokenCacheTTLSeconds(),
 	).Int()
 }
@@ -101,6 +116,11 @@ func cacheGetTokenByKey(key string) (*Token, error) {
 	}
 	if token.Id <= 0 {
 		return nil, fmt.Errorf("token cache is incomplete")
+	}
+	// 旧快照只能被丢弃，不能就地改写：cacheInitToken 对已存在的哈希只刷 TTL，
+	// 不会覆盖字段。这里返回错误让调用方回落到数据库读，等哈希自然过期后重建。
+	if token.CacheScopeVersion < tokenCacheScopeVersion {
+		return nil, fmt.Errorf("token cache predates the scope schema, version %d", token.CacheScopeVersion)
 	}
 	token.Key = key
 	return &token, nil

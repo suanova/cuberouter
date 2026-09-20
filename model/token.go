@@ -11,24 +11,98 @@ import (
 )
 
 type Token struct {
-	Id                 int            `json:"id"`
-	UserId             int            `json:"user_id" gorm:"index"`
-	Key                string         `json:"key" gorm:"type:varchar(128);uniqueIndex"`
-	Status             int            `json:"status" gorm:"default:1"`
-	Name               string         `json:"name" gorm:"index" `
-	CreatedTime        int64          `json:"created_time" gorm:"bigint"`
-	AccessedTime       int64          `json:"accessed_time" gorm:"bigint"`
-	ExpiredTime        int64          `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
-	RemainQuota        int            `json:"remain_quota" gorm:"default:0"`
-	UnlimitedQuota     bool           `json:"unlimited_quota"`
-	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
-	ModelLimits        string         `json:"model_limits" gorm:"type:text"`
-	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
-	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
-	Group              string         `json:"group" gorm:"default:''"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
-	AutoGroups         string         `json:"-" gorm:"type:text"`
-	DeletedAt          gorm.DeletedAt `gorm:"index"`
+	Id                 int     `json:"id"`
+	UserId             int     `json:"user_id" gorm:"index"`
+	Key                string  `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	Status             int     `json:"status" gorm:"default:1"`
+	Name               string  `json:"name" gorm:"index" `
+	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
+	AccessedTime       int64   `json:"accessed_time" gorm:"bigint"`
+	ExpiredTime        int64   `json:"expired_time" gorm:"bigint;default:-1"` // -1 means never expired
+	RemainQuota        int     `json:"remain_quota" gorm:"default:0"`
+	UnlimitedQuota     bool    `json:"unlimited_quota"`
+	ModelLimitsEnabled bool    `json:"model_limits_enabled"`
+	ModelLimits        string  `json:"model_limits" gorm:"type:text"`
+	AllowIps           *string `json:"allow_ips" gorm:"default:''"`
+	UsedQuota          int     `json:"used_quota" gorm:"default:0"` // used quota
+	Group              string  `json:"group" gorm:"default:''"`
+	CrossGroupRetry    bool    `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	AutoGroups         string  `json:"-" gorm:"type:text"`
+
+	ScopeType         string `json:"scope_type" gorm:"type:varchar(16);index;index:idx_tokens_org_scope_responsible,priority:1;default:'personal'"`
+	ScopeId           int    `json:"scope_id" gorm:"index;default:0"`
+	Visibility        string `json:"visibility" gorm:"type:varchar(16);index;default:'private'"`
+	OrganizationId    int    `json:"organization_id" gorm:"index;index:idx_tokens_org_scope_responsible,priority:2;default:0"`
+	CreatorUserId     int    `json:"creator_user_id" gorm:"index;default:0"`
+	ResponsibleUserId int    `json:"responsible_user_id" gorm:"index;index:idx_tokens_org_scope_responsible,priority:3;default:0"`
+	TransferReason    string `json:"transfer_reason" gorm:"type:varchar(255);default:''"`
+	UpdatedAt         int64  `json:"updated_at" gorm:"bigint;default:0"`
+
+	// 系统禁用态由组织停用/解散、成员停用等平台侧原因维护，
+	// 与用户主动停用（Status）分开记录，见 service/organization_token_blocker.go。
+	DisabledBySystems    bool   `json:"disabled_by_systems" gorm:"not null;default:false"`
+	SystemDisabledReason string `json:"system_disabled_reason" gorm:"type:varchar(64);default:''"`
+	SystemDisabledRefId  int    `json:"system_disabled_ref_id" gorm:"default:0"`
+	SystemDisabledAt     int64  `json:"system_disabled_at" gorm:"bigint;default:0"`
+	PreviousStatus       int    `json:"previous_status" gorm:"default:0"`
+
+	ResponsibleUsername    string   `json:"responsible_username,omitempty" gorm:"-"`
+	ResponsibleDisplayName string   `json:"responsible_display_name,omitempty" gorm:"-"`
+	ResponsibleEmail       string   `json:"-" gorm:"-"`
+	UnavailableReasons     []string `json:"unavailable_reasons,omitempty" gorm:"-"`
+	// CacheScopeVersion 只存在于 Redis 哈希里，不入库。作用域字段加入缓存之前写入的旧哈希
+	// 读出来是零值，会让组织令牌看上去像个人令牌，因此带版本号的哈希才被接受，见 token_cache.go。
+	CacheScopeVersion int `json:"-" gorm:"-"`
+
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+const (
+	TokenScopePersonal     = "personal"
+	TokenScopeOrganization = "organization"
+	TokenVisibilityPrivate = "private"
+	TokenVisibilityPublic  = "public"
+)
+
+func NormalizeTokenScope(token *Token) {
+	if token == nil {
+		return
+	}
+	if token.ScopeType == "" {
+		token.ScopeType = TokenScopePersonal
+	}
+	if token.ScopeType == TokenScopePersonal {
+		if token.ScopeId == 0 {
+			token.ScopeId = token.UserId
+		}
+		if token.CreatorUserId == 0 {
+			token.CreatorUserId = token.UserId
+		}
+		if token.ResponsibleUserId == 0 {
+			token.ResponsibleUserId = token.UserId
+		}
+		if token.Visibility == "" {
+			token.Visibility = TokenVisibilityPrivate
+		}
+	}
+	if token.ScopeType == TokenScopeOrganization {
+		if token.ScopeId == 0 {
+			token.ScopeId = token.OrganizationId
+		}
+		if token.Visibility == "" {
+			token.Visibility = TokenVisibilityPrivate
+		}
+	}
+}
+
+func normalizeTokenScopes(tokens []*Token) {
+	for _, token := range tokens {
+		NormalizeTokenScope(token)
+	}
+}
+
+func personalTokenScopeQuery(db *gorm.DB) *gorm.DB {
+	return db.Where("(scope_type = ? OR scope_type = '')", TokenScopePersonal)
 }
 
 func (token *Token) GetAutoGroups() ([]string, error) {
@@ -312,7 +386,10 @@ func (token *Token) Update() (err error) {
 		common.SysLog("failed to invalidate token cache before update: " + cacheErr.Error())
 	}
 	return DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups",
+		"scope_type", "scope_id", "visibility", "organization_id", "creator_user_id",
+		"responsible_user_id", "transfer_reason", "disabled_by_systems", "system_disabled_reason",
+		"system_disabled_ref_id", "system_disabled_at", "previous_status", "updated_at").Updates(token).Error
 }
 
 func (token *Token) SelectUpdate() (err error) {

@@ -59,8 +59,8 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 type Log struct {
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type"`
-	Type              int    `json:"type" gorm:"index:idx_created_at_type"`
+	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:5;index:idx_logs_org_billing_responsible_time,priority:6"`
+	Type              int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:4;index:idx_logs_org_billing_responsible_time,priority:4"`
 	Content           string `json:"content"`
 	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
 	TokenName         string `json:"token_name" gorm:"index;default:''"`
@@ -78,6 +78,70 @@ type Log struct {
 	RequestId         string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	UpstreamRequestId string `json:"upstream_request_id,omitempty" gorm:"type:varchar(128);index:idx_logs_upstream_request_id;default:''"`
 	Other             string `json:"other"`
+
+	ScopeType          string `json:"scope_type" gorm:"type:varchar(16);index;default:'personal'"`
+	ScopeId            int    `json:"scope_id" gorm:"index;default:0"`
+	BillingAccountType string `json:"billing_account_type" gorm:"type:varchar(16);index;index:idx_logs_org_billing_type_time,priority:1;index:idx_logs_org_billing_responsible_time,priority:1;default:'personal'"`
+	BillingAccountId   int    `json:"billing_account_id" gorm:"index;index:idx_logs_org_billing_type_time,priority:2;index:idx_logs_org_billing_responsible_time,priority:2;default:0"`
+	OrganizationId     int    `json:"organization_id" gorm:"index;index:idx_logs_org_billing_type_time,priority:3;index:idx_logs_org_billing_responsible_time,priority:3;default:0"`
+	OrganizationName   string `json:"organization_name" gorm:"type:varchar(128);default:''"`
+	ActorUserId        int    `json:"actor_user_id" gorm:"index;default:0"`
+	CreatorUserId      int    `json:"creator_user_id" gorm:"index;default:0"`
+	CreatorName        string `json:"creator_name" gorm:"type:varchar(128);default:''"`
+	ResponsibleUserId  int    `json:"responsible_user_id" gorm:"index;index:idx_logs_org_billing_responsible_time,priority:5;default:0"`
+	ResponsibleName    string `json:"responsible_name" gorm:"type:varchar(128);default:''"`
+
+	OrganizationBillingSessionId  int    `json:"organization_billing_session_id" gorm:"index;default:0"`
+	OrganizationBillingSessionKey string `json:"organization_billing_session_key" gorm:"type:varchar(191);index;default:''"`
+	// BillingEventKey 是结算/退款的幂等键，唯一索引（logBillingEventKeyIndex）保证同一笔账只落一条日志。
+	// 唯一索引刻意不用 uniqueIndex 标签声明：该标签会让 SQLite 的 AutoMigrate 每次启动都重建整张 logs 表，
+	// 改为在 ensureOrganizationBillingLogIndexes 里显式、幂等地创建。
+	BillingEventKey *string `json:"-" gorm:"type:varchar(191)"`
+
+	ResponsibleUsername    string `json:"responsible_username,omitempty" gorm:"-"`
+	ResponsibleDisplayName string `json:"responsible_display_name,omitempty" gorm:"-"`
+}
+
+// logBillingEventKeyIndex 是 logs.billing_event_key 上的唯一索引名，见 Log.BillingEventKey。
+const logBillingEventKeyIndex = "idx_logs_billing_event_key"
+
+type logBillingEventKeyMigrationColumn struct {
+	BillingEventKey *string `gorm:"type:varchar(191)"`
+}
+
+func (logBillingEventKeyMigrationColumn) TableName() string {
+	return "logs"
+}
+
+func prepareLogBillingEventKeyMigration(db *gorm.DB) error {
+	if db == nil || !db.Migrator().HasTable(&Log{}) || db.Migrator().HasColumn(&Log{}, "BillingEventKey") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&logBillingEventKeyMigrationColumn{}, "BillingEventKey")
+}
+
+func NormalizeLogScope(log *Log) {
+	if log == nil {
+		return
+	}
+	if log.ScopeType == "" {
+		log.ScopeType = AccountContextTypePersonal
+	}
+	if log.ScopeId == 0 && log.ScopeType == AccountContextTypePersonal {
+		log.ScopeId = log.UserId
+	}
+	if log.BillingAccountType == "" {
+		log.BillingAccountType = AccountContextTypePersonal
+	}
+	if log.BillingAccountId == 0 && log.BillingAccountType == AccountContextTypePersonal {
+		log.BillingAccountId = log.UserId
+	}
+	if log.CreatorUserId == 0 && log.ScopeType == AccountContextTypePersonal {
+		log.CreatorUserId = log.UserId
+	}
+	if log.ResponsibleUserId == 0 && log.ScopeType == AccountContextTypePersonal {
+		log.ResponsibleUserId = log.UserId
+	}
 }
 
 // don't use iota, avoid change log type value

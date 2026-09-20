@@ -51,6 +51,13 @@ func (recorder *migrationSQLRecorder) reset() {
 	recorder.mu.Unlock()
 }
 
+// snapshot 返回已记录的全部语句（不做过过滤），供需要断言确切 DDL 原文的测试使用。
+func (recorder *migrationSQLRecorder) snapshot() []string {
+	recorder.mu.Lock()
+	defer recorder.mu.Unlock()
+	return append([]string(nil), recorder.statements...)
+}
+
 func (recorder *migrationSQLRecorder) schemaMutations() []string {
 	recorder.mu.Lock()
 	defer recorder.mu.Unlock()

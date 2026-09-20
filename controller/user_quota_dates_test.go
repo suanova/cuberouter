@@ -30,7 +30,9 @@ func setupQuotaDatesTestDB(t *testing.T) *gorm.DB {
 		id integer primary key autoincrement,
 		user_id integer, username text, model_name text, created_at integer,
 		use_group text, token_id integer, channel_id integer, node_name text,
-		token_used integer, count integer, quota integer
+		token_used integer, count integer, quota integer,
+		scope_type text, scope_id integer, billing_account_type text,
+		billing_account_id integer, organization_id integer, responsible_user_id integer
 	)`).Error)
 	return db
 }

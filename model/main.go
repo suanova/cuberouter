@@ -17,6 +17,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var commonGroupCol string
@@ -332,6 +333,20 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
+	// 组织作用域列必须在 AutoMigrate 之前补齐并回填：AutoMigrate 会为新列建索引，
+	// 而回填依赖列已存在且旧行为个人作用域。
+	if err := prepareOrganizationScopeMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareLogBillingEventKeyMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationQuotaAdjustmentIdempotencyMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationNameUniquenessMigration(DB); err != nil {
+		return err
+	}
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -374,8 +389,26 @@ func migrateDB() error {
 		&Campaign{},
 		&CampaignParticipant{},
 		&CampaignReward{},
+		&Organization{},
+		&OrganizationMember{},
+		&OrganizationInvite{},
+		&UserAccountContext{},
+		&OrganizationDisableRecord{},
+		&OrganizationTokenSystemBlocker{},
+		&OrganizationIdempotencyRecord{},
+		&OrganizationBillingSession{},
+		&OrganizationBillingRecord{},
+		&OrganizationAuditLog{},
+		&OrganizationQuotaAdjustment{},
 	)
 	if err != nil {
+		return err
+	}
+	// AutoMigrate 之后重跑：此时唯一索引已建，负责校正 MySQL 排序规则并检测重名冲突。
+	if err := prepareOrganizationNameUniquenessMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationMemberDisableSourceMigration(DB); err != nil {
 		return err
 	}
 	if err := migrateVideoPriceUsdToUSD(DB); err != nil {
@@ -399,10 +432,26 @@ func migrateDB() error {
 			return err
 		}
 	}
+	if err := ensureOrganizationBillingIndexes(); err != nil {
+		return err
+	}
 	return nil
 }
 
 func migrateDBFast() error {
+
+	if err := prepareOrganizationScopeMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareLogBillingEventKeyMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationQuotaAdjustmentIdempotencyMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationNameUniquenessMigration(DB); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 
@@ -447,6 +496,17 @@ func migrateDBFast() error {
 		{&Campaign{}, "Campaign"},
 		{&CampaignParticipant{}, "CampaignParticipant"},
 		{&CampaignReward{}, "CampaignReward"},
+		{&Organization{}, "Organization"},
+		{&OrganizationMember{}, "OrganizationMember"},
+		{&OrganizationInvite{}, "OrganizationInvite"},
+		{&UserAccountContext{}, "UserAccountContext"},
+		{&OrganizationDisableRecord{}, "OrganizationDisableRecord"},
+		{&OrganizationTokenSystemBlocker{}, "OrganizationTokenSystemBlocker"},
+		{&OrganizationIdempotencyRecord{}, "OrganizationIdempotencyRecord"},
+		{&OrganizationBillingSession{}, "OrganizationBillingSession"},
+		{&OrganizationBillingRecord{}, "OrganizationBillingRecord"},
+		{&OrganizationAuditLog{}, "OrganizationAuditLog"},
+		{&OrganizationQuotaAdjustment{}, "OrganizationQuotaAdjustment"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
@@ -471,6 +531,12 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := prepareOrganizationNameUniquenessMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationMemberDisableSourceMigration(DB); err != nil {
+		return err
+	}
 	if err := dropLegacyPerfUniqueIndex(); err != nil {
 		return err
 	}
@@ -490,6 +556,9 @@ func migrateDBFast() error {
 		}
 	}
 	if err := migrateVideoPriceUsdToUSD(DB); err != nil {
+		return err
+	}
+	if err := ensureOrganizationBillingIndexes(); err != nil {
 		return err
 	}
 	common.SysLog("database migrated")
@@ -537,7 +606,72 @@ func migrateLOGDB() error {
 	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
 		return migrateClickHouseLogDB()
 	}
-	return LOG_DB.AutoMigrate(&Log{})
+	if err := prepareOrganizationScopeMigration(LOG_DB); err != nil {
+		return err
+	}
+	if err := prepareLogBillingEventKeyMigration(LOG_DB); err != nil {
+		return err
+	}
+	if err := LOG_DB.AutoMigrate(&Log{}); err != nil {
+		return err
+	}
+	return ensureOrganizationBillingLogIndexes(LOG_DB)
+}
+
+// ensureOrganizationBillingIndexes 补齐 AutoMigrate 不会重建的多列索引。
+// 组织计费按 (billing account, organization, type, 时间) 和责任人聚合，
+// 索引缺一就会退化成全表扫描。
+func ensureOrganizationBillingIndexes() error {
+	if err := ensureOrganizationBillingLogIndexes(DB); err != nil {
+		return err
+	}
+	for _, index := range []string{"idx_tokens_org_scope_responsible"} {
+		if err := ensureModelIndex(DB, &Token{}, index); err != nil {
+			return err
+		}
+	}
+	for _, index := range []string{"idx_org_members_org_status"} {
+		if err := ensureModelIndex(DB, &OrganizationMember{}, index); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureOrganizationBillingLogIndexes(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, index := range []string{"idx_logs_org_billing_type_time", "idx_logs_org_billing_responsible_time"} {
+		if err := ensureModelIndex(db, &Log{}, index); err != nil {
+			return err
+		}
+	}
+	return ensureModelUniqueIndex(db, "logs", "billing_event_key", logBillingEventKeyIndex)
+}
+
+func ensureModelIndex(db *gorm.DB, model any, index string) error {
+	if db.Migrator().HasIndex(model, index) {
+		return nil
+	}
+	return db.Migrator().CreateIndex(model, index)
+}
+
+// ensureModelUniqueIndex 显式、幂等地创建唯一索引。等价约束也可以用 uniqueIndex 标签声明，
+// 但那会让 SQLite 的 AutoMigrate 在每次启动时重建整张表（glebarez/sqlite 的已知行为），
+// 对大表是实打实的启动开销，所以唯一索引统一走这里。
+func ensureModelUniqueIndex(db *gorm.DB, table string, column string, index string) error {
+	if db == nil || !db.Migrator().HasTable(table) {
+		return nil
+	}
+	if db.Migrator().HasIndex(table, index) {
+		return nil
+	}
+	return db.Exec("CREATE UNIQUE INDEX ? ON ? (?)",
+		clause.Column{Name: index},
+		clause.Table{Name: table},
+		clause.Column{Name: column},
+	).Error
 }
 
 func migrateClickHouseLogDB() error {
@@ -545,7 +679,43 @@ func migrateClickHouseLogDB() error {
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
 		return err
 	}
+	if err := addClickHouseLogScopeColumns(); err != nil {
+		return err
+	}
 	return syncClickHouseLogTTL(ttlDays)
+}
+
+// clickHouseLogScopeColumns 是 ClickHouse 建表语句之外的补充列定义。
+// CREATE TABLE IF NOT EXISTS 不会修改既存表，因此已有部署必须靠
+// ALTER TABLE ... ADD COLUMN IF NOT EXISTS 补齐组织作用域列。
+var clickHouseLogScopeColumns = []struct {
+	name string
+	ddl  string
+}{
+	{"scope_type", "String DEFAULT 'personal'"},
+	{"scope_id", "Int32 DEFAULT 0"},
+	{"billing_account_type", "String DEFAULT 'personal'"},
+	{"billing_account_id", "Int32 DEFAULT 0"},
+	{"organization_id", "Int32 DEFAULT 0"},
+	{"organization_name", "String DEFAULT ''"},
+	{"actor_user_id", "Int32 DEFAULT 0"},
+	{"creator_user_id", "Int32 DEFAULT 0"},
+	{"creator_name", "String DEFAULT ''"},
+	{"responsible_user_id", "Int32 DEFAULT 0"},
+	{"responsible_name", "String DEFAULT ''"},
+	{"organization_billing_session_id", "Int32 DEFAULT 0"},
+	{"organization_billing_session_key", "String DEFAULT ''"},
+	{"billing_event_key", "Nullable(String)"},
+}
+
+func addClickHouseLogScopeColumns() error {
+	for _, column := range clickHouseLogScopeColumns {
+		statement := fmt.Sprintf("ALTER TABLE logs ADD COLUMN IF NOT EXISTS `%s` %s", column.name, column.ddl)
+		if err := LOG_DB.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func clickHouseLogTTLDays() int {
@@ -593,6 +763,20 @@ CREATE TABLE IF NOT EXISTS logs (
 	ip String DEFAULT '',
 	request_id String DEFAULT '',
 	upstream_request_id String DEFAULT '',
+	scope_type String DEFAULT 'personal',
+	scope_id Int32 DEFAULT 0,
+	billing_account_type String DEFAULT 'personal',
+	billing_account_id Int32 DEFAULT 0,
+	organization_id Int32 DEFAULT 0,
+	organization_name String DEFAULT '',
+	actor_user_id Int32 DEFAULT 0,
+	creator_user_id Int32 DEFAULT 0,
+	creator_name String DEFAULT '',
+	responsible_user_id Int32 DEFAULT 0,
+	responsible_name String DEFAULT '',
+	organization_billing_session_id Int32 DEFAULT 0,
+	organization_billing_session_key String DEFAULT '',
+	billing_event_key Nullable(String),
 	other String DEFAULT ''
 )
 ENGINE = MergeTree()
