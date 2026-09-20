@@ -144,6 +144,15 @@ func NormalizeLogScope(log *Log) {
 	}
 }
 
+// personalLogScopeQuery 把查询收窄到个人作用域的日志。
+//
+// scope_type 为空的老行也算个人：历史日志是在作用域字段存在之前写的，
+// 不把空串一并算上，升级后每个用户的日志列表都会凭空少一截。
+// 组织日志因此天然被排除——个人看板不该出现组织的消费。
+func personalLogScopeQuery(db *gorm.DB) *gorm.DB {
+	return db.Where("(logs.scope_type = ? OR logs.scope_type = '')", AccountContextTypePersonal)
+}
+
 // don't use iota, avoid change log type value
 const (
 	LogTypeUnknown = 0
@@ -665,6 +674,13 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
 			NodeName:  common.NodeName,
+
+			ScopeType:          params.ScopeType,
+			ScopeId:            params.ScopeId,
+			BillingAccountType: params.BillingAccountType,
+			BillingAccountId:   params.BillingAccountId,
+			OrganizationId:     params.OrganizationId,
+			ResponsibleUserId:  params.ResponsibleUserId,
 		})
 	}
 }
@@ -680,6 +696,16 @@ type RecordTaskBillingLogParams struct {
 	Group     string
 	Other     map[string]interface{}
 	NodeName  string // 任务发起节点；为空时回退当前节点
+
+	// 作用域与账单归属：任务在提交阶段就把这几列存进了 tasks/midjourneys，
+	// 退款和差额结算发生在轮询阶段，那时只剩任务记录，必须由调用方回填。
+	// 不回填就等于按个人记账——组织开销的退款日志会混进责任人的个人日志列表。
+	ScopeType          string
+	ScopeId            int
+	BillingAccountType string
+	BillingAccountId   int
+	OrganizationId     int
+	ResponsibleUserId  int
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
@@ -707,7 +733,17 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		TokenId:   params.TokenId,
 		Group:     params.Group,
 		Other:     common.MapToJsonStr(params.Other),
+
+		ScopeType:          params.ScopeType,
+		ScopeId:            params.ScopeId,
+		BillingAccountType: params.BillingAccountType,
+		BillingAccountId:   params.BillingAccountId,
+		OrganizationId:     params.OrganizationId,
+		ResponsibleUserId:  params.ResponsibleUserId,
 	}
+	// 调用方没回填作用域时退回个人：缺省就是个人，绝不能留空串，
+	// 空串在 personalLogScopeQuery 里虽然也算个人，但会在按作用域分组时变成第三类。
+	NormalizeLogScope(log)
 	err := createLog(log)
 	if err != nil {
 		common.SysLog("failed to record task billing log: " + err.Error())
@@ -727,6 +763,13 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
 			NodeName:  nodeName,
+
+			ScopeType:          params.ScopeType,
+			ScopeId:            params.ScopeId,
+			BillingAccountType: params.BillingAccountType,
+			BillingAccountId:   params.BillingAccountId,
+			OrganizationId:     params.OrganizationId,
+			ResponsibleUserId:  params.ResponsibleUserId,
 		})
 	}
 }
@@ -830,9 +873,9 @@ const logSearchCountLimit = 10000
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
-		tx = LOG_DB.Where("logs.user_id = ?", userId)
+		tx = personalLogScopeQuery(LOG_DB.Where("logs.user_id = ?", userId))
 	} else {
-		tx = LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType)
+		tx = personalLogScopeQuery(LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType))
 	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
@@ -881,11 +924,34 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
+// SumUsedQuota 统计全站用量，不带账单归属过滤，管理端看板用。
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, "", 0)
+}
+
+// SumUsedQuotaForBillingAccount 按账单归属统计用量。
+//
+// 个人看板必须带上 (personal, userId)，否则用同一个人作责任人的组织消费会算进他的
+// 个人统计里——花的不是他的钱，却显示在他的额度消耗上。
+func SumUsedQuotaForBillingAccount(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, billingAccountType string, billingAccountId int) (stat Stat, err error) {
+	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, billingAccountType, billingAccountId)
+}
+
+func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, billingAccountType string, billingAccountId int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
 	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+
+	// 账单归属过滤只对组织/个人维度生效；空值表示「不过滤」，管理端全站统计走这条。
+	if billingAccountType != "" {
+		tx = tx.Where("billing_account_type = ?", billingAccountType)
+		rpmTpmQuery = rpmTpmQuery.Where("billing_account_type = ?", billingAccountType)
+	}
+	if billingAccountId != 0 {
+		tx = tx.Where("billing_account_id = ?", billingAccountId)
+		rpmTpmQuery = rpmTpmQuery.Where("billing_account_id = ?", billingAccountId)
+	}
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err

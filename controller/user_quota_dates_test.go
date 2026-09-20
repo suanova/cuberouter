@@ -37,11 +37,18 @@ func setupQuotaDatesTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+// seedQuotaData inserts a dashboard row. The account-context columns must be
+// set: GetQuotaDataByUserId reads a user's *personal* usage only, so a row with
+// an empty billing account is invisible to every dashboard. Upgrade in
+// production fills these in via prepareOrganizationScopeMigration, which
+// backfills legacy rows to (personal, user_id) — the values seeded here.
 func seedQuotaData(t *testing.T, db *gorm.DB, userId int, username, modelName string, createdAt, quota, tokenUsed int) {
 	t.Helper()
 	require.NoError(t, db.Table("quota_data").Create(&model.QuotaData{
 		UserID: userId, Username: username, ModelName: modelName, CreatedAt: int64(createdAt),
 		Quota: quota, TokenUsed: tokenUsed, Count: 1,
+		ScopeType: model.AccountContextTypePersonal, ScopeId: userId,
+		BillingAccountType: model.AccountContextTypePersonal, BillingAccountId: userId,
 	}).Error)
 }
 

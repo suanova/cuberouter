@@ -283,7 +283,7 @@ func SearchUserTokens(userId int, keyword string, token string, offset int, limi
 		}
 	}
 
-	baseQuery := DB.Model(&Token{}).Where("user_id = ?", userId)
+	baseQuery := personalTokenScopeQuery(DB.Model(&Token{}).Where("user_id = ?", userId))
 
 	// 非空才加 LIKE 条件，空则跳过（不过滤该字段）
 	if keyword != "" {
@@ -363,7 +363,8 @@ func GetTokenByIds(id int, userId int) (*Token, error) {
 	}
 	token := Token{Id: id, UserId: userId}
 	var err error = nil
-	err = DB.First(&token, "id = ? and user_id = ?", id, userId).Error
+	err = personalTokenScopeQuery(DB).First(&token, "id = ? and user_id = ?", id, userId).Error
+	NormalizeTokenScope(&token)
 	return &token, err
 }
 
@@ -374,6 +375,7 @@ func GetTokenById(id int) (*Token, error) {
 	token := Token{Id: id}
 	var err error = nil
 	err = DB.First(&token, "id = ?", id).Error
+	NormalizeTokenScope(&token)
 	return &token, err
 }
 
@@ -390,6 +392,7 @@ func GetTokenByKey(key string, fromDB bool) (token *Token, err error) {
 	if err = DB.Where(commonKeyCol+" = ?", key).First(token).Error; err != nil {
 		return nil, err
 	}
+	NormalizeTokenScope(token)
 	if common.RedisEnabled {
 		// 冷缓存时用数据库快照初始化；已存在的哈希只刷新 TTL，
 		// 避免快照覆盖 Redis 中已被原子预扣的余额。初始化失败不影响本次读取。
@@ -470,7 +473,7 @@ func DeleteTokenById(id int, userId int) (err error) {
 		return errors.New("id 或 userId 为空！")
 	}
 	token := Token{Id: id, UserId: userId}
-	err = DB.Where(token).First(&token).Error
+	err = personalTokenScopeQuery(DB.Where(token)).First(&token).Error
 	if err != nil {
 		return err
 	}
@@ -540,7 +543,7 @@ func decreaseTokenQuota(id int, quota int) (err error) {
 // CountUserTokens returns total number of tokens for the given user, used for pagination
 func CountUserTokens(userId int) (int64, error) {
 	var total int64
-	err := DB.Model(&Token{}).Where("user_id = ?", userId).Count(&total).Error
+	err := personalTokenScopeQuery(DB.Model(&Token{}).Where("user_id = ?", userId)).Count(&total).Error
 	return total, err
 }
 
@@ -553,7 +556,7 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 	tx := DB.Begin()
 
 	var tokens []Token
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Find(&tokens).Error; err != nil {
+	if err := personalTokenScopeQuery(tx.Where("user_id = ? AND id IN (?)", userId, ids)).Find(&tokens).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}
@@ -561,7 +564,7 @@ func BatchDeleteTokens(ids []int, userId int) (int, error) {
 		common.SysLog("failed to invalidate token cache before batch delete: " + err.Error())
 	}
 
-	if err := tx.Where("user_id = ? AND id IN (?)", userId, ids).Delete(&Token{}).Error; err != nil {
+	if err := personalTokenScopeQuery(tx.Where("user_id = ? AND id IN (?)", userId, ids)).Delete(&Token{}).Error; err != nil {
 		tx.Rollback()
 		return 0, err
 	}

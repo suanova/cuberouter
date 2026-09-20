@@ -154,7 +154,7 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 	billingChannelId := task.GetBillingChannelId()
 	model.UpdateUserUsedQuota(task.UserId, -quota)
 	model.UpdateChannelUsedQuota(billingChannelId, -quota)
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+	refundLogParams := model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   model.LogTypeRefund,
 		Content:   "",
@@ -166,7 +166,9 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 			"task_id": task.MjId,
 			"reason":  reason,
 		},
-	})
+	}
+	applyMidjourneyBillingScope(&refundLogParams, task)
+	model.RecordTaskBillingLog(refundLogParams)
 
 	task.Quota = 0
 	if err := task.UpdateBillingState(); err != nil {

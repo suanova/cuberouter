@@ -7,9 +7,21 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // QuotaData 柱状图数据
+//
+// idx_quota_data_account_context 覆盖这一整行身份的全部维度：既包括分析维度
+// （分组/令牌/渠道/节点），也包括作用域与账单归属。原因见 upsertQuotaData：
+// 多节点并发的缓存刷写都走 ON CONFLICT，冲突目标必须与行的真实身份完全一致，
+// 少一列就会把两条本应独立的记录合并掉、丢掉那一维的归属。
+//
+// 这个索引故意不写成 gorm 的 uniqueIndex 标签，而是由
+// ensureQuotaDataAccountContextIndex 显式建出来：SQLite 上只要表里带 uniqueIndex
+// 标签，每次 AutoMigrate 都会整表重建，quota_data 在真实部署里可以很大，
+// 每次启动复制一遍不可接受（tokens 表已经因为同一个原因长期如此）。
+// logs.billing_event_key 走的是同一条路子。
 type QuotaData struct {
 	Id        int    `json:"id"`
 	UserID    int    `json:"user_id" gorm:"index"`
@@ -64,6 +76,15 @@ type QuotaDataLogParams struct {
 	TokenID   int
 	ChannelID int
 	NodeName  string
+
+	// 作用域与账单归属。组织请求的用量要按组织记账，缺省（零值）会退化成个人，
+	// 于是组织的消耗会出现在责任人的个人看板上，而组织那边看不到。
+	ScopeType          string
+	ScopeId            int
+	BillingAccountType string
+	BillingAccountId   int
+	OrganizationId     int
+	ResponsibleUserId  int
 }
 
 func UpdateQuotaData() {
@@ -79,8 +100,13 @@ func UpdateQuotaData() {
 var CacheQuotaData = make(map[string]*QuotaData)
 var CacheQuotaDataLock = sync.Mutex{}
 
-func logQuotaDataCache(quotaData *QuotaData) {
-	key := fmt.Sprintf("%d\x00%s\x00%s\x00%d\x00%s\x00%d\x00%d\x00%s",
+// quotaDataCacheKey 生成缓存聚合键，必须与 idx_quota_data_account_context 覆盖同一组维度。
+//
+// 作用域必须在键里：同一个用户同一小时既有个人消费又有组织消费，只按
+// 用户/模型/时间做键会把两笔合并成一条，之后无论写进哪一边都是错的。
+func quotaDataCacheKey(quotaData *QuotaData) string {
+	NormalizeQuotaDataScope(quotaData)
+	return fmt.Sprintf("%d\x00%s\x00%s\x00%d\x00%s\x00%d\x00%d\x00%s\x00%s\x00%d\x00%s\x00%d\x00%d\x00%d",
 		quotaData.UserID,
 		quotaData.Username,
 		quotaData.ModelName,
@@ -89,7 +115,17 @@ func logQuotaDataCache(quotaData *QuotaData) {
 		quotaData.TokenID,
 		quotaData.ChannelID,
 		quotaData.NodeName,
+		quotaData.ScopeType,
+		quotaData.ScopeId,
+		quotaData.BillingAccountType,
+		quotaData.BillingAccountId,
+		quotaData.OrganizationId,
+		quotaData.ResponsibleUserId,
 	)
+}
+
+func logQuotaDataCache(quotaData *QuotaData) {
+	key := quotaDataCacheKey(quotaData)
 	count := quotaData.Count
 	quota := quotaData.Quota
 	tokenUsed := quotaData.TokenUsed
@@ -118,6 +154,13 @@ func LogQuotaData(params QuotaDataLogParams) {
 		Count:     1,
 		Quota:     params.Quota,
 		TokenUsed: params.TokenUsed,
+
+		ScopeType:          params.ScopeType,
+		ScopeId:            params.ScopeId,
+		BillingAccountType: params.BillingAccountType,
+		BillingAccountId:   params.BillingAccountId,
+		OrganizationId:     params.OrganizationId,
+		ResponsibleUserId:  params.ResponsibleUserId,
 	}
 
 	CacheQuotaDataLock.Lock()
@@ -129,47 +172,102 @@ func SaveQuotaDataCache() {
 	CacheQuotaDataLock.Lock()
 	defer CacheQuotaDataLock.Unlock()
 	size := len(CacheQuotaData)
-	// 如果缓存中有数据，就保存到数据库中
-	// 1. 先查询数据库中是否有数据
-	// 2. 如果有数据，就更新数据
-	// 3. 如果没有数据，就插入数据
+	// 缓存里已经按完整身份聚合过了，落库直接 upsert：不再「先查再插」，
+	// 那个模式在多节点下会各自查到「不存在」然后各插一行，同一小时的用量翻倍。
 	for _, quotaData := range CacheQuotaData {
-		quotaDataDB := &QuotaData{}
-		DB.Table("quota_data").
-			Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
-				quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
-			First(quotaDataDB)
-		if quotaDataDB.Id > 0 {
-			//quotaDataDB.Count += quotaData.Count
-			//quotaDataDB.Quota += quotaData.Quota
-			//DB.Table("quota_data").Save(quotaDataDB)
-			increaseQuotaData(quotaData)
-		} else {
-			DB.Table("quota_data").Create(quotaData)
+		if err := upsertQuotaData(quotaData); err != nil {
+			common.SysLog(fmt.Sprintf("upsertQuotaData error: %s", err))
 		}
 	}
 	CacheQuotaData = make(map[string]*QuotaData)
 	common.SysLog(fmt.Sprintf("保存数据看板数据成功，共保存%d条数据", size))
 }
 
-func increaseQuotaData(quotaData *QuotaData) {
-	err := DB.Table("quota_data").
-		Where("user_id = ? and username = ? and model_name = ? and created_at = ? and use_group = ? and token_id = ? and channel_id = ? and node_name = ?",
-			quotaData.UserID, quotaData.Username, quotaData.ModelName, quotaData.CreatedAt, quotaData.UseGroup, quotaData.TokenID, quotaData.ChannelID, quotaData.NodeName).
-		Updates(map[string]interface{}{
-			"count":      gorm.Expr("count + ?", quotaData.Count),
-			"quota":      gorm.Expr("quota + ?", quotaData.Quota),
-			"token_used": gorm.Expr("token_used + ?", quotaData.TokenUsed),
-		}).Error
-	if err != nil {
-		common.SysLog(fmt.Sprintf("increaseQuotaData error: %s", err))
-	}
+// quotaDataAccountContextColumnNames 是 idx_quota_data_account_context 的列定义，
+// 顺序即索引顺序。upsertQuotaData 的 ON CONFLICT 目标直接由它派生：两者分开写的话，
+// 改了一处忘了另一处，ON CONFLICT 就匹配不上索引，重复写入会变成插入冲突。
+var quotaDataAccountContextColumnNames = []string{
+	"user_id",
+	"username",
+	"model_name",
+	"created_at",
+	"use_group",
+	"token_id",
+	"channel_id",
+	"node_name",
+	"scope_type",
+	"scope_id",
+	"billing_account_type",
+	"billing_account_id",
+	"organization_id",
+	"responsible_user_id",
 }
 
+const quotaDataAccountContextIndexName = "idx_quota_data_account_context"
+
+func quotaDataConflictColumns() []clause.Column {
+	columns := make([]clause.Column, 0, len(quotaDataAccountContextColumnNames))
+	for _, name := range quotaDataAccountContextColumnNames {
+		columns = append(columns, clause.Column{Name: name})
+	}
+	return columns
+}
+
+// ensureQuotaDataAccountContextIndex 幂等地补上唯一索引。
+//
+// 索引不在结构体标签里（原因见 QuotaData 的注释），AutoMigrate 因此不会建它，
+// 而是由 ensureOrganizationBillingIndexes 在迁移流程里显式调用。老库上还会遇到
+// 历史行，索引建失败会直接拦住启动——宁可启动失败也不要带着「以为有幂等键、
+// 其实没有」的库继续跑。
+//
+// 任何自己建模的测试库只要会走到 SaveQuotaDataCache，也必须调这一句，
+// 否则 ON CONFLICT 找不到冲突目标、写入静默失败。
+func ensureQuotaDataAccountContextIndex(db *gorm.DB) error {
+	return ensureModelUniqueMultiColumnIndex(db, "quota_data", quotaDataAccountContextIndexName, quotaDataAccountContextColumnNames...)
+}
+
+// upsertQuotaData 按完整行身份累加。
+//
+// 累加表达式里的列必须写成 clause.Column{Table: ...}：PostgreSQL 在
+// ON CONFLICT DO UPDATE 里要求 SET 右侧的列引用带表名限定，写成裸列名会直接
+// 报 ambiguous column，而 SQLite/MySQL 对此宽容，本地跑不出来。
+func upsertQuotaData(quotaData *QuotaData) error {
+	NormalizeQuotaDataScope(quotaData)
+	return DB.Clauses(clause.OnConflict{
+		Columns: quotaDataConflictColumns(),
+		DoUpdates: clause.Assignments(map[string]interface{}{
+			"count":      gorm.Expr("? + ?", clause.Column{Table: "quota_data", Name: "count"}, quotaData.Count),
+			"quota":      gorm.Expr("? + ?", clause.Column{Table: "quota_data", Name: "quota"}, quotaData.Quota),
+			"token_used": gorm.Expr("? + ?", clause.Column{Table: "quota_data", Name: "token_used"}, quotaData.TokenUsed),
+		}),
+	}).Table("quota_data").Create(quotaData).Error
+}
+
+// personalQuotaDataScopeQuery 收窄到个人账单。
+//
+// 用 billing_account_id 而不是 user_id：组织请求的 user_id 是操作者本人，
+// 只有账单归属列才分得清这笔钱是谁出的。
+func personalQuotaDataScopeQuery(db *gorm.DB, userId int) *gorm.DB {
+	return db.Where("billing_account_type = ? AND billing_account_id = ?", AccountContextTypePersonal, userId)
+}
+
+func organizationQuotaDataScopeQuery(db *gorm.DB, organizationId int) *gorm.DB {
+	return db.Where("billing_account_type = ? AND billing_account_id = ?", AccountContextTypeOrganization, organizationId)
+}
+
+// GetQuotaDataByUsername 按用户名取个人看板数据，管理员在 /api/data 上用。
+//
+// 同样按账单归属收窄：组织消费把这个人记为责任人，但钱是组织出的，
+// 混进来会让「这个用户花了多少」的报表凭空多出一块。组织维度走
+// GetQuotaDataByOrganizationId。
 func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
+	var user User
+	if err = DB.Where("username = ?", username).First(&user).Error; err != nil {
+		return quotaDatas, err
+	}
 	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").
+	err = personalQuotaDataScopeQuery(DB.Table("quota_data"), user.Id).
 		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
 		Where("username = ? and created_at >= ? and created_at <= ?", username, startTime, endTime).
 		Group("user_id, username, model_name, created_at").
@@ -177,12 +275,27 @@ func GetQuotaDataByUsername(username string, startTime int64, endTime int64) (qu
 	return quotaDatas, err
 }
 
+// GetQuotaDataByUserId 返回该用户的个人看板数据。
+//
+// 按账单归属收窄，组织消费不算进来——组织请求的 user_id 也会是这个人（他是责任人），
+// 不按 billing_account_id 过滤的话，组织的花销会出现在他的个人用量曲线上。
 func GetQuotaDataByUserId(userId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
 	var quotaDatas []*QuotaData
 	// 从quota_data表中查询数据
-	err = DB.Table("quota_data").
+	err = personalQuotaDataScopeQuery(DB.Table("quota_data"), userId).
 		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
-		Where("user_id = ? and created_at >= ? and created_at <= ?", userId, startTime, endTime).
+		Where("created_at >= ? and created_at <= ?", startTime, endTime).
+		Group("user_id, username, model_name, created_at").
+		Find(&quotaDatas).Error
+	return quotaDatas, err
+}
+
+// GetQuotaDataByOrganizationId 返回某个组织的看板数据，维度与个人看板一致。
+func GetQuotaDataByOrganizationId(organizationId int, startTime int64, endTime int64) (quotaData []*QuotaData, err error) {
+	var quotaDatas []*QuotaData
+	err = organizationQuotaDataScopeQuery(DB.Table("quota_data"), organizationId).
+		Select("user_id, username, model_name, created_at, sum(count) as count, sum(quota) as quota, sum(token_used) as token_used").
+		Where("created_at >= ? and created_at <= ?", startTime, endTime).
 		Group("user_id, username, model_name, created_at").
 		Find(&quotaDatas).Error
 	return quotaDatas, err

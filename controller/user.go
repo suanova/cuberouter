@@ -1379,6 +1379,19 @@ func ManageUser(c *gin.Context) {
 			common.ApiError(c, err)
 			return
 		}
+		// 封禁/解封还要同步这个人负责的组织密钥的可用性：组织密钥的失效判定读的是
+		// 组织侧的禁用记录，而缓存里那份令牌快照不会因为用户状态变化自动失效。
+		// 只改用户状态的话，被封禁的人照样能用组织密钥发请求。
+		//
+		// 这里没有像源实现那样用本调用替换 user.Update：本仓库的 Update 还负责发布
+		// 新的用户哈希并吊销浏览器会话（见下方注释），跳过它等于让被封禁用户的会话继续有效。
+		// 两次都会写 status 列，值相同，幂等。
+		if req.Action == "disable" || req.Action == "enable" {
+			if err := service.UpdateUserStatusAndOrganizationTokenBlockers(user.Id, user.Status, c.GetInt("id")); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+		}
 	}
 	// Update/UpdateWithTx has already published the new user hash and revoked
 	// browser sessions exactly once. Only PAT/relay token caches still need an

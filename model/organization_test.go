@@ -76,6 +76,16 @@ func setupModelTestDB(t *testing.T) {
 		&OrganizationAuditLog{},
 		&OrganizationQuotaAdjustment{},
 	))
+	// logs.billing_event_key 的唯一索引不是 AutoMigrate 建的：生产上由
+	// prepareLogBillingEventKeyMigration 补列、ensureOrganizationBillingLogIndexes 补索引
+	// （老库表已存在，直接下唯一索引会失败）。测试库跳过这一步的话，幂等键形同虚设，
+	// 重放相关的用例会得出「重复写入成功」的假结论。
+	require.NoError(t, prepareLogBillingEventKeyMigration(DB))
+	require.NoError(t, ensureOrganizationBillingLogIndexes(DB))
+	// 同上：idx_quota_data_account_context 也不在结构体标签里（SQLite 上带
+	// uniqueIndex 标签会导致每次 AutoMigrate 整表重建），必须显式建，
+	// 否则 upsertQuotaData 的 ON CONFLICT 没有冲突目标可匹配。
+	require.NoError(t, ensureQuotaDataAccountContextIndex(DB))
 }
 
 type legacyOrganizationQuotaAdjustment struct {

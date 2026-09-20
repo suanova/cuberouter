@@ -67,6 +67,14 @@ func TestMain(m *testing.M) {
 		panic("failed to migrate: " + err.Error())
 	}
 
+	// 不在结构体标签里的唯一索引必须显式补：idx_quota_data_account_context 由
+	// ensureQuotaDataAccountContextIndex 建，AutoMigrate 不会碰它（原因见 QuotaData
+	// 的注释）。少了它，走 ON CONFLICT 的写入在这里会以「ON CONFLICT clause does
+	// not match any PRIMARY KEY or UNIQUE constraint」静默失败。
+	if err := ensureQuotaDataAccountContextIndex(DB); err != nil {
+		panic("failed to create quota_data unique index: " + err.Error())
+	}
+
 	os.Exit(m.Run())
 }
 

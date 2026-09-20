@@ -263,7 +263,7 @@ func recordTaskRefundLog(task *model.Task, reason string, quota int) {
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+	params := model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   model.LogTypeRefund,
 		Content:   "",
@@ -273,7 +273,39 @@ func recordTaskRefundLog(task *model.Task, reason string, quota int) {
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,
 		Other:     other,
-	})
+	}
+	// 退款日志必须继承任务的作用域：组织任务的退款在个人的日志列表里
+	// 会显示成一条来路不明的进账。
+	applyTaskBillingScope(&params, task)
+	model.RecordTaskBillingLog(params)
+}
+
+// applyTaskBillingScope 把任务在提交阶段落库的作用域与账单归属补进日志参数。
+//
+// 结算和退款都发生在轮询阶段，那时请求上下文已经没了，只有任务记录能说明
+// 这笔钱原本记在谁头上。漏掉这一步，日志会以空作用域落库、被当成个人记录。
+func applyTaskBillingScope(params *model.RecordTaskBillingLogParams, task *model.Task) {
+	model.NormalizeTaskBillingScope(task)
+	params.ScopeType = task.ScopeType
+	params.ScopeId = task.ScopeId
+	params.BillingAccountType = task.BillingAccountType
+	params.BillingAccountId = task.BillingAccountId
+	params.OrganizationId = task.OrganizationId
+	params.ResponsibleUserId = task.ResponsibleUserId
+}
+
+// applyMidjourneyBillingScope 与 applyTaskBillingScope 同理，作用在 Midjourney 任务上。
+func applyMidjourneyBillingScope(params *model.RecordTaskBillingLogParams, task *model.Midjourney) {
+	if task == nil {
+		return
+	}
+	model.NormalizeMidjourneyBillingScope(task)
+	params.ScopeType = task.ScopeType
+	params.ScopeId = task.ScopeId
+	params.BillingAccountType = task.BillingAccountType
+	params.BillingAccountId = task.BillingAccountId
+	params.OrganizationId = task.OrganizationId
+	params.ResponsibleUserId = task.ResponsibleUserId
 }
 
 // RecalculateTaskQuota 通用的异步差额结算。
@@ -363,7 +395,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	for _, clamp := range clamps {
 		attachQuotaSaturationToOther(other, clamp)
 	}
-	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
+	billingLogParams := model.RecordTaskBillingLogParams{
 		UserId:    task.UserId,
 		LogType:   logType,
 		Content:   reason,
@@ -374,7 +406,9 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		Group:     task.Group,
 		Other:     other,
 		NodeName:  task.PrivateData.NodeName,
-	})
+	}
+	applyTaskBillingScope(&billingLogParams, task)
+	model.RecordTaskBillingLog(billingLogParams)
 }
 
 // RecalculateTaskQuotaByTokens 根据实际 token 消耗重新计费（异步差额结算）。

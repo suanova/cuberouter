@@ -203,3 +203,44 @@ func mustGetTaskBatch(t *testing.T, scope AsyncTaskScope, taskID string) []*Task
 	require.NoError(t, err)
 	return tasks
 }
+
+// TestPersonalTaskListsExcludeOrganizationBilling 锁定「我的任务」列表与计数的边界。
+//
+// 组织任务把操作者记为 user_id，所以只按 user_id 查会把组织的任务混进他的个人列表：
+// 花的不是他的钱，条数却算在他头上。这里同时覆盖视频任务与 Midjourney。
+func TestPersonalTaskListsExcludeOrganizationBilling(t *testing.T) {
+	fixture := setupAsyncTaskScopeTestDB(t)
+
+	tasks := TaskGetAllUserTask(fixture.user.Id, 0, 20, SyncTaskQueryParams{})
+	require.Len(t, tasks, 1)
+	require.Equal(t, fixture.personalTask.TaskID, tasks[0].TaskID)
+	require.Equal(t, int64(1), TaskCountAllUserTask(fixture.user.Id, SyncTaskQueryParams{}))
+
+	tasks = TaskGetAllUserTask(fixture.user.Id, 0, 20, SyncTaskQueryParams{TaskID: fixture.organizationTask.TaskID})
+	require.Empty(t, tasks)
+
+	midjourneys := GetAllUserTask(fixture.user.Id, 0, 20, TaskQueryParams{})
+	require.Len(t, midjourneys, 1)
+	require.Equal(t, fixture.personalMJ.MjId, midjourneys[0].MjId)
+	require.Equal(t, int64(1), CountAllUserTask(fixture.user.Id, TaskQueryParams{}))
+}
+
+// TestPersonalTaskListsKeepLegacyRowsWithEmptyScope 守住历史行那一支：
+// 作用域列是后加的，升级之前写的任务两个列都是空的，不能因为「不是 personal」
+// 就把用户自己的历史任务从列表里抹掉。
+func TestPersonalTaskListsKeepLegacyRowsWithEmptyScope(t *testing.T) {
+	fixture := setupAsyncTaskScopeTestDB(t)
+
+	legacyTask := Task{TaskID: "legacy-task", UserId: fixture.user.Id}
+	legacyMJ := Midjourney{MjId: "legacy-mj", UserId: fixture.user.Id}
+	require.NoError(t, DB.Create(&legacyTask).Error)
+	require.NoError(t, DB.Create(&legacyMJ).Error)
+
+	tasks := TaskGetAllUserTask(fixture.user.Id, 0, 20, SyncTaskQueryParams{})
+	require.Len(t, tasks, 2)
+	require.Equal(t, int64(2), TaskCountAllUserTask(fixture.user.Id, SyncTaskQueryParams{}))
+
+	midjourneys := GetAllUserTask(fixture.user.Id, 0, 20, TaskQueryParams{})
+	require.Len(t, midjourneys, 2)
+	require.Equal(t, int64(2), CountAllUserTask(fixture.user.Id, TaskQueryParams{}))
+}

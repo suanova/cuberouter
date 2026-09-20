@@ -642,7 +642,8 @@ func ensureOrganizationBillingIndexes() error {
 			return err
 		}
 	}
-	return nil
+	// 用量看板的幂等键同样只能显式建：见 QuotaData 的注释。
+	return ensureQuotaDataAccountContextIndex(DB)
 }
 
 func ensureOrganizationBillingLogIndexes(db *gorm.DB) error {
@@ -679,6 +680,26 @@ func ensureModelUniqueIndex(db *gorm.DB, table string, column string, index stri
 		clause.Table{Name: table},
 		clause.Column{Name: column},
 	).Error
+}
+
+// ensureModelUniqueMultiColumnIndex 是 ensureModelUniqueIndex 的多列版本。
+// 占位符逐个绑定 clause.Column，交给方言去加引用符——表名或列名撞上保留字时，
+// 拼字符串的写法会在某一种数据库上悄悄失败。
+func ensureModelUniqueMultiColumnIndex(db *gorm.DB, table string, index string, columns ...string) error {
+	if db == nil || !db.Migrator().HasTable(table) {
+		return nil
+	}
+	if db.Migrator().HasIndex(table, index) {
+		return nil
+	}
+	placeholders := make([]string, len(columns))
+	args := make([]any, 0, len(columns)+2)
+	args = append(args, clause.Column{Name: index}, clause.Table{Name: table})
+	for i, column := range columns {
+		placeholders[i] = "?"
+		args = append(args, clause.Column{Name: column})
+	}
+	return db.Exec("CREATE UNIQUE INDEX ? ON ? ("+strings.Join(placeholders, ", ")+")", args...).Error
 }
 
 func migrateClickHouseLogDB() error {

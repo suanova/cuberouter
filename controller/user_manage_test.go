@@ -35,6 +35,10 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 	model.DB, model.LOG_DB = db, db
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.UserSession{}, &model.Log{}, &model.CasbinRule{}, &model.AuthzRole{},
+		// The disable/enable path also syncs the organization API keys this user is
+		// responsible for, so those tables have to exist here too — without them
+		// ManageUser fails with "no such table: tokens" before it returns.
+		&model.Token{}, &model.OrganizationTokenSystemBlocker{},
 	))
 
 	t.Cleanup(func() {
