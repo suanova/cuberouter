@@ -62,6 +62,7 @@ import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$model
 import { Route as AuthenticatedAdminOrganizationsIndexRouteImport } from './routes/_authenticated/admin/organizations/index'
 import { Route as AuthenticatedOpsCampaignIndexRouteImport } from './routes/_authenticated/ops/campaign/index'
 import { Route as AuthenticatedOpsInviteHistoryIndexRouteImport } from './routes/_authenticated/ops/invite-history/index'
+import { Route as AuthenticatedOrganizationInviteTokenRouteImport } from './routes/_authenticated/organization/invite/$token'
 import { Route as AuthenticatedOrganizationsOrganizationIdSectionRouteImport } from './routes/_authenticated/organizations/$organizationId/$section'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
 import { Route as AuthenticatedSystemSettingsAuthSectionRouteImport } from './routes/_authenticated/system-settings/auth/$section'
@@ -367,6 +368,12 @@ const AuthenticatedOpsInviteHistoryIndexRoute =
     path: '/ops/invite-history/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedOrganizationInviteTokenRoute =
+  AuthenticatedOrganizationInviteTokenRouteImport.update({
+    id: '/organization/invite/$token',
+    path: '/organization/invite/$token',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedOrganizationsOrganizationIdSectionRoute =
   AuthenticatedOrganizationsOrganizationIdSectionRouteImport.update({
     id: '/organizations/$organizationId/$section',
@@ -513,6 +520,7 @@ export interface FileRoutesByFullPath {
   '/users/': typeof AuthenticatedUsersIndexRoute
   '/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
+  '/organization/invite/$token': typeof AuthenticatedOrganizationInviteTokenRoute
   '/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -581,6 +589,7 @@ export interface FileRoutesByTo {
   '/users': typeof AuthenticatedUsersIndexRoute
   '/wallet': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
+  '/organization/invite/$token': typeof AuthenticatedOrganizationInviteTokenRoute
   '/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -653,6 +662,7 @@ export interface FileRoutesById {
   '/_authenticated/users/': typeof AuthenticatedUsersIndexRoute
   '/_authenticated/wallet/': typeof AuthenticatedWalletIndexRoute
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
+  '/_authenticated/organization/invite/$token': typeof AuthenticatedOrganizationInviteTokenRoute
   '/_authenticated/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
@@ -724,6 +734,7 @@ export interface FileRouteTypes {
     | '/users/'
     | '/wallet/'
     | '/pricing/$modelId/'
+    | '/organization/invite/$token'
     | '/organizations/$organizationId/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -792,6 +803,7 @@ export interface FileRouteTypes {
     | '/users'
     | '/wallet'
     | '/pricing/$modelId'
+    | '/organization/invite/$token'
     | '/organizations/$organizationId/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
@@ -863,6 +875,7 @@ export interface FileRouteTypes {
     | '/_authenticated/users/'
     | '/_authenticated/wallet/'
     | '/pricing/$modelId/'
+    | '/_authenticated/organization/invite/$token'
     | '/_authenticated/organizations/$organizationId/$section'
     | '/_authenticated/system-settings/auth/$section'
     | '/_authenticated/system-settings/billing/$section'
@@ -1276,6 +1289,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOpsInviteHistoryIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/organization/invite/$token': {
+      id: '/_authenticated/organization/invite/$token'
+      path: '/organization/invite/$token'
+      fullPath: '/organization/invite/$token'
+      preLoaderRoute: typeof AuthenticatedOrganizationInviteTokenRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/organizations/$organizationId/$section': {
       id: '/_authenticated/organizations/$organizationId/$section'
       path: '/organizations/$organizationId/$section'
@@ -1500,6 +1520,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsageLogsIndexRoute: typeof AuthenticatedUsageLogsIndexRoute
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
+  AuthenticatedOrganizationInviteTokenRoute: typeof AuthenticatedOrganizationInviteTokenRoute
   AuthenticatedOrganizationsOrganizationIdSectionRoute: typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
   AuthenticatedAdminOrganizationsIndexRoute: typeof AuthenticatedAdminOrganizationsIndexRoute
   AuthenticatedOpsCampaignIndexRoute: typeof AuthenticatedOpsCampaignIndexRoute
@@ -1536,6 +1557,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedUsageLogsIndexRoute: AuthenticatedUsageLogsIndexRoute,
   AuthenticatedUsersIndexRoute: AuthenticatedUsersIndexRoute,
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
+  AuthenticatedOrganizationInviteTokenRoute:
+    AuthenticatedOrganizationInviteTokenRoute,
   AuthenticatedOrganizationsOrganizationIdSectionRoute:
     AuthenticatedOrganizationsOrganizationIdSectionRoute,
   AuthenticatedAdminOrganizationsIndexRoute:

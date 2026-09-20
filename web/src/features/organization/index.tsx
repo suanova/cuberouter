@@ -79,3 +79,4 @@ export function Organizations() {
 }
 
 export { OrganizationDetail } from './components/organization-detail'
+export { OrganizationInviteLanding } from './components/organization-invite-landing'

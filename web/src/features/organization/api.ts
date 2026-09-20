@@ -454,18 +454,48 @@ export async function revokeOrganizationInvite(
 // Invitation Landing
 // ============================================================================
 
-/** Readable without signing in, so the invitation can be previewed first. */
+/**
+ * The invitation behind an emailed link.
+ *
+ * The endpoint itself needs no session — it answers with `email_matched: false`
+ * for a viewer it cannot identify — but the landing page does, because accepting
+ * belongs to an account.
+ *
+ * `silent` keeps the interceptors from reporting the failure: the landing page
+ * renders the refusal where the recipient is looking, on the card that names the
+ * invitation it is about, rather than in a toast that does not say which link.
+ */
 export async function getOrganizationInvite(
-  token: string
+  token: string,
+  options: { silent?: boolean } = {}
 ): Promise<OrganizationApiResponse<OrganizationInvitePublicView>> {
-  const res = await api.get(`/api/organization-invitations/${token}`)
+  const res = await api.get(`/api/organization-invitations/${token}`, {
+    skipErrorHandler: options.silent,
+    skipBusinessError: options.silent,
+  })
   return res.data
 }
 
+/**
+ * Joins the organization the invitation is for.
+ *
+ * `silent` for the same reason as above: several of the refusals — a mismatched
+ * address, an account that is already a member — carry no code of their own, so
+ * they are turned into a message by the page rather than by the interceptor,
+ * which only knows the coded ones.
+ */
 export async function acceptOrganizationInvite(
-  token: string
+  token: string,
+  options: { silent?: boolean } = {}
 ): Promise<ApiEnvelope> {
-  const res = await api.patch(`/api/organization-invitations/${token}`)
+  const res = await api.patch(
+    `/api/organization-invitations/${token}`,
+    undefined,
+    {
+      skipErrorHandler: options.silent,
+      skipBusinessError: options.silent,
+    }
+  )
   return res.data
 }
 

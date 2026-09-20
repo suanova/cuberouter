@@ -136,7 +136,9 @@ export type OrganizationInviteApiError = {
  * above describes what this build reads out of it, not what a caller has to
  * have already proven.
  */
-function inviteErrorBody(error: unknown): OrganizationInviteErrorBody | undefined {
+export function organizationInviteErrorBody(
+  error: unknown
+): OrganizationInviteErrorBody | undefined {
   return (error as OrganizationInviteApiError | null | undefined)?.response?.data
 }
 
@@ -147,7 +149,7 @@ function inviteErrorBody(error: unknown): OrganizationInviteErrorBody | undefine
 export function organizationInviteDeliveryErrorMessageKey(
   error: unknown
 ): string | null {
-  const data = inviteErrorBody(error)
+  const data = organizationInviteErrorBody(error)
   switch (data?.code) {
     case 'organization_invite_delivery_failed':
       if (data.delivery_status === 'unknown') {
@@ -186,7 +188,7 @@ export function organizationInviteCreateFailureAction(
   error: unknown
 ): OrganizationInviteCreateFailure {
   const messageKey = organizationInviteDeliveryErrorMessageKey(error)
-  const data = inviteErrorBody(error)
+  const data = organizationInviteErrorBody(error)
   const code = data?.code
 
   if (code === 'organization_invite_delivery_failed' && messageKey) {
