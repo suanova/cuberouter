@@ -19,18 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-const { get, put } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
-
-vi.mock('@/lib/http-client', () => ({
-  api: { get, put },
-}))
-
 import {
   isOrganizationContext,
   refreshAccountContexts,
   switchAccountContext,
 } from '../account-context'
 import { useAccountContextStore } from '@/stores/account-context-store'
+
+const { get, put } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
+
+vi.mock('@/lib/http-client', () => ({
+  api: { get, put },
+}))
 
 function organizationContext(id = 7) {
   return { type: 'organization' as const, id, name: `Org ${id}`, role: 'member' }

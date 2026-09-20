@@ -20,14 +20,14 @@ For commercial licensing, please contact support@quantumnous.com
 import type { AxiosRequestConfig, AxiosResponse } from 'axios'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { api } from '../http-client'
+import { useAccountContextStore } from '@/stores/account-context-store'
+
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 
 vi.mock('sonner', () => ({
   toast: { error: toastError, success: vi.fn() },
 }))
-
-import { api } from '../http-client'
-import { useAccountContextStore } from '@/stores/account-context-store'
 
 function organizationContext(id = 7) {
   return { type: 'organization' as const, id, name: `Org ${id}`, role: 'member' }
