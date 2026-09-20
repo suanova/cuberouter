@@ -23,13 +23,11 @@ import type { OrganizationCapabilities } from '@/lib/account-context'
 
 import type { OrganizationMember } from '../../types'
 import {
-  buildOrganizationCenterMenus,
   buildOrganizationMemberRoleUpdatePayload,
   getOrganizationDetailPath,
   getOrganizationListActionFlags,
   getOrganizationMemberActionFlags,
   getOrganizationReadOnlyState,
-  getOrganizationSelectedItemKey,
   getOrganizationTabs,
   getOrganizationTokenBatchDeletePlan,
   getOrganizationTransferMemberOptions,
@@ -125,25 +123,12 @@ describe('normalizeOrganizationTabKey', () => {
   })
 })
 
-describe('paths and sidebar highlight', () => {
+describe('getOrganizationDetailPath', () => {
   test('builds a detail path and normalizes the section', () => {
     expect(getOrganizationDetailPath(12)).toBe('/organizations/12/overview')
     expect(getOrganizationDetailPath(12, 'billing')).toBe(
       '/organizations/12/usage'
     )
-  })
-
-  test('resolves the highlighted item key inside the workspace only', () => {
-    expect(getOrganizationSelectedItemKey('/organizations/12/members')).toBe(
-      'organizationMembers'
-    )
-    expect(getOrganizationSelectedItemKey('/organizations/12/invites')).toBe(
-      'organizationInvitations'
-    )
-    expect(getOrganizationSelectedItemKey('/organizations/12/garbage')).toBe(
-      'organizationOverview'
-    )
-    expect(getOrganizationSelectedItemKey('/console/users')).toBeNull()
   })
 })
 
@@ -301,75 +286,6 @@ describe('getOrganizationTabs', () => {
       'audit-logs',
       'settings',
     ])
-  })
-})
-
-describe('buildOrganizationCenterMenus', () => {
-  test('splits sections into console, operation and management groups', () => {
-    const menus = buildOrganizationCenterMenus({
-      capabilities: ownerCapabilities(),
-      status: 'active',
-      organizationId: 12,
-    })
-
-    expect(menus.console.map((item) => item.key)).toEqual([
-      'overview',
-      'members',
-      'invitations',
-      'tokens',
-      'logs',
-    ])
-    expect(menus.operation.map((item) => item.key)).toEqual([
-      'usage',
-      'tasks',
-      'audit-logs',
-    ])
-    // The two return links are appended after settings.
-    expect(menus.management.map((item) => item.key)).toEqual([
-      'settings',
-      'return-organization-center',
-      'return-personal',
-    ])
-  })
-
-  test('every section carries its path, and paths are keyed by item key', () => {
-    const menus = buildOrganizationCenterMenus({
-      capabilities: ownerCapabilities(),
-      status: 'active',
-      organizationId: 12,
-    })
-
-    expect(menus.paths.organizationMembers).toBe('/organizations/12/members')
-    expect(menus.paths.organizationAuditLogs).toBe(
-      '/organizations/12/audit-logs'
-    )
-    for (const item of [...menus.console, ...menus.operation]) {
-      expect(menus.paths[item.itemKey]).toBe(item.path)
-    }
-  })
-
-  test('capabilities control which return links appear', () => {
-    const menus = buildOrganizationCenterMenus({
-      capabilities: ownerCapabilities({
-        show_return_personal_center: false,
-      }),
-      status: 'active',
-      organizationId: 12,
-    })
-
-    const keys = menus.management.map((item) => item.key)
-    expect(keys).toContain('return-organization-center')
-    expect(keys).not.toContain('return-personal')
-  })
-
-  test('a pathless return link is not registered in paths', () => {
-    const menus = buildOrganizationCenterMenus({
-      capabilities: ownerCapabilities(),
-      status: 'active',
-      organizationId: 12,
-    })
-
-    expect(menus.paths.returnOrganizationCenter).toBeUndefined()
   })
 })
 

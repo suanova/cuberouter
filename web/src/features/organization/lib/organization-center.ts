@@ -19,11 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   ORGANIZATION_ACCESS_MODE_READ_ONLY,
-  ORGANIZATION_CENTER_PATH,
   ORGANIZATION_DEFAULT_TAB,
   ORGANIZATION_DETAIL_TAB_KEYS,
   ORGANIZATION_LEGACY_TAB_ALIASES,
-  ORGANIZATION_SECTION_ITEM_KEYS,
   ORGANIZATION_TAB_LABEL_KEYS,
   type OrganizationDetailTabKey,
   type OrganizationReadOnlyReason,
@@ -62,19 +60,6 @@ export function getOrganizationDetailPath(
   tabKey: unknown = ORGANIZATION_DEFAULT_TAB
 ): string {
   return `/organizations/${organizationId}/${normalizeOrganizationTabKey(tabKey)}`
-}
-
-/**
- * Sidebar item key to highlight for a given path, or `null` outside the
- * organization workspace. The drill-in sidebar matches on the item key rather
- * than on the URL, so the section has to be normalized first.
- */
-export function getOrganizationSelectedItemKey(pathname: unknown): string | null {
-  if (!String(pathname ?? '').startsWith(ORGANIZATION_CENTER_PATH)) return null
-  return (
-    ORGANIZATION_SECTION_ITEM_KEYS[normalizeOrganizationTabKey(pathname)] ??
-    ORGANIZATION_SECTION_ITEM_KEYS[ORGANIZATION_DEFAULT_TAB]
-  )
 }
 
 // ============================================================================
@@ -400,100 +385,5 @@ export function getOrganizationTokenBatchDeletePlan(
     selectedCount: ids.length,
     unauthorizedCount,
     request: ids.length > 0 && unauthorizedCount === 0 ? { ids } : null,
-  }
-}
-
-// ============================================================================
-// Sidebar Menu
-// ============================================================================
-
-const ORGANIZATION_MANAGEMENT_SECTIONS = new Set<string>(['settings'])
-const ORGANIZATION_OPERATION_SECTIONS = new Set<string>([
-  'usage',
-  'tasks',
-  'audit-logs',
-])
-
-export interface OrganizationMenuItem {
-  /** Tab key, or a synthetic key for the two return links. */
-  key: string
-  /** Sidebar item key used for highlight and config lookups. */
-  itemKey: string
-  labelKey: string
-  limitedView: boolean
-  path?: string
-}
-
-export interface OrganizationCenterMenus {
-  console: OrganizationMenuItem[]
-  operation: OrganizationMenuItem[]
-  management: OrganizationMenuItem[]
-  /** itemKey -> path, for the top-level nav entry. */
-  paths: Record<string, string>
-}
-
-export interface OrganizationCenterMenusInput extends OrganizationAccessInput {
-  organizationId: number | string
-}
-
-/**
- * The organization workspace's drill-in sidebar: visible sections grouped into
- * console / operation / management, plus the two ways out.
- *
- * The return links are driven by capabilities rather than by "am I a member",
- * because a platform administrator browsing an organization needs neither.
- */
-export function buildOrganizationCenterMenus(
-  input: OrganizationCenterMenusInput
-): OrganizationCenterMenus {
-  const tabs = getOrganizationTabs(input)
-  const { capabilities } = input
-
-  const consoleItems: OrganizationMenuItem[] = []
-  const operationItems: OrganizationMenuItem[] = []
-  const managementItems: OrganizationMenuItem[] = []
-  const paths: Record<string, string> = {}
-
-  for (const tab of tabs) {
-    const item: OrganizationMenuItem = {
-      key: tab.key,
-      itemKey: ORGANIZATION_SECTION_ITEM_KEYS[tab.key],
-      labelKey: tab.labelKey,
-      limitedView: tab.limitedView,
-      path: getOrganizationDetailPath(input.organizationId, tab.key),
-    }
-    paths[item.itemKey] = item.path as string
-
-    if (ORGANIZATION_MANAGEMENT_SECTIONS.has(tab.key)) {
-      managementItems.push(item)
-    } else if (ORGANIZATION_OPERATION_SECTIONS.has(tab.key)) {
-      operationItems.push(item)
-    } else {
-      consoleItems.push(item)
-    }
-  }
-
-  if (capabilities.show_return_organization_center) {
-    managementItems.push({
-      key: 'return-organization-center',
-      itemKey: 'returnOrganizationCenter',
-      labelKey: 'Organization Center',
-      limitedView: false,
-    })
-  }
-  if (capabilities.show_return_personal_center) {
-    managementItems.push({
-      key: 'return-personal',
-      itemKey: 'returnPersonal',
-      labelKey: 'Personal Center',
-      limitedView: false,
-    })
-  }
-
-  return {
-    console: consoleItems,
-    operation: operationItems,
-    management: managementItems,
-    paths,
   }
 }

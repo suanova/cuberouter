@@ -18,16 +18,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi } from '@tanstack/react-router'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { StatusBadge } from '@/components/status-badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { refreshAccountContexts } from '@/lib/account-context'
 
 import {
   ORGANIZATION_STATUSES,
+  organizationRoleMeta,
   READ_ONLY_MESSAGE_KEYS,
   type OrganizationDetailTabKey,
 } from '../constants'
@@ -37,6 +43,7 @@ import {
   getOrganizationTabs,
   normalizeOrganizationTabKey,
 } from '../lib'
+import { OrganizationDissolveConfirm } from './organization-dissolve-confirm'
 import { OrganizationSections } from './organization-sections'
 
 const route = getRouteApi(
@@ -55,8 +62,44 @@ export function OrganizationDetail() {
   const { t } = useTranslation()
   const { organizationId, section } = route.useParams()
   const navigate = route.useNavigate()
+  const queryClient = useQueryClient()
   const activeTab = normalizeOrganizationTabKey(section)
-  const detail = useOrganizationDetail(organizationId)
+  const { detail, refetch } = useOrganizationDetail(organizationId)
+  const [isDissolving, setIsDissolving] = useState(false)
+
+  /**
+   * Re-read the account contexts, drop everything cached under them and return
+   * to the organization center.
+   *
+   * A section the backend refuses means this caller's access changed while the
+   * page was open — they were removed, or the organization was dissolved. The
+   * page can no longer show anything true, so it leaves.
+   * `refreshAccountContexts` is what makes the next page correct: the server
+   * resolves the current context itself and falls back to personal when the
+   * stored organization is gone.
+   */
+  const leaveOrganization = useCallback(async () => {
+    try {
+      await refreshAccountContexts()
+    } catch {
+      // The store records the failure; leaving is still the right move.
+    }
+    // Everything cached was read under the lost access.
+    await queryClient.invalidateQueries()
+    void navigate({ to: '/organizations', replace: true })
+  }, [navigate, queryClient])
+
+  const leftRef = useRef(false)
+  const handleForbidden = useCallback(() => {
+    if (leftRef.current) return
+    leftRef.current = true
+    toast.info(
+      t(
+        'You no longer have access to this organization. We switched you to your personal dashboard.'
+      )
+    )
+    void leaveOrganization()
+  }, [leaveOrganization, t])
 
   const handleTabChange = (value: string) => {
     void navigate({
@@ -112,6 +155,15 @@ export function OrganizationDetail() {
     labelKey: 'Unknown',
     variant: 'neutral' as const,
   }
+  // The role is the actor's, not the organization's: a platform administrator
+  // browsing without membership has none, and the badge is simply absent.
+  const roleMeta = organizationRoleMeta(actor.role)
+  // Dissolving is offered where the settings are, and only to a caller who may
+  // do it and whose access is not already read-only.
+  const canDissolve =
+    currentTab === 'settings' &&
+    actor.capabilities.can_dissolve_organization &&
+    !readOnly
   return (
     <SectionPageLayout fixedContent>
       <SectionPageLayout.Title>
@@ -121,8 +173,21 @@ export function OrganizationDetail() {
             label={t(statusMeta.labelKey)}
             variant={statusMeta.variant}
           />
+          {roleMeta && (
+            <StatusBadge
+              label={t(roleMeta.labelKey)}
+              variant={roleMeta.variant}
+            />
+          )}
         </span>
       </SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        {canDissolve && (
+          <Button variant='destructive' onClick={() => setIsDissolving(true)}>
+            {t('Dissolve Organization')}
+          </Button>
+        )}
+      </SectionPageLayout.Actions>
       <SectionPageLayout.Content>
         <div className='flex h-full min-h-0 flex-col gap-4'>
           {readOnly && reason && (
@@ -146,10 +211,22 @@ export function OrganizationDetail() {
           </Tabs>
 
           <div className='min-h-0 flex-1'>
-            <OrganizationSections detail={detail} tab={currentTab} />
+            <OrganizationSections
+              detail={detail}
+              tab={currentTab}
+              readOnly={readOnly}
+              onForbidden={handleForbidden}
+              onUpdated={refetch}
+            />
           </div>
         </div>
       </SectionPageLayout.Content>
+
+      <OrganizationDissolveConfirm
+        organization={isDissolving ? organization : null}
+        onOpenChange={(value) => !value && setIsDissolving(false)}
+        onDissolved={leaveOrganization}
+      />
     </SectionPageLayout>
   )
 }

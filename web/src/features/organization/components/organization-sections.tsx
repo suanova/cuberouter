@@ -17,29 +17,75 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Empty, EmptyDescription, EmptyTitle } from '@/components/ui/empty'
+import { useTranslation } from 'react-i18next'
 
 import type { OrganizationDetailTabKey } from '../constants'
 import type { OrganizationDetail } from '../types'
+import { OrganizationAuditSection } from './organization-audit-section'
+import { OrganizationSectionEmpty } from './organization-section'
+import { OrganizationSettingsSection } from './organization-settings-section'
+
+type OrganizationSectionsProps = {
+  detail: OrganizationDetail
+  tab: OrganizationDetailTabKey
+  /** The caller may write to this organization; see `getOrganizationReadOnlyState`. */
+  readOnly: boolean
+  /** The backend refused a section read; the page is stale and should leave. */
+  onForbidden: () => void
+  /** Reload the detail payload after a write that changed it. */
+  onUpdated: () => Promise<unknown> | unknown
+}
 
 /**
  * The body of the selected section.
  *
  * The tab strip and the section bodies are driven by the same capability set, so
  * a body only ever renders for a caller the backend has already allowed to read
- * it.
+ * it. The sections are switched here rather than routed individually because
+ * they share the page's header, its organization payload and its account
+ * context; a nested route per section would re-fetch all three.
  */
-export function OrganizationSections({
-  detail,
-  tab,
-}: {
-  detail: OrganizationDetail
-  tab: OrganizationDetailTabKey
-}) {
+export function OrganizationSections(props: OrganizationSectionsProps) {
+  const { organization, actor } = props.detail
+  const capabilities = actor.capabilities
+
+  switch (props.tab) {
+    case 'settings':
+      return (
+        <OrganizationSettingsSection
+          organization={organization}
+          canUpdate={capabilities.can_update_organization}
+          readOnly={props.readOnly}
+          onUpdated={props.onUpdated}
+        />
+      )
+    case 'audit-logs':
+      return (
+        <OrganizationAuditSection
+          organizationId={organization.id}
+          canViewAudit={capabilities.can_view_audit}
+          onForbidden={props.onForbidden}
+        />
+      )
+    default:
+      return <OrganizationSectionPlaceholder tab={props.tab} />
+  }
+}
+
+/**
+ * A section that has not been ported yet.
+ *
+ * It renders through the same shell as the real sections so the page keeps its
+ * shape, and says plainly that it is unfinished rather than showing an empty
+ * list that reads as "there is no data".
+ */
+function OrganizationSectionPlaceholder({ tab }: { tab: OrganizationDetailTabKey }) {
+  const { t } = useTranslation()
   return (
-    <Empty>
-      <EmptyTitle>{tab}</EmptyTitle>
-      <EmptyDescription>{detail.organization.name}</EmptyDescription>
-    </Empty>
+    <OrganizationSectionEmpty
+      icon={tab}
+      title={t('Organization')}
+      message={t('This section is not available yet.')}
+    />
   )
 }

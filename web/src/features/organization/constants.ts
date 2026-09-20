@@ -86,6 +86,18 @@ export const ORGANIZATION_ROLES = {
 export const organizationRoleLabelKey = (role?: string): string =>
   ORGANIZATION_ROLES[role as OrganizationRole]?.labelKey ?? 'Unknown'
 
+/**
+ * The role's badge, or `null` when the caller holds no role here.
+ *
+ * The role arrives as a plain string and is empty for a platform administrator
+ * browsing an organization they do not belong to; that is a real state, not a
+ * missing value to paper over with "Unknown".
+ */
+export const organizationRoleMeta = (
+  role?: string
+): { labelKey: string; variant: StatusVariant } | null =>
+  ORGANIZATION_ROLES[role as OrganizationRole] ?? null
+
 /** Roles an organization administrator may assign to another member. */
 export const ORGANIZATION_ASSIGNABLE_ROLES: OrganizationRole[] = [
   'admin',
@@ -94,9 +106,6 @@ export const ORGANIZATION_ASSIGNABLE_ROLES: OrganizationRole[] = [
 
 /** The caller may browse the organization but not write to it. */
 export const ORGANIZATION_ACCESS_MODE_READ_ONLY = 'read_only'
-
-/** Root of the user-facing organization workspace. */
-export const ORGANIZATION_CENTER_PATH = '/organizations'
 
 /**
  * How many non-dissolved organizations one user may create. Mirrors
@@ -149,26 +158,6 @@ export const ORGANIZATION_TAB_LABEL_KEYS: Record<
   tasks: 'Tasks',
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
-}
-
-/**
- * Sidebar item keys for the organization workspace. The drill-in sidebar
- * highlights by key, so a section that is hidden by permissions simply has no
- * entry rather than a disabled one.
- */
-export const ORGANIZATION_SECTION_ITEM_KEYS: Record<
-  OrganizationDetailTabKey,
-  string
-> = {
-  overview: 'organizationOverview',
-  members: 'organizationMembers',
-  invitations: 'organizationInvitations',
-  tokens: 'organizationTokens',
-  logs: 'organizationLogs',
-  usage: 'organizationUsage',
-  tasks: 'organizationTasks',
-  'audit-logs': 'organizationAuditLogs',
-  settings: 'organizationSettings',
 }
 
 // ============================================================================

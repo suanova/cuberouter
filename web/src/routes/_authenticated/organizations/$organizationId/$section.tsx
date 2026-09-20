@@ -23,11 +23,13 @@ import { OrganizationDetail } from '@/features/organization'
 import {
   alignOrganizationAccountContext,
   normalizeOrganizationTabKey,
+  organizationDetailSearchSchema,
 } from '@/features/organization/lib'
 
 export const Route = createFileRoute(
   '/_authenticated/organizations/$organizationId/$section'
 )({
+  validateSearch: organizationDetailSearchSchema,
   beforeLoad: async ({ params, context }) => {
     // An unknown section, or one of the legacy aliases, resolves to its
     // canonical tab rather than to a 404 — the URL is user-editable and older

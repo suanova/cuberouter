@@ -33,11 +33,15 @@ import type { OrganizationDetail } from '../types'
  */
 export function useOrganizationDetail(
   organizationId: string | number | undefined
-): OrganizationDetail | null | undefined {
+): {
+  detail: OrganizationDetail | null | undefined
+  /** Re-read the payload, for a write that changed something the page shows. */
+  refetch: () => Promise<unknown>
+} {
   const id = Number(organizationId)
   const validId = Number.isFinite(id) && id > 0
 
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: ['organization', id, getAccountContextCacheKey()],
     queryFn: async (): Promise<OrganizationDetail | null> => {
       const result = await getOrganization(id)
@@ -48,5 +52,5 @@ export function useOrganizationDetail(
 
   // A disabled query never resolves, so an unparseable id reports as
   // unavailable instead of loading forever.
-  return validId ? data : null
+  return { detail: validId ? data : null, refetch }
 }
