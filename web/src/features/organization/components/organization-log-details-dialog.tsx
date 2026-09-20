@@ -79,7 +79,7 @@ export function OrganizationLogDetailsDialog(
     <Dialog
       open
       onOpenChange={props.onOpenChange}
-      title={model.name || t('Log details')}
+      title={model.name || t('Log Details')}
       description={
         <span className='flex flex-wrap items-center gap-1.5'>
           <StatusBadge
@@ -153,7 +153,7 @@ export function OrganizationLogDetailsDialog(
           {hasAnyCacheTokens(other) ? (
             <>
               <DetailRow
-                label={t('Cache read')}
+                label={t('Cache Read')}
                 value={(other?.cache_tokens || 0).toLocaleString()}
                 mono
               />
@@ -166,7 +166,7 @@ export function OrganizationLogDetailsDialog(
           ) : null}
           {other?.reasoning_effort ? (
             <DetailRow
-              label={t('Reasoning effort')}
+              label={t('Reasoning Effort')}
               value={other.reasoning_effort}
             />
           ) : null}
@@ -182,7 +182,7 @@ export function OrganizationLogDetailsDialog(
         </DetailSection>
 
         {isViolation ? (
-          <DetailSection label={t('Violation fee')}>
+          <DetailSection label={t('Violation Fee')}>
             <DetailRow
               label={t('Code')}
               value={other?.violation_fee_code || other?.violation_fee_marker || '-'}
@@ -230,7 +230,7 @@ export function OrganizationLogDetailsDialog(
               mono
             />
             <DetailRow
-              label={t('Final consumed')}
+              label={t('Final Consumed')}
               value={(
                 other.subscription_consumed ??
                 (other.subscription_pre_consumed ?? 0) +

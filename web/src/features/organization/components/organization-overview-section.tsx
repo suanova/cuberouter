@@ -125,7 +125,7 @@ export function OrganizationOverviewSection(
       <div className='flex flex-col gap-3'>
         <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
           <StatCard
-            title={t('Remaining Quota')}
+            title={t('Remaining quota')}
             value={formatQuota(props.organization.quota)}
             description={t('Shared by every API key in this organization.')}
             icon={Wallet}

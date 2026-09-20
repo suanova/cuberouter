@@ -395,7 +395,7 @@ function LogTypeFilter(props: {
         <SelectValue placeholder={t('Type')} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ANY_TYPE}>{t('All types')}</SelectItem>
+        <SelectItem value={ANY_TYPE}>{t('All Types')}</SelectItem>
         {ORGANIZATION_LOG_TYPE_FILTER_OPTIONS.map((option) => (
           <SelectItem key={option.value} value={option.value}>
             {t(option.labelKey)}

@@ -561,7 +561,7 @@ function buildTokenColumns(
     },
     {
       accessorKey: 'used_quota',
-      header: t('Used quota'),
+      header: t('Used Quota'),
       enableSorting: false,
       size: 120,
       cell: ({ row }) => (
@@ -572,7 +572,7 @@ function buildTokenColumns(
     },
     {
       accessorKey: 'model_limits',
-      header: t('Model limits'),
+      header: t('Model Limits'),
       enableSorting: false,
       size: 160,
       cell: ({ row }) => {
@@ -647,7 +647,7 @@ function buildTokenColumns(
     },
     {
       accessorKey: 'expired_time',
-      header: t('Expires At'),
+      header: t('Expires at'),
       enableSorting: false,
       size: 150,
       cell: ({ row }) => (

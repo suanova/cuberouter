@@ -91,7 +91,7 @@ export function OrganizationTokenKeyCell(props: {
         type='button'
         variant='ghost'
         size='icon-xs'
-        aria-label={t('Copy key')}
+        aria-label={t('Copy Key')}
         disabled={!props.canCopy}
         onClick={() => void handleCopy()}
       >

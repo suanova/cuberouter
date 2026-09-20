@@ -230,8 +230,8 @@ export const ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS: Array<{
 }> = [
   { labelKey: '1 hour', seconds: HOUR },
   { labelKey: '6 hours', seconds: 6 * HOUR },
-  { labelKey: '1 day', seconds: DAY },
-  { labelKey: '1 month', seconds: 30 * DAY },
+  { labelKey: '1 Day', seconds: DAY },
+  { labelKey: '1 Month', seconds: 30 * DAY },
   { labelKey: '1 year', seconds: 365 * DAY },
   { labelKey: 'Never expire', seconds: null },
 ]

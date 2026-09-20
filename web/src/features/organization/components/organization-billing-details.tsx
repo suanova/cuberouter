@@ -228,9 +228,9 @@ export function OrganizationBillingDetails(props: OrganizationBillingDetailsProp
       { title: t('Key'), value: (row) => row.token_name || '' },
       { title: t('Model'), value: (row) => row.model_name || '' },
       { title: t('Group'), value: (row) => row.group || '' },
-      { title: t('Prompt tokens'), value: (row) => row.prompt_tokens || 0 },
+      { title: t('Prompt Tokens'), value: (row) => row.prompt_tokens || 0 },
       {
-        title: t('Completion tokens'),
+        title: t('Completion Tokens'),
         value: (row) => row.completion_tokens || 0,
       },
       {
@@ -509,7 +509,7 @@ function buildBillingColumns(
     {
       id: 'prompt_tokens',
       accessorKey: 'prompt_tokens',
-      header: () => <span className='whitespace-nowrap'>{t('Prompt tokens')}</span>,
+      header: () => <span className='whitespace-nowrap'>{t('Prompt Tokens')}</span>,
       size: 120,
       cell: ({ row }) => (
         <span className='tabular-nums'>{row.original.prompt_tokens || 0}</span>
@@ -519,7 +519,7 @@ function buildBillingColumns(
       id: 'completion_tokens',
       accessorKey: 'completion_tokens',
       header: () => (
-        <span className='whitespace-nowrap'>{t('Completion tokens')}</span>
+        <span className='whitespace-nowrap'>{t('Completion Tokens')}</span>
       ),
       size: 130,
       cell: ({ row }) => (

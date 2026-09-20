@@ -275,7 +275,7 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
                 <OrganizationSelectFilter
                   value={filters.action}
                   placeholder={t('Type')}
-                  allLabel={t('All types')}
+                  allLabel={t('All Types')}
                   options={ORGANIZATION_TASK_ACTION_OPTIONS}
                   onChange={(value) =>
                     setOrganizationTextFilter(

@@ -122,9 +122,9 @@ export function OrganizationBillingMonthlyOverview(
         { title: t('Month'), value: (row) => row.month || '' },
         { title: t('Cost'), value: (row) => row.quota || 0 },
         { title: t('Requests'), value: (row) => row.request_count || 0 },
-        { title: t('Prompt tokens'), value: (row) => row.prompt_tokens || 0 },
+        { title: t('Prompt Tokens'), value: (row) => row.prompt_tokens || 0 },
         {
-          title: t('Completion tokens'),
+          title: t('Completion Tokens'),
           value: (row) => row.completion_tokens || 0,
         },
         { title: t('Keys'), value: (row) => row.token_count || 0 },
@@ -243,9 +243,9 @@ export function OrganizationBillingMonthlyOverview(
                   <TableHead>{t('Month')}</TableHead>
                   <TableHead className='text-right'>{t('Cost')}</TableHead>
                   <TableHead className='text-right'>{t('Requests')}</TableHead>
-                  <TableHead className='text-right'>{t('Prompt tokens')}</TableHead>
+                  <TableHead className='text-right'>{t('Prompt Tokens')}</TableHead>
                   <TableHead className='text-right'>
-                    {t('Completion tokens')}
+                    {t('Completion Tokens')}
                   </TableHead>
                   <TableHead className='text-right'>{t('Keys')}</TableHead>
                   {props.canViewWideData && (
