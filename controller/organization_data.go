@@ -29,18 +29,6 @@ import (
 )
 
 // GetOrganizationQuotaData 获取组织额度看板数据
-//
-// @Summary      组织额度看板数据
-// @Description  返回组织额度消耗看板数据;时间跨度(start_timestamp~end_timestamp)不能超过 1 个月
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒,跨度不超过 1 个月)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/quota-data [get]
-// @Router       /admin/organizations/{id}/quota-data [get]
 func GetOrganizationQuotaData(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

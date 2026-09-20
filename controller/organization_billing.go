@@ -29,16 +29,6 @@ import (
 )
 
 // GetOrganizationBillingSummary 获取组织账单总览
-//
-// @Summary      组织账单总览
-// @Description  返回组织的额度消耗汇总(钱包+订阅口径)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/billing/summary [get]
-// @Router       /admin/organizations/{id}/billing/summary [get]
 func GetOrganizationBillingSummary(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -53,15 +43,6 @@ func GetOrganizationBillingSummary(c *gin.Context) {
 }
 
 // GetMyOrganizationMemberBilling 获取当前用户在组织内的成员账单
-//
-// @Summary      我的组织成员账单
-// @Description  返回当前登录用户在指定组织内的个人消耗汇总
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/billing/members/me [get]
 func GetMyOrganizationMemberBilling(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -76,19 +57,6 @@ func GetMyOrganizationMemberBilling(c *gin.Context) {
 }
 
 // ListOrganizationBillingUserSummaries 按成员汇总组织账单
-//
-// @Summary      组织成员账单汇总
-// @Description  按成员维度汇总组织消耗,支持按月份或月份区间过滤
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        month query string false "月份(YYYY-MM)"
-// @Param        start_month query string false "起始月份(YYYY-MM)"
-// @Param        end_month query string false "截止月份(YYYY-MM)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/billing/user-summaries [get]
-// @Router       /admin/organizations/{id}/billing/user-summaries [get]
 func ListOrganizationBillingUserSummaries(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -103,17 +71,6 @@ func ListOrganizationBillingUserSummaries(c *gin.Context) {
 }
 
 // ListOrganizationBillingMonthlySummaries 按月份汇总组织账单
-//
-// @Summary      组织月度账单汇总
-// @Description  按月份维度汇总组织消耗,months 控制回溯月数
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        months query int false "回溯月数"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/billing/monthly-summaries [get]
-// @Router       /admin/organizations/{id}/billing/monthly-summaries [get]
 func ListOrganizationBillingMonthlySummaries(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -129,26 +86,6 @@ func ListOrganizationBillingMonthlySummaries(c *gin.Context) {
 }
 
 // ListOrganizationBillingDetails 分页查询组织账单明细
-//
-// @Summary      组织账单明细
-// @Description  分页返回组织消耗明细记录,支持月份、令牌、负责人、模型、分组、请求 ID 与时间范围过滤
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        month query string false "月份(YYYY-MM)"
-// @Param        token_name query string false "令牌名称"
-// @Param        responsible_name query string false "负责人名称"
-// @Param        model_name query string false "模型名称"
-// @Param        group query string false "分组"
-// @Param        request_id query string false "请求 ID"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/billing/records [get]
-// @Router       /admin/organizations/{id}/billing/records [get]
 func ListOrganizationBillingDetails(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

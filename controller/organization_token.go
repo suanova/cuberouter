@@ -59,23 +59,6 @@ type updateOrganizationTokenResponsibilityRequest struct {
 }
 
 // ListOrganizationTokens 分页查询组织令牌列表
-//
-// @Summary      组织令牌列表
-// @Description  分页返回组织令牌,支持关键字、状态、负责人、可见性与分组过滤
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        keyword query string false "关键字(名称模糊匹配)"
-// @Param        status query int false "状态过滤"
-// @Param        responsible_user_id query int false "负责人用户 ID"
-// @Param        visibility query string false "可见性过滤"
-// @Param        group query string false "分组过滤"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tokens [get]
-// @Router       /admin/organizations/{id}/tokens [get]
 func ListOrganizationTokens(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -103,17 +86,6 @@ func ListOrganizationTokens(c *gin.Context) {
 }
 
 // GetOrganizationToken 获取组织令牌详情
-//
-// @Summary      获取组织令牌详情
-// @Description  返回指定组织令牌的完整信息
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        tokenId path int true "令牌 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tokens/{tokenId} [get]
-// @Router       /admin/organizations/{id}/tokens/{tokenId} [get]
 func GetOrganizationToken(c *gin.Context) {
 	organizationId, tokenId, ok := parseOrganizationAndTokenId(c)
 	if !ok {
@@ -128,17 +100,6 @@ func GetOrganizationToken(c *gin.Context) {
 }
 
 // CreateOrganizationToken 在组织下创建令牌
-//
-// @Summary      创建组织令牌
-// @Description  在组织下创建 API 令牌(名称、额度、模型限制、可见性、负责人等)
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        body body organizationTokenRequest true "令牌属性"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tokens [post]
 func CreateOrganizationToken(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -158,18 +119,6 @@ func CreateOrganizationToken(c *gin.Context) {
 }
 
 // BatchCreateOrganizationTokens 批量创建组织令牌
-//
-// @Summary      批量创建组织令牌
-// @Description  批量操作:按同一属性模板创建 token_count 个令牌;需要请求头 Idempotency-Key(幂等键,重复提交返回冲突)
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复批量创建)"
-// @Param        body body organizationTokenBatchCreateRequest true "批量数量与令牌属性模板"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/token-batches [post]
 func BatchCreateOrganizationTokens(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -193,19 +142,6 @@ func BatchCreateOrganizationTokens(c *gin.Context) {
 }
 
 // UpdateOrganizationToken 更新组织令牌
-//
-// @Summary      更新组织令牌
-// @Description  更新指定组织令牌的属性(名称、额度、状态、模型限制等)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        tokenId path int true "令牌 ID"
-// @Param        body body organizationTokenRequest true "令牌属性"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tokens/{tokenId} [patch]
-// @Router       /admin/organizations/{id}/tokens/{tokenId} [patch]
 func UpdateOrganizationToken(c *gin.Context) {
 	organizationId, tokenId, ok := parseOrganizationAndTokenId(c)
 	if !ok {
@@ -225,17 +161,6 @@ func UpdateOrganizationToken(c *gin.Context) {
 }
 
 // DeleteOrganizationToken 删除组织令牌
-//
-// @Summary      删除组织令牌
-// @Description  删除指定的组织令牌(不可恢复)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        tokenId path int true "令牌 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tokens/{tokenId} [delete]
-// @Router       /admin/organizations/{id}/tokens/{tokenId} [delete]
 func DeleteOrganizationToken(c *gin.Context) {
 	organizationId, tokenId, ok := parseOrganizationAndTokenId(c)
 	if !ok {
@@ -249,19 +174,6 @@ func DeleteOrganizationToken(c *gin.Context) {
 }
 
 // BatchDeleteOrganizationTokens 批量删除组织令牌
-//
-// @Summary      批量删除组织令牌
-// @Description  批量操作:按令牌 ID 列表批量删除(ids 不能为空);需要请求头 Idempotency-Key(幂等键,重复提交返回冲突)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复批量删除)"
-// @Param        body body organizationTokenBatchDeleteRequest true "令牌 ID 列表"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/token-deletions [post]
-// @Router       /admin/organizations/{id}/token-deletions [post]
 func BatchDeleteOrganizationTokens(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -281,19 +193,6 @@ func BatchDeleteOrganizationTokens(c *gin.Context) {
 }
 
 // UpdateOrganizationTokenResponsibility 变更组织令牌负责人
-//
-// @Summary      变更令牌负责人
-// @Description  将指定令牌的负责人变更为其他成员;reason 记入审计日志
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        tokenId path int true "令牌 ID"
-// @Param        body body updateOrganizationTokenResponsibilityRequest true "新负责人用户 ID 与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tokens/{tokenId}/responsible-user [patch]
-// @Router       /admin/organizations/{id}/tokens/{tokenId}/responsible-user [patch]
 func UpdateOrganizationTokenResponsibility(c *gin.Context) {
 	organizationId, tokenId, ok := parseOrganizationAndTokenId(c)
 	if !ok {

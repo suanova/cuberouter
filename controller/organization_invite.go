@@ -53,17 +53,6 @@ func (req createOrganizationInviteRequest) inviteEmail() string {
 }
 
 // ListOrganizationInvites 分页查询组织邀请列表
-//
-// @Summary      组织邀请列表
-// @Description  分页返回组织已发出的成员邀请
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/invitations [get]
 func ListOrganizationInvites(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -81,18 +70,6 @@ func ListOrganizationInvites(c *gin.Context) {
 }
 
 // CreateOrganizationInvite 向邮箱发送组织加入邀请
-//
-// @Summary      创建组织邀请
-// @Description  向指定邮箱发出组织加入邀请;需要请求头 Idempotency-Key(幂等键,重复提交返回冲突),force_rotate 可强制轮换同邮箱未决邀请
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复邀请)"
-// @Param        body body createOrganizationInviteRequest true "邀请邮箱与角色"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/invitations [post]
 func CreateOrganizationInvite(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -112,15 +89,6 @@ func CreateOrganizationInvite(c *gin.Context) {
 }
 
 // GetOrganizationInvite 通过邀请 token 查看邀请详情(公开)
-//
-// @Summary      查看组织邀请详情
-// @Description  凭邀请 token 查看邀请信息(组织、角色、有效期);登录可选,未登录也可查看
-// @Tags         组织
-// @Security     ApiKeyAuth[]
-// @Produce      json
-// @Param        token path string true "邀请 token"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organization-invitations/{token} [get]
 func GetOrganizationInvite(c *gin.Context) {
 	view, err := service.GetInviteByToken(c.Param("token"), c.GetInt("id"))
 	if err != nil {
@@ -131,17 +99,6 @@ func GetOrganizationInvite(c *gin.Context) {
 }
 
 // AcceptOrganizationInvite 通过邀请 token 接受邀请并加入组织
-//
-// @Summary      接受组织邀请
-// @Description  登录用户凭邀请 token 接受邀请并加入组织;body 可省略,缺省视为 accepted
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        token path string true "邀请 token"
-// @Param        body body acceptOrganizationInviteRequest false "邀请状态(缺省 accepted)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organization-invitations/{token} [patch]
 func AcceptOrganizationInvite(c *gin.Context) {
 	var req acceptOrganizationInviteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -166,17 +123,6 @@ func AcceptOrganizationInvite(c *gin.Context) {
 }
 
 // RevokeOrganizationInvite 撤销组织邀请
-//
-// @Summary      撤销组织邀请
-// @Description  撤销指定的未决邀请;reason 记入审计日志
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        invitationId path int true "邀请 ID"
-// @Param        reason query string false "撤销原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/invitations/{invitationId} [delete]
 func RevokeOrganizationInvite(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

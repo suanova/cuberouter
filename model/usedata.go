@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -213,17 +214,142 @@ func quotaDataConflictColumns() []clause.Column {
 	return columns
 }
 
-// ensureQuotaDataAccountContextIndex 幂等地补上唯一索引。
+// ensureQuotaDataAccountContextIndex 幂等地补上唯一索引，并在建不出来时先合并重复行。
 //
 // 索引不在结构体标签里（原因见 QuotaData 的注释），AutoMigrate 因此不会建它，
-// 而是由 ensureOrganizationBillingIndexes 在迁移流程里显式调用。老库上还会遇到
-// 历史行，索引建失败会直接拦住启动——宁可启动失败也不要带着「以为有幂等键、
-// 其实没有」的库继续跑。
+// 而是由 ensureOrganizationBillingIndexes 在迁移流程里显式调用。
+//
+// 老库上大概率带着重复行：升级前的写路径是「先查后插」（见 main 分支的
+// SaveQuotaDataCache），两个节点同时刷同一个时间桶时都会查到「不存在」而各插一行，
+// 而当时没有任何唯一约束拦着。这些行在升级后正好落在同一个索引键上，直接建索引会
+// 失败，而这里的失败会拦住 master 启动——上线即不可用。所以先合并再建：合并是按
+// 行身份求和，看板口径不变，只是把重复行并成一行的过程提前了。
 //
 // 任何自己建模的测试库只要会走到 SaveQuotaDataCache，也必须调这一句，
 // 否则 ON CONFLICT 找不到冲突目标、写入静默失败。
 func ensureQuotaDataAccountContextIndex(db *gorm.DB) error {
-	return ensureModelUniqueMultiColumnIndex(db, "quota_data", quotaDataAccountContextIndexName, quotaDataAccountContextColumnNames...)
+	if db == nil || !db.Migrator().HasTable("quota_data") {
+		return nil
+	}
+	if db.Migrator().HasIndex("quota_data", quotaDataAccountContextIndexName) {
+		return nil
+	}
+	err := ensureModelUniqueMultiColumnIndex(db, "quota_data", quotaDataAccountContextIndexName, quotaDataAccountContextColumnNames...)
+	if err == nil {
+		return nil
+	}
+	// 建失败最常见的原因就是重复行。先按行身份合并，再试一次；仍然失败说明是
+	// 别的原因（权限、磁盘、列类型），把错误原样抛出去让启动停下来。
+	if mergeErr := mergeQuotaDataDuplicateRows(db); mergeErr != nil {
+		return fmt.Errorf("ensure %s: create index failed (%v), merging duplicate rows failed: %w", quotaDataAccountContextIndexName, err, mergeErr)
+	}
+	if retryErr := ensureModelUniqueMultiColumnIndex(db, "quota_data", quotaDataAccountContextIndexName, quotaDataAccountContextColumnNames...); retryErr != nil {
+		return fmt.Errorf("ensure %s: create index failed after merging duplicate rows: %w", quotaDataAccountContextIndexName, retryErr)
+	}
+	return nil
+}
+
+// quotaDataAccountContextKey 是 idx_quota_data_account_context 的键值，字段顺序与
+// quotaDataAccountContextColumnNames 一致——合并重复行时要按这组列在 Go 侧分组。
+type quotaDataAccountContextKey struct {
+	UserID             int    `gorm:"column:user_id"`
+	Username           string `gorm:"column:username"`
+	ModelName          string `gorm:"column:model_name"`
+	CreatedAt          int64  `gorm:"column:created_at"`
+	UseGroup           string `gorm:"column:use_group"`
+	TokenID            int    `gorm:"column:token_id"`
+	ChannelID          int    `gorm:"column:channel_id"`
+	NodeName           string `gorm:"column:node_name"`
+	ScopeType          string `gorm:"column:scope_type"`
+	ScopeId            int    `gorm:"column:scope_id"`
+	BillingAccountType string `gorm:"column:billing_account_type"`
+	BillingAccountId   int    `gorm:"column:billing_account_id"`
+	OrganizationId     int    `gorm:"column:organization_id"`
+	ResponsibleUserId  int    `gorm:"column:responsible_user_id"`
+}
+
+// mergeQuotaDataDuplicateRows 把同一索引键上的多行并成一行。
+//
+// 保留 id 最小的那行并累加 count/quota/token_used，其余删除：这三个值是各节点各刷
+// 一部分用量后加起来的，求和正是看板原本要显示的数。删除放在同一个事务里，中途失败
+// 不会留下「已经并进 keeper 但重复行还在」的半成品。
+//
+// 循环直到不再有重复组。每轮至少删掉一行，所以一定会终止；分批是为了别让一次
+// 查询把整张表的重复键都拖进内存。
+func mergeQuotaDataDuplicateRows(db *gorm.DB) error {
+	const batchSize = 200
+	groupColumns := strings.Join(quotaDataAccountContextColumnNames, ", ")
+	for {
+		var keys []quotaDataAccountContextKey
+		if err := db.Table("quota_data").
+			Select(groupColumns).
+			Group(groupColumns).
+			Having("COUNT(*) > 1").
+			Limit(batchSize).
+			Find(&keys).Error; err != nil {
+			return err
+		}
+		if len(keys) == 0 {
+			return nil
+		}
+		for _, key := range keys {
+			if err := mergeQuotaDataGroup(db, key); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// quotaDataGroupConditions 是「同一索引键」的等值条件，列顺序与
+// quotaDataAccountContextColumnNames 一致，占位符逐个对应 quotaDataGroupArguments。
+//
+// 列都非 NULL（作用域列由 prepareOrganizationScopeMigration 回填，分析列本来就由
+// Create 写入），所以等值比较就够了：真出现 NULL 时条件匹配不到那个组，
+// mergeQuotaDataGroup 会直接报错而不是空转——那说明前面的假设不成立，需要人来查。
+func quotaDataGroupConditions() string {
+	conditions := make([]string, 0, len(quotaDataAccountContextColumnNames))
+	for _, column := range quotaDataAccountContextColumnNames {
+		conditions = append(conditions, column+" = ?")
+	}
+	return strings.Join(conditions, " AND ")
+}
+
+func quotaDataGroupArguments(key quotaDataAccountContextKey) []any {
+	return []any{
+		key.UserID, key.Username, key.ModelName, key.CreatedAt, key.UseGroup,
+		key.TokenID, key.ChannelID, key.NodeName, key.ScopeType, key.ScopeId,
+		key.BillingAccountType, key.BillingAccountId, key.OrganizationId, key.ResponsibleUserId,
+	}
+}
+
+func mergeQuotaDataGroup(db *gorm.DB, key quotaDataAccountContextKey) error {
+	var rows []QuotaData
+	if err := db.Table("quota_data").
+		Select("id, count, quota, token_used").
+		Where(quotaDataGroupConditions(), quotaDataGroupArguments(key)...).
+		Order("id").
+		Find(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) < 2 {
+		return fmt.Errorf("quota_data duplicate group %+v matched %d rows, expected at least 2", key, len(rows))
+	}
+	keeper := rows[0]
+	count, quota, tokenUsed := keeper.Count, keeper.Quota, keeper.TokenUsed
+	duplicateIds := make([]int, 0, len(rows)-1)
+	for _, row := range rows[1:] {
+		count += row.Count
+		quota += row.Quota
+		tokenUsed += row.TokenUsed
+		duplicateIds = append(duplicateIds, row.Id)
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Table("quota_data").Where("id = ?", keeper.Id).
+			Updates(map[string]any{"count": count, "quota": quota, "token_used": tokenUsed}).Error; err != nil {
+			return err
+		}
+		return tx.Table("quota_data").Where("id IN ?", duplicateIds).Delete(&QuotaData{}).Error
+	})
 }
 
 // upsertQuotaData 按完整行身份累加。

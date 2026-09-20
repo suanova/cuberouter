@@ -27,15 +27,6 @@ import (
 )
 
 // GetOrganizationGroups 获取组织可用分组
-//
-// @Summary      获取组织可用分组
-// @Description  返回组织当前可用的模型分组列表
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/groups [get]
 func GetOrganizationGroups(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

@@ -36,14 +36,6 @@ type setCurrentAccountContextRequest struct {
 }
 
 // ListAccountContexts 获取当前登录用户可切换的账号上下文列表(个人/组织)
-//
-// @Summary      获取账号上下文列表
-// @Description  返回当前登录用户可用的账号上下文(个人与所属组织),供前端切换操作主体
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Success      200 {object} dto.APIResponse
-// @Router       /account-contexts [get]
 func ListAccountContexts(c *gin.Context) {
 	resp, err := service.ListAccountContexts(c.GetInt("id"))
 	if err != nil {
@@ -54,16 +46,6 @@ func ListAccountContexts(c *gin.Context) {
 }
 
 // SetCurrentAccountContext 切换当前会话的账号上下文(个人/组织)
-//
-// @Summary      切换当前账号上下文
-// @Description  将当前会话的操作主体切换为个人或指定组织;后续组织操作均基于该上下文鉴权
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        body body setCurrentAccountContextRequest true "上下文类型与 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /account-contexts/current [put]
 func SetCurrentAccountContext(c *gin.Context) {
 	var req setCurrentAccountContextRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

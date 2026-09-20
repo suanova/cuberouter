@@ -29,24 +29,6 @@ import (
 )
 
 // ListOrganizationAuditLogs 分页查询组织内审计日志
-//
-// @Summary      组织审计日志
-// @Description  按操作者、目标、动作类型与时间范围过滤组织内审计日志
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        operator_user_id query int false "操作者用户 ID"
-// @Param        target_type query string false "目标类型"
-// @Param        target_id query int false "目标 ID"
-// @Param        action_type query string false "动作类型"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/audit-logs [get]
-// @Router       /admin/organizations/{id}/audit-logs [get]
 func ListOrganizationAuditLogs(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -64,24 +46,6 @@ func ListOrganizationAuditLogs(c *gin.Context) {
 }
 
 // ListAllOrganizationAuditLogs 平台管理员跨组织检索审计日志
-//
-// @Summary      全平台组织审计日志
-// @Description  平台视角检索全部组织的审计日志,可按组织 ID/slug、操作者、目标与动作类型过滤
-// @Tags         组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        organization_id query int false "组织 ID"
-// @Param        organization_slug query string false "组织 slug"
-// @Param        operator_user_id query int false "操作者用户 ID"
-// @Param        target_type query string false "目标类型"
-// @Param        target_id query int false "目标 ID"
-// @Param        action_type query string false "动作类型"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /admin/organization-audit-logs [get]
 func ListAllOrganizationAuditLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	logs, total, err := service.ListAllOrganizationAuditLogs(c.GetInt("id"), organizationAuditQueryFromQuery(c, pageInfo.GetStartIdx(), pageInfo.GetPageSize()))

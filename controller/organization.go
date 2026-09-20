@@ -67,18 +67,6 @@ type adjustOrganizationQuotaRequest struct {
 }
 
 // AdjustOrganizationQuota 平台管理员调整组织配额(增减)
-//
-// @Summary      调整组织配额
-// @Description  高风险操作:为组织增加/扣减原生额度并记审计。需要请求头 Idempotency-Key(幂等键,重复提交返回冲突),quota_delta 为本次变更量
-// @Tags         组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复调整)"
-// @Param        body body adjustOrganizationQuotaRequest true "配额变更量与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /admin/organizations/{id}/quota-adjustments [post]
 func AdjustOrganizationQuota(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -98,19 +86,6 @@ func AdjustOrganizationQuota(c *gin.Context) {
 }
 
 // ListOrganizations 平台管理员分页检索全部组织
-//
-// @Summary      组织管理列表
-// @Description  平台侧全量组织列表,支持关键字、状态与分组过滤
-// @Tags         组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        keyword query string false "关键字(名称模糊匹配)"
-// @Param        status query string false "状态过滤(active/disabled)"
-// @Param        group query string false "分组过滤"
-// @Success      200 {object} dto.APIResponse
-// @Router       /admin/organizations [get]
 func ListOrganizations(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	organizations, total, err := service.ListOrganizationsForManagement(c.GetInt("id"), service.OrganizationManagementListRequest{Keyword: c.Query("keyword"), Status: c.Query("status"), Group: c.Query("group")}, pageInfo)
@@ -124,15 +99,6 @@ func ListOrganizations(c *gin.Context) {
 }
 
 // ListSelfOrganizations 获取当前登录用户可访问的组织列表
-//
-// @Summary      获取我的组织列表
-// @Description  返回当前登录用户可访问的 active/disabled 组织列表
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations [get]
-// @Router       /organizations/self [get]
 func ListSelfOrganizations(c *gin.Context) {
 	organizations, err := service.ListUserOrganizations(c.GetInt("id"), false)
 	if err != nil {
@@ -143,16 +109,6 @@ func ListSelfOrganizations(c *gin.Context) {
 }
 
 // CreateOrganization 创建组织(当前用户成为所有者)
-//
-// @Summary      创建组织
-// @Description  创建组织并将当前用户设为所有者;受平台组织数量上限约束
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        body body createOrganizationRequest true "组织名称与描述"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations [post]
 func CreateOrganization(c *gin.Context) {
 	var req createOrganizationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -168,16 +124,6 @@ func CreateOrganization(c *gin.Context) {
 }
 
 // GetOrganization 获取组织详情
-//
-// @Summary      获取组织详情
-// @Description  返回组织详情(含成员数等概要);普通入口按成员权限访问,管理入口为平台视角
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id} [get]
-// @Router       /admin/organizations/{id} [get]
 func GetOrganization(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -192,18 +138,6 @@ func GetOrganization(c *gin.Context) {
 }
 
 // UpdateOrganization 更新组织资料(名称/描述/分组)
-//
-// @Summary      更新组织资料
-// @Description  更新组织名称、描述与分组;reason 会记入审计日志
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        body body updateOrganizationRequest true "组织资料变更字段"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id} [patch]
-// @Router       /admin/organizations/{id} [patch]
 func UpdateOrganization(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -223,17 +157,6 @@ func UpdateOrganization(c *gin.Context) {
 }
 
 // UpdateOrganizationStatus 组织内管理者启用/停用组织
-//
-// @Summary      启用/停用组织(组织侧)
-// @Description  高风险操作:status 取 active/disabled,停用时必须携带二次确认字段 confirm_name(须与组织名称一致)方可生效
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        body body updateOrganizationStatusRequest true "目标状态、二次确认与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/status [patch]
 func UpdateOrganizationStatus(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -261,17 +184,6 @@ func UpdateOrganizationStatus(c *gin.Context) {
 }
 
 // UpdateOrganizationPlatformStatus 平台管理员启用/停用组织
-//
-// @Summary      启用/停用组织(平台侧)
-// @Description  高风险操作:平台视角的状态变更,status 取 active/disabled,停用时必须携带二次确认字段 confirm_name(须与组织名称一致)方可生效
-// @Tags         组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        body body updateOrganizationStatusRequest true "目标状态、二次确认与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /admin/organizations/{id}/status [patch]
 func UpdateOrganizationPlatformStatus(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -299,19 +211,6 @@ func UpdateOrganizationPlatformStatus(c *gin.Context) {
 }
 
 // DissolveOrganization 解散组织(不可恢复)
-//
-// @Summary      解散组织
-// @Description  高风险操作:解散组织及其成员关系,不可恢复。必须携带二次确认字段 confirm_name(须与组织名称一致),且需要请求头 Idempotency-Key(幂等键,重复提交返回冲突)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复解散)"
-// @Param        body body dissolveOrganizationRequest true "二次确认与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id} [delete]
-// @Router       /admin/organizations/{id} [delete]
 func DissolveOrganization(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -330,19 +229,6 @@ func DissolveOrganization(c *gin.Context) {
 }
 
 // TransferOrganizationOwner 转让组织所有权
-//
-// @Summary      转让组织所有权
-// @Description  高风险操作:将组织所有者变更为指定成员(owner_user_id 必填),原所有者降级为普通成员。需要请求头 Idempotency-Key(幂等键,重复提交返回冲突)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复转让)"
-// @Param        body body transferOrganizationOwnerRequest true "新所有者用户 ID 与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/owner [put]
-// @Router       /admin/organizations/{id}/owner [put]
 func TransferOrganizationOwner(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

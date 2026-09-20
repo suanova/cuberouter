@@ -50,18 +50,6 @@ type removeOrganizationMemberRequest struct {
 }
 
 // ListOrganizationMembers 分页查询组织成员列表
-//
-// @Summary      组织成员列表
-// @Description  分页返回组织成员及其角色信息
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/members [get]
-// @Router       /admin/organizations/{id}/members [get]
 func ListOrganizationMembers(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -79,17 +67,6 @@ func ListOrganizationMembers(c *gin.Context) {
 }
 
 // AddOrganizationMember 平台管理员直接添加成员加入组织
-//
-// @Summary      添加组织成员
-// @Description  平台侧将指定用户直接加入组织(user_id 必填);reason 记入审计日志
-// @Tags         组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        body body addOrganizationMemberRequest true "用户 ID 与角色"
-// @Success      200 {object} dto.APIResponse
-// @Router       /admin/organizations/{id}/members [post]
 func AddOrganizationMember(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -109,20 +86,6 @@ func AddOrganizationMember(c *gin.Context) {
 }
 
 // UpdateOrganizationMember 更新组织成员角色/状态
-//
-// @Summary      更新组织成员
-// @Description  修改指定成员的角色或启用/停用状态;需要请求头 Idempotency-Key(幂等键,重复提交返回冲突),reason 记入审计日志
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        userId path int true "成员用户 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复变更)"
-// @Param        body body updateOrganizationMemberRequest true "角色/状态变更与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/members/{userId} [patch]
-// @Router       /admin/organizations/{id}/members/{userId} [patch]
 func UpdateOrganizationMember(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -145,20 +108,6 @@ func UpdateOrganizationMember(c *gin.Context) {
 }
 
 // RemoveOrganizationMember 移除组织成员
-//
-// @Summary      移除组织成员
-// @Description  高风险操作:将指定成员移出组织;需要请求头 Idempotency-Key(幂等键,重复提交返回冲突),移除所有者/转移其令牌时可指定 transfer_to_user_id
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Accept       json
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        userId path int true "成员用户 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复移除)"
-// @Param        body body removeOrganizationMemberRequest false "令牌承接人与原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/members/{userId} [delete]
-// @Router       /admin/organizations/{id}/members/{userId} [delete]
 func RemoveOrganizationMember(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -181,18 +130,6 @@ func RemoveOrganizationMember(c *gin.Context) {
 }
 
 // ExitOrganization 当前用户退出组织
-//
-// @Summary      退出组织
-// @Description  当前登录用户退出指定组织;需要请求头 Idempotency-Key(幂等键,重复提交返回冲突),退出时可通过 transfer_to_user_id 转移本人负责的令牌
-// @Tags         组织
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        Idempotency-Key header string true "幂等键(避免重复退出)"
-// @Param        transfer_to_user_id query int false "令牌承接人用户 ID"
-// @Param        reason query string false "退出原因"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/members/me [delete]
 func ExitOrganization(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

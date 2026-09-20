@@ -36,24 +36,6 @@ import (
 // 将来同步这两个文件变难。
 
 // ListOrganizationTasks 分页查询组织异步任务
-//
-// @Summary      组织异步任务列表
-// @Description  分页返回组织内的异步任务,支持平台、任务 ID、状态、动作与时间范围过滤
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        platform query string false "任务平台"
-// @Param        task_id query string false "任务 ID"
-// @Param        status query string false "任务状态"
-// @Param        action query string false "任务动作"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/tasks [get]
-// @Router       /admin/organizations/{id}/tasks [get]
 func ListOrganizationTasks(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -82,22 +64,6 @@ func ListOrganizationTasks(c *gin.Context) {
 }
 
 // ListOrganizationMidjourneyTasks 分页查询组织 Midjourney 任务
-//
-// @Summary      组织 Midjourney 任务列表
-// @Description  分页返回组织内的 Midjourney 绘图任务,支持渠道、MjID 与时间范围过滤
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        channel_id query string false "渠道 ID"
-// @Param        mj_id query string false "Midjourney 任务 ID"
-// @Param        start_timestamp query string false "起始时间戳(秒)"
-// @Param        end_timestamp query string false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/midjourney-tasks [get]
-// @Router       /admin/organizations/{id}/midjourney-tasks [get]
 func ListOrganizationMidjourneyTasks(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

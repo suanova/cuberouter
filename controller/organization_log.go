@@ -29,28 +29,6 @@ import (
 )
 
 // ListOrganizationLogs 分页查询组织调用日志
-//
-// @Summary      组织调用日志
-// @Description  分页返回组织内模型调用日志,支持按令牌、负责人、类型、模型、分组、请求 ID 与时间范围过滤
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        p query int false "页码"
-// @Param        page_size query int false "页大小"
-// @Param        responsible_user_id query int false "负责人用户 ID"
-// @Param        token_id query int false "令牌 ID"
-// @Param        type query int false "日志类型"
-// @Param        token_name query string false "令牌名称"
-// @Param        responsible_name query string false "负责人名称"
-// @Param        model_name query string false "模型名称"
-// @Param        group query string false "分组"
-// @Param        request_id query string false "请求 ID"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/logs [get]
-// @Router       /admin/organizations/{id}/logs [get]
 func ListOrganizationLogs(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -68,26 +46,6 @@ func ListOrganizationLogs(c *gin.Context) {
 }
 
 // GetOrganizationLogStats 获取组织调用日志统计
-//
-// @Summary      组织调用日志统计
-// @Description  按与日志列表相同的过滤条件返回聚合统计(次数、额度等)
-// @Tags         组织, 组织管理
-// @Security     ApiKeyAuth
-// @Produce      json
-// @Param        id path int true "组织 ID"
-// @Param        responsible_user_id query int false "负责人用户 ID"
-// @Param        token_id query int false "令牌 ID"
-// @Param        type query int false "日志类型"
-// @Param        token_name query string false "令牌名称"
-// @Param        responsible_name query string false "负责人名称"
-// @Param        model_name query string false "模型名称"
-// @Param        group query string false "分组"
-// @Param        request_id query string false "请求 ID"
-// @Param        start_timestamp query int false "起始时间戳(秒)"
-// @Param        end_timestamp query int false "截止时间戳(秒)"
-// @Success      200 {object} dto.APIResponse
-// @Router       /organizations/{id}/logs/stats [get]
-// @Router       /admin/organizations/{id}/logs/stats [get]
 func GetOrganizationLogStats(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
