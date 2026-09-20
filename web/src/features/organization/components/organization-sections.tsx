@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import type { OrganizationDetailTabKey } from '../constants'
 import type { OrganizationDetail } from '../types'
 import { OrganizationAuditSection } from './organization-audit-section'
+import { OrganizationInvitesSection } from './organization-invites-section'
 import { OrganizationMembersSection } from './organization-members-section'
 import { OrganizationOverviewSection } from './organization-overview-section'
 import { OrganizationSectionEmpty } from './organization-section'
@@ -90,6 +91,17 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           readOnly={props.readOnly}
           onForbidden={props.onForbidden}
           onLeftOrganization={props.onLeftOrganization}
+        />
+      )
+    case 'invitations':
+      return (
+        <OrganizationInvitesSection
+          organizationId={organization.id}
+          canViewInvites={capabilities.can_view_invites}
+          canCreateInvites={capabilities.can_create_invites}
+          canRevokeInvites={capabilities.can_revoke_invites}
+          readOnly={props.readOnly}
+          onForbidden={props.onForbidden}
         />
       )
     case 'audit-logs':
