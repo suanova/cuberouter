@@ -33,24 +33,47 @@ import (
 	"gorm.io/gorm"
 )
 
+// organizationExternalConcurrencyTarget 选出并发用例要连的库。
+//
+// DSN 沿用仓库既有约定（TEST_MYSQL_DSN / TEST_POSTGRES_DSN，同 model 包的迁移用例），
+// 方言由变量名决定，所以正常情况下不需要再配一个类型开关。只有两个变量同时配置、
+// 无法从名字判断用哪个时，才要求 ORGANIZATION_TEST_DB_TYPE 显式指定。
+func organizationExternalConcurrencyTarget(t *testing.T) (string, string) {
+	t.Helper()
+	mysqlDSN := strings.TrimSpace(os.Getenv("TEST_MYSQL_DSN"))
+	postgresDSN := strings.TrimSpace(os.Getenv("TEST_POSTGRES_DSN"))
+	switch {
+	case mysqlDSN != "" && postgresDSN != "":
+		switch strings.ToLower(strings.TrimSpace(os.Getenv("ORGANIZATION_TEST_DB_TYPE"))) {
+		case "mysql":
+			return "mysql", mysqlDSN
+		case "postgres", "postgresql":
+			return "postgres", postgresDSN
+		default:
+			t.Skip("TEST_MYSQL_DSN and TEST_POSTGRES_DSN are both set; " +
+				"set ORGANIZATION_TEST_DB_TYPE=mysql or postgres to pick one")
+		}
+	case mysqlDSN != "":
+		return "mysql", mysqlDSN
+	case postgresDSN != "":
+		return "postgres", postgresDSN
+	}
+	t.Skip("set TEST_MYSQL_DSN or TEST_POSTGRES_DSN to run the organization concurrency tests")
+	return "", ""
+}
+
 // 并发用例要的是真正的行级/唯一约束竞争，SQLite 的单写者模型给不出来，
-// 所以必须跑在真实 MySQL/PostgreSQL 上。DSN 沿用仓库既有约定
-// （TEST_MYSQL_DSN / TEST_POSTGRES_DSN），未配置就跳过。
+// 所以必须跑在真实 MySQL/PostgreSQL 上。
 //
 // 这些用例会建表、插数据、最后删除自己造的行。为了不误伤别人指向的库，
 // 再加一道显式开关：只有 ORGANIZATION_TEST_ALLOW_DESTRUCTIVE=1 时才真正执行。
 func setupOrganizationExternalConcurrencyDB(t *testing.T) (*gorm.DB, string) {
 	t.Helper()
-	databaseType := strings.TrimSpace(os.Getenv("ORGANIZATION_TEST_DB_TYPE"))
-	dsn := strings.TrimSpace(os.Getenv("ORGANIZATION_TEST_DSN"))
-	if databaseType == "" || dsn == "" {
-		t.Skip("set ORGANIZATION_TEST_DB_TYPE (mysql/postgres) and ORGANIZATION_TEST_DSN to run the organization concurrency tests")
-	}
+	databaseType, dsn := organizationExternalConcurrencyTarget(t)
 	if os.Getenv("ORGANIZATION_TEST_ALLOW_DESTRUCTIVE") != "1" {
 		t.Skip("set ORGANIZATION_TEST_ALLOW_DESTRUCTIVE=1 to run the destructive organization concurrency tests")
 	}
 
-	databaseType = strings.ToLower(databaseType)
 	var dialector gorm.Dialector
 	switch databaseType {
 	case "mysql":

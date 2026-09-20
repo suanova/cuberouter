@@ -172,7 +172,11 @@ func testOrganizationScopeMigrationLegacyUpgrade(t *testing.T, db *gorm.DB, reco
 	requireOrganizationScopeBackfill(t, db)
 
 	// 模拟历史脏数据:作用域列被写成组织值,恢复执行必须把它修回个人作用域。
-	require.NoError(t, db.Model(&Token{}).Where("key = ?", "legacy-scope-token").Updates(map[string]any{
+	//
+	// 这里用结构体条件而不是 Where("key = ?"):key 是 MySQL 保留字,而这个用例要在
+	// 多方言的临时连接上跑,不能借 commonKeyCol —— 它描述的是进程的主库类型,和
+	// 当前连接不一定是同一个方言。结构体条件由 GORM 按当前连接引用,才是安全的。
+	require.NoError(t, db.Model(&Token{}).Where(&Token{Key: "legacy-scope-token"}).Updates(map[string]any{
 		"creator_user_id": 0,
 		"organization_id": 99,
 	}).Error)

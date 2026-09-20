@@ -266,9 +266,11 @@ func TestOrganizationNameMigrationConfiguredDatabases(t *testing.T) {
 					Name: "  Idempotent Group  ", Slug: "legacy-idempotent", CreatedBy: 1,
 				}).Error)
 
-				for range 2 {
-					require.NoError(t, prepareOrganizationNameUniquenessMigration(db))
-				}
+				// 与 migrateDB 同序：迁移先补齐列并回填，AutoMigrate 再按模型标签建唯一索引，
+				// 最后重跑一次确认已建索引时走快速路径。
+				require.NoError(t, prepareOrganizationNameUniquenessMigration(db))
+				require.NoError(t, db.AutoMigrate(&Organization{}))
+				require.NoError(t, prepareOrganizationNameUniquenessMigration(db))
 
 				var organization Organization
 				require.NoError(t, db.First(&organization).Error)
