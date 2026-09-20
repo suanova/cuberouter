@@ -28,19 +28,19 @@ import { refreshAccountContexts } from '@/lib/account-context'
 
 import { updateOrganizationStatus } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
-import { isOrganizationNameConfirmed } from '../lib'
+import { isOrganizationSlugConfirmed } from '../lib'
 import { useOrganizations } from './organizations-provider'
 
 /**
  * Enables or disables the organization. Disabling takes the organization's
- * traffic offline, so the operator has to retype its name; enabling is the same
+ * traffic offline, so the operator has to retype its slug; enabling is the same
  * shape with different copy.
  */
 export function OrganizationsStatusDialog() {
   const { t } = useTranslation()
   const { open, setOpen, currentRow, triggerRefresh } = useOrganizations()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [confirmName, setConfirmName] = useState('')
+  const [confirmSlug, setConfirmSlug] = useState('')
 
   const isOpen = open === 'status'
   const isEnabling = currentRow?.status === 'disabled'
@@ -49,7 +49,7 @@ export function OrganizationsStatusDialog() {
     : t(isEnabling ? 'Enable' : 'Disable')
 
   useEffect(() => {
-    if (!isOpen) setConfirmName('')
+    if (!isOpen) setConfirmSlug('')
   }, [isOpen])
 
   if (!currentRow) return null
@@ -60,7 +60,7 @@ export function OrganizationsStatusDialog() {
     try {
       const result = await updateOrganizationStatus(currentRow.id, {
         status,
-        confirm_name: confirmName.trim(),
+        confirm_name: confirmSlug.trim(),
       })
       if (!result.success) {
         toast.error(result.message || t(ERROR_MESSAGES.STATUS_FAILED))
@@ -104,19 +104,19 @@ export function OrganizationsStatusDialog() {
       }
       confirmText={confirmText}
       destructive={!isEnabling}
-      disabled={!isOrganizationNameConfirmed(currentRow.name, confirmName)}
+      disabled={!isOrganizationSlugConfirmed(currentRow.slug, confirmSlug)}
       isLoading={isSubmitting}
       handleConfirm={handleConfirm}
     >
       <div className='flex flex-col gap-2'>
-        <Label htmlFor='organization-status-confirm-name'>
-          {t('Type the organization name to confirm:')}{' '}
-          <span className='font-semibold'>{currentRow.name}</span>
+        <Label htmlFor='organization-status-confirm-slug'>
+          {t('Type the organization slug to confirm:')}{' '}
+          <span className='font-semibold'>{currentRow.slug}</span>
         </Label>
         <Input
-          id='organization-status-confirm-name'
-          value={confirmName}
-          onChange={(event) => setConfirmName(event.target.value)}
+          id='organization-status-confirm-slug'
+          value={confirmSlug}
+          onChange={(event) => setConfirmSlug(event.target.value)}
           autoComplete='off'
         />
       </div>

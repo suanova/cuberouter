@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { describe, expect, test } from 'vitest'
 
 import {
-  isOrganizationNameConfirmed,
+  isOrganizationSlugConfirmed,
   organizationFormSchema,
   transformOrganizationFormToPayload,
 } from '../organization-form'
@@ -117,18 +117,20 @@ describe('transformOrganizationFormToPayload', () => {
   })
 })
 
-describe('isOrganizationNameConfirmed', () => {
-  test('requires the exact organization name', () => {
-    expect(isOrganizationNameConfirmed('MetaStone', 'MetaStone')).toBe(true)
-    expect(isOrganizationNameConfirmed('MetaStone', 'metastone')).toBe(false)
-    expect(isOrganizationNameConfirmed('MetaStone', 'MetaStoneX')).toBe(false)
+describe('isOrganizationSlugConfirmed', () => {
+  test('requires the exact organization slug', () => {
+    expect(isOrganizationSlugConfirmed('metastone', 'metastone')).toBe(true)
+    expect(isOrganizationSlugConfirmed('metastone', 'MetaStone')).toBe(false)
+    expect(isOrganizationSlugConfirmed('metastone', 'metastone-x')).toBe(false)
     // Surrounding whitespace is trimmed on both sides, as the backend does.
-    expect(isOrganizationNameConfirmed('MetaStone', '  MetaStone  ')).toBe(true)
-    expect(isOrganizationNameConfirmed('  MetaStone  ', 'MetaStone')).toBe(true)
+    expect(isOrganizationSlugConfirmed('metastone', '  metastone  ')).toBe(true)
+    expect(isOrganizationSlugConfirmed('  metastone  ', 'metastone')).toBe(true)
   })
 
-  test('an empty input never confirms, even for an empty name', () => {
-    expect(isOrganizationNameConfirmed('MetaStone', '')).toBe(false)
-    expect(isOrganizationNameConfirmed('MetaStone', '   ')).toBe(false)
+  test('a missing slug never confirms, not even with an empty input', () => {
+    expect(isOrganizationSlugConfirmed('', '')).toBe(false)
+    expect(isOrganizationSlugConfirmed(undefined, '')).toBe(false)
+    expect(isOrganizationSlugConfirmed('metastone', '')).toBe(false)
+    expect(isOrganizationSlugConfirmed('metastone', '   ')).toBe(false)
   })
 })

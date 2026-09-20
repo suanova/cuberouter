@@ -53,7 +53,7 @@ export {
 export {
   buildOrganizationGroupOptions,
   createIdempotencyKey,
-  isOrganizationNameConfirmed,
+  isOrganizationSlugConfirmed,
   ORGANIZATION_DESCRIPTION_MAX_LENGTH,
   ORGANIZATION_FORM_DEFAULT_VALUES,
   ORGANIZATION_NAME_MAX_LENGTH,

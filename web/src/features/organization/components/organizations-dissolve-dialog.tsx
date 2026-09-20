@@ -28,26 +28,26 @@ import { refreshAccountContexts } from '@/lib/account-context'
 
 import { dissolveOrganization } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
-import { createIdempotencyKey, isOrganizationNameConfirmed } from '../lib'
+import { createIdempotencyKey, isOrganizationSlugConfirmed } from '../lib'
 import { useOrganizations } from './organizations-provider'
 
 /**
  * Dissolves the organization. Irreversible: the record survives as a tombstone
  * but the organization can never be re-enabled, so the operator has to retype
- * its name.
+ * its slug.
  */
 export function OrganizationsDissolveDialog() {
   const { t } = useTranslation()
   const { open, setOpen, currentRow, triggerRefresh } = useOrganizations()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [confirmName, setConfirmName] = useState('')
+  const [confirmSlug, setConfirmSlug] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState(createIdempotencyKey)
 
   const isOpen = open === 'dissolve'
 
   useEffect(() => {
     if (!isOpen) return
-    setConfirmName('')
+    setConfirmSlug('')
     // One key per intent: retrying from this dialog replays the same request
     // rather than dissolving twice, and reopening the dialog starts over.
     setIdempotencyKey(createIdempotencyKey())
@@ -60,7 +60,7 @@ export function OrganizationsDissolveDialog() {
     try {
       const result = await dissolveOrganization(
         currentRow.id,
-        { confirm_name: confirmName.trim() },
+        { confirm_name: confirmSlug.trim() },
         idempotencyKey
       )
       if (!result.success) {
@@ -97,19 +97,19 @@ export function OrganizationsDissolveDialog() {
       }
       confirmText={isSubmitting ? t('Dissolving...') : t('Dissolve')}
       destructive
-      disabled={!isOrganizationNameConfirmed(currentRow.name, confirmName)}
+      disabled={!isOrganizationSlugConfirmed(currentRow.slug, confirmSlug)}
       isLoading={isSubmitting}
       handleConfirm={handleConfirm}
     >
       <div className='flex flex-col gap-2'>
-        <Label htmlFor='organization-dissolve-confirm-name'>
-          {t('Type the organization name to confirm:')}{' '}
-          <span className='font-semibold'>{currentRow.name}</span>
+        <Label htmlFor='organization-dissolve-confirm-slug'>
+          {t('Type the organization slug to confirm:')}{' '}
+          <span className='font-semibold'>{currentRow.slug}</span>
         </Label>
         <Input
-          id='organization-dissolve-confirm-name'
-          value={confirmName}
-          onChange={(event) => setConfirmName(event.target.value)}
+          id='organization-dissolve-confirm-slug'
+          value={confirmSlug}
+          onChange={(event) => setConfirmSlug(event.target.value)}
           autoComplete='off'
         />
       </div>

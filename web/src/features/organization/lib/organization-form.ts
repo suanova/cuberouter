@@ -130,15 +130,26 @@ export function transformOrganizationFormToPayload(
 // ============================================================================
 
 /**
- * Both the status change and the dissolve require the operator to retype the
- * organization name. Compared trimmed because the backend trims before
- * comparing, so a trailing space must not block the action.
+ * Both the status change and the dissolve make the operator retype the
+ * organization's slug.
+ *
+ * The slug and not the name, because that is what the backend compares against:
+ * `setOrganizationStatus` accepts only `organization.Slug`, and
+ * `DissolveOrganization` accepts the name or the slug. The slug is the narrower
+ * of the two and it is also the stable one — a rename does not change it — so
+ * the dialogs show it and ask for it.
+ *
+ * Compared trimmed because the backend trims before comparing, so a trailing
+ * space must not block the action. An empty slug never matches: an organization
+ * always has one, and `'' === ''` would otherwise let the dialog through.
  */
-export function isOrganizationNameConfirmed(
-  expectedName: string,
+export function isOrganizationSlugConfirmed(
+  expectedSlug: string | undefined,
   input: string
 ): boolean {
-  return input.trim() === expectedName.trim()
+  const expected = expectedSlug?.trim() ?? ''
+  if (!expected) return false
+  return input.trim() === expected
 }
 
 // ============================================================================
