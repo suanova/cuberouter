@@ -134,6 +134,10 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// Organization billing repair task: reclaims organization billing sessions
+	// left behind by a crash or a hard timeout and refunds their reservations.
+	service.StartOrganizationBillingRepairTask()
+
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

@@ -82,6 +82,8 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 			ResultURL: "data:video/mp4;base64,ZGF0YQ==",
 		},
 	}
+	// 与 InitTask 一致：作用域列必须落库，异步任务查询按作用域精确匹配。
+	model.NormalizeTaskBillingScope(task)
 	task.SetData(map[string]any{
 		"code": 10000,
 		"data": map[string]any{

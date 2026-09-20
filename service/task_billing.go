@@ -67,7 +67,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 	}
 	appendTaskLogInfo(task, other)
 	attachQuotaSaturation(c, info, other)
-	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
+	model.RecordConsumeLog(c, info.UserId, RelayConsumeLogParams(info, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
 		ModelName: info.OriginModelName,
 		TokenName: tokenName,
@@ -76,8 +76,11 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		TokenId:   info.TokenId,
 		Group:     info.UsingGroup,
 		Other:     other,
-	})
-	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
+	}))
+	// 组织计费的用量在组织账本里结算，个人看板保持零增长。
+	if !IsOrganizationBilling(info) {
+		model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
+	}
 	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)
 }
 
@@ -219,6 +222,17 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		return true
 	}
 
+	// 0. 组织计费走组织账本：它的预扣是账本会话，钱和组织用量在同一个事务里
+	//    回滚，个人钱包/订阅一分未动，下面那三步必须整体跳过。账目痕迹由账本
+	//    自己的 refund 记录给出，调用方还会再写一条系统日志。
+	if handled, err := RefundTaskOrganizationQuota(task); handled {
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("退还组织账本失败 task %s: %s", task.TaskID, err.Error()))
+			return false
+		}
+		return true
+	}
+
 	// 1. 退还资金来源（钱包或订阅）
 	if err := taskAdjustFunding(task, -quota); err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("退还资金来源失败 task %s: %s", task.TaskID, err.Error()))
@@ -233,6 +247,19 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 	model.UpdateChannelUsedQuota(task.ChannelId, -quota)
 
 	// 4. 记录日志
+	recordTaskRefundLog(task, reason, quota)
+
+	// 5. 资金退款完成后再清除持久化标记。
+	// 回写失败必须显式告警，避免漏掉潜在的重复退款风险。
+	task.Quota = 0
+	if err := task.UpdateQuota(); err != nil {
+		logger.LogError(ctx, fmt.Sprintf("退款成功但清除 task quota 失败 task %s: %s", task.TaskID, err.Error()))
+	}
+	return true
+}
+
+// recordTaskRefundLog 记录一条异步任务退款日志。
+func recordTaskRefundLog(task *model.Task, reason string, quota int) {
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
@@ -247,14 +274,6 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) bool 
 		Group:     task.Group,
 		Other:     other,
 	})
-
-	// 5. 资金退款完成后再清除持久化标记。
-	// 回写失败必须显式告警，避免漏掉潜在的重复退款风险。
-	task.Quota = 0
-	if err := task.UpdateQuota(); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("退款成功但清除 task quota 失败 task %s: %s", task.TaskID, err.Error()))
-	}
-	return true
 }
 
 // RecalculateTaskQuota 通用的异步差额结算。
@@ -265,6 +284,22 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	if actualQuota < 0 {
 		return
 	}
+
+	// 组织计费没有「资金来源差额」这一步：预扣就是一个账本会话，按实际金额
+	// 结算即可，多退少补都发生在组织那个事务里。个人额度与渠道用量同理，
+	// 组织请求从提交起就没碰过它们。
+	if handled, err := SettleAsyncTaskOrganizationQuota(task, actualQuota); handled {
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("组织账本差额结算失败 task %s: %s", task.TaskID, err.Error()))
+			return
+		}
+		if err := task.UpdateQuota(); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("组织差额结算回写 quota 失败 task %s: %s", task.TaskID, err.Error()))
+		}
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 组织账本结算：%s（%s）", task.TaskID, logger.LogQuota(actualQuota), reason))
+		return
+	}
+
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
 
@@ -283,21 +318,33 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	))
 
 	// 调整资金来源
-	if err := taskAdjustFunding(task, quotaDelta); err != nil {
-		logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
-		return
-	}
+	//
+	// 组织任务如果没留下账本会话（提交阶段没走到 PreConsumeBilling 的老任务），
+	// 差额也只能记到组织账上。绝不能落进 taskAdjustFunding——那条路走的是个人
+	// 钱包和订阅，会把组织的开销记到个人的账上。
+	if IsOrganizationBilling(TaskBillingRelayInfo(task)) {
+		if err := PostConsumeQuotaWithRequestCount(TaskBillingRelayInfo(task), quotaDelta, task.Quota, false, false); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("组织差额结算失败 task %s: %s", task.TaskID, err.Error()))
+			return
+		}
+	} else {
+		if err := taskAdjustFunding(task, quotaDelta); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("差额结算资金调整失败 task %s: %s", task.TaskID, err.Error()))
+			return
+		}
 
-	// 调整令牌额度
-	taskAdjustTokenQuota(ctx, task, quotaDelta)
+		// 调整令牌额度
+		taskAdjustTokenQuota(ctx, task, quotaDelta)
+
+		// 提交阶段已经累计过一次请求；结算阶段只调整最终用量。
+		model.UpdateUserUsedQuota(task.UserId, quotaDelta)
+	}
 
 	task.Quota = actualQuota
 	if err := task.UpdateQuota(); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("差额结算回写 quota 失败 task %s: %s", task.TaskID, err.Error()))
 	}
 
-	// 提交阶段已经累计过一次请求；结算阶段只调整最终用量。
-	model.UpdateUserUsedQuota(task.UserId, quotaDelta)
 	model.UpdateChannelUsedQuota(task.ChannelId, quotaDelta)
 
 	var logType int

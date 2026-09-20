@@ -31,6 +31,20 @@ func CovertMjpActionToModelName(mjAction string) string {
 	return modelName
 }
 
+// IsMidjourneyFailureStatus 判断上游任务状态是否已经终态失败。
+//
+// 与 controller 里各处零散的 `Status == "FAILURE"` 比较不同，这里把上游用过的
+// 各种失败写法（FAILED / CANCELED / TIMEOUT / UNKNOWN 及英美拼写差异）都收进来：
+// 漏掉一种就会把失败任务当成功计费，而计费是幂等的，事后没法自动纠正。
+func IsMidjourneyFailureStatus(status string) bool {
+	switch strings.ToUpper(strings.TrimSpace(status)) {
+	case "FAILURE", "FAILED", "FAIL", "CANCELED", "CANCELLED", "CANCEL", "TIMEOUT", "TIMED_OUT", "TIME_OUT", "UNKNOWN":
+		return true
+	default:
+		return false
+	}
+}
+
 // PrepareMidjourneyTaskBilling sets the durable refund marker before the task is inserted.
 func PrepareMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.Midjourney, quota int, shouldBill bool) (bool, error) {
 	if task == nil {
@@ -72,6 +86,19 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 		return false, errors.New("Midjourney task must be persisted before billing")
 	}
 
+	// 组织计费在提交前就预扣过一笔账本会话（见 RelayMidjourneySubmit / RelaySwapFace），
+	// 这里只能结算同一笔会话，不能再 post-consume 一次，否则组织被扣两遍。
+	if IsOrganizationBilling(relayInfo) && task.OrganizationBillingSessionId > 0 {
+		if settleErr := (&OrganizationFunding{relayInfo: relayInfo}).SettleWithTokenActual(task.Quota); settleErr != nil {
+			return false, settleErr
+		}
+		task.TokenId = relayInfo.TokenId
+		if updateErr := task.UpdateBillingState(); updateErr != nil {
+			return true, fmt.Errorf("update Midjourney billing state: %w", updateErr)
+		}
+		return true, nil
+	}
+
 	result, billingErr := postConsumeQuotaWithResult(relayInfo, task.Quota, 0, true)
 	if !result.FundingApplied {
 		task.Quota = 0
@@ -97,6 +124,16 @@ func SettleMidjourneyTaskBilling(relayInfo *relaycommon.RelayInfo, task *model.M
 func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason string) bool {
 	quota := task.Quota
 	if quota == 0 {
+		return true
+	}
+
+	// 组织计费的预扣是一笔账本会话，退款必须在组织账本里完成：直接
+	// IncreaseUserQuota 会把钱退到发起者个人钱包上，而组织那边仍然记着这笔支出。
+	if handled, err := RefundMidjourneyOrganizationQuota(task); handled {
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("退还组织账本失败 task %s: %s", task.MjId, err.Error()))
+			return false
+		}
 		return true
 	}
 

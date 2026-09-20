@@ -1557,16 +1557,22 @@ func newPluginProtocolRetrieveContext(responseID string) (*gin.Context, *httptes
 	c.Params = gin.Params{{Key: "response_id", Value: responseID}}
 	common.SetContextKey(c, constant.ContextKeyUserId, 71)
 	common.SetContextKey(c, constant.ContextKeyTokenId, 81)
+	// 作用域与计费归属成对写入，与 TokenAuth 对个人令牌的做法一致：
+	// 只写其中一个时 AsyncTaskScopeFromContext 会判定上下文无效并返回空作用域。
+	common.SetContextKey(c, constant.ContextKeyScopeType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyScopeId, 71)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountId, 71)
 	return c, recorder
 }
 
 func pluginProtocolRetrieveDeps(pinned pluginruntime.PinnedEndpoint, task *model.Task, exists bool, err error) pluginProtocolBridgeDeps {
 	deps := pluginProtocolTestDeps()
-	deps.getByTaskId = func(userId int, taskId string) (*model.Task, bool, error) {
+	deps.getByTaskId = func(scope model.AsyncTaskScope, taskId string) (*model.Task, bool, error) {
 		if !exists {
 			return nil, false, err
 		}
-		if task != nil && (userId != task.UserId || taskId != task.TaskID) {
+		if task != nil && (scope.UserId != task.UserId || taskId != task.TaskID) {
 			return nil, false, err
 		}
 		return task, task != nil, err

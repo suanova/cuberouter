@@ -1,5 +1,34 @@
 package model
 
+import (
+	commonRelay "github.com/QuantumNous/new-api/relay/common"
+)
+
+// ApplyMidjourneyBillingScope 把请求上下文里的作用域与计费归属写进 Midjourney 任务行。
+//
+// 与 Task 一样，这些列是失败退款时唯一能还原「这笔钱扣的是谁」的依据：
+// 退款发生在轮询阶段，那时 gin.Context 早就没了。
+func ApplyMidjourneyBillingScope(task *Midjourney, relayInfo *commonRelay.RelayInfo) {
+	if task == nil || relayInfo == nil {
+		return
+	}
+	task.TokenId = relayInfo.TokenId
+	task.TokenKey = relayInfo.TokenKey
+	task.TokenUnlimited = relayInfo.TokenUnlimited
+	task.RequestId = relayInfo.RequestId
+	task.ScopeType = relayInfo.ScopeType
+	task.ScopeId = relayInfo.ScopeId
+	task.BillingAccountType = relayInfo.BillingAccountType
+	task.BillingAccountId = relayInfo.BillingAccountId
+	task.OrganizationId = relayInfo.OrganizationId
+	task.ActorUserId = relayInfo.ActorUserId
+	task.CreatorUserId = relayInfo.CreatorUserId
+	task.ResponsibleUserId = relayInfo.ResponsibleUserId
+	task.OrganizationBillingSessionId = relayInfo.OrganizationBillingSessionId
+	task.OrganizationBillingSessionKey = relayInfo.OrganizationBillingSessionKey
+	NormalizeMidjourneyBillingScope(task)
+}
+
 type Midjourney struct {
 	Id          int    `json:"id"`
 	Code        int    `json:"code"`
@@ -188,20 +217,20 @@ func GetByOnlyMJId(mjId string) *Midjourney {
 	return mj
 }
 
-func GetByMJId(userId int, mjId string) *Midjourney {
+func GetByMJId(scope AsyncTaskScope, mjId string) *Midjourney {
 	var mj *Midjourney
 	var err error
-	err = DB.Where("user_id = ? and mj_id = ?", userId, mjId).First(&mj).Error
+	err = scope.Apply(DB).Where("mj_id = ?", mjId).First(&mj).Error
 	if err != nil {
 		return nil
 	}
 	return mj
 }
 
-func GetByMJIds(userId int, mjIds []string) []*Midjourney {
+func GetByMJIds(scope AsyncTaskScope, mjIds []string) []*Midjourney {
 	var mj []*Midjourney
 	var err error
-	err = DB.Where("user_id = ? and mj_id in (?)", userId, mjIds).Find(&mj).Error
+	err = scope.Apply(DB).Where("mj_id in (?)", mjIds).Find(&mj).Error
 	if err != nil {
 		return nil
 	}
@@ -224,6 +253,7 @@ func UpdateProgress(id int, progress string) error {
 
 func (midjourney *Midjourney) Insert() error {
 	var err error
+	NormalizeMidjourneyBillingScope(midjourney)
 	err = DB.Create(midjourney).Error
 	return err
 }

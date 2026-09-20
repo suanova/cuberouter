@@ -27,6 +27,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -221,4 +222,114 @@ func TestConcurrentOrganizationQuotaAdjustment(t *testing.T) {
 	var adjustments []model.OrganizationQuotaAdjustment
 	require.NoError(t, db.Where("idempotency_key IN ?", keys).Find(&adjustments).Error)
 	require.Len(t, adjustments, 2)
+}
+
+// TestConcurrentOrganizationTokenDeleteAndBillingSettle 锁定「删键」与「结算」两个
+// 并发路径的最终状态：无论谁先执行，账本会话都必须结算、令牌额度必须落账，
+// 而且被软删的令牌仍然要能收到结算写入——结算读的是未删除行会拿不到记录。
+func TestConcurrentOrganizationTokenDeleteAndBillingSettle(t *testing.T) {
+	db, _ := setupOrganizationExternalConcurrencyDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Token{},
+		&model.Organization{},
+		&model.OrganizationMember{},
+		&model.OrganizationDisableRecord{},
+		&model.OrganizationBillingSession{},
+		&model.OrganizationBillingRecord{},
+		&model.OrganizationAuditLog{},
+	))
+
+	type deleteSettleFixture struct {
+		owner            model.User
+		organization     model.Organization
+		token            model.Token
+		session          *BillingSession
+		billingSessionId int
+	}
+	newFixture := func(t *testing.T) *deleteSettleFixture {
+		t.Helper()
+		suffix := strings.ReplaceAll(common.GetUUID(), "-", "")[:8]
+		fixture := &deleteSettleFixture{
+			owner:        model.User{Username: "delete-settle-owner-" + suffix, Password: "password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "ds-" + suffix},
+			organization: model.Organization{Name: "Delete Settle " + suffix, Slug: "delete-settle-" + suffix, Status: model.OrganizationStatusActive, Quota: 2000},
+		}
+		t.Cleanup(func() {
+			if fixture.organization.Id > 0 {
+				require.NoError(t, db.Where("organization_id = ?", fixture.organization.Id).Delete(&model.OrganizationBillingRecord{}).Error)
+				require.NoError(t, db.Where("organization_id = ?", fixture.organization.Id).Delete(&model.OrganizationBillingSession{}).Error)
+				require.NoError(t, db.Where("organization_id = ?", fixture.organization.Id).Delete(&model.OrganizationAuditLog{}).Error)
+				require.NoError(t, db.Where("organization_id = ?", fixture.organization.Id).Delete(&model.OrganizationDisableRecord{}).Error)
+			}
+			if fixture.token.Id > 0 {
+				require.NoError(t, db.Unscoped().Where("id = ?", fixture.token.Id).Delete(&model.Token{}).Error)
+			}
+			if fixture.organization.Id > 0 {
+				require.NoError(t, db.Where("organization_id = ?", fixture.organization.Id).Delete(&model.OrganizationMember{}).Error)
+				require.NoError(t, db.Delete(&model.Organization{}, fixture.organization.Id).Error)
+			}
+			if fixture.owner.Id > 0 {
+				require.NoError(t, db.Unscoped().Delete(&model.User{}, fixture.owner.Id).Error)
+			}
+		})
+
+		require.NoError(t, db.Create(&fixture.owner).Error)
+		fixture.organization.CreatedBy = fixture.owner.Id
+		fixture.organization.OwnerUserId = fixture.owner.Id
+		require.NoError(t, db.Create(&fixture.organization).Error)
+		require.NoError(t, db.Create(&model.OrganizationMember{OrganizationId: fixture.organization.Id, UserId: fixture.owner.Id, Role: model.OrganizationRoleOwner, Status: model.OrganizationMemberStatusActive}).Error)
+		fixture.token = model.Token{UserId: fixture.owner.Id, Key: common.GetRandomString(48), Name: "delete-settle-key", Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 1000, ScopeType: model.TokenScopeOrganization, ScopeId: fixture.organization.Id, OrganizationId: fixture.organization.Id, CreatorUserId: fixture.owner.Id, ResponsibleUserId: fixture.owner.Id, Visibility: model.TokenVisibilityPrivate}
+		require.NoError(t, db.Create(&fixture.token).Error)
+
+		relayInfo := organizationBillingRelayInfo(&fixture.token, fixture.organization.Id)
+		relayInfo.RequestId = "delete-settle-" + suffix
+		session, apiErr := NewBillingSession(&gin.Context{}, relayInfo, 100)
+		require.Nil(t, apiErr)
+		fixture.session = session
+		fixture.billingSessionId = relayInfo.OrganizationBillingSessionId
+		return fixture
+	}
+	assertFinalState := func(t *testing.T, fixture *deleteSettleFixture) {
+		t.Helper()
+		var storedSession model.OrganizationBillingSession
+		require.NoError(t, db.First(&storedSession, fixture.billingSessionId).Error)
+		require.Equal(t, model.OrganizationBillingSessionStatusSettled, storedSession.Status)
+		var deletedToken model.Token
+		require.NoError(t, db.Unscoped().First(&deletedToken, fixture.token.Id).Error)
+		require.True(t, deletedToken.DeletedAt.Valid)
+		require.Equal(t, 860, deletedToken.RemainQuota)
+		require.Equal(t, 140, deletedToken.UsedQuota)
+		var storedOrganization model.Organization
+		require.NoError(t, db.First(&storedOrganization, fixture.organization.Id).Error)
+		require.Equal(t, 140, storedOrganization.UsedQuota)
+	}
+
+	t.Run("delete_then_settle", func(t *testing.T) {
+		fixture := newFixture(t)
+		require.NoError(t, DeleteOrganizationToken(fixture.owner.Id, fixture.organization.Id, OrganizationAccessModeWorkspace, fixture.token.Id))
+		require.NoError(t, fixture.session.Settle(140))
+		assertFinalState(t, fixture)
+	})
+	t.Run("settle_then_delete", func(t *testing.T) {
+		fixture := newFixture(t)
+		require.NoError(t, fixture.session.Settle(140))
+		require.NoError(t, DeleteOrganizationToken(fixture.owner.Id, fixture.organization.Id, OrganizationAccessModeWorkspace, fixture.token.Id))
+		assertFinalState(t, fixture)
+	})
+	t.Run("concurrent_smoke", func(t *testing.T) {
+		fixture := newFixture(t)
+		start := make(chan struct{})
+		results := make(chan error, 2)
+		go func() {
+			<-start
+			results <- DeleteOrganizationToken(fixture.owner.Id, fixture.organization.Id, OrganizationAccessModeWorkspace, fixture.token.Id)
+		}()
+		go func() { <-start; results <- fixture.session.Settle(140) }()
+		close(start)
+		resultErrors := []error{<-results, <-results}
+		for _, resultErr := range resultErrors {
+			require.NoError(t, resultErr)
+		}
+		assertFinalState(t, fixture)
+	})
 }

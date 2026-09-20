@@ -963,7 +963,7 @@ export function parseTaskResult() { return {status: "SUCCESS"}; }
 	router.POST("/vendor/query",
 		pinTaskPluginRoute(plugin, 0),
 		func(c *gin.Context) {
-			c.Set("id", 7)
+			authenticateAsTestUser(c, 7)
 			c.Next()
 		},
 		PrepareTaskPluginRoute(),
@@ -1069,7 +1069,7 @@ export const native = {status: function(ctx, task) { return {id: task.task_id}; 
 	router.GET("/vendor/jobs/:id",
 		pinTaskPluginRoute(plugin, 0),
 		func(c *gin.Context) {
-			c.Set("id", 7)
+			authenticateAsTestUser(c, 7)
 			c.Next()
 		},
 		PrepareTaskPluginRoute(),
@@ -1696,5 +1696,7 @@ func setupTaskPluginRouteDB(t *testing.T) {
 
 func insertTaskPluginRouteTask(t *testing.T, task *model.Task) {
 	t.Helper()
+	// 与 InitTask 一致：作用域列必须落库，否则精确匹配的查询看不到这一行。
+	model.NormalizeTaskBillingScope(task)
 	require.NoError(t, model.DB.Create(task).Error)
 }

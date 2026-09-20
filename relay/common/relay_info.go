@@ -37,6 +37,10 @@ const (
 	LastMessageTypeThinking = convmeta.LastMessageTypeThinking
 )
 
+// relaycommonScopeTypePersonal 是 model.AccountContextTypePersonal 的本地副本。
+// model 包依赖 relay/common，这里再引用 model 会构成导入环，因此保留字面量。
+const relaycommonScopeTypePersonal = "personal"
+
 // ClaudeConvertInfo now lives with the converters (convmeta); the alias keeps
 // host code and adaptors compiling unchanged.
 type ClaudeConvertInfo = convmeta.ClaudeConvertInfo
@@ -139,6 +143,29 @@ type RelayInfo struct {
 	// Billing 是计费会话，封装了预扣费/结算/退款的统一生命周期。
 	// 初始免费组可为 nil；若 auto 重试切换到付费组，会在发送前创建。
 	Billing BillingSettler
+	// ScopeType / ScopeId 是请求所属的「账号作用域」：个人令牌落 personal/userId，
+	// 组织令牌落 organization/organizationId。它表达的是资源归属（这笔日志、这个任务算谁的）。
+	ScopeType string
+	ScopeId   int
+	// BillingAccountType / BillingAccountId 是扣费主体，可能比 ScopeType 更宽：
+	// 组织令牌的调用者（ActorUserId）是个人，但账要记在组织头上。
+	BillingAccountType string
+	BillingAccountId   int
+	// OrganizationId 是组织令牌所属组织；个人请求恒为 0。
+	OrganizationId int
+	// ActorUserId 是发起请求的自然人，CreatorUserId / ResponsibleUserId 是组织令牌上登记的
+	// 创建者与责任人，用于组织账单按人归集。
+	ActorUserId       int
+	CreatorUserId     int
+	ResponsibleUserId int
+	// OrganizationQuota 是组织当前可用额度（quota - used_quota）的快照，仅用于校验与日志。
+	OrganizationQuota int
+	// OrganizationBillingSessionId / Key 指向本次预扣落下的账本会话，续租与结算靠它定位。
+	OrganizationBillingSessionId  int
+	OrganizationBillingSessionKey string
+	// OrganizationBillingOperation 用来区分共用同一个请求 ID 的内部扣费，
+	// 比如违规罚金就复用原请求 ID，只靠这个后缀区分幂等键。
+	OrganizationBillingOperation string
 	// BillingSource indicates whether this request is billed from wallet quota or subscription.
 	// "" or "wallet" => wallet; "subscription" => subscription
 	BillingSource string
@@ -537,12 +564,36 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		reqId = common.NewRequestId()
 	}
 	reasoningEffort := reasoningEffortFromRequest(request)
+
+	// 账号作用域与扣费主体默认落回个人：没有经过组织鉴权的请求（老的令牌、Playground）
+	// 不应该被当成组织请求，否则计费会去查一个不存在的组织。
+	//
+	// 这里用字面量而不是 model.AccountContextTypePersonal：model 包反过来依赖
+	// relay/common（Task/Midjourney 的 scope 归一化就在那边），引用它会成环。
+	userId := common.GetContextKeyInt(c, constant.ContextKeyUserId)
+	scopeType := common.GetContextKeyString(c, constant.ContextKeyScopeType)
+	if scopeType == "" {
+		scopeType = relaycommonScopeTypePersonal
+	}
+	scopeId := common.GetContextKeyInt(c, constant.ContextKeyScopeId)
+	if scopeId == 0 && scopeType == relaycommonScopeTypePersonal {
+		scopeId = userId
+	}
+	billingAccountType := common.GetContextKeyString(c, constant.ContextKeyBillingAccountType)
+	if billingAccountType == "" {
+		billingAccountType = relaycommonScopeTypePersonal
+	}
+	billingAccountId := common.GetContextKeyInt(c, constant.ContextKeyBillingAccountId)
+	if billingAccountId == 0 && billingAccountType == relaycommonScopeTypePersonal {
+		billingAccountId = userId
+	}
+
 	info := &RelayInfo{
 		Request:         request,
 		ReasoningEffort: reasoningEffort,
 
 		RequestId:  reqId,
-		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),
+		UserId:     userId,
 		UsingGroup: common.GetContextKeyString(c, constant.ContextKeyUsingGroup),
 		UserGroup:  common.GetContextKeyString(c, constant.ContextKeyUserGroup),
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
@@ -554,6 +605,18 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
 		TokenUnlimited: common.GetContextKeyBool(c, constant.ContextKeyTokenUnlimited),
 		TokenGroup:     tokenGroup,
+
+		ScopeType:                     scopeType,
+		ScopeId:                       scopeId,
+		BillingAccountType:            billingAccountType,
+		BillingAccountId:              billingAccountId,
+		OrganizationId:                common.GetContextKeyInt(c, constant.ContextKeyOrganizationId),
+		ActorUserId:                   common.GetContextKeyInt(c, constant.ContextKeyActorUserId),
+		CreatorUserId:                 common.GetContextKeyInt(c, constant.ContextKeyCreatorUserId),
+		ResponsibleUserId:             common.GetContextKeyInt(c, constant.ContextKeyResponsibleUserId),
+		OrganizationQuota:             common.GetContextKeyInt(c, constant.ContextKeyOrganizationQuota),
+		OrganizationBillingSessionId:  common.GetContextKeyInt(c, constant.ContextKeyOrganizationBillingSessionId),
+		OrganizationBillingSessionKey: common.GetContextKeyString(c, constant.ContextKeyOrganizationBillingSessionKey),
 
 		isFirstResponse: true,
 		RelayMode:       relayconstant.Path2RelayMode(c.Request.URL.Path),

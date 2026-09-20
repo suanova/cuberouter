@@ -265,6 +265,11 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			if !strings.HasPrefix(data, "[DONE]") {
 				info.SetFirstResponseTime()
 				info.ReceivedResponseCount++
+				// 组织账本会话的租约只有流式超时的两倍，长流中途必须续租，
+				// 否则修复协程会在请求还没结束时就把预扣退掉。
+				if err := service.TouchOrganizationBillingSession(info, int64(streamingTimeout.Seconds()*2)); err != nil {
+					logger.LogError(c, "organization billing heartbeat failed: "+err.Error())
+				}
 
 				select {
 				case dataChan <- data:

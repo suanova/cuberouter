@@ -13,6 +13,8 @@ import (
 const (
 	BillingSourceWallet       = "wallet"
 	BillingSourceSubscription = "subscription"
+	// BillingSourceOrganization 表示这笔钱从组织账户扣，调用者的个人钱包与订阅都不动。
+	BillingSourceOrganization = "organization"
 )
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。

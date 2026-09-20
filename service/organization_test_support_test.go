@@ -115,6 +115,7 @@ func setupServiceTestDB(t *testing.T) {
 	require.NoError(t, model.DB.AutoMigrate(
 		&model.User{},
 		&model.Token{},
+		&model.UserSubscription{},
 		&model.Task{},
 		&model.Midjourney{},
 		&model.Log{},

@@ -52,8 +52,21 @@ func setupGenericTaskTest(t *testing.T) *model.Task {
 		TaskID: "task_generic", Platform: "document", UserId: 7, ChannelId: 1,
 		Status: model.TaskStatusSuccess, Progress: "100%", SubmitTime: 10, FinishTime: 20,
 	}
+	// 与 InitTask 一致：作用域列必须落库，异步任务查询是按作用域精确匹配的。
+	model.NormalizeTaskBillingScope(task)
 	require.NoError(t, database.Create(task).Error)
 	return task
+}
+
+// authenticateControllerTestUser 补齐 TokenAuth 校验通过后会写入的上下文键。
+// 只设 user_id 不够：作用域与计费归属必须成对且相等，
+// service.AsyncTaskScopeFromContext 才认这个上下文，否则任务查询一律落空。
+func authenticateControllerTestUser(c *gin.Context, userID int) {
+	c.Set("id", userID)
+	common.SetContextKey(c, constant.ContextKeyScopeType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyScopeId, userID)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountId, userID)
 }
 
 func allowPrivateTaskMediaTest(t *testing.T) {
@@ -79,7 +92,7 @@ func TestGetTaskDoesNotProjectArtifacts(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Set("id", 7)
+	authenticateControllerTestUser(c, 7)
 	c.Params = gin.Params{{Key: "key", Value: task.TaskID}}
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/tasks/"+task.TaskID, nil)
 
@@ -97,7 +110,7 @@ func TestGetTaskArtifactsReturnsEmptyForLegacyTask(t *testing.T) {
 	task := setupGenericTaskTest(t)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Set("id", task.UserId)
+	authenticateControllerTestUser(c, task.UserId)
 	c.Params = gin.Params{{Key: "key", Value: task.TaskID}}
 	c.Request = httptest.NewRequest(http.MethodGet, "/v1/tasks/"+task.TaskID+"/artifacts", nil)
 
@@ -118,14 +131,14 @@ func TestTaskArtifactAuthorizationKeepsForeignTasksHidden(t *testing.T) {
 	task := setupGenericTaskTest(t)
 
 	commonUser, _ := gin.CreateTestContext(httptest.NewRecorder())
-	commonUser.Set("id", 8)
+	authenticateControllerTestUser(commonUser, 8)
 	commonUser.Set("role", common.RoleCommonUser)
 	_, exists, err := getTaskForArtifactRequest(commonUser, task.TaskID)
 	require.NoError(t, err)
 	assert.False(t, exists)
 
 	admin, _ := gin.CreateTestContext(httptest.NewRecorder())
-	admin.Set("id", 8)
+	authenticateControllerTestUser(admin, 8)
 	admin.Set("role", common.RoleAdminUser)
 	found, exists, err := getTaskForArtifactRequest(admin, task.TaskID)
 	require.NoError(t, err)
@@ -133,7 +146,7 @@ func TestTaskArtifactAuthorizationKeepsForeignTasksHidden(t *testing.T) {
 	assert.Equal(t, task.TaskID, found.TaskID)
 
 	apiToken, _ := gin.CreateTestContext(httptest.NewRecorder())
-	apiToken.Set("id", 8)
+	authenticateControllerTestUser(apiToken, 8)
 	apiToken.Set("role", common.RoleRootUser)
 	apiToken.Set("token_id", 99)
 	_, exists, err = getTaskForArtifactRequest(apiToken, task.TaskID)
@@ -157,7 +170,7 @@ func TestDashboardTaskArtifactsReturnsLegacyCapabilityWithoutUpstreamURL(t *test
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Set("id", task.UserId)
+	authenticateControllerTestUser(c, task.UserId)
 	c.Set("role", common.RoleCommonUser)
 	c.Params = gin.Params{{Key: "task_id", Value: task.TaskID}}
 	c.Request = httptest.NewRequest(http.MethodGet, "/api/task/"+task.TaskID+"/artifacts", nil)

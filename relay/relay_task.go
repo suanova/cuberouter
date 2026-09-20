@@ -69,7 +69,7 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	}
 
 	// 查找原始任务
-	originTask, exist, err := model.GetByTaskId(info.UserId, info.OriginTaskID)
+	originTask, exist, err := model.GetByTaskId(asyncTaskScopeFromRelayInfo(info), info.OriginTaskID)
 	if err != nil {
 		return service.TaskErrorWrapper(err, "get_origin_task_failed", http.StatusInternalServerError)
 	}
@@ -459,9 +459,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if taskId == "" {
 		taskId = c.GetString("task_id")
 	}
-	userId := c.GetInt("id")
-
-	originTask, exist, err := model.GetByTaskId(userId, taskId)
+	originTask, exist, err := model.GetByTaskId(service.AsyncTaskScopeFromContext(c), taskId)
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 		return
@@ -469,7 +467,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if !exist {
 		// 调用方可能只持有上游返回的 task ID，回退按
 		// upstream_task_id 匹配经网关提交的任务。
-		originTask, exist, err = model.GetByUpstreamTaskId(userId, taskId)
+		originTask, exist, err = model.GetByUpstreamTaskId(service.AsyncTaskScopeFromContext(c), taskId)
 		if err != nil {
 			taskResp = service.TaskErrorWrapper(err, "get_task_failed", http.StatusInternalServerError)
 			return

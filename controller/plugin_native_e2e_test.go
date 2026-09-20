@@ -155,7 +155,7 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 		Plugin:     submitBinding.Plugin,
 		Route:      submitBinding.Route,
 	})
-	common.SetContextKey(submitContext, constant.ContextKeyUserId, 7)
+	authenticateControllerTestUser(submitContext, 7)
 	common.SetContextKey(submitContext, constant.ContextKeyUserGroup, "default")
 	common.SetContextKey(submitContext, constant.ContextKeyUsingGroup, "default")
 	common.SetContextKey(submitContext, constant.ContextKeyTokenGroup, "default")
@@ -233,7 +233,7 @@ func TestKlingNativeRouteSubmitPollSettleAndQuery(t *testing.T) {
 		Plugin:     queryBinding.Plugin,
 		Route:      queryBinding.Route,
 	})
-	common.SetContextKey(queryContext, constant.ContextKeyUserId, 7)
+	authenticateControllerTestUser(queryContext, 7)
 
 	middleware.PrepareTaskPluginRoute()(queryContext)
 

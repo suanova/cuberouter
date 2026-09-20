@@ -325,6 +325,25 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 		Properties:  properties,
 		PrivateData: privateData,
 	}
+	if relayInfo != nil {
+		// 作用域与计费归属必须随任务一起落库：异步任务的结算发生在轮询阶段，
+		// 那时已经拿不到请求上下文，只能靠这几列还原出扣的是谁的钱。
+		t.TokenId = relayInfo.TokenId
+		t.TokenKey = relayInfo.TokenKey
+		t.TokenUnlimited = relayInfo.TokenUnlimited
+		t.RequestId = relayInfo.RequestId
+		t.ScopeType = relayInfo.ScopeType
+		t.ScopeId = relayInfo.ScopeId
+		t.BillingAccountType = relayInfo.BillingAccountType
+		t.BillingAccountId = relayInfo.BillingAccountId
+		t.OrganizationId = relayInfo.OrganizationId
+		t.ActorUserId = relayInfo.ActorUserId
+		t.CreatorUserId = relayInfo.CreatorUserId
+		t.ResponsibleUserId = relayInfo.ResponsibleUserId
+		t.OrganizationBillingSessionId = relayInfo.OrganizationBillingSessionId
+		t.OrganizationBillingSessionKey = relayInfo.OrganizationBillingSessionKey
+	}
+	NormalizeTaskBillingScope(t)
 	return t
 }
 
@@ -481,13 +500,13 @@ func GetUniqueByOnlyTaskId(taskId string) (*Task, bool, error) {
 	return tasks[0], true, nil
 }
 
-func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
+func GetByTaskId(scope AsyncTaskScope, taskId string) (*Task, bool, error) {
 	if taskId == "" {
 		return nil, false, nil
 	}
 	var task *Task
 	var err error
-	err = DB.Where("user_id = ? and task_id = ?", userId, taskId).
+	err = scope.Apply(DB).Where("task_id = ?", taskId).
 		First(&task).Error
 	exist, err := RecordExist(err)
 	if err != nil {
@@ -496,14 +515,26 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 	return task, exist, err
 }
 
+func GetByTaskIds(scope AsyncTaskScope, taskIds []any) ([]*Task, error) {
+	if len(taskIds) == 0 {
+		return nil, nil
+	}
+	var tasks []*Task
+	err := scope.Apply(DB).Where("task_id in (?)", taskIds).Find(&tasks).Error
+	if err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 // GetByUpstreamTaskId 按上游真实 task ID 查找本地任务。调用方（如视频任务
 // 状态轮询）可能只持有上游返回的 task ID，
 // 该 ID 保存在任务的 private_data（JSON）upstream_task_id 字段中。
-func GetByUpstreamTaskId(userId int, upstreamTaskId string) (*Task, bool, error) {
+func GetByUpstreamTaskId(scope AsyncTaskScope, upstreamTaskId string) (*Task, bool, error) {
 	if upstreamTaskId == "" {
 		return nil, false, nil
 	}
-	query := DB.Where("user_id = ?", userId)
+	query := scope.Apply(DB)
 	switch {
 	case common.UsingMainDatabase(common.DatabaseTypePostgreSQL):
 		query = query.Where("private_data->>'upstream_task_id' = ?", upstreamTaskId)
@@ -521,13 +552,13 @@ func GetByUpstreamTaskId(userId int, upstreamTaskId string) (*Task, bool, error)
 	return task, exist, err
 }
 
-func GetByTaskIdsForPlatforms(userID int, platforms []constant.TaskPlatform, taskIDs []string) ([]*Task, error) {
+func GetByTaskIdsForPlatforms(scope AsyncTaskScope, platforms []constant.TaskPlatform, taskIDs []string) ([]*Task, error) {
 	if len(platforms) == 0 || len(taskIDs) == 0 {
 		return nil, nil
 	}
 	var tasks []*Task
-	err := DB.
-		Where("user_id = ? AND platform IN ? AND task_id IN ?", userID, platforms, taskIDs).
+	err := scope.Apply(DB).
+		Where("platform IN ? AND task_id IN ?", platforms, taskIDs).
 		Find(&tasks).Error
 	if err != nil {
 		return nil, err
@@ -558,6 +589,7 @@ func (Task *Task) Insert() error {
 }
 
 func (Task *Task) InsertWithContext(ctx context.Context) error {
+	NormalizeTaskBillingScope(Task)
 	return DB.WithContext(ctx).Create(Task).Error
 }
 

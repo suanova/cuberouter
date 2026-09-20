@@ -110,6 +110,8 @@ func TestDocumentPluginRunsGenericBatchArtifactChain(t *testing.T) {
 			}},
 		},
 	}
+	// 与 InitTask 一致：作用域列必须落库，异步任务查询按作用域精确匹配。
+	model.NormalizeTaskBillingScope(&task)
 	require.NoError(t, database.Create(&task).Error)
 
 	originalFactory := service.GetTaskAdaptorFunc
@@ -121,7 +123,7 @@ func TestDocumentPluginRunsGenericBatchArtifactChain(t *testing.T) {
 
 	queryRecorder := httptest.NewRecorder()
 	queryContext, _ := gin.CreateTestContext(queryRecorder)
-	queryContext.Set("id", 7)
+	authenticateE2ETestUser(queryContext, 7)
 	queryContext.Params = gin.Params{{Key: "key", Value: task.TaskID}}
 	queryContext.Request = httptest.NewRequest(http.MethodGet, "/v1/tasks/"+task.TaskID+"/artifacts", nil)
 	controller.GetTaskArtifacts(queryContext)
@@ -139,10 +141,21 @@ func TestDocumentPluginRunsGenericBatchArtifactChain(t *testing.T) {
 	t.Cleanup(func() { *system_setting.GetFetchSetting() = originalFetch })
 	contentRecorder := httptest.NewRecorder()
 	contentContext, _ := gin.CreateTestContext(contentRecorder)
-	contentContext.Set("id", 7)
+	authenticateE2ETestUser(contentContext, 7)
 	contentContext.Params = gin.Params{{Key: "key", Value: task.TaskID}, {Key: "artifact_key", Value: "text"}}
 	contentContext.Request = httptest.NewRequest(http.MethodGet, "/v1/tasks/"+task.TaskID+"/artifacts/text/content", nil)
 	controller.TaskArtifactContent(contentContext)
 	assert.Equal(t, http.StatusOK, contentRecorder.Code)
 	assert.Equal(t, "parsed text", contentRecorder.Body.String())
+}
+
+// authenticateE2ETestUser 补齐 TokenAuth 校验通过后会写入的上下文键：只设 user_id
+// 不够，作用域与计费归属必须成对且相等，service.AsyncTaskScopeFromContext 才认
+// 这个上下文，否则异步任务查询一律落空。
+func authenticateE2ETestUser(c *gin.Context, userID int) {
+	c.Set("id", userID)
+	common.SetContextKey(c, constant.ContextKeyScopeType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyScopeId, userID)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountId, userID)
 }

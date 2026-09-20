@@ -21,6 +21,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
+	"gorm.io/gorm"
 )
 
 type TokenDetails struct {
@@ -223,7 +224,11 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, modelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		// 组织请求的个人用量在组织结算事务里不落账：调用者的钱包、订阅与
+		// 个人看板都不参与，只有渠道用量仍按请求计一次。
+		if !IsOrganizationBilling(relayInfo) {
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		}
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
@@ -241,7 +246,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	model.RecordConsumeLog(ctx, relayInfo.UserId, RelayConsumeLogParams(relayInfo, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.InputTokens,
 		CompletionTokens: usage.OutputTokens,
@@ -254,7 +259,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
-	})
+	}))
 }
 
 func CalcOpenRouterCacheCreateTokens(usage dto.Usage, priceData types.PriceData) int {
@@ -352,7 +357,11 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, "+
 			"tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, billingModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		// 组织请求的个人用量在组织结算事务里不落账：调用者的钱包、订阅与
+		// 个人看板都不参与，只有渠道用量仍按请求计一次。
+		if !IsOrganizationBilling(relayInfo) {
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, quota)
+		}
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, quota)
 	}
 
@@ -370,7 +379,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
 	attachQuotaSaturation(ctx, relayInfo, other)
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	model.RecordConsumeLog(ctx, relayInfo.UserId, RelayConsumeLogParams(relayInfo, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
@@ -383,10 +392,166 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
-	})
+	}))
 	gopool.Go(func() {
 		perfmetrics.RecordRelaySample(relayInfo, true, int64(usage.CompletionTokens))
 	})
+}
+
+// loadTokenForQuotaTx 在事务里把令牌捞出来，顺便把作用域对清楚。
+//
+// 组织令牌的 id 与个人令牌同处一张表，只按 id 查会让一个组织令牌的 id
+// 撞上另一个作用域下行——所以组织作用域必须带上 organization_id 一起匹配。
+// 找不到令牌时返回 (nil, nil)：调用方把它当成「无需扣令牌额度」，而不是错误。
+func loadTokenForQuotaTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo) (*model.Token, error) {
+	if tx == nil {
+		tx = model.DB
+	}
+	if relayInfo == nil {
+		return nil, nil
+	}
+	if relayInfo.TokenId == 0 && relayInfo.TokenKey == "" {
+		return nil, nil
+	}
+	var token model.Token
+	query := tx
+	if relayInfo.ScopeType == model.TokenScopeOrganization {
+		if relayInfo.OrganizationId <= 0 {
+			return nil, errors.New("organization token quota scope is invalid")
+		}
+		query = query.Where(
+			"scope_type = ? AND organization_id = ?",
+			model.TokenScopeOrganization,
+			relayInfo.OrganizationId,
+		)
+	}
+	if relayInfo.TokenId > 0 {
+		if err := query.Where("id = ?", relayInfo.TokenId).First(&token).Error; err != nil {
+			return nil, err
+		}
+	} else {
+		tokenKey := strings.TrimPrefix(relayInfo.TokenKey, "sk-")
+		if err := query.Where("key = ?", tokenKey).First(&token).Error; err != nil {
+			return nil, err
+		}
+	}
+	model.NormalizeTokenScope(&token)
+	relayInfo.TokenId = token.Id
+	relayInfo.TokenKey = token.Key
+	relayInfo.TokenUnlimited = token.UnlimitedQuota
+	return &token, nil
+}
+
+// DecreaseTokenQuotaTx 在给定事务里扣减令牌额度。
+// 返回值是「实际扣掉的额度」；返回 0 表示额度由无限额令牌承担（只累加用量）。
+func DecreaseTokenQuotaTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo, quota int) (int, error) {
+	return decreaseTokenQuotaTx(tx, relayInfo, quota, nil)
+}
+
+// decreaseTokenQuotaWithSnapshotTx 用调用方固化的 unlimitedQuota 快照扣减，
+// 而不是重新读一遍令牌当前值：组织账本在预扣与结算之间要保证口径一致。
+func decreaseTokenQuotaWithSnapshotTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo, quota int, unlimitedQuota bool) (int, error) {
+	return decreaseTokenQuotaTx(tx, relayInfo, quota, &unlimitedQuota)
+}
+
+func decreaseTokenQuotaTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo, quota int, unlimitedQuota *bool) (int, error) {
+	if quota < 0 {
+		return 0, errors.New("quota 不能为负数！")
+	}
+	if tx == nil {
+		tx = model.DB
+	}
+	if relayInfo == nil || relayInfo.IsPlayground || quota == 0 {
+		return 0, nil
+	}
+	token, err := loadTokenForQuotaTx(tx, relayInfo)
+	if err != nil {
+		return 0, err
+	}
+	if token == nil {
+		return 0, nil
+	}
+	isUnlimited := token.UnlimitedQuota
+	if unlimitedQuota != nil {
+		isUnlimited = *unlimitedQuota
+	}
+	if isUnlimited {
+		result := tx.Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]interface{}{
+			"used_quota":    gorm.Expr("used_quota + ?", quota),
+			"accessed_time": common.GetTimestamp(),
+		})
+		return 0, result.Error
+	}
+	if token.RemainQuota < quota {
+		return 0, fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
+	}
+	// WHERE 里再带一次 remain_quota >= ?：并发下这个守卫才是真正的原子闸门，
+	// 前面那次比较只用来给出可读的错误信息。
+	result := tx.Model(&model.Token{}).Where("id = ? AND remain_quota >= ?", token.Id, quota).Updates(
+		map[string]interface{}{
+			"remain_quota":  gorm.Expr("remain_quota - ?", quota),
+			"used_quota":    gorm.Expr("used_quota + ?", quota),
+			"accessed_time": common.GetTimestamp(),
+		},
+	)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return 0, fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
+	}
+	return quota, nil
+}
+
+// IncreaseTokenQuotaTx 在给定事务里退还令牌额度，返回值是实际退回的额度。
+func IncreaseTokenQuotaTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo, quota int) (int, error) {
+	return increaseTokenQuotaTx(tx, relayInfo, quota, nil)
+}
+
+func increaseTokenQuotaWithSnapshotTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo, quota int, unlimitedQuota bool) (int, error) {
+	return increaseTokenQuotaTx(tx, relayInfo, quota, &unlimitedQuota)
+}
+
+func increaseTokenQuotaTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo, quota int, unlimitedQuota *bool) (int, error) {
+	if quota < 0 {
+		return 0, errors.New("quota 不能为负数！")
+	}
+	if tx == nil {
+		tx = model.DB
+	}
+	if relayInfo == nil || relayInfo.IsPlayground || quota == 0 {
+		return 0, nil
+	}
+	token, err := loadTokenForQuotaTx(tx, relayInfo)
+	if err != nil {
+		return 0, err
+	}
+	if token == nil {
+		return 0, nil
+	}
+	isUnlimited := token.UnlimitedQuota
+	if unlimitedQuota != nil {
+		isUnlimited = *unlimitedQuota
+	}
+	if isUnlimited {
+		result := tx.Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]interface{}{
+			"used_quota":    gorm.Expr("CASE WHEN used_quota - ? < 0 THEN 0 ELSE used_quota - ? END", quota, quota),
+			"accessed_time": common.GetTimestamp(),
+		})
+		return 0, result.Error
+	}
+	// 退款同样要在 SQL 里夹住 used_quota 的下界，否则重试/补偿路径能把用量退成负数。
+	result := tx.Model(&model.Token{}).Where("id = ?", token.Id).Updates(
+		map[string]interface{}{
+			"remain_quota":  gorm.Expr("remain_quota + ?", quota),
+			"used_quota":    gorm.Expr("CASE WHEN used_quota - ? < 0 THEN 0 ELSE used_quota - ? END", quota, quota),
+			"accessed_time": common.GetTimestamp(),
+		},
+	)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return quota, nil
 }
 
 func PreConsumeTokenQuota(relayInfo *relaycommon.RelayInfo, quota int) error {
@@ -416,12 +581,55 @@ type postConsumeQuotaResult struct {
 	TokenApplied   bool
 }
 
+// RelayConsumeLogParams 把请求上的作用域与归属信息一次性带进消费日志。
+//
+// 日志是唯一同时展示「谁发起、算在哪个组织、由哪个令牌扣费」的地方，
+// 散在十几个调用点手填容易漏；统一在这里从 RelayInfo 抄一遍，
+// 个人请求抄到的就是 personal/自己，不需要额外的分支。
+func RelayConsumeLogParams(relayInfo *relaycommon.RelayInfo, params model.RecordConsumeLogParams) model.RecordConsumeLogParams {
+	if relayInfo == nil {
+		return params
+	}
+	params.ScopeType = relayInfo.ScopeType
+	params.ScopeId = relayInfo.ScopeId
+	params.BillingAccountType = relayInfo.BillingAccountType
+	params.BillingAccountId = relayInfo.BillingAccountId
+	params.OrganizationId = relayInfo.OrganizationId
+	params.ActorUserId = relayInfo.ActorUserId
+	params.CreatorUserId = relayInfo.CreatorUserId
+	params.ResponsibleUserId = relayInfo.ResponsibleUserId
+	params.OrganizationBillingSessionId = relayInfo.OrganizationBillingSessionId
+	params.OrganizationBillingSessionKey = relayInfo.OrganizationBillingSessionKey
+	return params
+}
+
 func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) error {
 	_, err := postConsumeQuotaWithResult(relayInfo, quota, preConsumedQuota, sendEmail)
 	return err
 }
 
+// PostConsumeQuotaWithRequestCount 与 PostConsumeQuota 相同，但显式决定是否计入请求数。
+// 按次计费（比如部分音频接口）会传 false，避免组织面板把一次调用算成两次。
+func PostConsumeQuotaWithRequestCount(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool, incrementRequestCount bool) error {
+	_, err := postConsumeQuotaWithResultCount(relayInfo, quota, preConsumedQuota, sendEmail, incrementRequestCount)
+	return err
+}
+
 func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool) (result postConsumeQuotaResult, err error) {
+	return postConsumeQuotaWithResultCount(relayInfo, quota, preConsumedQuota, sendEmail, quota > 0)
+}
+
+func postConsumeQuotaWithResultCount(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int, sendEmail bool, incrementRequestCount bool) (result postConsumeQuotaResult, err error) {
+
+	// 组织计费一次性动组织用量和令牌额度，不走下面那两条个人路径。
+	// FundingApplied / TokenApplied 仍要如实回报：调用方（比如 Midjourney 的
+	// 落库路径）靠它决定是否保留任务的 quota 标记，报错会把它当成扣费失败清掉。
+	if IsOrganizationBilling(relayInfo) {
+		orgErr := consumeOrganizationAndTokenQuotaWithRequestCount(relayInfo, quota, incrementRequestCount)
+		result.FundingApplied = orgErr == nil
+		result.TokenApplied = orgErr == nil && !relayInfo.IsPlayground && relayInfo.TokenId > 0 && !relayInfo.TokenUnlimited
+		return result, orgErr
+	}
 
 	// 1) Consume from wallet quota OR subscription item
 	if relayInfo != nil && relayInfo.BillingSource == BillingSourceSubscription {

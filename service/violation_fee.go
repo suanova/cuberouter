@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,9 @@ const (
 	ViolationFeeCodePrefix     = "violation_fee."
 	CSAMViolationMarker        = "Failed check: SAFETY_CHECK_TYPE"
 	ContentViolatesUsageMarker = "Content violates usage guidelines"
+	// organizationBillingOperationViolationFee 是罚金在组织账本里的操作后缀。
+	// 罚金复用原请求的 request_id，只靠这个后缀和正常扣费区分幂等键。
+	organizationBillingOperationViolationFee = "violation_fee"
 )
 
 func IsViolationFeeCode(code types.ErrorCode) bool {
@@ -122,16 +126,53 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		return false
 	}
 
-	if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
+	chargedRelayInfo := relayInfo
+	billingEventKey := ""
+	requestIdOverride := ""
+	channelId := 0
+	if relayInfo.ChannelMeta != nil {
+		channelId = relayInfo.ChannelId
+	}
+	tokenName := ctx.GetString("token_name")
+	// 组织请求的罚金走一条独立的账本会话：它复用原请求的 request_id，
+	// 只靠 operation 后缀区分幂等键；ChannelMeta 也要清掉，否则会去动
+	// 原请求的渠道用量。
+	if IsOrganizationBilling(relayInfo) {
+		feeRelayInfo := *relayInfo
+		feeRelayInfo.OrganizationBillingOperation = organizationBillingOperationViolationFee
+		feeRelayInfo.OrganizationBillingSessionId = 0
+		feeRelayInfo.OrganizationBillingSessionKey = ""
+		feeRelayInfo.Billing = nil
+		funding := &OrganizationFunding{relayInfo: &feeRelayInfo}
+		if err := funding.PreConsumeWithToken(feeQuota); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
+			return false
+		}
+		if err := funding.SettleWithTokenActual(feeQuota); err != nil {
+			logger.LogError(ctx, fmt.Sprintf("failed to settle violation fee: %s", err.Error()))
+			return false
+		}
+		chargedRelayInfo = organizationBillingRelayInfoFromSession(funding.session)
+		chargedRelayInfo.ActorUserId = feeRelayInfo.ActorUserId
+		chargedRelayInfo.ChannelMeta = &relaycommon.ChannelMeta{ChannelId: funding.session.ChannelId}
+		billingEventKey = "violation_fee:" + strconv.Itoa(funding.session.Id)
+		requestIdOverride = funding.session.RequestId
+		channelId = funding.session.ChannelId
+		tokenName = funding.session.TokenName
+	} else if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
 		return false
 	}
 
-	model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, feeQuota)
-	model.UpdateChannelUsedQuota(relayInfo.ChannelId, feeQuota)
+	// 组织罚金在结算事务里已经动过组织用量和渠道用量，这里只补个人那两笔。
+	if !IsOrganizationBilling(relayInfo) {
+		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, feeQuota)
+	}
+	if channelId > 0 && !IsOrganizationBilling(relayInfo) {
+		model.UpdateChannelUsedQuota(channelId, feeQuota)
+	}
 
 	useTimeSeconds := time.Now().Unix() - relayInfo.StartTime.Unix()
-	tokenName := ctx.GetString("token_name")
 	oai := apiErr.ToOpenAIError()
 
 	other := map[string]any{
@@ -146,18 +187,20 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		"violation_fee_marker": CSAMViolationMarker,
 	}
 
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
-		ChannelId:      relayInfo.ChannelId,
-		ModelName:      relayInfo.OriginModelName,
-		TokenName:      tokenName,
-		Quota:          feeQuota,
-		Content:        "Violation fee charged",
-		TokenId:        relayInfo.TokenId,
-		UseTimeSeconds: int(useTimeSeconds),
-		IsStream:       relayInfo.IsStream,
-		Group:          relayInfo.UsingGroup,
-		Other:          other,
-	})
+	model.RecordConsumeLog(ctx, chargedRelayInfo.UserId, RelayConsumeLogParams(chargedRelayInfo, model.RecordConsumeLogParams{
+		BillingEventKey:   billingEventKey,
+		RequestIdOverride: requestIdOverride,
+		ChannelId:         channelId,
+		ModelName:         chargedRelayInfo.OriginModelName,
+		TokenName:         tokenName,
+		Quota:             feeQuota,
+		Content:           "Violation fee charged",
+		TokenId:           chargedRelayInfo.TokenId,
+		UseTimeSeconds:    int(useTimeSeconds),
+		IsStream:          relayInfo.IsStream,
+		Group:             chargedRelayInfo.UsingGroup,
+		Other:             other,
+	}))
 
 	return true
 }

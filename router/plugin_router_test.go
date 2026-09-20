@@ -728,7 +728,7 @@ func TestProductionPluginNativeQueryTraversesInnerRouter(t *testing.T) {
 	require.NoError(t, database.AutoMigrate(&model.Task{}))
 	model.DB = database
 	t.Cleanup(func() { model.DB = previousDB })
-	require.NoError(t, database.Create(&model.Task{
+	seededTask := &model.Task{
 		TaskID:    "task_native_router",
 		Platform:  constant.TaskPlatform("kling"),
 		UserId:    91,
@@ -739,7 +739,10 @@ func TestProductionPluginNativeQueryTraversesInnerRouter(t *testing.T) {
 			UpstreamTaskID: "private_upstream_id",
 			ResultURL:      "https://secret.example/video.mp4",
 		},
-	}).Error)
+	}
+	// 与 InitTask 一致：作用域列必须落库，异步任务查询按作用域精确匹配。
+	model.NormalizeTaskBillingScope(seededTask)
+	require.NoError(t, database.Create(seededTask).Error)
 
 	kling, found := jsplugin.DefaultRegistry.Get("kling")
 	require.True(t, found)
@@ -755,9 +758,14 @@ func TestProductionPluginNativeQueryTraversesInnerRouter(t *testing.T) {
 			production[0],
 			production[1],
 			func(c *gin.Context) {
+				// TokenAuth 的替身：个人令牌经校验后留下的正是这几个键。
 				common.SetContextKey(c, constant.ContextKeyUserId, 91)
 				common.SetContextKey(c, constant.ContextKeyUserGroup, "default")
 				common.SetContextKey(c, constant.ContextKeyTokenGroup, "default")
+				common.SetContextKey(c, constant.ContextKeyScopeType, model.AccountContextTypePersonal)
+				common.SetContextKey(c, constant.ContextKeyScopeId, 91)
+				common.SetContextKey(c, constant.ContextKeyBillingAccountType, model.AccountContextTypePersonal)
+				common.SetContextKey(c, constant.ContextKeyBillingAccountId, 91)
 				c.Next()
 			},
 			production[3],

@@ -39,8 +39,7 @@ func VideoProxy(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetInt("id")
-	task, exists, err := model.GetByTaskId(userID, taskID)
+	task, exists, err := model.GetByTaskId(service.AsyncTaskScopeFromContext(c), taskID)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
 		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
@@ -48,7 +47,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	if !exists || task == nil {
 		// 兼容只持有上游 task ID 的调用方
-		task, exists, err = model.GetByUpstreamTaskId(userID, taskID)
+		task, exists, err = model.GetByUpstreamTaskId(service.AsyncTaskScopeFromContext(c), taskID)
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
 			videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")

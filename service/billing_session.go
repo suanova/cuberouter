@@ -42,6 +42,21 @@ type BillingSession struct {
 func (s *BillingSession) Settle(actualQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// 组织计费把「资金」和「令牌」放在同一个事务里结算，而且 delta==0 时
+	// 仍然要落账（请求数得记一次），所以不能走下面那条 delta==0 直接返回的捷径。
+	if org, ok := s.funding.(*OrganizationFunding); ok {
+		if s.settled {
+			// 已结算后再来一次：按实际额度做幂等校验，金额一致就当作重放。
+			return org.SettleWithTokenActual(actualQuota)
+		}
+		if err := org.SettleWithToken(actualQuota - s.preConsumedQuota); err != nil {
+			return err
+		}
+		s.tokenConsumed = org.tokenConsumed
+		s.fundingSettled = true
+		s.settled = true
+		return nil
+	}
 	if s.settled {
 		return nil
 	}
@@ -99,10 +114,12 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	tokenId := s.relayInfo.TokenId
 	tokenKey := s.relayInfo.TokenKey
 	isPlayground := s.relayInfo.IsPlayground
+	tokenUnlimited := s.relayInfo.TokenUnlimited
 	tokenConsumed := s.tokenConsumed
 	extraReserved := s.extraReserved
 	subscriptionId := s.relayInfo.SubscriptionId
 	funding := s.funding
+	_, isOrganizationFunding := funding.(*OrganizationFunding)
 
 	gopool.Go(func() {
 		// 1) 退还资金来源
@@ -114,8 +131,10 @@ func (s *BillingSession) Refund(c *gin.Context) {
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
-		// 2) 退还令牌额度
-		if tokenConsumed > 0 && !isPlayground {
+		// 2) 退还令牌额度。
+		// 无限额令牌从未被扣过额度（TryReserveTokenQuota 直接放行），退回去就是凭空
+		// 生额度；组织计费的令牌额度由组织账本在自己的事务里退，这里再退会退两次。
+		if tokenConsumed > 0 && !isPlayground && !tokenUnlimited && !isOrganizationFunding {
 			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
 				common.SysLog("error refunding token quota: " + err.Error())
 			}
@@ -136,6 +155,11 @@ func (s *BillingSession) needsRefundLocked() bool {
 		return false
 	}
 	if s.tokenConsumed > 0 {
+		return true
+	}
+	// 组织会话可能整笔都是组织额度（无限额令牌下 tokenConsumed 恒为 0），
+	// 只要还预扣过就有一笔账挂在组织上等着退。
+	if _, ok := s.funding.(*OrganizationFunding); ok && s.preConsumedQuota > 0 {
 		return true
 	}
 	// 订阅可能在 tokenConsumed=0 时仍预扣了额度
@@ -160,6 +184,19 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 
 	delta := targetQuota - s.preConsumedQuota
 	if delta <= 0 {
+		return nil
+	}
+
+	// 组织计费的资金与令牌在同一个事务里，由账本会话就地加码。
+	// 走下面的 reserveFunding+reserveToken 会把两半拆开，中间失败就留下漂移。
+	if org, ok := s.funding.(*OrganizationFunding); ok {
+		if err := org.ReserveMoreWithToken(delta); err != nil {
+			return organizationBillingAPIError(err)
+		}
+		s.preConsumedQuota += delta
+		s.tokenConsumed = org.tokenConsumed
+		s.extraReserved += delta
+		s.syncRelayInfo()
 		return nil
 	}
 
@@ -197,6 +234,19 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 	}
 
 	// ---- 1) 预扣令牌额度 ----
+	//
+	// 组织请求的组织用量与令牌额度必须一起动，由账本在单个事务里完成，
+	// 因此这里直接短路：不再走「先扣令牌、失败再回滚」的两步路径。
+	if organizationFunding, ok := s.funding.(*OrganizationFunding); ok {
+		if err := organizationFunding.PreConsumeWithToken(effectiveQuota); err != nil {
+			return organizationBillingAPIError(err)
+		}
+		s.tokenConsumed = organizationFunding.tokenConsumed
+		s.preConsumedQuota = effectiveQuota
+		s.syncRelayInfo()
+		return nil
+	}
+
 	if effectiveQuota > 0 {
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
@@ -347,6 +397,32 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 	}
+	if org, ok := s.funding.(*OrganizationFunding); ok {
+		syncOrganizationBillingSessionToRelayInfo(info, org.session)
+	}
+}
+
+// organizationBillingAPIError 把组织账本抛出的内部错误映射成对外的 API 错误。
+//
+// 账本里的错误是哨兵错误加可读文案的混合体：哨兵用来区分同键不同额的幂等冲突，
+// 文案用来区分额度不足/令牌不足/组织被停用这三种业务拒绝。
+// 三种拒绝都必须带上 NoRecordErrorLog——它们是被判定过的业务结果，
+// 不是系统故障，不该被记进错误日志污染告警。
+func organizationBillingAPIError(err error) *types.NewAPIError {
+	if errors.Is(err, errOrganizationBillingSessionConflict) {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeOrganizationBillingSessionConflict, http.StatusConflict, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	errMsg := err.Error()
+	if strings.Contains(errMsg, "organization quota is not enough") {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientOrganizationQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	if strings.Contains(errMsg, "token quota is not enough") {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	if strings.Contains(errMsg, "organization is not active") {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeOrganizationDisabled, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
+	return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +433,19 @@ func (s *BillingSession) syncRelayInfo() {
 func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+
+	// 组织请求没有「计费偏好」可谈：钱只能从组织账户出，
+	// 调用者的个人钱包与订阅一律不参与，所以直接短路掉下面整段回退逻辑。
+	if IsOrganizationBilling(relayInfo) {
+		session := &BillingSession{
+			relayInfo: relayInfo,
+			funding:   &OrganizationFunding{relayInfo: relayInfo},
+		}
+		if apiErr := session.preConsume(c, preConsumedQuota); apiErr != nil {
+			return nil, apiErr
+		}
+		return session, nil
 	}
 
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)

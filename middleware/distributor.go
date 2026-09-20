@@ -569,8 +569,7 @@ func getTaskOriginModelName(c *gin.Context) string {
 		return ""
 	}
 
-	userId := c.GetInt("id")
-	if task, exist, err := model.GetByTaskId(userId, taskId); err == nil && exist && task != nil {
+	if task, exist, err := model.GetByTaskId(service.AsyncTaskScopeFromContext(c), taskId); err == nil && exist && task != nil {
 		return task.Properties.OriginModelName
 	}
 	return ""

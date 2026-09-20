@@ -40,7 +40,7 @@ type pluginProtocolBridgeDeps struct {
 	tickJitter         time.Duration
 	heartbeatInterval  time.Duration
 	admissionTimeout   time.Duration
-	getByTaskId        func(int, string) (*model.Task, bool, error)
+	getByTaskId        func(model.AsyncTaskScope, string) (*model.Task, bool, error)
 	resolvePlugin      func(constant.TaskPlatform) (*pluginruntime.LoadedPlugin, *pluginruntime.RoutingGeneration, bool)
 }
 
@@ -934,10 +934,9 @@ func retrieveTaskPluginResponse(c *gin.Context, deps pluginProtocolBridgeDeps) {
 		return
 	}
 	taskID := "task_" + strings.TrimPrefix(responseID, "resp_")
-	userID := common.GetContextKeyInt(c, constant.ContextKeyUserId)
 	logger.LogDebug(c, "task_plugin subsystem=protocol event=retrieve_start response_id=%q public_task_id=%q", responseID, taskID)
 
-	task, exists, err := deps.getByTaskId(userID, taskID)
+	task, exists, err := deps.getByTaskId(service.AsyncTaskScopeFromContext(c), taskID)
 	if err != nil {
 		logger.LogError(c, "task protocol retrieve lookup failed")
 		logger.LogDebug(c, "task_plugin subsystem=protocol event=retrieve_failed reason=lookup_error public_task_id=%q", taskID)

@@ -367,6 +367,12 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 			if task.Status == model.TaskStatusFailure && !billingSettled && task.Quota != 0 {
 				RefundTaskQuota(ctx, task, task.FailReason)
 			}
+		} else {
+			// 任务还在跑，把组织账本会话的租约往后推：轮询可能持续几十分钟，
+			// 租约一过修复协程就会把这笔在途预扣当成崩溃残留退掉。
+			if err := TouchTaskBillingSession(task); err != nil {
+				logger.LogWarn(ctx, fmt.Sprintf("fail to touch task billing session %s: %s", task.TaskID, err.Error()))
+			}
 		}
 	}
 	return nil
@@ -612,6 +618,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		billingSettled := settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
 		if task.Status == model.TaskStatusFailure && !billingSettled && task.Quota != 0 {
 			RefundTaskQuota(ctx, task, task.FailReason)
+		}
+	} else {
+		// 任务还在跑，把组织账本会话的租约往后推，避免修复协程误退在途预扣。
+		if err := TouchTaskBillingSession(task); err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("fail to touch task billing session %s: %s", task.TaskID, err.Error()))
 		}
 	}
 

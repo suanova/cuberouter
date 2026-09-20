@@ -444,10 +444,14 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+		// 组织请求不碰个人看板：用量只记到组织账本上，个人额度、订阅与
+		// 历史 token 统计都由组织那条路径自己维护。
+		if !IsOrganizationBilling(relayInfo) {
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, summary.Quota)
+			// 同步累加用户历史 token 消耗统计（LLM 成功路径）
+			model.UpdateUserTokens(relayInfo.UserId, summary.PromptTokens, summary.CompletionTokens, summary.CacheTokens)
+		}
 		model.UpdateChannelUsedQuota(relayInfo.ChannelId, summary.Quota)
-		// 同步累加用户历史 token 消耗统计（LLM 成功路径）
-		model.UpdateUserTokens(relayInfo.UserId, summary.PromptTokens, summary.CompletionTokens, summary.CacheTokens)
 	}
 
 	if err := SettleBilling(ctx, relayInfo, summary.Quota); err != nil {
@@ -525,7 +529,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 
 	attachQuotaSaturation(ctx, relayInfo, other)
 
-	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
+	model.RecordConsumeLog(ctx, relayInfo.UserId, RelayConsumeLogParams(relayInfo, model.RecordConsumeLogParams{
 		ChannelId:        relayInfo.ChannelId,
 		PromptTokens:     summary.PromptTokens,
 		CompletionTokens: summary.CompletionTokens,
@@ -538,7 +542,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
-	})
+	}))
 	gopool.Go(func() {
 		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
 	})

@@ -68,15 +68,29 @@ func insertOriginOwnedTask(t *testing.T, taskID string, userID, channelID int, p
 	data, err := common.Marshal(map[string]any{"id": "upstream-" + taskID})
 	require.NoError(t, err)
 	task.Data = data
+	// 走 Insert 的归一化：任务的作用域列由 InitTask 写入，直接 Create 会留下
+	// scope_id = 0，而查询端是按 scope_id 精确匹配的。
+	model.NormalizeTaskBillingScope(task)
 	require.NoError(t, model.DB.Create(task).Error)
 	return task
+}
+
+// authenticateAsTestUser 在测试上下文里补齐 TokenAuth 校验通过后会写入的键。
+// 只设 user_id 是不够的：作用域与计费归属必须成对且相等，
+// AsyncTaskScopeFromContext 才认这个上下文，否则异步任务查询一律返回空。
+func authenticateAsTestUser(c *gin.Context, userID int) {
+	common.SetContextKey(c, constant.ContextKeyUserId, userID)
+	common.SetContextKey(c, constant.ContextKeyScopeType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyScopeId, userID)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountType, model.AccountContextTypePersonal)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountId, userID)
 }
 
 func originTaskTestContext(userID int) *gin.Context {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/vendor/jobs", nil)
-	common.SetContextKey(c, constant.ContextKeyUserId, userID)
+	authenticateAsTestUser(c, userID)
 	return c
 }
 
@@ -267,7 +281,7 @@ export function parseTaskResult() { return {status: "SUCCESS"}; }
 	reached := false
 	router := gin.New()
 	router.POST("/vendor/jobs", pinTaskPluginRoute(plugin, 0), func(c *gin.Context) {
-		common.SetContextKey(c, constant.ContextKeyUserId, 7)
+		authenticateAsTestUser(c, 7)
 		c.Next()
 	}, PrepareTaskPluginRoute(), func(c *gin.Context) {
 		reached = true
@@ -305,7 +319,7 @@ export function parseTaskResult() { return {status: "SUCCESS"}; }
 	reached := false
 	router := gin.New()
 	router.POST("/vendor/jobs", pinTaskPluginRoute(plugin, 0), func(c *gin.Context) {
-		common.SetContextKey(c, constant.ContextKeyUserId, 7)
+		authenticateAsTestUser(c, 7)
 		c.Next()
 	}, PrepareTaskPluginRoute(), func(c *gin.Context) { reached = true })
 	request := httptest.NewRequest(http.MethodPost, "/vendor/jobs", strings.NewReader(`{"model":"resolved-model"}`))
@@ -334,7 +348,7 @@ func TestPrepareTaskPluginEndpointPinsOriginTaskChannel(t *testing.T) {
 	reached := false
 	router := gin.New()
 	router.POST("/v1/responses", func(c *gin.Context) {
-		common.SetContextKey(c, constant.ContextKeyUserId, 7)
+		authenticateAsTestUser(c, 7)
 		c.Next()
 	}, PinTaskPluginEndpoint(), PrepareTaskPluginEndpoint(), func(c *gin.Context) {
 		reached = true
@@ -367,7 +381,7 @@ func TestPrepareTaskPluginEndpointRejectsUnknownOriginTask(t *testing.T) {
 	reached := false
 	router := gin.New()
 	router.POST("/v1/responses", func(c *gin.Context) {
-		common.SetContextKey(c, constant.ContextKeyUserId, 7)
+		authenticateAsTestUser(c, 7)
 		c.Next()
 	}, PinTaskPluginEndpoint(), PrepareTaskPluginEndpoint(), func(c *gin.Context) { reached = true })
 	request := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"claimed-model","input":"hello"}`))

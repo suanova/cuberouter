@@ -219,7 +219,19 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		}
 	}
 
-	if userQuota-priceData.Quota < 0 {
+	// 组织计费不看调用者的个人钱包：钱从组织账户出，个人余额允许为零。
+	preConsumedOrganization := false
+	if service.IsOrganizationBilling(info) {
+		if apiErr := service.PreConsumeBilling(c, priceData.Quota, info); apiErr != nil {
+			return &dto.MidjourneyResponse{
+				Code:        4,
+				Description: apiErr.Error(),
+			}
+		}
+		preConsumedOrganization = true
+		stopOrganizationBillingHeartbeat := service.StartOrganizationBillingSessionHeartbeat(info)
+		defer stopOrganizationBillingHeartbeat()
+	} else if userQuota-priceData.Quota < 0 {
 		return &dto.MidjourneyResponse{
 			Code:        4,
 			Description: "quota_not_enough",
@@ -230,6 +242,9 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
 	mjResp, _, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
+		if preConsumedOrganization && info.Billing != nil {
+			info.Billing.Refund(c)
+		}
 		return &mjResp.Response
 	}
 	midjResponse := &mjResp.Response
@@ -251,6 +266,9 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		FailReason:  "",
 		ChannelId:   c.GetInt("channel_id"),
 	}
+	// 作用域必须在 PrepareMidjourneyTaskBilling 之前写入：Prepare 会按是否真正
+	// 扣到令牌额度来决定 task.TokenId 的存废，覆盖顺序反了会把组织令牌记成 0。
+	model.ApplyMidjourneyBillingScope(midjourneyTask, info)
 	billingPrepared, billingErr := service.PrepareMidjourneyTaskBilling(
 		info,
 		midjourneyTask,
@@ -262,18 +280,25 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	}
 	err = midjourneyTask.Insert()
 	if err != nil {
+		if preConsumedOrganization && info.Billing != nil {
+			info.Billing.Refund(c)
+		}
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "insert_midjourney_task_failed")
 	}
 	billingApplied, billingErr := service.SettleMidjourneyTaskBilling(info, midjourneyTask, billingPrepared)
 	if billingErr != nil {
 		common.SysLog("error settling Midjourney quota: " + billingErr.Error())
 	}
+	if !billingPrepared && preConsumedOrganization && info.Billing != nil {
+		// 上游没成功，这笔预扣不会被结算；立刻退回，不等修复协程的租约到期。
+		info.Billing.Refund(c)
+	}
 	if billingApplied {
 		billingChannelId := midjourneyTask.GetBillingChannelId()
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, constant.MjActionSwapFace)
 		other := service.GenerateMjOtherInfo(info, priceData)
-		model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
+		model.RecordConsumeLog(c, info.UserId, service.RelayConsumeLogParams(info, model.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -282,8 +307,11 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			TokenId:   midjourneyTask.TokenId,
 			Group:     info.UsingGroup,
 			Other:     other,
-		})
-		model.UpdateUserUsedQuotaAndRequestCount(info.UserId, midjourneyTask.Quota)
+		}))
+		// 组织计费的用量记在组织账本上，个人看板保持零增长。
+		if !service.IsOrganizationBilling(info) {
+			model.UpdateUserUsedQuotaAndRequestCount(info.UserId, midjourneyTask.Quota)
+		}
 		model.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
 	c.Writer.WriteHeader(mjResp.StatusCode)
@@ -297,11 +325,9 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	}
 	return nil
 }
-
 func RelayMidjourneyTaskImageSeed(c *gin.Context) *dto.MidjourneyResponse {
 	taskId := c.Param("id")
-	userId := c.GetInt("id")
-	originTask := model.GetByMJId(userId, taskId)
+	originTask := model.GetByMJId(service.AsyncTaskScopeFromContext(c), taskId)
 	if originTask == nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_no_found")
 	}
@@ -332,13 +358,12 @@ func RelayMidjourneyTaskImageSeed(c *gin.Context) *dto.MidjourneyResponse {
 }
 
 func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse {
-	userId := c.GetInt("id")
 	var err error
 	var respBody []byte
 	switch relayMode {
 	case relayconstant.RelayModeMidjourneyTaskFetch:
 		taskId := c.Param("id")
-		originTask := model.GetByMJId(userId, taskId)
+		originTask := model.GetByMJId(service.AsyncTaskScopeFromContext(c), taskId)
 		if originTask == nil {
 			return &dto.MidjourneyResponse{
 				Code:        4,
@@ -366,7 +391,7 @@ func RelayMidjourneyTask(c *gin.Context, relayMode int) *dto.MidjourneyResponse 
 		}
 		var tasks []dto.MidjourneyDto
 		if len(condition.IDs) != 0 {
-			originTasks := model.GetByMJIds(userId, condition.IDs)
+			originTasks := model.GetByMJIds(service.AsyncTaskScopeFromContext(c), condition.IDs)
 			for _, originTask := range originTasks {
 				midjourneyTask := coverMidjourneyTaskDto(c, originTask)
 				tasks = append(tasks, midjourneyTask)
@@ -470,7 +495,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			mjId = midjRequest.TaskId
 		}
 
-		originTask := model.GetByMJId(relayInfo.UserId, mjId)
+		originTask := model.GetByMJId(asyncTaskScopeFromRelayInfo(relayInfo), mjId)
 		if originTask == nil {
 			return service.MidjourneyErrorWrapper(constant.MjRequestError, "task_not_found")
 		} else { //原任务的Status=SUCCESS，则可以做放大UPSCALE、变换VARIATION等动作，此时必须使用原来的请求地址才能正确处理
@@ -524,23 +549,40 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
-	userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
-	if err != nil {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: err.Error(),
+	// 组织计费不走个人余额，改为在提交前预扣组织账本；
+	// inpaint / custom zoom 这类不计费的操作两边都不预扣。
+	preConsumedOrganization := false
+	if service.IsOrganizationBilling(relayInfo) && consumeQuota {
+		if apiErr := service.PreConsumeBilling(c, priceData.Quota, relayInfo); apiErr != nil {
+			return &dto.MidjourneyResponse{
+				Code:        4,
+				Description: apiErr.Error(),
+			}
 		}
-	}
-
-	if consumeQuota && userQuota-priceData.Quota < 0 {
-		return &dto.MidjourneyResponse{
-			Code:        4,
-			Description: "quota_not_enough",
+		preConsumedOrganization = true
+		stopOrganizationBillingHeartbeat := service.StartOrganizationBillingSessionHeartbeat(relayInfo)
+		defer stopOrganizationBillingHeartbeat()
+	} else {
+		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
+		if err != nil {
+			return &dto.MidjourneyResponse{
+				Code:        4,
+				Description: err.Error(),
+			}
+		}
+		if consumeQuota && userQuota-priceData.Quota < 0 {
+			return &dto.MidjourneyResponse{
+				Code:        4,
+				Description: "quota_not_enough",
+			}
 		}
 	}
 
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
+		if preConsumedOrganization && relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(c)
+		}
 		return &midjResponseWithStatus.Response
 	}
 	midjResponse := &midjResponseWithStatus.Response
@@ -570,6 +612,8 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		FailReason:  "",
 		ChannelId:   c.GetInt("channel_id"),
 	}
+	// 作用域必须在 PrepareMidjourneyTaskBilling 之前写入，理由同 RelaySwapFace。
+	model.ApplyMidjourneyBillingScope(midjourneyTask, relayInfo)
 	if midjResponse.Code == 3 {
 		//无实例账号自动禁用渠道（No available account instance）
 		channel, err := model.GetChannelById(midjourneyTask.ChannelId, true)
@@ -624,6 +668,9 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	}
 	err = midjourneyTask.Insert()
 	if err != nil {
+		if preConsumedOrganization && relayInfo.Billing != nil {
+			relayInfo.Billing.Refund(c)
+		}
 		return &dto.MidjourneyResponse{
 			Code:        4,
 			Description: "insert_midjourney_task_failed",
@@ -633,12 +680,16 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	if billingErr != nil {
 		common.SysLog("error settling Midjourney quota: " + billingErr.Error())
 	}
+	if !billingPrepared && preConsumedOrganization && relayInfo.Billing != nil {
+		// 上游没成功，这笔预扣不会被结算；立刻退回，不等修复协程的租约到期。
+		relayInfo.Billing.Refund(c)
+	}
 	if billingApplied {
 		billingChannelId := midjourneyTask.GetBillingChannelId()
 		tokenName := c.GetString("token_name")
 		logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
 		other := service.GenerateMjOtherInfo(relayInfo, priceData)
-		model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
+		model.RecordConsumeLog(c, relayInfo.UserId, service.RelayConsumeLogParams(relayInfo, model.RecordConsumeLogParams{
 			ChannelId: billingChannelId,
 			ModelName: modelName,
 			TokenName: tokenName,
@@ -647,8 +698,11 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 			TokenId:   midjourneyTask.TokenId,
 			Group:     relayInfo.UsingGroup,
 			Other:     other,
-		})
-		model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, midjourneyTask.Quota)
+		}))
+		// 组织计费的用量记在组织账本上，个人看板保持零增长。
+		if !service.IsOrganizationBilling(relayInfo) {
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, midjourneyTask.Quota)
+		}
 		model.UpdateChannelUsedQuota(billingChannelId, midjourneyTask.Quota)
 	}
 
