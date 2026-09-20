@@ -23,3 +23,12 @@ func lockForUpdate(tx *gorm.DB) *gorm.DB {
 	}
 	return tx.Clauses(clause.Locking{Strength: "UPDATE"})
 }
+
+// LockForUpdate 是 lockForUpdate 的导出形式，供 model 包外的代码使用
+// （组织服务的事务都在 service 包里）。
+//
+// 直接写 clause.Locking{Strength: "UPDATE"} 会在 SQLite 上生成 FOR UPDATE，
+// 那是语法错误；这里复用同一份判断，避免调用方漏掉 SQLite 分支。
+func LockForUpdate(tx *gorm.DB) *gorm.DB {
+	return lockForUpdate(tx)
+}

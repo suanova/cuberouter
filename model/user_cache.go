@@ -267,6 +267,12 @@ func updateUserCacheField(userId int, field string, value interface{}) error {
 	return updateUserCacheFieldAtVersion(userId, field, value, user.AuthVersion)
 }
 
+// UpdateUserStatusCache 刷新用户状态缓存。
+// 平台侧封禁/解封用户后，组织令牌的责任人校验读的是这份缓存，不刷新会滞后一个 TTL。
+func UpdateUserStatusCache(userId int, status int) error {
+	return updateUserCacheField(userId, "Status", status)
+}
+
 // GetUserLanguage returns the user's language preference from cache
 // Uses the existing GetUserCache mechanism for efficiency
 func GetUserLanguage(userId int) string {

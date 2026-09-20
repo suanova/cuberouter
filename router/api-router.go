@@ -272,6 +272,13 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		apiRouter.GET("/task_plugin_options", middleware.AdminAuth(), middleware.RequirePermission(authz.TaskPluginBind), controller.GetTaskPluginOptions)
 		registerChannelRoutes(apiRouter)
 		registerAuthzRoutes(apiRouter)
+		accountContextRoute := apiRouter.Group("/account-contexts")
+		accountContextRoute.Use(middleware.UserAuth())
+		{
+			accountContextRoute.GET("", controller.ListAccountContexts)
+			accountContextRoute.PUT("/current", controller.SetCurrentAccountContext)
+		}
+		setOrganizationApiRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{

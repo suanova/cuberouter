@@ -11,9 +11,12 @@ import (
 )
 
 type Token struct {
-	Id                 int     `json:"id"`
-	UserId             int     `json:"user_id" gorm:"index"`
-	Key                string  `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	Id     int    `json:"id"`
+	UserId int    `json:"user_id" gorm:"index"`
+	Key    string `json:"key" gorm:"type:varchar(128);uniqueIndex"`
+	// KeyPreview 是脱敏后的 key，只用于展示，不落库。
+	// 组织 Key 的完整 secret 会按操作者权限返回，前端列表需要同时拿到可展示的掩码。
+	KeyPreview         string  `json:"key_preview,omitempty" gorm:"-"`
 	Status             int     `json:"status" gorm:"default:1"`
 	Name               string  `json:"name" gorm:"index" `
 	CreatedTime        int64   `json:"created_time" gorm:"bigint"`
@@ -133,6 +136,20 @@ func (token *Token) Clean() {
 	token.Key = ""
 }
 
+// MaskTokenKeyPreview 生成形如 sk-abcd**********wxyz 的展示用掩码。
+// 与 MaskTokenKey 不同，它保留 sk- 前缀和首尾各 4 位，便于用户核对是哪把 key。
+func MaskTokenKeyPreview(key string) string {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ""
+	}
+	rawKey := strings.TrimPrefix(key, "sk-")
+	if len(rawKey) <= 8 {
+		return "sk-" + rawKey
+	}
+	return fmt.Sprintf("sk-%s**********%s", rawKey[:4], rawKey[len(rawKey)-4:])
+}
+
 func MaskTokenKey(key string) string {
 	if key == "" {
 		return ""
@@ -176,10 +193,14 @@ func (token *Token) GetIpLimits() []string {
 	return ipLimits
 }
 
+// GetAllUserTokens 返回用户在「个人」作用域下的令牌。
+// 组织令牌虽然也挂在某个用户名下（责任人），但归属和计费都在组织侧，
+// 由组织令牌接口单独列出；混进个人列表会让用户在下线组织后仍然看到别人的 key。
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
 	var err error
-	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	err = personalTokenScopeQuery(DB.Where("user_id = ?", userId)).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
+	normalizeTokenScopes(tokens)
 	return tokens, err
 }
 
@@ -225,6 +246,12 @@ func validateLikePattern(input string) error {
 	}
 
 	return nil
+}
+
+// SanitizeLikePattern 是 sanitizeLikePattern 的导出形式，供 model 包外的调用方
+// （组织关键字搜索）复用同一套校验，避免各处自己拼 LIKE 模式而绕过转义。
+func SanitizeLikePattern(input string) (string, error) {
+	return sanitizeLikePattern(input)
 }
 
 const searchHardLimit = 100
@@ -387,7 +414,7 @@ func (token *Token) Update() (err error) {
 	}
 	return DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
 		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry", "auto_groups",
-		"scope_type", "scope_id", "visibility", "organization_id", "creator_user_id",
+		"user_id", "scope_type", "scope_id", "visibility", "organization_id", "creator_user_id",
 		"responsible_user_id", "transfer_reason", "disabled_by_systems", "system_disabled_reason",
 		"system_disabled_ref_id", "system_disabled_at", "previous_status", "updated_at").Updates(token).Error
 }

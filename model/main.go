@@ -64,6 +64,13 @@ func initCol() {
 	}
 }
 
+// LogGroupColumn 返回 logs 表里分组列的引用形式。
+// "group" 是保留字，各数据库的引用符不同，且日志库类型可能与主库不同，
+// 所以调用方不能自己拼列名。
+func LogGroupColumn() string {
+	return logGroupCol
+}
+
 var DB *gorm.DB
 
 var LOG_DB *gorm.DB

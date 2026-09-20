@@ -49,6 +49,14 @@ func invalidateTokenCacheForMutation(key string) error {
 
 // tokenCacheScopeVersion 是缓存哈希里组织作用域字段的模式版本。版本之前的哈希没有这些字段，
 // 读出来是零值（组织令牌会被当成个人令牌，进而错误地扣个人钱包），因此必须拒绝。
+// InvalidateTokenCache 让令牌缓存立即失效，下一次读取回落到数据库。
+//
+// 组织封禁状态变化后必须调用：缓存里存的是封禁前的快照，不失效就会继续放行。
+// 这里复用写路径的 fence 机制而不是直接删 key——删完仍可能有读者把旧快照写回去。
+func InvalidateTokenCache(key string) error {
+	return invalidateTokenCacheForMutation(key)
+}
+
 const tokenCacheScopeVersion = 1
 
 // cacheInitToken publishes a database snapshot only when no mutation fence is
