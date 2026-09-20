@@ -12,15 +12,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTokenAutoGroupsContext() *gin.Context {
-	gin.SetMode(gin.TestMode)
+// newTokenAutoGroupsContext 建一个带用户记录的上下文。
+// SetupContextForToken 现在会先解析令牌作用域（个人令牌要读用户缓存/用户表），
+// 所以这里不能再只给一个空 gin.Context，否则会在 Redis/DB 为 nil 时 panic。
+func newTokenAutoGroupsContext(t *testing.T) (*gin.Context, int) {
+	t.Helper()
+	setupOrganizationMiddlewareTestDB(t, &model.User{})
+	user := model.User{Username: "auto-groups-context", Password: "password", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AffCode: "auto-groups-context"}
+	require.NoError(t, model.DB.Create(&user).Error)
+
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	return ctx
+	return ctx, user.Id
 }
 
 func TestSetupContextForTokenPreservesCustomAutoGroupsOrder(t *testing.T) {
-	ctx := newTokenAutoGroupsContext()
-	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `["vip","default"]`}
+	ctx, userId := newTokenAutoGroupsContext(t)
+	token := &model.Token{Id: 1, UserId: userId, AutoGroups: `["vip","default"]`}
 
 	require.NoError(t, SetupContextForToken(ctx, token))
 	value, ok := common.GetContextKey(ctx, constant.ContextKeyTokenAutoGroups)
@@ -29,8 +36,8 @@ func TestSetupContextForTokenPreservesCustomAutoGroupsOrder(t *testing.T) {
 }
 
 func TestSetupContextForTokenTreatsStoredEmptyArrayAsInheritance(t *testing.T) {
-	ctx := newTokenAutoGroupsContext()
-	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `[]`}
+	ctx, userId := newTokenAutoGroupsContext(t)
+	token := &model.Token{Id: 1, UserId: userId, AutoGroups: `[]`}
 
 	require.NoError(t, SetupContextForToken(ctx, token))
 	_, ok := common.GetContextKey(ctx, constant.ContextKeyTokenAutoGroups)
@@ -38,8 +45,8 @@ func TestSetupContextForTokenTreatsStoredEmptyArrayAsInheritance(t *testing.T) {
 }
 
 func TestSetupContextForTokenMalformedAutoGroupsFailsClosed(t *testing.T) {
-	ctx := newTokenAutoGroupsContext()
-	token := &model.Token{Id: 1, UserId: 2, AutoGroups: `not-json`}
+	ctx, userId := newTokenAutoGroupsContext(t)
+	token := &model.Token{Id: 1, UserId: userId, AutoGroups: `not-json`}
 
 	require.NoError(t, SetupContextForToken(ctx, token))
 	value, ok := common.GetContextKey(ctx, constant.ContextKeyTokenAutoGroups)

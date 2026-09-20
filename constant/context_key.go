@@ -22,6 +22,24 @@ const (
 	ContextKeyTokenCrossGroupRetry   ContextKey = "token_cross_group_retry"
 	ContextKeyTokenAutoGroups        ContextKey = "token_auto_groups"
 
+	/* account scope related keys */
+	ContextKeyAccountContextType            ContextKey = "account_context_type"
+	ContextKeyAccountContextId              ContextKey = "account_context_id"
+	ContextKeyScopeType                     ContextKey = "scope_type"
+	ContextKeyScopeId                       ContextKey = "scope_id"
+	ContextKeyBillingAccountType            ContextKey = "billing_account_type"
+	ContextKeyBillingAccountId              ContextKey = "billing_account_id"
+	ContextKeyOrganizationId                ContextKey = "organization_id"
+	ContextKeyOrganizationRole              ContextKey = "organization_role"
+	ContextKeyOrganizationCapabilities      ContextKey = "organization_capabilities"
+	ContextKeyOrganizationAccessMode        ContextKey = "organization_access_mode"
+	ContextKeyActorUserId                   ContextKey = "actor_user_id"
+	ContextKeyCreatorUserId                 ContextKey = "creator_user_id"
+	ContextKeyResponsibleUserId             ContextKey = "responsible_user_id"
+	ContextKeyOrganizationQuota             ContextKey = "organization_quota"
+	ContextKeyOrganizationBillingSessionId  ContextKey = "organization_billing_session_id"
+	ContextKeyOrganizationBillingSessionKey ContextKey = "organization_billing_session_key"
+
 	/* channel related keys */
 	ContextKeyChannelId                ContextKey = "channel_id"
 	ContextKeyChannelName              ContextKey = "channel_name"

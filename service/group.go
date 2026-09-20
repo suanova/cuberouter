@@ -11,10 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func GetUserUsableGroups(userGroup string) map[string]string {
+// GetAccountUsableGroups 返回某个账户（个人用户或组织）可用的分组集合。
+// accountGroup 是该账户自身所属的分组，特殊可用分组设置以它为键。
+func GetAccountUsableGroups(accountGroup string) map[string]string {
 	groupsCopy := setting.GetUserUsableGroupsCopy()
-	if userGroup != "" {
-		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(userGroup)
+	if accountGroup != "" {
+		specialSettings, b := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.Get(accountGroup)
 		if b {
 			// 处理特殊可用分组
 			for specialGroup, desc := range specialSettings {
@@ -32,12 +34,16 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 				}
 			}
 		}
-		// 如果userGroup不在UserUsableGroups中，返回UserUsableGroups + userGroup
-		if _, ok := groupsCopy[userGroup]; !ok {
-			groupsCopy[userGroup] = "用户分组"
+		// 如果accountGroup不在UserUsableGroups中，返回UserUsableGroups + accountGroup
+		if _, ok := groupsCopy[accountGroup]; !ok {
+			groupsCopy[accountGroup] = "用户分组"
 		}
 	}
 	return groupsCopy
+}
+
+func GetUserUsableGroups(userGroup string) map[string]string {
+	return GetAccountUsableGroups(userGroup)
 }
 
 func GroupInUserUsableGroups(userGroup, groupName string) bool {
@@ -45,19 +51,23 @@ func GroupInUserUsableGroups(userGroup, groupName string) bool {
 	return ok
 }
 
-func IsUserSelectableGroup(userGroup, groupName string) bool {
+func IsAccountSelectableGroup(accountGroup, groupName string) bool {
 	if groupName == "" || groupName == "auto" {
 		return false
 	}
-	return GroupInUserUsableGroups(userGroup, groupName) && ratio_setting.ContainsGroupRatio(groupName)
+	return GroupInUserUsableGroups(accountGroup, groupName) && ratio_setting.ContainsGroupRatio(groupName)
 }
 
-// GetUserAutoGroup 根据用户分组获取自动分组设置
-func GetUserAutoGroup(userGroup string) []string {
+func IsUserSelectableGroup(userGroup, groupName string) bool {
+	return IsAccountSelectableGroup(userGroup, groupName)
+}
+
+// GetAccountAutoGroup 根据账户基础分组获取自动分组设置
+func GetAccountAutoGroup(accountGroup string) []string {
 	autoGroups := make([]string, 0)
 	seen := make(map[string]struct{})
 	for _, group := range setting.GetAutoGroups() {
-		if !IsUserSelectableGroup(userGroup, group) {
+		if !IsAccountSelectableGroup(accountGroup, group) {
 			continue
 		}
 		if _, ok := seen[group]; ok {
@@ -69,14 +79,19 @@ func GetUserAutoGroup(userGroup string) []string {
 	return autoGroups
 }
 
-// FilterUserTokenAutoGroups applies current permissions before the current
+// GetUserAutoGroup 根据用户分组获取自动分组设置
+func GetUserAutoGroup(userGroup string) []string {
+	return GetAccountAutoGroup(userGroup)
+}
+
+// FilterAccountTokenAutoGroups applies current permissions before the current
 // per-token limit. It intentionally does not fall back to the global Auto list.
-func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
+func FilterAccountTokenAutoGroups(accountGroup string, groups []string) []string {
 	maxCount := setting.GetMaxTokenAutoGroups()
 	filtered := make([]string, 0, min(len(groups), maxCount))
 	seen := make(map[string]struct{})
 	for _, group := range groups {
-		if !IsUserSelectableGroup(userGroup, group) {
+		if !IsAccountSelectableGroup(accountGroup, group) {
 			continue
 		}
 		if _, ok := seen[group]; ok {
@@ -89,6 +104,10 @@ func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
 		}
 	}
 	return filtered
+}
+
+func FilterUserTokenAutoGroups(userGroup string, groups []string) []string {
+	return FilterAccountTokenAutoGroups(userGroup, groups)
 }
 
 // GetRequestAutoGroups resolves the ordered Auto groups for the current token.
@@ -121,13 +140,20 @@ func GetGroupsEnabledModels(groups []string) []string {
 	return models
 }
 
-// GetUserGroupRatio 获取用户使用某个分组的倍率
-// userGroup 用户分组
+// GetAccountGroupRatio 获取账户使用某个分组的倍率
+// accountGroup 账户基础分组
 // group 需要获取倍率的分组
-func GetUserGroupRatio(userGroup, group string) float64 {
-	ratio, ok := ratio_setting.GetGroupGroupRatio(userGroup, group)
+func GetAccountGroupRatio(accountGroup, group string) float64 {
+	ratio, ok := ratio_setting.GetGroupGroupRatio(accountGroup, group)
 	if ok {
 		return ratio
 	}
 	return ratio_setting.GetGroupRatio(group)
+}
+
+// GetUserGroupRatio 获取用户使用某个分组的倍率
+// userGroup 用户分组
+// group 需要获取倍率的分组
+func GetUserGroupRatio(userGroup, group string) float64 {
+	return GetAccountGroupRatio(userGroup, group)
 }

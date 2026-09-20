@@ -457,18 +457,31 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 		userEnabled := userCache.Status == common.UserStatusEnabled
-		if !userEnabled {
+		// 组织令牌的调用方是被封禁的个人用户时仍然放行：被封禁的是"人"，
+		// 而账走组织，责任由 ValidateTokenScopeForRelay 里校验的责任成员承担。
+		if !userEnabled && token.ScopeType != model.TokenScopeOrganization {
 			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgAuthUserBanned))
 			return
 		}
 
 		userCache.WriteContext(c)
 
-		userGroup := userCache.Group
+		scopeCtx, err := service.ValidateTokenScopeForRelay(token)
+		if err != nil {
+			abortWithOpenAiMessage(c, http.StatusForbidden, err.Error())
+			return
+		}
+		// accountGroup 决定"这个账户能用哪些分组"，usingGroup 决定"本次请求用哪个分组"。
+		// 二者只在令牌未 pin 分组时相同；把它们拆开是组织分组可以独立于成员个人分组的原因。
+		accountGroup := userCache.Group
+		if scopeCtx.ScopeType == model.AccountContextTypeOrganization {
+			accountGroup = scopeCtx.AccountGroup
+		}
 		tokenGroup := token.Group
+		usingGroup := accountGroup
 		if tokenGroup != "" {
-			// check common.UserUsableGroups[userGroup]
-			if _, ok := service.GetUserUsableGroups(userGroup)[tokenGroup]; !ok {
+			// check accountGroup usable groups
+			if _, ok := service.GetAccountUsableGroups(accountGroup)[tokenGroup]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, fmt.Sprintf("无权访问 %s 分组", tokenGroup))
 				return
 			}
@@ -479,11 +492,12 @@ func TokenAuth() func(c *gin.Context) {
 					return
 				}
 			}
-			userGroup = tokenGroup
+			usingGroup = tokenGroup
 		}
-		common.SetContextKey(c, constant.ContextKeyUsingGroup, userGroup)
+		common.SetContextKey(c, constant.ContextKeyUserGroup, accountGroup)
+		common.SetContextKey(c, constant.ContextKeyUsingGroup, usingGroup)
 
-		err = SetupContextForToken(c, token, parts...)
+		err = SetupContextForTokenWithScopeContext(c, token, scopeCtx, parts...)
 		if err != nil {
 			return
 		}
@@ -491,9 +505,24 @@ func TokenAuth() func(c *gin.Context) {
 	}
 }
 
+// SetupContextForToken 在作用域未知时重新解析令牌作用域，然后写入上下文。
+// 已经有作用域的调用方（TokenAuth）应直接用 SetupContextForTokenWithScopeContext，
+// 避免重复查询组织、成员与封禁记录。
 func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) error {
+	scopeContext, err := service.ValidateTokenScopeForRelay(token)
+	if err != nil {
+		abortWithOpenAiMessage(c, http.StatusForbidden, err.Error(), types.ErrorCodeAccessDenied)
+		return err
+	}
+	return SetupContextForTokenWithScopeContext(c, token, scopeContext, parts...)
+}
+
+func SetupContextForTokenWithScopeContext(c *gin.Context, token *model.Token, scopeContext *service.TokenScopeContext, parts ...string) error {
 	if token == nil {
 		return fmt.Errorf("token is nil")
+	}
+	if scopeContext == nil {
+		return fmt.Errorf("token scope context is nil")
 	}
 	c.Set("id", token.UserId)
 	c.Set("token_id", token.Id)
@@ -509,6 +538,15 @@ func SetupContextForToken(c *gin.Context, token *model.Token, parts ...string) e
 	} else {
 		c.Set("token_model_limit_enabled", false)
 	}
+	common.SetContextKey(c, constant.ContextKeyScopeType, scopeContext.ScopeType)
+	common.SetContextKey(c, constant.ContextKeyScopeId, scopeContext.ScopeId)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountType, scopeContext.BillingAccountType)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountId, scopeContext.BillingAccountId)
+	common.SetContextKey(c, constant.ContextKeyOrganizationId, scopeContext.OrganizationId)
+	common.SetContextKey(c, constant.ContextKeyActorUserId, scopeContext.ActorUserId)
+	common.SetContextKey(c, constant.ContextKeyCreatorUserId, scopeContext.CreatorUserId)
+	common.SetContextKey(c, constant.ContextKeyResponsibleUserId, scopeContext.ResponsibleUserId)
+	common.SetContextKey(c, constant.ContextKeyOrganizationQuota, scopeContext.OrganizationQuota)
 	common.SetContextKey(c, constant.ContextKeyTokenGroup, token.Group)
 	common.SetContextKey(c, constant.ContextKeyTokenCrossGroupRetry, token.CrossGroupRetry)
 	if token.AutoGroups != "" {
