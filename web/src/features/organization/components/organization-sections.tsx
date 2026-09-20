@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 import type { OrganizationDetailTabKey } from '../constants'
 import type { OrganizationDetail } from '../types'
 import { OrganizationAuditSection } from './organization-audit-section'
+import { OrganizationOverviewSection } from './organization-overview-section'
 import { OrganizationSectionEmpty } from './organization-section'
 import { OrganizationSettingsSection } from './organization-settings-section'
 
@@ -50,6 +51,14 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
   const capabilities = actor.capabilities
 
   switch (props.tab) {
+    case 'overview':
+      return (
+        <OrganizationOverviewSection
+          organization={organization}
+          canViewUsage={capabilities.can_view_organization_usage}
+          onForbidden={props.onForbidden}
+        />
+      )
     case 'settings':
       return (
         <OrganizationSettingsSection

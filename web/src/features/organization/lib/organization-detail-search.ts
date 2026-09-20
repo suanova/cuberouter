@@ -60,12 +60,6 @@ export const ORGANIZATION_MEMBER_STATUS_VALUES = [
   'removed',
 ] as const
 
-export const ORGANIZATION_MEMBER_ROLE_VALUES = [
-  'owner',
-  'admin',
-  'member',
-] as const
-
 export const ORGANIZATION_INVITE_STATUS_VALUES = [
   'pending',
   'accepted',
@@ -100,27 +94,28 @@ export const ORGANIZATION_TOKEN_VISIBILITY_VALUES = [
  *
  * Each field is `.optional().catch(...)`: a hand-edited or truncated link must
  * narrow the filter, never blank the page.
+ *
+ * A field is declared here only when the backend it feeds actually accepts it.
+ * The members and invitations endpoints take paging and nothing else
+ * (`OrganizationMemberListRequest` / `OrganizationInviteListRequest` in
+ * service/organization_member.go and service/organization_invite.go are offset
+ * and limit only), so those two sections have no filter keys — offering one
+ * would put a parameter in the URL that changes nothing.
  */
 export const organizationDetailSearchSchema = z.object({
   page: z.number().optional().catch(1),
   pageSize: z.number().optional().catch(undefined),
 
-  // Members
-  memberFilter: z.string().optional().catch(''),
-  memberRole: enumArrayParam(ORGANIZATION_MEMBER_ROLE_VALUES).optional(),
-  memberStatus: enumArrayParam(ORGANIZATION_MEMBER_STATUS_VALUES).optional(),
-
-  // Invitations
-  inviteFilter: z.string().optional().catch(''),
-  inviteStatus: enumArrayParam(ORGANIZATION_INVITE_STATUS_VALUES).optional(),
-
-  // API keys
+  // API keys — keyword, status, visibility, group and responsible user;
+  // see controller/organization_token.go.
   tokenFilter: z.string().optional().catch(''),
   tokenStatus: enumArrayParam(ORGANIZATION_TOKEN_STATUS_VALUES).optional(),
   tokenVisibility: enumArrayParam(ORGANIZATION_TOKEN_VISIBILITY_VALUES).optional(),
+  tokenGroup: freeArrayParam().optional(),
+  tokenResponsible: freeArrayParam().optional(),
 
-  // Logs
-  logFilter: z.string().optional().catch(''),
+  // Logs — every field the log endpoint filters on
+  // (OrganizationLogListRequest in service/organization_log.go).
   logType: freeArrayParam().optional(),
   logModel: z.string().optional().catch(''),
   logToken: z.string().optional().catch(''),
@@ -128,19 +123,20 @@ export const organizationDetailSearchSchema = z.object({
   logRequest: z.string().optional().catch(''),
   logResponsible: z.string().optional().catch(''),
 
-  // Tasks and Midjourney tasks
-  taskFilter: z.string().optional().catch(''),
+  // Tasks and Midjourney tasks (OrganizationTaskListRequest).
+  taskId: z.string().optional().catch(''),
   taskPlatform: freeArrayParam().optional(),
   taskStatus: z.string().optional().catch(''),
   taskAction: z.string().optional().catch(''),
 
-  // Audit trail
-  auditFilter: z.string().optional().catch(''),
+  // Audit trail — exact matches, no keyword search
+  // (service/organization_audit_query.go compares with `=`).
   auditAction: freeArrayParam().optional(),
   auditTargetType: freeArrayParam().optional(),
 
   // Billing / usage
   billingMonth: z.string().optional().catch(''),
+  billingFilter: z.string().optional().catch(''),
 
   // Time window shared by logs, tasks, usage and audit
   startTime: z.number().optional().catch(undefined),
