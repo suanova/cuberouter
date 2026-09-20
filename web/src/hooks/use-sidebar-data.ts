@@ -155,6 +155,14 @@ export function useSidebarData(): SidebarData {
             icon: Users,
           },
           {
+            // Named for what it does rather than for what it lists: the
+            // personal organization center is already called "Organizations",
+            // and the two are different pages answering different questions.
+            title: t('Organization Management'),
+            url: '/admin/organizations',
+            icon: Building2,
+          },
+          {
             title: t('Redemption Codes'),
             url: '/redemption-codes',
             icon: Ticket,

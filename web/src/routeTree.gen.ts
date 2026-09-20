@@ -58,6 +58,7 @@ import { Route as AuthenticatedUsageLogsSectionRouteImport } from './routes/_aut
 import { Route as AuthenticatedUsersIndexRouteImport } from './routes/_authenticated/users/index'
 import { Route as AuthenticatedWalletIndexRouteImport } from './routes/_authenticated/wallet/index'
 import { Route as PricingModelIdIndexRouteImport } from './routes/pricing/$modelId/index'
+import { Route as AuthenticatedAdminOrganizationsIndexRouteImport } from './routes/_authenticated/admin/organizations/index'
 import { Route as AuthenticatedOpsCampaignIndexRouteImport } from './routes/_authenticated/ops/campaign/index'
 import { Route as AuthenticatedOpsInviteHistoryIndexRouteImport } from './routes/_authenticated/ops/invite-history/index'
 import { Route as AuthenticatedOrganizationsOrganizationIdSectionRouteImport } from './routes/_authenticated/organizations/$organizationId/$section'
@@ -340,6 +341,12 @@ const PricingModelIdIndexRoute = PricingModelIdIndexRouteImport.update({
   path: '/pricing/$modelId/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedAdminOrganizationsIndexRoute =
+  AuthenticatedAdminOrganizationsIndexRouteImport.update({
+    id: '/admin/organizations/',
+    path: '/admin/organizations/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedOpsCampaignIndexRoute =
   AuthenticatedOpsCampaignIndexRouteImport.update({
     id: '/ops/campaign/',
@@ -499,6 +506,7 @@ export interface FileRoutesByFullPath {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/admin/organizations/': typeof AuthenticatedAdminOrganizationsIndexRoute
   '/ops/campaign/': typeof AuthenticatedOpsCampaignIndexRoute
   '/ops/invite-history/': typeof AuthenticatedOpsInviteHistoryIndexRoute
   '/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
@@ -564,6 +572,7 @@ export interface FileRoutesByTo {
   '/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/admin/organizations': typeof AuthenticatedAdminOrganizationsIndexRoute
   '/ops/campaign': typeof AuthenticatedOpsCampaignIndexRoute
   '/ops/invite-history': typeof AuthenticatedOpsInviteHistoryIndexRoute
   '/system-settings/auth': typeof AuthenticatedSystemSettingsAuthIndexRoute
@@ -633,6 +642,7 @@ export interface FileRoutesById {
   '/_authenticated/system-settings/operations/$section': typeof AuthenticatedSystemSettingsOperationsSectionRoute
   '/_authenticated/system-settings/security/$section': typeof AuthenticatedSystemSettingsSecuritySectionRoute
   '/_authenticated/system-settings/site/$section': typeof AuthenticatedSystemSettingsSiteSectionRoute
+  '/_authenticated/admin/organizations/': typeof AuthenticatedAdminOrganizationsIndexRoute
   '/_authenticated/ops/campaign/': typeof AuthenticatedOpsCampaignIndexRoute
   '/_authenticated/ops/invite-history/': typeof AuthenticatedOpsInviteHistoryIndexRoute
   '/_authenticated/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
@@ -701,6 +711,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
+    | '/admin/organizations/'
     | '/ops/campaign/'
     | '/ops/invite-history/'
     | '/system-settings/auth/'
@@ -766,6 +777,7 @@ export interface FileRouteTypes {
     | '/system-settings/operations/$section'
     | '/system-settings/security/$section'
     | '/system-settings/site/$section'
+    | '/admin/organizations'
     | '/ops/campaign'
     | '/ops/invite-history'
     | '/system-settings/auth'
@@ -834,6 +846,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system-settings/operations/$section'
     | '/_authenticated/system-settings/security/$section'
     | '/_authenticated/system-settings/site/$section'
+    | '/_authenticated/admin/organizations/'
     | '/_authenticated/ops/campaign/'
     | '/_authenticated/ops/invite-history/'
     | '/_authenticated/system-settings/auth/'
@@ -1209,6 +1222,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PricingModelIdIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/admin/organizations/': {
+      id: '/_authenticated/admin/organizations/'
+      path: '/admin/organizations'
+      fullPath: '/admin/organizations/'
+      preLoaderRoute: typeof AuthenticatedAdminOrganizationsIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/ops/campaign/': {
       id: '/_authenticated/ops/campaign/'
       path: '/ops/campaign'
@@ -1440,6 +1460,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedUsersIndexRoute: typeof AuthenticatedUsersIndexRoute
   AuthenticatedWalletIndexRoute: typeof AuthenticatedWalletIndexRoute
   AuthenticatedOrganizationsOrganizationIdSectionRoute: typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
+  AuthenticatedAdminOrganizationsIndexRoute: typeof AuthenticatedAdminOrganizationsIndexRoute
   AuthenticatedOpsCampaignIndexRoute: typeof AuthenticatedOpsCampaignIndexRoute
   AuthenticatedOpsInviteHistoryIndexRoute: typeof AuthenticatedOpsInviteHistoryIndexRoute
 }
@@ -1473,6 +1494,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedWalletIndexRoute: AuthenticatedWalletIndexRoute,
   AuthenticatedOrganizationsOrganizationIdSectionRoute:
     AuthenticatedOrganizationsOrganizationIdSectionRoute,
+  AuthenticatedAdminOrganizationsIndexRoute:
+    AuthenticatedAdminOrganizationsIndexRoute,
   AuthenticatedOpsCampaignIndexRoute: AuthenticatedOpsCampaignIndexRoute,
   AuthenticatedOpsInviteHistoryIndexRoute:
     AuthenticatedOpsInviteHistoryIndexRoute,

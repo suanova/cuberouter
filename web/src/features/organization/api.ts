@@ -38,9 +38,11 @@ import type {
   OrganizationListResponse,
   OrganizationLogRow,
   OrganizationLogStats,
+  OrganizationManagementView,
   OrganizationMemberBillingSummary,
   OrganizationMemberRow,
   OrganizationMidjourneyTaskRow,
+  OrganizationQuotaAdjustment,
   OrganizationQuotaDataRow,
   OrganizationResponse,
   OrganizationTaskRow,
@@ -163,6 +165,21 @@ export async function getOrganizationGroups(
 }
 
 /**
+ * The platform's group names.
+ *
+ * `GET /api/group/` is the platform's own list — every group that exists,
+ * without the per-organization narrowing the member surface applies and without
+ * the descriptions it carries. It is the group source for anything that is not
+ * asking about one organization.
+ */
+export async function listPlatformGroups(): Promise<
+  OrganizationApiResponse<string[]>
+> {
+  const res = await api.get('/api/group/')
+  return res.data
+}
+
+/**
  * The groups a key in this organization may be assigned to, whichever page is
  * asking.
  *
@@ -180,13 +197,68 @@ export async function getOrganizationGroupSource(
 ): Promise<OrganizationGroupsResponse> {
   if (surface !== 'admin') return getOrganizationGroups(organizationId)
 
-  const res = await api.get('/api/group/')
-  const names: string[] = res.data?.data ?? []
+  const res = await listPlatformGroups()
+  const names = res.data ?? []
   return {
-    success: res.data?.success ?? true,
-    message: res.data?.message,
+    success: res.success,
+    message: res.message,
     data: Object.fromEntries(names.map((name) => [name, { desc: '', ratio: '' }])),
   }
+}
+
+// ============================================================================
+// Platform Administration
+// ============================================================================
+
+/**
+ * Every organization on the platform, filtered and paged by the server.
+ *
+ * This is the one organization read that is neither the caller's own list nor a
+ * single organization, so it has no `surface`: the member surface's list is
+ * `GET /api/organizations` (the caller's memberships), and the platform list is
+ * a different question with a different answer. Paging is the server's — the
+ * platform holds far more organizations than one page, and the backend orders
+ * them by id descending before slicing.
+ *
+ * `status` is the comma-joined selection the backend parses. An empty string is
+ * every status, so a caller with no filter sends nothing.
+ */
+export async function listPlatformOrganizations(params: {
+  p: number
+  page_size: number
+  keyword?: string
+  status?: string
+  group?: string
+}): Promise<OrganizationApiResponse<PagedResult<OrganizationManagementView>>> {
+  const res = await api.get('/api/admin/organizations', { params })
+  return res.data
+}
+
+/**
+ * Grants or reclaims organization quota. The delta is signed: a negative value
+ * takes quota back, and the ledger records both directions.
+ *
+ * The adjustment is a second request behind the edit, not part of it — an
+ * administrator may change the quota without touching anything else — so it
+ * carries its own `Idempotency-Key` and its own audit reason.
+ */
+export async function adjustOrganizationQuota(
+  organizationId: number,
+  data: { quota_delta: number; reason: string }
+): Promise<OrganizationApiResponse<OrganizationQuotaAdjustment>> {
+  return withOrganizationIdempotencyKey(
+    'quota-adjustment',
+    organizationId,
+    data,
+    async (idempotencyKey) => {
+      const res = await api.post(
+        `/api/admin/organizations/${organizationId}/quota-adjustments`,
+        data,
+        { headers: { 'Idempotency-Key': idempotencyKey } }
+      )
+      return res.data
+    }
+  )
 }
 
 // ============================================================================

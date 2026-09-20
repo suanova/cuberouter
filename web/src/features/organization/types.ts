@@ -262,6 +262,64 @@ export interface OrganizationInvitePublicView {
 }
 
 // ============================================================================
+// Platform Administration
+// ============================================================================
+
+/**
+ * One row of `GET /api/admin/organizations`.
+ *
+ * The platform list is not scoped to the caller, so it cannot carry the
+ * per-caller `role` and `capabilities` the organization center's rows do — an
+ * outside administrator holds no role in the organization they are looking at.
+ * What it carries instead is the set of counters an administrator triages on:
+ * how many members and keys the organization has, and how many of each are
+ * switched off.
+ */
+export interface OrganizationManagementView {
+  id: number
+  name: string
+  slug: string
+  description: string
+  group: string
+  status: OrganizationStatus
+  quota: number
+  used_quota: number
+  request_count: number
+  owner_user_id: number
+  created_by: number
+  created_at: number
+  updated_at: number
+  dissolved_at: number
+  owner_username: string
+  owner_display_name: string
+  owner_email: string
+  active_member_count: number
+  disabled_member_count: number
+  total_member_count: number
+  enabled_token_count: number
+  disabled_token_count: number
+  total_token_count: number
+}
+
+/**
+ * One entry of the organization's quota ledger, as `POST
+ * /api/admin/organizations/:id/quota-adjustments` answers it.
+ *
+ * `quota_delta` is signed: the same endpoint grants quota and takes it back.
+ */
+export interface OrganizationQuotaAdjustment {
+  id: number
+  organization_id: number
+  operator_user_id: number
+  quota_delta: number
+  quota_before: number
+  quota_after: number
+  used_quota: number
+  reason: string
+  created_at: number
+}
+
+// ============================================================================
 // Organization API Keys
 // ============================================================================
 
