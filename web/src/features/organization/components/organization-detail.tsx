@@ -167,75 +167,83 @@ export function OrganizationDetail() {
     actor.capabilities.can_dissolve_organization &&
     !readOnly
   return (
-    <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>
-        <span className='flex items-center gap-2'>
-          <span className='truncate'>{organization.name}</span>
-          <StatusBadge
-            label={t(statusMeta.labelKey)}
-            variant={statusMeta.variant}
-          />
-          {roleMeta && (
+    <>
+      {/* A sibling of the layout, not a child of it: SectionPageLayout renders
+          only its four named slots and drops every other child, so a confirm
+          mounted inside it would never mount and the Dissolve button would look
+          dead. */}
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>
+          <span className='flex items-center gap-2'>
+            <span className='truncate'>{organization.name}</span>
             <StatusBadge
-              label={t(roleMeta.labelKey)}
-              variant={roleMeta.variant}
+              label={t(statusMeta.labelKey)}
+              variant={statusMeta.variant}
             />
-          )}
-        </span>
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        {canDissolve && (
-          <Button variant='destructive' onClick={() => setIsDissolving(true)}>
-            {t('Dissolve Organization')}
-          </Button>
-        )}
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <div className='flex h-full min-h-0 flex-col gap-4'>
-          {readOnly && reason && (
-            <Alert variant='destructive' className='shrink-0'>
-              <AlertDescription>{t(READ_ONLY_MESSAGE_KEYS[reason])}</AlertDescription>
-            </Alert>
-          )}
-
-          <Tabs
-            value={currentTab}
-            onValueChange={handleTabChange}
-            className='shrink-0'
-          >
-            <TabsList className='group-data-horizontal/tabs:h-auto max-w-full flex-wrap justify-start'>
-              {tabs.map((tab) => (
-                <TabsTrigger key={tab.key} value={tab.key}>
-                  {t(tab.labelKey)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          <div className='min-h-0 flex-1'>
-            <OrganizationPageProvider
-              surface='member'
-              search={search}
-              navigate={navigate}
-            >
-              <OrganizationSections
-                detail={detail}
-                tab={currentTab}
-                readOnly={readOnly}
-                onForbidden={handleForbidden}
-                onUpdated={refetch}
-                onLeftOrganization={leaveOrganization}
+            {roleMeta && (
+              <StatusBadge
+                label={t(roleMeta.labelKey)}
+                variant={roleMeta.variant}
               />
-            </OrganizationPageProvider>
+            )}
+          </span>
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          {canDissolve && (
+            <Button variant='destructive' onClick={() => setIsDissolving(true)}>
+              {t('Dissolve Organization')}
+            </Button>
+          )}
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='flex h-full min-h-0 flex-col gap-4'>
+            {readOnly && reason && (
+              <Alert variant='destructive' className='shrink-0'>
+                <AlertDescription>
+                  {t(READ_ONLY_MESSAGE_KEYS[reason])}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Tabs
+              value={currentTab}
+              onValueChange={handleTabChange}
+              className='shrink-0'
+            >
+              <TabsList className='group-data-horizontal/tabs:h-auto max-w-full flex-wrap justify-start'>
+                {tabs.map((tab) => (
+                  <TabsTrigger key={tab.key} value={tab.key}>
+                    {t(tab.labelKey)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+
+            <div className='min-h-0 flex-1'>
+              <OrganizationPageProvider
+                surface='member'
+                search={search}
+                navigate={navigate}
+              >
+                <OrganizationSections
+                  detail={detail}
+                  tab={currentTab}
+                  readOnly={readOnly}
+                  onForbidden={handleForbidden}
+                  onUpdated={refetch}
+                  onLeftOrganization={leaveOrganization}
+                />
+              </OrganizationPageProvider>
+            </div>
           </div>
-        </div>
-      </SectionPageLayout.Content>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
 
       <OrganizationDissolveConfirm
         organization={isDissolving ? organization : null}
         onOpenChange={(value) => !value && setIsDissolving(false)}
         onDissolved={leaveOrganization}
       />
-    </SectionPageLayout>
+    </>
   )
 }

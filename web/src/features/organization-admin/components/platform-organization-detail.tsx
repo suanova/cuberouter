@@ -29,8 +29,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { formatTimestamp } from '@/lib/format'
-
 import { OrganizationPageProvider } from '@/features/organization/components/organization-page-provider'
 import { OrganizationSections } from '@/features/organization/components/organization-sections'
 import {
@@ -38,6 +36,7 @@ import {
   READ_ONLY_MESSAGE_KEYS,
 } from '@/features/organization/constants'
 import { useOrganizationDetail } from '@/features/organization/hooks/use-organization-detail'
+import { formatTimestamp } from '@/lib/format'
 
 import {
   getPlatformOrganizationDetailActions,
@@ -138,7 +137,10 @@ export function PlatformOrganizationDetail() {
   }
 
   const { organization, actor } = detail
-  const access = { capabilities: actor.capabilities, status: organization.status }
+  const access = {
+    capabilities: actor.capabilities,
+    status: organization.status,
+  }
   const actions = getPlatformOrganizationDetailActions(access)
   const tabs = getPlatformOrganizationTabs(access)
   // The strip shrinks when a capability goes away, so a tab that is no longer in
@@ -155,109 +157,118 @@ export function PlatformOrganizationDetail() {
   }
 
   return (
-    <SectionPageLayout fixedContent>
-      <SectionPageLayout.Title>
-        <span className='flex items-center gap-2'>
-          <span className='truncate'>{organization.name}</span>
-          <StatusBadge label={t(statusMeta.labelKey)} variant={statusMeta.variant} />
-          <GroupBadge group={organization.group} />
-        </span>
-      </SectionPageLayout.Title>
-      <SectionPageLayout.Actions>
-        {actions.canEdit && (
-          <Button variant='outline' onClick={() => setIsEditing(true)}>
-            {t('Edit')}
-          </Button>
-        )}
-        {actions.canEnable && (
-          <Button variant='outline' onClick={() => setIsChangingStatus(true)}>
-            {t('Enable')}
-          </Button>
-        )}
-        {actions.canDisable && (
-          <Button
-            variant='destructive'
-            onClick={() => setIsChangingStatus(true)}
-          >
-            {t('Disable')}
-          </Button>
-        )}
-        {actions.canDissolve && (
-          <Button
-            variant='destructive'
-            onClick={() => setIsDissolving(true)}
-          >
-            {t('Dissolve Organization')}
-          </Button>
-        )}
-      </SectionPageLayout.Actions>
-      <SectionPageLayout.Content>
-        <div className='flex h-full min-h-0 flex-col gap-4'>
-          {actions.readOnly && (
-            <Alert variant='destructive' className='shrink-0'>
-              <AlertDescription>
-                {t(READ_ONLY_MESSAGE_KEYS.dissolved)}
-              </AlertDescription>
-            </Alert>
+    <>
+      {/* The three dialogs are siblings of the layout, not children of it.
+          SectionPageLayout renders only the four slots it knows by name
+          (Title / Actions / Content / Breadcrumb) and drops every other child,
+          so anything mounted inside it never appears and its trigger looks dead:
+          the state flips and nothing opens. Same reason the organization center
+          renders its own dialogs alongside the layout. */}
+      <SectionPageLayout fixedContent>
+        <SectionPageLayout.Title>
+          <span className='flex items-center gap-2'>
+            <span className='truncate'>{organization.name}</span>
+            <StatusBadge
+              label={t(statusMeta.labelKey)}
+              variant={statusMeta.variant}
+            />
+            <GroupBadge group={organization.group} />
+          </span>
+        </SectionPageLayout.Title>
+        <SectionPageLayout.Actions>
+          {actions.canEdit && (
+            <Button variant='outline' onClick={() => setIsEditing(true)}>
+              {t('Edit')}
+            </Button>
           )}
-
-          <div className='text-muted-foreground flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
-            <span>
-              {t('Slug')}: <span className='font-mono'>{organization.slug}</span>
-            </span>
-            <span>
-              {t('Created At')}: {formatTimestamp(organization.created_at)}
-            </span>
-            <span>
-              {t('Owner')}: #{organization.owner_user_id}
-            </span>
-          </div>
-
-          <Tabs
-            value={currentTab}
-            onValueChange={handleTabChange}
-            className='shrink-0'
-          >
-            <TabsList className='group-data-horizontal/tabs:h-auto max-w-full flex-wrap justify-start'>
-              {tabs.map((tab) => (
-                <TabsTrigger key={tab.key} value={tab.key}>
-                  {t(tab.labelKey)}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-          <div className='min-h-0 flex-1'>
-            <OrganizationPageProvider
-              surface='admin'
-              search={search}
-              navigate={navigate}
+          {actions.canEnable && (
+            <Button variant='outline' onClick={() => setIsChangingStatus(true)}>
+              {t('Enable')}
+            </Button>
+          )}
+          {actions.canDisable && (
+            <Button
+              variant='destructive'
+              onClick={() => setIsChangingStatus(true)}
             >
-              {currentTab === 'owner-repair' ? (
-                <PlatformOrganizationOwnerRepair
-                  organizationId={organization.id}
-                  slug={organization.slug}
-                  ownerUserId={organization.owner_user_id}
-                  onTransferred={refetch}
-                />
-              ) : (
-                <OrganizationSections
-                  detail={detail}
-                  tab={currentTab}
-                  readOnly={actions.readOnly}
-                  onForbidden={handleForbidden}
-                  onUpdated={refetch}
-                  // Leaving is a member's own act and is not offered here: the
-                  // platform surface grants no exit capability, so this only
-                  // runs if the backend ever changes that, and re-reading the
-                  // payload is the right response to it either way.
-                  onLeftOrganization={refetch}
-                />
-              )}
-            </OrganizationPageProvider>
+              {t('Disable')}
+            </Button>
+          )}
+          {actions.canDissolve && (
+            <Button variant='destructive' onClick={() => setIsDissolving(true)}>
+              {t('Dissolve Organization')}
+            </Button>
+          )}
+        </SectionPageLayout.Actions>
+        <SectionPageLayout.Content>
+          <div className='flex h-full min-h-0 flex-col gap-4'>
+            {actions.readOnly && (
+              <Alert variant='destructive' className='shrink-0'>
+                <AlertDescription>
+                  {t(READ_ONLY_MESSAGE_KEYS.dissolved)}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <div className='text-muted-foreground flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+              <span>
+                {t('Slug')}:{' '}
+                <span className='font-mono'>{organization.slug}</span>
+              </span>
+              <span>
+                {t('Created At')}: {formatTimestamp(organization.created_at)}
+              </span>
+              <span>
+                {t('Owner')}: #{organization.owner_user_id}
+              </span>
+            </div>
+
+            <Tabs
+              value={currentTab}
+              onValueChange={handleTabChange}
+              className='shrink-0'
+            >
+              <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                {tabs.map((tab) => (
+                  <TabsTrigger key={tab.key} value={tab.key}>
+                    {t(tab.labelKey)}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+
+            <div className='min-h-0 flex-1'>
+              <OrganizationPageProvider
+                surface='admin'
+                search={search}
+                navigate={navigate}
+              >
+                {currentTab === 'owner-repair' ? (
+                  <PlatformOrganizationOwnerRepair
+                    organizationId={organization.id}
+                    slug={organization.slug}
+                    ownerUserId={organization.owner_user_id}
+                    onTransferred={refetch}
+                  />
+                ) : (
+                  <OrganizationSections
+                    detail={detail}
+                    tab={currentTab}
+                    readOnly={actions.readOnly}
+                    onForbidden={handleForbidden}
+                    onUpdated={refetch}
+                    // Leaving is a member's own act and is not offered here: the
+                    // platform surface grants no exit capability, so this only
+                    // runs if the backend ever changes that, and re-reading the
+                    // payload is the right response to it either way.
+                    onLeftOrganization={refetch}
+                  />
+                )}
+              </OrganizationPageProvider>
+            </div>
           </div>
-        </div>
-      </SectionPageLayout.Content>
+        </SectionPageLayout.Content>
+      </SectionPageLayout>
 
       <PlatformOrganizationEditDrawer
         open={isEditing}
@@ -284,6 +295,6 @@ export function PlatformOrganizationDetail() {
         // billing are still here.
         onCompleted={() => void refetch()}
       />
-    </SectionPageLayout>
+    </>
   )
 }
