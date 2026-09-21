@@ -246,7 +246,7 @@ const NODE_BUILDERS: Record<
 const ROLE_FLOW_STAGES: Record<FlowRole, FlowNodeKind[]> = {
   root: ['user', 'node', 'token', 'group', 'model', 'channel'],
   admin: ['user', 'group', 'model', 'channel'],
-  user: ['token', 'group', 'model'],
+  user: ['token', 'model'],
 }
 
 // A Sankey needs at least two columns to draw any link, so hiding stages can

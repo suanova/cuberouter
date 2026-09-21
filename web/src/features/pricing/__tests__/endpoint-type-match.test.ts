@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import assert from 'node:assert/strict'
+
 import { describe, test } from 'vitest'
 
 import { ENDPOINT_TYPES } from '../constants'
@@ -80,6 +81,34 @@ describe('endpoint type filter matching', () => {
   test('models without endpoint types never match', () => {
     assert.equal(
       matchesEndpointType(modelWithEndpoints(), ENDPOINT_TYPES.VIDEO),
+      false
+    )
+  })
+
+  test('per-second video models match Video without a raw video endpoint type', () => {
+    // Task-platform video models (e.g. MiniMax, Vidu) carry no openai-video /
+    // ark-video endpoint type — their channels fall back to plain openai — but
+    // the model card already labels them 视频 from video_prices, so the filter
+    // must match them too.
+    const taskVideoModel: PricingModel = {
+      ...modelWithEndpoints([ENDPOINT_TYPES.OPENAI]),
+      video_prices: {
+        rows: [
+          { resolution: '1080p', normal_price: 0.1, off_peak_price: 0.05 },
+        ],
+      },
+    }
+    assert.equal(
+      matchesEndpointType(taskVideoModel, ENDPOINT_TYPES.VIDEO),
+      true
+    )
+    // ...but a video-priced model must not leak into other endpoint filters.
+    assert.equal(
+      matchesEndpointType(taskVideoModel, ENDPOINT_TYPES.OPENAI),
+      true
+    )
+    assert.equal(
+      matchesEndpointType(taskVideoModel, ENDPOINT_TYPES.IMAGE_GENERATION),
       false
     )
   })

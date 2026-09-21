@@ -46,9 +46,14 @@ spec:
       secret:
         name: {{ $cluster }}-app-auth
   {{- if .Values.postgresql.backups.enabled }}
-  # volume snapshots via the cluster's default VolumeSnapshotClass
   backup:
+    {{- if eq .Values.postgresql.backups.method "volumeSnapshot" }}
     volumeSnapshot: {}
+    {{- else if eq .Values.postgresql.backups.method "fileArchiving" }}
+    wal:
+      archiving: true
+    barmanObjectStore: {{- toYaml .Values.postgresql.backups.barmanObjectStore | nindent 6 }}
+    {{- end }}
   {{- end }}
 {{- if .Values.postgresql.pgBouncer.enabled }}
 ---
@@ -87,7 +92,7 @@ metadata:
 spec:
   cluster:
     name: {{ $cluster }}
-  method: volumeSnapshot
+  method: {{ .Values.postgresql.backups.method | quote }}
   schedule: {{ .Values.postgresql.backups.schedule | quote }}
   # cold snapshot (CNPG's recommended mode): crash-consistent by itself, no
   # WAL archiving needed; the primary is fenced (read-only) only while the

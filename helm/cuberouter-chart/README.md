@@ -87,7 +87,7 @@ helm install cuberouter ./helm/cuberouter-chart -n cuberouter --create-namespace
 ### 1. Full HA (default values)
 
 The defaults already install the app, the HA PostgreSQL cluster and the HA Redis
-failover — plus both operator control planes (HPA is off by default; the PDB keeps at least one
+failover — plus both operator control planes (the PDB keeps at least one
 app replica available):
 
 ```sh
@@ -224,7 +224,7 @@ point `secret.existingSecret` at a pre-created secret that carries the same six 
 |---|---|
 | App Service / Deployment | `<f>` (same name, different kinds) |
 | App data / logs PVCs | `<f>-app-data`, `<f>-app-logs` |
-| App HPA / PDB | `<f>-app-hpa`, `<f>-app-pdb` (PDB only in high mode) |
+| App PDB | `<f>-app-pdb` (only in high mode) |
 | ConfigMap / Secret | `<f>-config`, `<f>-secret` |
 | App Ingress | `<f>-ingress` |
 | Cluster CR (CloudNativePG) | `<f>-postgres` |
@@ -251,7 +251,6 @@ Computed connection strings:
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`; extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
 | `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
-| `hpa` | `enabled: false`, 2→5 replicas at 70% CPU (minReplicas is 1 in base mode) |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
 | `postgresql` | `auth.database/username`, `image` (PostgreSQL 16.14), `replicas: 2`, `storage: 20Gi`, `resources`, `backups.*`, `pgBouncer.*` |

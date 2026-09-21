@@ -302,6 +302,9 @@ func Register(c *gin.Context) {
 		InviterId:   inviterId,
 		Role:        common.RoleCommonUser, // 明确设置角色为普通用户
 	}
+	if common.EmailVerificationEnabled {
+		cleanUser.Email = user.Email
+	}
 	// 通过邀请码注册时，新用户的分组继承邀请人所属分组。继承与插入在同一
 	// 事务中完成，并在事务内锁定邀请人行（GetUserGroupByIdTx）：与
 	// UpdateUser 的改分组守卫互斥，避免并发产生邀请人与下级分组不一致。
@@ -325,9 +328,6 @@ func Register(c *gin.Context) {
 		return
 	}
 	cleanUser.FinishInsert(inviterId)
-	if common.EmailVerificationEnabled {
-		cleanUser.Email = user.Email
-	}
 
 	// 获取插入后的用户ID
 	var insertedUser model.User

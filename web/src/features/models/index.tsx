@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
 import { Plus } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
@@ -26,7 +26,7 @@ import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { listDeployments } from './api'
+import { getDeploymentSettings, listDeployments } from './api'
 import { DeploymentAccessGuard } from './components/deployment-access-guard'
 import { DeploymentsTable } from './components/deployments-table'
 import { CreateDeploymentDrawer } from './components/dialogs/create-deployment-drawer'
@@ -35,11 +35,10 @@ import { ModelsPrimaryButtons } from './components/models-primary-buttons'
 import { ModelsProvider, useModels } from './components/models-provider'
 import { ModelsTable } from './components/models-table'
 import { useModelDeploymentSettings } from './hooks/use-model-deployment-settings'
-import { deploymentsQueryKeys } from './lib'
+import { deploymentsQueryKeys, getVisibleModelsSectionIds } from './lib'
 import {
   type ModelsSectionId,
   MODELS_DEFAULT_SECTION,
-  MODELS_SECTION_IDS,
 } from './section-registry'
 
 const route = getRouteApi('/_authenticated/models/$section')
@@ -61,6 +60,24 @@ function ModelsContent() {
   const activeSection = (params.section ??
     MODELS_DEFAULT_SECTION) as ModelsSectionId
 
+  // The deployments tab only exists when the model deployment service is
+  // enabled (System Settings → Models & Routing → Model Deployment). Keep the
+  // current tabs while the settings load; hide the tab only once the settings
+  // confirm the service is disabled.
+  const deploymentSettingsQuery = useQuery({
+    queryKey: deploymentsQueryKeys.settings(),
+    queryFn: getDeploymentSettings,
+  })
+  const deploymentsAvailable =
+    !deploymentSettingsQuery.isSuccess ||
+    (deploymentSettingsQuery.data.success === true &&
+      deploymentSettingsQuery.data.data?.enabled === true)
+  const visibleSections = getVisibleModelsSectionIds(deploymentsAvailable)
+  const effectiveSection: ModelsSectionId =
+    !deploymentsAvailable && activeSection === 'deployments'
+      ? MODELS_DEFAULT_SECTION
+      : activeSection
+
   // Deployment create dialog state
   const [createDeploymentOpen, setCreateDeploymentOpen] = useState(false)
 
@@ -70,6 +87,18 @@ function ModelsContent() {
       setTabCategory(activeSection)
     }
   }, [activeSection, setTabCategory, tabCategory])
+
+  // A direct link to the deployments tab has no target once the service is
+  // disabled; send it back to the default section.
+  useEffect(() => {
+    if (!deploymentsAvailable && activeSection === 'deployments') {
+      void navigate({
+        to: '/models/$section',
+        params: { section: MODELS_DEFAULT_SECTION },
+        replace: true,
+      })
+    }
+  }, [deploymentsAvailable, activeSection, navigate])
 
   const handleSectionChange = useCallback(
     (section: string) => {
@@ -81,14 +110,14 @@ function ModelsContent() {
     [navigate]
   )
 
-  const meta = SECTION_META[activeSection] ?? SECTION_META.metadata
+  const meta = SECTION_META[effectiveSection] ?? SECTION_META.metadata
 
   return (
     <>
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t(meta.titleKey)}</SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          {activeSection === 'metadata' ? (
+          {effectiveSection === 'metadata' ? (
             <ModelsPrimaryButtons />
           ) : (
             <Button onClick={() => setCreateDeploymentOpen(true)} size='sm'>
@@ -99,9 +128,9 @@ function ModelsContent() {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
-            <Tabs value={activeSection} onValueChange={handleSectionChange}>
+            <Tabs value={effectiveSection} onValueChange={handleSectionChange}>
               <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
-                {MODELS_SECTION_IDS.map((section) => (
+                {visibleSections.map((section) => (
                   <TabsTrigger key={section} value={section}>
                     {t(SECTION_META[section].titleKey)}
                   </TabsTrigger>
@@ -109,7 +138,7 @@ function ModelsContent() {
               </TabsList>
             </Tabs>
             <div className='min-h-0 flex-1'>
-              {activeSection === 'metadata' ? (
+              {effectiveSection === 'metadata' ? (
                 <ModelsTable />
               ) : (
                 <DeploymentsSection />

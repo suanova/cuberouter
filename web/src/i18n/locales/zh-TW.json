@@ -2885,6 +2885,7 @@
     "Model mapping must be valid JSON": "模型映射必須是有效的 JSON",
     "Model mapping must be valid JSON format": "模型映射必須是有效的 JSON 格式",
     "Model mapping values must be strings": "模型映射的值必須是字串",
+    "Model Metadata": "模型元數據",
     "Model name": "模型名稱",
     "Model Name": "模型名稱",
     "Model Name *": "模型名稱 *",

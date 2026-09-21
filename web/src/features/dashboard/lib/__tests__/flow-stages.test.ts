@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,16 +17,29 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Query keys
-export * from './query-keys'
+import { describe, expect, it } from 'vitest'
 
-// Utilities
-export * from './model-utils'
-export * from './section-visibility'
+import { getFlowStages } from '../flow'
 
-// Form schemas and transformers
-export * from './model-form'
+describe('getFlowStages', () => {
+  it('keeps only token and model columns for the user dashboard flow view', () => {
+    expect(getFlowStages('user')).toEqual(['token', 'model'])
+  })
 
-// Actions
-export * from './model-actions'
-export * from './vendor-actions'
+  it('keeps the wider column set for admin and root roles', () => {
+    expect(getFlowStages('admin')).toEqual([
+      'user',
+      'group',
+      'model',
+      'channel',
+    ])
+    expect(getFlowStages('root')).toEqual([
+      'user',
+      'node',
+      'token',
+      'group',
+      'model',
+      'channel',
+    ])
+  })
+})

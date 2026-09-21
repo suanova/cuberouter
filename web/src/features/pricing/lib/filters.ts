@@ -97,7 +97,11 @@ export function filterByQuotaType(
  *
  * ENDPOINT_TYPES.VIDEO is the one value that is not carried by any model: it
  * stands for both video styles, so it matches a model served through either the
- * OpenAI-style or the Ark-style video endpoint.
+ * OpenAI-style or the Ark-style video endpoint. It also matches any model with
+ * a per-second video price table: task-platform video models (e.g. MiniMax,
+ * Vidu) declare no raw video endpoint type, yet the model card already labels
+ * them 视频 from `video_prices` (see getModelEndpointLabels), so the filter
+ * follows the same condition.
  */
 export function matchesEndpointType(
   model: PricingModel,
@@ -107,6 +111,9 @@ export function matchesEndpointType(
     endpointType === ENDPOINT_TYPES.VIDEO
       ? [ENDPOINT_TYPES.OPENAI_VIDEO, ENDPOINT_TYPES.ARK_VIDEO]
       : [endpointType]
+  if (endpointType === ENDPOINT_TYPES.VIDEO && model.video_prices) {
+    return true
+  }
   return wanted.some((type) => model.supported_endpoint_types?.includes(type))
 }
 

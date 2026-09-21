@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,16 +17,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Query keys
-export * from './query-keys'
+import { describe, expect, it } from 'vitest'
 
-// Utilities
-export * from './model-utils'
-export * from './section-visibility'
+import { getVisibleModelsSectionIds } from '../lib/section-visibility'
 
-// Form schemas and transformers
-export * from './model-form'
+describe('getVisibleModelsSectionIds', () => {
+  it('shows both metadata and deployments tabs when the deployment service is available', () => {
+    expect(getVisibleModelsSectionIds(true)).toEqual([
+      'metadata',
+      'deployments',
+    ])
+  })
 
-// Actions
-export * from './model-actions'
-export * from './vendor-actions'
+  it('hides the deployments tab when the deployment service is disabled', () => {
+    expect(getVisibleModelsSectionIds(false)).toEqual(['metadata'])
+  })
+})

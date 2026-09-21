@@ -2885,6 +2885,7 @@
     "Model mapping must be valid JSON": "Model mapping must be valid JSON",
     "Model mapping must be valid JSON format": "Model mapping must be valid JSON format",
     "Model mapping values must be strings": "Model mapping values must be strings",
+    "Model Metadata": "Model Metadata",
     "Model name": "Model name",
     "Model Name": "Model Name",
     "Model Name *": "Model Name *",

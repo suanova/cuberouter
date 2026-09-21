@@ -107,7 +107,7 @@ const topLimitRows: FlowQuotaDataItem[] = [
 ]
 
 describe('dashboard flow data', () => {
-  test('builds normal user token-group-model flow', () => {
+  test('builds normal user token-model flow', () => {
     const result = buildDashboardFlowData(rows.slice(0, 2), 'quota', {
       role: 'user',
     })
@@ -117,10 +117,8 @@ describe('dashboard flow data', () => {
     expect(result.summary.requests).toBe(3)
     expect(
       result.flow.links.map((link) => [link.source, link.target, link.value])
-    ).toEqual([
-      ['group:vip', 'model:gpt-4.1', 150],
-      ['token:11', 'group:vip', 150],
-    ])
+    ).toEqual([['token:11', 'model:gpt-4.1', 150]])
+    expect(result.flow.nodes.some((node) => node.kind === 'group')).toBe(false)
     expect(result.flow.nodes.some((node) => node.kind === 'channel')).toBe(
       false
     )
@@ -273,10 +271,7 @@ describe('dashboard flow data', () => {
 
     expect(
       result.flow.links.map((link) => [link.source, link.target, link.value])
-    ).toEqual([
-      ['group:vip', 'model:gpt-4.1', 150],
-      ['token:11', 'group:vip', 150],
-    ])
+    ).toEqual([['token:11', 'model:gpt-4.1', 150]])
   })
 
   test('builds user filter options with stable values', () => {

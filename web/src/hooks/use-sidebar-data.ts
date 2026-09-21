@@ -134,7 +134,7 @@ export function useSidebarData(): SidebarData {
             icon: Radio,
           },
           {
-            title: t('Models'),
+            title: t('Model Metadata'),
             url: '/models/metadata',
             icon: Box,
           },
