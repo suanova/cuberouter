@@ -96,14 +96,8 @@ cubeRouter:
   waitForRedis: true
 
 # ---------------------------------------------------------------------------
-# HPA / PDB
+# PDB
 # ---------------------------------------------------------------------------
-hpa:
-  enabled: false
-  minReplicas: 2
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 70
-
 pdb:
   enabled: true
   app:
@@ -141,9 +135,9 @@ postgresql:
   # Instance image; the tag encodes the PostgreSQL major version
   # (16.14 = PostgreSQL 16.14)
   image: ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie
-  # >= 2 for HA (automatic failover); used when deployMode: high
-  replicas: 2
-  storage: 20Gi
+  # >= 3 for HA (automatic failover with quorum); used when deployMode: high
+  replicas: 3
+  storage: 10Gi
   storageClassName: ""
   resources:
     requests:
@@ -152,11 +146,25 @@ postgresql:
     limits:
       cpu: "2"
       memory: 4Gi
-  # Weekly backups via volume snapshots (uses the cluster's default
-  # VolumeSnapshotClass; set enabled=false if the cluster has none)
+  # Weekly backups (set enabled=false if the cluster lacks a
+  # VolumeSnapshotClass or object-storage endpoint for barman).
+  # method: volumeSnapshot (needs VolumeSnapshot CRD + VolumeSnapshotClass)
+  #         fileArchiving   (needs barmanObjectStore config below)
   backups:
-    enabled: true
-    schedule: "0 2 * * 0"
+    enabled: false
+    schedule: "0 2 * * 7"
+    method: volumeSnapshot
+    # barmanObjectStore config (required when method=fileArchiving):
+    # barmanObjectStore:
+    #   endpointURL: https://s3.example.com
+    #   destinationPath: s3://bucket/cnpg-backups/
+    #   s3Credentials:
+    #     accessKeyId:
+    #       name: cnpg-backup-s3-creds
+    #       key: ACCESS_KEY_ID
+    #     secretAccessKey:
+    #       name: cnpg-backup-s3-creds
+    #       key: ACCESS_SECRET_KEY
   pgBouncer:
     enabled: false
     replicas: 2
@@ -172,7 +180,9 @@ redis:
     tag: v7.0.15
     pullPolicy: IfNotPresent
   # Total redis nodes: 1 master + (N-1) replicas; used when deployMode: high
-  replicas: 2
+  # 3 recommended: after a failover the new master still has a replica attached,
+  # so the OpsTree operator does not roll back to the low-ordinal node
+  replicas: 3
   # Number of sentinel nodes (automatic failover); used when deployMode: high
   sentinelReplicas: 3
   sentinelImage:
@@ -180,10 +190,15 @@ redis:
     tag: v7.0.15
     pullPolicy: IfNotPresent
   # Extra redis.conf parameters: list of "<key> <value>" strings, applied via CONFIG SET
-  redisCustomConfig: []
+  # min-replicas-to-write / min-replicas-max-lag: master rejects writes when no
+  # replica is connected (prevents data loss during failover when persistence is on)
+  redisCustomConfig:
+    - "min-replicas-to-write 1"
+    - "min-replicas-max-lag 10"
+    - "save 60 10000"
   persistence:
-    enabled: false
-    size: 10Gi
+    enabled: true
+    size: 1Gi
     storageClassName: ""
 
 # ---------------------------------------------------------------------------
