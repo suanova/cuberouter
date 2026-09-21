@@ -20,49 +20,35 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
-import { useAuthStore } from '@/stores/auth-store'
 
 import { OrganizationsDissolveDialog } from './components/organizations-dissolve-dialog'
-import { OrganizationsMutateDrawer } from './components/organizations-mutate-drawer'
-import { OrganizationsPrimaryButtons } from './components/organizations-primary-buttons'
+import { OrganizationsEditDrawer } from './components/organizations-edit-drawer'
 import {
   OrganizationsProvider,
   useOrganizations,
 } from './components/organizations-provider'
 import { OrganizationsStatusDialog } from './components/organizations-status-dialog'
 import { OrganizationsTable } from './components/organizations-table'
-import { useOrganizationsQuery } from './hooks/use-organizations-query'
 
 function OrganizationsContent() {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, refreshTrigger } = useOrganizations()
-  const currentUserId = useAuthStore((state) => state.auth.user?.id)
-  const { data: organizations } = useOrganizationsQuery(refreshTrigger)
-
-  // The backend counts organizations this user *created* that are not dissolved
-  // (maxActiveOrganizationsPerUser), not the ones they merely belong to.
-  const ownedCount = (organizations ?? []).filter(
-    (organization) =>
-      organization.created_by === currentUserId &&
-      organization.status !== 'dissolved'
-  ).length
+  const { open, setOpen, currentRow } = useOrganizations()
 
   return (
     <>
+      {/* No actions slot: creating an organization is a platform action and
+          lives on the platform page, not here. */}
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t('Organizations')}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <OrganizationsPrimaryButtons ownedCount={ownedCount} />
-        </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <OrganizationsTable />
         </SectionPageLayout.Content>
       </SectionPageLayout>
 
-      <OrganizationsMutateDrawer
-        open={open === 'create' || open === 'update'}
+      <OrganizationsEditDrawer
+        open={open === 'update'}
         onOpenChange={(isOpen) => !isOpen && setOpen(null)}
-        currentRow={open === 'update' ? currentRow || undefined : undefined}
+        organization={open === 'update' ? currentRow || undefined : undefined}
       />
       <OrganizationsStatusDialog />
       <OrganizationsDissolveDialog />

@@ -19,14 +19,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import React, { useState } from 'react'
 
+import type { OrganizationManagementView } from '@/features/organization/types'
 import useDialogState from '@/hooks/use-dialog'
 
-import type { OrganizationManagementView } from '@/features/organization/types'
-
-/** The platform list's own dialogs. There is no create: an administrator does
- * not open an organization on another user's behalf — that is what the member
- * surface is for. */
-export type PlatformOrganizationDialogType = 'edit' | 'status' | 'dissolve'
+/** The platform list's own dialogs. Create is here and nowhere else: an
+ * administrator does not open an organization on another user's behalf, so the
+ * member surface has no create entry, and the organization center's own dialogs
+ * are edit-only. */
+export type PlatformOrganizationDialogType =
+  | 'create'
+  | 'edit'
+  | 'status'
+  | 'dissolve'
 
 type PlatformOrganizationsContextType = {
   open: PlatformOrganizationDialogType | null

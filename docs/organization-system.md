@@ -193,7 +193,11 @@ reads it, which is how a disabled organization makes every request under it fail
 67 endpoints in four groups, all registered from `setOrganizationApiRoutes(apiRouter)`:
 
 - `/api/organizations` — member self-service behind `UserAuth`; writes additionally behind
-  `AccountContext()` and the workspace/manage/read policies.
+  `AccountContext()` and the workspace/manage/read policies. Creation is the exception: `POST ""` is
+  registered on a *sibling* group under the same prefix, behind `middleware.AdminAuth()` instead, because
+  only an administrator or root may create an organization — and the creator becomes its owner. It is a
+  sibling group rather than a second middleware on the existing one so that the request is authenticated
+  once, not twice.
 - `/api/organization-invitations/:token` — public invitation view and accept.
 - `/api/admin/organizations` and `/api/admin/organization-audit-logs` — platform admin, behind the
   existing `middleware.AdminAuth()` plus `OrganizationAdminAuth`.
@@ -215,10 +219,16 @@ deliberately not annotated" in the porting notes.
 
 ### Frontend
 
-**Not yet ported.** The organization UI is Phase 7 of the porting plan
-(`docs/superpowers/specs/2026-09-20-organization-management-port-design.md`) and will be rewritten in
-cuberouter's own stack (TanStack Router + Base UI + Tailwind + vitest) rather than vendoring the
-source's Semi Design components.
+Two surfaces, in cuberouter's own stack (TanStack Router + Base UI + Tailwind + vitest):
+
+- `web/src/features/organization/` — the organization center: the caller's own memberships, listed from
+  their account context, with edit / enable / disable / dissolve row actions. It has **no create entry**.
+- `web/src/features/organization-admin/` — the platform list and the per-organization detail pages. This
+  is where **creation lives**, and the only place it does.
+
+The two guards on creation are deliberate and independent: the route is gated by `beforeLoad` for
+`ROLE.ADMIN`, and the endpoint by `AdminAuth`. An ordinary member is invited into an organization; they
+are never the one who creates it.
 
 ---
 
@@ -231,7 +241,7 @@ Backend only at this point (`go test -count=1 ./...`):
 | Migrations | `model/organization_scope_migration_test.go`, `organization_name_migration_test.go`, `organization_member_migration_test.go` — fresh DB, upgraded DB, resumed run, configured MySQL/PostgreSQL (self-skipping when `TEST_MYSQL_DSN` / `TEST_POSTGRES_DSN` are unset). |
 | Scope isolation | `model/usedata_scope_test.go`, `model/async_task_scope_test.go`, `model/log_scope_test.go`, `model/token_scope_test.go` — organization rows never appear in a personal dashboard, log or task list, and the legacy-duplicate upgrade path merges instead of blocking startup. |
 | Policy & access | `service/organization_policy_test.go`, `organization_access_test.go`, `router/organization_policy_router_test.go` — the capability matrix per role and access mode. |
-| Routing | `router/organization_api_router_test.go` — the four route groups and their middleware. |
+| Routing | `router/organization_api_router_test.go` — the four route groups and their middleware. `router/organization_create_router_test.go` — only admin and root may create an organization; a common user and an ops user are refused with `AUTH_INSUFFICIENT_PRIVILEGE` and no side effect. |
 | Middleware | `middleware/account_context_test.go`, `organization_management_test.go`. |
 | Lifecycle | `service/organization_test.go`, `organization_detail_test.go`, `organization_management_test.go`, `organization_member_test.go`, `organization_invite_test.go`, `organization_token_test.go`, `organization_token_auth_test.go`, `organization_group_test.go`, `organization_data_test.go`, `organization_log_test.go`, `organization_audit_snapshot_test.go`, `organization_audit_query_test.go`. |
 | Billing | `service/organization_billing_test.go`, `organization_billing_gap_test.go`, `organization_billing_summary_test.go`, `organization_async_billing_test.go`, `organization_concurrency_external_test.go`. |
@@ -255,4 +265,7 @@ Backend only at this point (`go test -count=1 ./...`):
   node's read-then-insert `SaveQuotaDataCache` can conflict with the new unique index; that flush is
   logged and dropped rather than corrupting the bucket. The window closes once every node runs the
   new code.
-- **The frontend does not exist yet**, so the feature is reachable only through the API today.
+- **The create limit is enforced server-side only.** Only admin and root may create an organization, and
+  the platform list cannot count how many the signed-in administrator has already created — it is
+  server-paged, with no creator filter and no count endpoint — so an over-limit create is refused by the
+  endpoint with a typed `organization_limit_exceeded` (409) rather than prevented in the form.

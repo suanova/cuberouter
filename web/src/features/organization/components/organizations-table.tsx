@@ -95,7 +95,7 @@ export function OrganizationsTable() {
       isFetching={isFetching}
       emptyTitle={t('No Organizations')}
       emptyDescription={t(
-        'You are not a member of any organization yet. Create one to collaborate with others.'
+        'Organizations are created by platform administrators. Once you are invited to one, it will appear here.'
       )}
       skeletonKeyPrefix='organizations-skeleton'
       applyHeaderSize

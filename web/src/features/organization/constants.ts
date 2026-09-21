@@ -72,7 +72,11 @@ export const ORGANIZATION_ROLES = {
     variant: 'purple' as StatusVariant,
     value: 'owner',
   },
-  admin: { labelKey: 'Admin', variant: 'blue' as StatusVariant, value: 'admin' },
+  admin: {
+    labelKey: 'Admin',
+    variant: 'blue' as StatusVariant,
+    value: 'admin',
+  },
   member: {
     labelKey: 'Member',
     variant: 'neutral' as StatusVariant,
@@ -124,8 +128,7 @@ export const ORGANIZATION_MEMBER_STATUSES = {
   removed: { labelKey: 'Removed', variant: 'neutral' as StatusVariant },
 } as const
 
-export type OrganizationMemberStatus =
-  keyof typeof ORGANIZATION_MEMBER_STATUSES
+export type OrganizationMemberStatus = keyof typeof ORGANIZATION_MEMBER_STATUSES
 
 export const organizationMemberStatusMeta = (
   status?: string
@@ -134,13 +137,6 @@ export const organizationMemberStatusMeta = (
     ORGANIZATION_MEMBER_STATUSES[status as OrganizationMemberStatus] ?? null
   return meta ?? { labelKey: 'Unknown status', variant: 'neutral' }
 }
-
-/**
- * How many non-dissolved organizations one user may create. Mirrors
- * `maxActiveOrganizationsPerUser` in service/organization.go, which counts
- * organizations created by the user — not memberships.
- */
-export const MAX_ACTIVE_ORGANIZATIONS = 20
 
 // ============================================================================
 // Organization Detail Sections

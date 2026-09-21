@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 
 import { withOrganizationIdempotencyKey } from './lib/organization-idempotency'
+import type { PagedResult } from './lib/organization-pagination'
 import {
   organizationResourceBase,
   type OrganizationSurface,
@@ -49,7 +50,6 @@ import type {
   OrganizationTokenBatchCreateResult,
   OrganizationTokenRow,
 } from './types'
-import type { PagedResult } from './lib/organization-pagination'
 
 interface ApiEnvelope {
   success: boolean
@@ -66,11 +66,21 @@ export async function getOrganizations(): Promise<OrganizationListResponse> {
   return res.data
 }
 
-export async function createOrganization(data: {
-  name: string
-  description?: string
-}): Promise<OrganizationResponse> {
-  const res = await api.post('/api/organizations', data)
+/**
+ * Creating an organization is a platform action: only an administrator may call
+ * this. Errors are left to the caller (`skipErrorHandler`) because the failure
+ * modes — the name is taken, the creator is at their organization limit — are
+ * distinguished by code and the dialog renders them in place, next to the field
+ * that caused them. Letting the interceptor toast as well would report the same
+ * rejection twice.
+ */
+export async function createOrganization(
+  data: { name: string; description?: string },
+  options: { skipErrorHandler?: boolean } = {}
+): Promise<OrganizationResponse> {
+  const res = await api.post('/api/organizations', data, {
+    skipErrorHandler: options.skipErrorHandler,
+  })
   return res.data
 }
 
@@ -134,10 +144,13 @@ export async function dissolveOrganization(
   data: { confirm_name: string; reason?: string },
   idempotencyKey: string
 ): Promise<ApiEnvelope> {
-  const res = await api.delete(organizationResourceBase(surface, organizationId), {
-    data,
-    headers: { 'Idempotency-Key': idempotencyKey },
-  })
+  const res = await api.delete(
+    organizationResourceBase(surface, organizationId),
+    {
+      data,
+      headers: { 'Idempotency-Key': idempotencyKey },
+    }
+  )
   return res.data
 }
 
@@ -202,7 +215,9 @@ export async function getOrganizationGroupSource(
   return {
     success: res.success,
     message: res.message,
-    data: Object.fromEntries(names.map((name) => [name, { desc: '', ratio: '' }])),
+    data: Object.fromEntries(
+      names.map((name) => [name, { desc: '', ratio: '' }])
+    ),
   }
 }
 

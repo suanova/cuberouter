@@ -640,4 +640,4 @@ export interface OrganizationBillingRecord {
  * a separate `currentRow` keeps the dialog mounted while it animates out, which
  * is why the type is not just a boolean per dialog.
  */
-export type OrganizationDialogType = 'create' | 'update' | 'status' | 'dissolve'
+export type OrganizationDialogType = 'update' | 'status' | 'dissolve'

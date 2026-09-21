@@ -33,7 +33,6 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 	{
 		organizationRoute.GET("", controller.ListSelfOrganizations)
 		organizationRoute.GET("/self", controller.ListSelfOrganizations)
-		organizationRoute.POST("", controller.CreateOrganization)
 		organizationRoute.GET("/:id", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganization), controller.GetOrganization)
 		organizationRoute.PATCH("/:id", middleware.OrganizationManagementAuth(service.OrganizationCapabilityUpdateOrganization), controller.UpdateOrganization)
 		organizationRoute.PATCH("/:id/status", middleware.OrganizationManagementAuth(), controller.UpdateOrganizationStatus)
@@ -58,6 +57,17 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		organizationRoute.GET("/:id/billing/monthly-summaries", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingMonthlySummaries)
 		organizationRoute.GET("/:id/billing/records", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingDetails)
 		organizationRoute.GET("/:id/audit-logs", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationAuditLogs), controller.ListOrganizationAuditLogs)
+	}
+
+	// 创建组织是平台管理动作，不是成员自助动作：只有 admin/root 能建，创建者即该组织的 owner。
+	//
+	// 用同前缀的兄弟分组，而不是给这一条路由追加中间件：authHelper 自己会 c.Next()，叠在
+	// UserAuth 链上会让同一个请求跑两遍认证。这里必须挂在 apiRouter 下——挂在 organizationRoute
+	// 下会把 UserAuth 一并继承，就白拆了。
+	organizationCreationRoute := apiRouter.Group("/organizations")
+	organizationCreationRoute.Use(middleware.AdminAuth())
+	{
+		organizationCreationRoute.POST("", controller.CreateOrganization)
 	}
 
 	organizationAccountContextRoute := apiRouter.Group("/organizations")

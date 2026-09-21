@@ -55,16 +55,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { ApiKeyGroupCombobox } from '@/features/keys/components/api-key-group-combobox'
 import { refreshAccountContexts } from '@/lib/account-context'
 
-import {
-  createOrganization,
-  getOrganizationGroups,
-  updateOrganization,
-} from '../api'
-import {
-  ERROR_MESSAGES,
-  SUCCESS_MESSAGES,
-} from '../constants'
-import { useEnterOrganization } from '../hooks/use-enter-organization'
+import { getOrganizationGroups, updateOrganization } from '../api'
+import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
   buildOrganizationGroupOptions,
   organizationFormSchema,
@@ -77,33 +69,39 @@ import {
 import type { UserOrganization } from '../types'
 import { useOrganizations } from './organizations-provider'
 
-type OrganizationsMutateDrawerProps = {
+type OrganizationsEditDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  currentRow?: UserOrganization
+  organization?: UserOrganization
 }
 
-export function OrganizationsMutateDrawer({
+/**
+ * Editing an organization from inside it.
+ *
+ * There is no create here: only platform administrators may create an
+ * organization, and they do it from the platform page, not from the
+ * organization center. This drawer edits an organization the caller already
+ * belongs to.
+ */
+export function OrganizationsEditDrawer({
   open,
   onOpenChange,
-  currentRow,
-}: OrganizationsMutateDrawerProps) {
+  organization,
+}: OrganizationsEditDrawerProps) {
   const { t } = useTranslation()
-  const isUpdate = Boolean(currentRow)
   const { triggerRefresh } = useOrganizations()
-  const enterOrganization = useEnterOrganization()
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // The group picker is only for an update: creating always starts on the
-  // default group.
+  // Moving an organization to another group is a platform-level decision, so
+  // only the members who hold that capability see the picker at all.
   const canChangeGroup = Boolean(
-    currentRow?.capabilities.can_modify_organization_group
+    organization?.capabilities.can_modify_organization_group
   )
-  const organizationId = currentRow?.id ?? 0
+  const organizationId = organization?.id ?? 0
   const { data: groupsData } = useQuery({
     queryKey: ['organization-groups', organizationId],
     queryFn: () => getOrganizationGroups(organizationId),
-    enabled: open && isUpdate && canChangeGroup && organizationId > 0,
+    enabled: open && canChangeGroup && organizationId > 0,
     staleTime: 5 * 60 * 1000,
   })
   const groupOptions = buildOrganizationGroupOptions(groupsData?.data)
@@ -116,45 +114,33 @@ export function OrganizationsMutateDrawer({
   useEffect(() => {
     if (!open) return
     form.reset(
-      currentRow
-        ? transformOrganizationToFormDefaults(currentRow)
+      organization
+        ? transformOrganizationToFormDefaults(organization)
         : ORGANIZATION_FORM_DEFAULT_VALUES
     )
-  }, [open, currentRow, form])
+  }, [open, organization, form])
 
   const onSubmit = async (values: OrganizationFormValues) => {
+    if (!organization) return
     setIsSubmitting(true)
     try {
-      if (currentRow) {
-        const payload = transformOrganizationFormToPayload(values, {
-          organizationId: currentRow.id,
-          includeGroup: canChangeGroup,
-        })
-        const result = await updateOrganization('member', currentRow.id, payload)
-        if (!result.success) {
-          toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
-          return
-        }
-        toast.success(t(SUCCESS_MESSAGES.UPDATED))
-        onOpenChange(false)
-        // Name, group and status all feed the account-context switcher.
-        await Promise.all([triggerRefresh(), refreshAccountContexts()])
-        return
-      }
-
-      const result = await createOrganization(
-        transformOrganizationFormToPayload(values)
+      const payload = transformOrganizationFormToPayload(values, {
+        organizationId: organization.id,
+        includeGroup: canChangeGroup,
+      })
+      const result = await updateOrganization(
+        'member',
+        organization.id,
+        payload
       )
-      if (!result.success || !result.data) {
-        toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
+      if (!result.success) {
+        toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
         return
       }
-      toast.success(t(SUCCESS_MESSAGES.CREATED))
+      toast.success(t(SUCCESS_MESSAGES.UPDATED))
       onOpenChange(false)
+      // Name and group both feed the account-context switcher.
       await Promise.all([triggerRefresh(), refreshAccountContexts()])
-      // The creator owns the brand-new organization and it is active, so it can
-      // be selected as the account context.
-      await enterOrganization(result.data.id, true)
     } catch (error) {
       toast.error(
         error instanceof Error && error.message
@@ -170,15 +156,9 @@ export function OrganizationsMutateDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className={sideDrawerContentClassName('sm:max-w-[540px]')}>
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <SheetTitle>
-            {isUpdate ? t('Edit Organization') : t('Create Organization')}
-          </SheetTitle>
+          <SheetTitle>{t('Edit Organization')}</SheetTitle>
           <SheetDescription>
-            {isUpdate
-              ? t('Update the organization name, description and group.')
-              : t(
-                  'Creating an organization makes you its owner. Others can be invited afterwards.'
-                )}
+            {t('Update the organization name, description and group.')}
           </SheetDescription>
         </SheetHeader>
 
@@ -230,7 +210,7 @@ export function OrganizationsMutateDrawer({
                 )}
               />
 
-              {isUpdate && canChangeGroup && (
+              {canChangeGroup && (
                 <FormField
                   control={form.control}
                   name='group'
@@ -256,28 +236,26 @@ export function OrganizationsMutateDrawer({
                 />
               )}
 
-              {isUpdate && (
-                <FormField
-                  control={form.control}
-                  name='reason'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Reason')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          value={field.value ?? ''}
-                          placeholder={t('Why is this change being made?')}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Recorded in the organization audit log.')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
+              <FormField
+                control={form.control}
+                name='reason'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Reason')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ''}
+                        placeholder={t('Why is this change being made?')}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Recorded in the organization audit log.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </SideDrawerSection>
           </form>
         </Form>
@@ -286,7 +264,11 @@ export function OrganizationsMutateDrawer({
           <SheetClose render={<Button variant='outline' />}>
             {t('Cancel')}
           </SheetClose>
-          <Button form='organization-form' type='submit' disabled={isSubmitting}>
+          <Button
+            form='organization-form'
+            type='submit'
+            disabled={isSubmitting}
+          >
             {isSubmitting ? t('Saving...') : t('Save')}
           </Button>
         </SheetFooter>
