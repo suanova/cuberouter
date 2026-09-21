@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"sync"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -116,6 +117,18 @@ func beginAdminAudit(c *gin.Context) *auditResponseWriter {
 	return writer
 }
 
+// adminAuditWG 跟踪 finishAdminAudit 派发的兜底审计写入。这些写入是异步的，
+// 而且到真正落库时才去读进程级全局（model.LOG_DB）；测试会在它们可能仍在读的
+// 时候关闭并还原这些全局，所以测试要先冲刷这一组再动全局。只有一次性的兜底
+// 写入走这里，常驻循环不进来，冲刷必然终止。
+var adminAuditWG sync.WaitGroup
+
+// WaitForPendingAdminAudits 阻塞到 finishAdminAudit 派发的兜底审计写入全部完成。
+// 与 WaitForQuotaCacheWorkers 同理：让测试在改全局数据库句柄之前先等干净。
+func WaitForPendingAdminAudits() {
+	adminAuditWG.Wait()
+}
+
 // finishAdminAudit 在 c.Next() 之后对管理/高危写操作做兜底审计记录。
 // 若 handler 内已手动埋点（设置 ContextKeyAuditLogged），则跳过，避免重复。
 func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
@@ -174,7 +187,10 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 		auditInfo["params"] = routeParams
 	}
 
+	// Add 在派发前于调用方 goroutine 完成，并发的 Wait 不会漏掉这一次。
+	adminAuditWG.Add(1)
 	gopool.Go(func() {
+		defer adminAuditWG.Done()
 		model.RecordOperationAuditLog(operatorId, content, ip, action, opParams, adminInfo, auditInfo)
 	})
 }

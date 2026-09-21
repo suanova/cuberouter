@@ -644,6 +644,11 @@ func setupOrganizationPolicyRouterTestDB(t *testing.T) {
 	))
 
 	t.Cleanup(func() {
+		// 管理写接口的兜底审计是异步落库的（middleware.finishAdminAudit 走
+		// gopool），它在写入时才读 model.DB / LOG_DB。这里的用例刻意打管理写
+		// 接口，所以还原全局之前必须等这些写入结束，否则就是和它们抢同一个
+		// 全局句柄。
+		middleware.WaitForPendingAdminAudits()
 		if model.DB != nil {
 			if sqlDB, err := model.DB.DB(); err == nil {
 				_ = sqlDB.Close()
