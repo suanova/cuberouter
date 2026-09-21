@@ -61,6 +61,8 @@ export function b64ToDataUrl(b64: string): string {
 /**
  * 把 OpenAI images 响应体中的 data[] 提取为可渲染的图片列表：
  * 优先 url，其次 b64_json（转 data URL）；两者皆无的条目跳过。
+ * 部分上游（经中转的 DashScope 等）会把完整 data URL 塞进 b64_json，
+ * 此时必须原样使用，否则会二次拼接前缀得到无法解码的 URL。
  */
 export function extractImages(body: ImageResponseBody): GeneratedImage[] {
   const items = Array.isArray(body?.data) ? body.data : []
@@ -75,7 +77,11 @@ export function extractImages(body: ImageResponseBody): GeneratedImage[] {
       continue
     }
     if (typeof entry.b64_json === 'string' && entry.b64_json !== '') {
-      images.push({ url: b64ToDataUrl(entry.b64_json) })
+      images.push({
+        url: entry.b64_json.startsWith('data:')
+          ? entry.b64_json
+          : b64ToDataUrl(entry.b64_json),
+      })
     }
   }
   return images

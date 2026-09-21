@@ -17,128 +17,136 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { ImageIcon } from 'lucide-react'
+
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { Spinner } from '@/components/ui/spinner'
 
-import { publicCommand } from '../lib/workflow'
-import type { StudioAsset, WorkflowDraft, WorkflowJob } from '../workflow-types'
+import type { StudioAsset, WorkflowJob } from '../workflow-types'
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes > 0) {
+    return `${minutes}:${String(seconds).padStart(2, '0')}`
+  }
+  return `${seconds}s`
+}
 
 export function WorkflowResults(props: {
   job?: WorkflowJob
   busy: boolean
-  submitted?: WorkflowDraft
+  count: number
   elapsed: number
   onEdit: (asset: StudioAsset, job: WorkflowJob) => void
 }) {
   const { t } = useTranslation()
   const job = props.job
+  let content
   if (props.busy) {
-    return (
-      <div role='status' className='bg-card space-y-3 rounded-xl border p-6'>
-        <p>{t('Generation in progress…')}</p>
-        <p>
-          {t('Elapsed {{time}}', {
-            time: `${Math.floor(props.elapsed / 1000)}s`,
-          })}
+    content = (
+      <div
+        role='status'
+        className='flex flex-col items-center gap-3 py-10 text-center'
+      >
+        <Spinner className='text-primary size-8' aria-hidden='true' />
+        <p className='text-sm font-medium'>
+          {t('Generating {{count}} image…', { count: props.count })}
         </p>
         <p className='text-muted-foreground text-xs'>
+          {t('Elapsed {{time}}', { time: formatElapsed(props.elapsed) })}
+        </p>
+        <p className='text-muted-foreground max-w-sm text-xs'>
           {t(
-            'Keep this page open. A timeout may still have consumed quota; check Usage Logs before retrying.'
+            'Generation is synchronous and usually takes 40 seconds to 5 minutes. Keep this page open.'
           )}
         </p>
-        {props.submitted && (
-          <pre className='overflow-auto text-xs'>
-            {publicCommand(props.submitted)}
-          </pre>
+      </div>
+    )
+  } else if (!job) {
+    content = (
+      <div className='flex flex-col items-center gap-3 py-10 text-center'>
+        <ImageIcon
+          className='text-muted-foreground/50 size-10'
+          aria-hidden='true'
+        />
+        <p className='text-muted-foreground text-sm'>
+          {t('Your images will appear here.')}
+        </p>
+      </div>
+    )
+  } else {
+    content = (
+      <div className='space-y-4'>
+        <div className='grid gap-4 sm:grid-cols-2'>
+          {job.images.map((asset, index) => (
+            <article
+              className='bg-card space-y-2 rounded-xl border p-3'
+              key={asset.id}
+            >
+              <img
+                src={asset.url}
+                alt={t('Generated image')}
+                className='w-full rounded-lg'
+                referrerPolicy='no-referrer'
+              />
+              <div className='flex flex-wrap gap-2'>
+                <a
+                  className='rounded-lg border px-3 py-2 text-xs'
+                  href={asset.url}
+                  download={`image-${index + 1}.png`}
+                  target='_blank'
+                  rel='noreferrer'
+                >
+                  {t('Download')}
+                </a>
+                <Button
+                  size='sm'
+                  disabled={props.busy}
+                  onClick={() => props.onEdit(asset, job)}
+                >
+                  {t('Continue editing')}
+                </Button>
+              </div>
+            </article>
+          ))}
+        </div>
+        {job.request.mode === 'edit' && (
+          <details>
+            <summary className='cursor-pointer text-sm'>
+              {t('Before and after comparison')}
+            </summary>
+            <div className='mt-2 grid grid-cols-3 gap-3'>
+              {job.request.references.map((asset) => (
+                <img
+                  key={asset.id}
+                  src={asset.url}
+                  alt={t('Original image')}
+                  className='rounded-lg'
+                />
+              ))}
+            </div>
+          </details>
         )}
       </div>
     )
   }
-  if (!job) {
-    return (
-      <p className='text-muted-foreground py-16 text-center'>
-        {t('Your images will appear here.')}
-      </p>
-    )
-  }
   return (
-    <section className='space-y-4' aria-label={t('Image preview')}>
-      <p className='text-muted-foreground text-xs'>
-        {job.request.model} · {Math.round(job.elapsed_ms / 1000)}s
-      </p>
-      <div className='grid gap-4 sm:grid-cols-2'>
-        {job.images.map((asset, index) => (
-          <article
-            className='bg-card space-y-2 rounded-xl border p-3'
-            key={asset.id}
-          >
-            <img
-              src={asset.url}
-              alt={t('Generated image')}
-              className='w-full rounded-lg'
-              referrerPolicy='no-referrer'
-            />
-            <div className='flex flex-wrap gap-2'>
-              <a
-                className='rounded-lg border px-3 py-2 text-xs'
-                href={asset.url}
-                download={`image-${index + 1}.png`}
-                target='_blank'
-                rel='noreferrer'
-              >
-                {t('Download')}
-              </a>
-              <Button
-                size='sm'
-                disabled={props.busy}
-                onClick={() => props.onEdit(asset, job)}
-              >
-                {t('Continue editing')}
-              </Button>
-            </div>
-          </article>
-        ))}
+    <section className='space-y-3' aria-label={t('Image preview')}>
+      <header className='flex items-center justify-between gap-2'>
+        <h2 className='text-sm font-semibold'>{t('Image preview')}</h2>
+        {!!job && (
+          <span className='text-muted-foreground rounded-full border px-2 py-0.5 text-[11px]'>
+            {job.request.model} · {formatElapsed(job.elapsed_ms)}
+          </span>
+        )}
+      </header>
+      <div className='bg-muted/30 flex flex-1 flex-col justify-center rounded-xl border p-4'>
+        {content}
       </div>
-      {job.request.mode === 'edit' && (
-        <details>
-          <summary className='cursor-pointer text-sm'>
-            {t('Before and after comparison')}
-          </summary>
-          <div className='mt-2 grid grid-cols-3 gap-3'>
-            {job.request.references.map((asset) => (
-              <img
-                key={asset.id}
-                src={asset.url}
-                alt={t('Original image')}
-                className='rounded-lg'
-              />
-            ))}
-          </div>
-        </details>
-      )}
-      <details>
-        <summary className='cursor-pointer text-sm'>
-          {t('Input command and output')}
-        </summary>
-        <pre className='bg-muted mt-2 overflow-auto rounded-lg p-3 text-xs'>
-          {publicCommand(job.request)}
-        </pre>
-        <pre className='bg-muted mt-2 overflow-auto rounded-lg p-3 text-xs'>
-          {JSON.stringify(
-            {
-              images: job.images.map((asset) => ({
-                id: asset.id,
-                mime: asset.mime,
-              })),
-              request_id: job.request_id,
-              elapsed_ms: job.elapsed_ms,
-            },
-            null,
-            2
-          )}
-        </pre>
-      </details>
     </section>
   )
 }

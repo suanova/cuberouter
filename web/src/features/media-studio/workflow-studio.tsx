@@ -194,7 +194,7 @@ export function WorkflowStudio(props: { owner: number }) {
                   <WorkflowResults
                     job={workflow.selected}
                     busy={workflow.generation.isPending}
-                    submitted={workflow.generation.variables}
+                    count={workflow.generation.variables?.count ?? 1}
                     elapsed={workflow.elapsed}
                     onEdit={(asset, job) =>
                       continuation.mutate({ url: asset.url, parent: job.id })

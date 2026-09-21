@@ -124,6 +124,26 @@ test('a provider URL blocked by CORS remains visible with a local-persistence wa
   expect(output.warning).toContain('could not be saved locally')
   expect(http.post).toHaveBeenCalledTimes(1)
 })
+test('provider data URLs still render when the media type is an alias or carries parameters', async () => {
+  http.post.mockResolvedValue({
+    data: {
+      data: [
+        { url: 'data:image/jpg;base64,/9j/4AAQSkZJRg==' },
+        { url: 'data:image/webp;charset=utf-8;base64,UklGRg==' },
+      ],
+    },
+  })
+  const output = await workflowAPI.generate({
+    ...initialDraft,
+    model: 'image',
+    prompt: 'Cat',
+  })
+  expect(output.job.images.map((asset) => asset.mime)).toEqual([
+    'image/jpeg',
+    'image/webp',
+  ])
+  expect(output.warning).toBeUndefined()
+})
 test('unsupported provider URLs are never rendered as successful images', async () => {
   http.post.mockResolvedValue({
     data: { data: [{ url: 'javascript:alert(1)' }] },

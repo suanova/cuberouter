@@ -774,8 +774,6 @@ export const STATIC_I18N_KEYS = [
   'Image size',
   'Image to image',
   'Images per request',
-  'Input command and output',
-  'Keep this page open. A timeout may still have consumed quota; check Usage Logs before retrying.',
   'Keep your pet and recreate a direct-flash night photograph.',
   'Local history storage is unavailable.',
   'Local history storage is unavailable. Download images to keep them.',

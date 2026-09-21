@@ -102,11 +102,3 @@ export function imageRequest(
   }
   return body
 }
-export function publicCommand(draft: WorkflowDraft): string {
-  const endpoint = draft.mode === 'edit' ? 'edits' : 'generations'
-  const body = imageRequest(
-    draft,
-    draft.references.map(() => '<reference image URL>')
-  )
-  return `POST /pg/images/${endpoint}\nContent-Type: application/json\n\n${JSON.stringify(body, null, 2)}`
-}

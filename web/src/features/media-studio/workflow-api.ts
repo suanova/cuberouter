@@ -51,16 +51,29 @@ export async function referenceAsset(file: Blob): Promise<StudioAsset> {
     url: await blobDataURL(file),
   }
 }
+// 上游 data URL 的媒体类型不受控：除 image/png、image/jpeg 外，还出现过
+// image/jpg 别名、带 charset 参数、非 base64 的百分号编码，以及
+// application/octet-stream。只要不是可执行的文本类型就按自包含资源处理。
+const SELF_CONTAINED_IMAGE =
+  /^data:(image\/[a-z0-9.+-]+|application\/octet-stream)/i
+
+/** 取 data URL 声明的媒体类型，并把 image/jpg 归一为 image/jpeg。 */
+function dataUrlMime(url: string): string {
+  const end = url.slice(5).search(/[;,]/)
+  const mime = end === -1 ? 'application/octet-stream' : url.slice(5, 5 + end)
+  return /^image\/jpg$/i.test(mime) ? 'image/jpeg' : mime
+}
+
 // Download only in the browser, without CubeRouter credentials or a server URL proxy.
 export async function localImage(url: string): Promise<StudioAsset> {
-  if (/^data:image\/(png|jpeg|webp|gif|bmp);base64,/.test(url)) {
+  if (SELF_CONTAINED_IMAGE.test(url)) {
     return {
       id: crypto.randomUUID(),
-      mime: url.slice(5, url.indexOf(';')),
+      mime: dataUrlMime(url),
       url,
     }
   }
-  const parsed = new URL(url)
+  const parsed = new URL(url, window.location.href)
   if (
     !['https:', 'http:'].includes(parsed.protocol) ||
     parsed.username ||
@@ -68,7 +81,7 @@ export async function localImage(url: string): Promise<StudioAsset> {
   ) {
     throw new Error('Unsupported image URL.')
   }
-  const response = await fetch(url, {
+  const response = await fetch(parsed.href, {
     credentials: 'omit',
     referrerPolicy: 'no-referrer',
   })
@@ -152,7 +165,7 @@ export const workflowAPI = {
         assets.push(await localImage(image.url))
       } catch {
         // Keep a successful provider result usable even when its CORS policy prevents persistence.
-        const fallback = new URL(image.url)
+        const fallback = new URL(image.url, window.location.href)
         if (
           !['https:', 'http:'].includes(fallback.protocol) ||
           fallback.username ||
@@ -162,7 +175,7 @@ export const workflowAPI = {
         }
         assets.push({
           id: crypto.randomUUID(),
-          url: image.url,
+          url: fallback.href,
           mime: 'image/png',
         })
         warning =

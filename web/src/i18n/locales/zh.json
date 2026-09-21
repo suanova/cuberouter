@@ -6023,8 +6023,6 @@
     "Reference uploads are not configured.": "尚未配置参考图上传服务。",
     "Supported sizes and image counts depend on the selected provider.": "支援的尺寸及图片数量视所选供应商而定。",
     "Generation and editing use your CubeRouter channels, quota and usage logs.": "生成及编辑沿用 CubeRouter 渠道、额度与使用记录。",
-    "Keep this page open. A timeout may still have consumed quota; check Usage Logs before retrying.": "请保持此页开启。逾时仍可能已消耗额度，重试前请查看使用记录。",
-    "Input command and output": "输入指令及输出结果",
     "Original image": "原图",
     "Delete local history?": "删除本机历史？",
     "This removes copies from this browser only. Provider uploads and usage logs are unaffected.": "这只会删除此浏览器中的副本，不影响供应商端的上传档案及使用记录。",

@@ -24,7 +24,6 @@ import {
   draftSchema,
   initialDraft,
   imageRequest,
-  publicCommand,
   templateDraft,
 } from '../lib/workflow'
 import type { Quality } from '../types'
@@ -121,14 +120,3 @@ test('edit requests without references are rejected', () =>
       mode: 'edit',
     }).success
   ).toBe(false))
-test('public examples redact reference content and use the standard image edit route', () => {
-  const command = publicCommand({
-    ...initialDraft,
-    mode: 'edit',
-    references: [reference],
-  })
-  expect(command).toContain('/pg/images/edits')
-  expect(command).toContain('<reference image URL>')
-  expect(command).not.toContain('YQ==')
-  expect(command).not.toContain('studio_token')
-})

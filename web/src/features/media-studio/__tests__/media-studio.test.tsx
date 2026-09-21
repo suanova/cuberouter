@@ -158,6 +158,35 @@ test('switching signed-in accounts clears the previous account result and histor
     screen.queryByRole('button', { name: 'Open creation: Account 301 cat' })
   ).not.toBeInTheDocument()
 })
+test('the in-progress view reports progress without exposing the request payload', async () => {
+  let release: (value: unknown) => void = () => {}
+  http.post.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        release = resolve
+      })
+  )
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'A cat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  expect(await screen.findByText('Generating 1 image…')).toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'Generation is synchronous and usually takes 40 seconds to 5 minutes. Keep this page open.'
+    )
+  ).toBeInTheDocument()
+  expect(document.querySelector('pre')).toBeNull()
+  await act(async () => {
+    release({
+      data: { created: 7, data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
+      headers: {},
+    })
+  })
+  await screen.findByAltText('Generated image')
+})
 test('the result view stacks the image preview above the creation history', async () => {
   page()
   await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())

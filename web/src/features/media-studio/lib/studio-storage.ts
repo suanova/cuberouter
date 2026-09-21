@@ -59,7 +59,7 @@ export async function saveStudioJob(
 ): Promise<void> {
   if (
     [...job.images, ...job.request.references].some(
-      (asset) => !/^data:image\/(png|jpeg|webp|gif|bmp);base64,/.test(asset.url)
+      (asset) => !/^data:image\//i.test(asset.url)
     )
   ) {
     throw new Error(

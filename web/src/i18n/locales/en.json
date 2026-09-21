@@ -6023,8 +6023,6 @@
     "Reference uploads are not configured.": "Reference uploads are not configured.",
     "Supported sizes and image counts depend on the selected provider.": "Supported sizes and image counts depend on the selected provider.",
     "Generation and editing use your CubeRouter channels, quota and usage logs.": "Generation and editing use your CubeRouter channels, quota and usage logs.",
-    "Keep this page open. A timeout may still have consumed quota; check Usage Logs before retrying.": "Keep this page open. A timeout may still have consumed quota; check Usage Logs before retrying.",
-    "Input command and output": "Input command and output",
     "Original image": "Original image",
     "Delete local history?": "Delete local history?",
     "This removes copies from this browser only. Provider uploads and usage logs are unaffected.": "This removes copies from this browser only. Provider uploads and usage logs are unaffected.",
