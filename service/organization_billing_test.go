@@ -954,6 +954,10 @@ func TestOrganizationBillingFailedRequestKeepsZeroLogAndBalancedLedger(t *testin
 	ctx.Set("username", member.Username)
 	ctx.Set(common.RequestIdKey, relayInfo.RequestId)
 	session.Refund(ctx)
+	// Refund 把退款的落库派发到 gopool 上，而退款路径会回写 relayInfo 上的会话字段。
+	// 先等这批后台任务结束，之后对 relayInfo 的读才有 happens-before。
+	WaitForBackgroundWork()
+	sessionId := relayInfo.OrganizationBillingSessionId
 	model.RecordErrorLog(ctx, member.Id, RelayConsumeLogParams(relayInfo, model.RecordConsumeLogParams{
 		ModelName: relayInfo.OriginModelName,
 		TokenName: token.Name,
@@ -963,12 +967,12 @@ func TestOrganizationBillingFailedRequestKeepsZeroLogAndBalancedLedger(t *testin
 	}))
 	require.Eventually(t, func() bool {
 		var storedSession model.OrganizationBillingSession
-		if err := model.DB.Where("id = ?", relayInfo.OrganizationBillingSessionId).First(&storedSession).Error; err != nil {
+		if err := model.DB.Where("id = ?", sessionId).First(&storedSession).Error; err != nil {
 			return false
 		}
 		var recordCount int64
 		if err := model.DB.Model(&model.OrganizationBillingRecord{}).
-			Where("session_id = ?", relayInfo.OrganizationBillingSessionId).
+			Where("session_id = ?", sessionId).
 			Count(&recordCount).Error; err != nil {
 			return false
 		}
@@ -976,7 +980,7 @@ func TestOrganizationBillingFailedRequestKeepsZeroLogAndBalancedLedger(t *testin
 	}, time.Second, 10*time.Millisecond)
 
 	var errorLog model.Log
-	require.NoError(t, model.LOG_DB.Where("organization_billing_session_id = ? AND type = ?", relayInfo.OrganizationBillingSessionId, model.LogTypeError).First(&errorLog).Error)
+	require.NoError(t, model.LOG_DB.Where("organization_billing_session_id = ? AND type = ?", sessionId, model.LogTypeError).First(&errorLog).Error)
 	require.Zero(t, errorLog.Quota)
 	records, total, err := ListOrganizationBillingDetails(owner.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationBillingDetailListRequest{Limit: 20, RequestId: relayInfo.RequestId})
 	require.NoError(t, err)
@@ -1067,10 +1071,13 @@ func TestOrganizationRelayBillingUpstreamFailureRefundsSession(t *testing.T) {
 	apiErr := PreConsumeBilling(&gin.Context{}, 100, relayInfo)
 	require.Nil(t, apiErr)
 	relayInfo.Billing.Refund(&gin.Context{})
+	// 同上：退款异步落库并回写 relayInfo，先冲刷再读会话 id。
+	WaitForBackgroundWork()
+	sessionId := relayInfo.OrganizationBillingSessionId
 
 	require.Eventually(t, func() bool {
 		var session model.OrganizationBillingSession
-		if err := model.DB.First(&session, relayInfo.OrganizationBillingSessionId).Error; err != nil {
+		if err := model.DB.First(&session, sessionId).Error; err != nil {
 			return false
 		}
 		var storedOrg model.Organization

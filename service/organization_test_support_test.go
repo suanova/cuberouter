@@ -134,6 +134,12 @@ func setupServiceTestDB(t *testing.T) {
 	))
 
 	t.Cleanup(func() {
+		// 请求路径上派发的一次性后台任务（额度缓存刷新、退款落库、额度提醒）
+		// 到真正干活时才去读进程级全局（model.DB / LOG_DB / common.RedisEnabled），
+		// 而用例结束时它们可能还在读。还原全局之前必须先等它们结束，
+		// 否则就是和后台 goroutine 抢同一个全局句柄。
+		model.WaitForQuotaCacheWorkers()
+		WaitForBackgroundWork()
 		if model.DB != nil {
 			if sqlDB, err := model.DB.DB(); err == nil {
 				_ = sqlDB.Close()
