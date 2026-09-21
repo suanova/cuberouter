@@ -28,9 +28,11 @@ import (
 )
 
 func TestOrganizationCanonicalRestfulRoutesAreRegistered(t *testing.T) {
+	// gin.SetMode 写的是 gin 的包级 modeName，非原子写。放在 t.Parallel() 之前，
+	// 它就在顺序阶段执行；放到之后会与同样并行运行的其它用例并发写同一个全局。
+	gin.SetMode(gin.TestMode)
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	require.NotPanics(t, func() {
 		SetApiRouter(r)
@@ -106,9 +108,10 @@ func TestOrganizationCanonicalRestfulRoutesAreRegistered(t *testing.T) {
 }
 
 func TestOrganizationLegacyRoutesAreRemoved(t *testing.T) {
+	// 同上：gin.SetMode 必须在 t.Parallel() 之前，否则与并行用例抢 gin 的包级 modeName。
+	gin.SetMode(gin.TestMode)
 	t.Parallel()
 
-	gin.SetMode(gin.TestMode)
 	r := gin.New()
 	require.NotPanics(t, func() {
 		SetApiRouter(r)

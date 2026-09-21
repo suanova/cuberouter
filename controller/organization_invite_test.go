@@ -99,8 +99,11 @@ func TestCreateOrganizationInviteRequestFallsBackToLegacyEmail(t *testing.T) {
 }
 
 func TestAcceptOrganizationInviteRequiresAcceptedStatus(t *testing.T) {
-	t.Parallel()
+	// gin.SetMode 写的是 gin 的包级 modeName，非原子写；gin.CreateTestContext 会经由
+	// gin.New() 读同一个变量。放在 t.Parallel() 之前，它就在顺序阶段执行，
+	// 放到之后就会与同样并行运行的用例并发读写同一个全局。
 	gin.SetMode(gin.TestMode)
+	t.Parallel()
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPatch, "/api/organization-invitations/token", bytes.NewBufferString(`{"status":"revoked"}`))
