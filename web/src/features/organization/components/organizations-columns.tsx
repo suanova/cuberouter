@@ -31,11 +31,14 @@ import {
   ORGANIZATION_STATUSES,
   organizationRoleLabelKey,
 } from '../constants'
+import { useOpenOrganization } from '../hooks/use-open-organization'
+import { getOrganizationListActionFlags } from '../lib'
 import type { UserOrganization } from '../types'
 import { OrganizationsRowActions } from './organizations-row-actions'
 
 export function useOrganizationsColumns(): ColumnDef<UserOrganization>[] {
   const { t } = useTranslation()
+  const openOrganization = useOpenOrganization()
 
   return [
     {
@@ -53,9 +56,22 @@ export function useOrganizationsColumns(): ColumnDef<UserOrganization>[] {
       cell: ({ row }) => {
         const organization = row.original
         const description = organization.description?.trim()
+        const canOpen = getOrganizationListActionFlags(organization).enter
         return (
           <div className='flex min-w-0 flex-col gap-0.5'>
-            <span className='truncate font-medium'>{organization.name}</span>
+            {canOpen ? (
+              // The name is the way into the organization; the row menu offers
+              // the same, and both go through the same context switch.
+              <button
+                type='button'
+                className='truncate text-left font-medium hover:underline focus-visible:underline focus-visible:outline-none'
+                onClick={() => void openOrganization(organization)}
+              >
+                {organization.name}
+              </button>
+            ) : (
+              <span className='truncate font-medium'>{organization.name}</span>
+            )}
             {description && (
               <span className='text-muted-foreground truncate text-xs'>
                 {description}
@@ -155,7 +171,9 @@ export function useOrganizationsColumns(): ColumnDef<UserOrganization>[] {
     },
     {
       id: 'actions',
-      cell: ({ row }) => <OrganizationsRowActions organization={row.original} />,
+      cell: ({ row }) => (
+        <OrganizationsRowActions organization={row.original} />
+      ),
       enableSorting: false,
       enableHiding: false,
       size: 90,

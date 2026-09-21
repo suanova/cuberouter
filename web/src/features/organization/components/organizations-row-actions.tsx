@@ -17,15 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import {
-  LogIn,
-  Pencil,
-  Power,
-  PowerOff,
-  Trash2,
-} from 'lucide-react'
+import { LogIn, Pencil, Power, PowerOff, Trash2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import {
@@ -34,12 +27,8 @@ import {
   DropdownMenuShortcut,
 } from '@/components/ui/dropdown-menu'
 
-import { ERROR_MESSAGES } from '../constants'
-import { useEnterOrganization } from '../hooks/use-enter-organization'
-import {
-  getOrganizationListActionFlags,
-  isOrganizationEnterable,
-} from '../lib'
+import { useOpenOrganization } from '../hooks/use-open-organization'
+import { getOrganizationListActionFlags } from '../lib'
 import type { UserOrganization } from '../types'
 import { useOrganizations } from './organizations-provider'
 
@@ -52,7 +41,7 @@ export function OrganizationsRowActions({
 }: OrganizationsRowActionsProps) {
   const { t } = useTranslation()
   const { setOpen, setCurrentRow } = useOrganizations()
-  const enterOrganization = useEnterOrganization()
+  const openOrganization = useOpenOrganization()
 
   const { enter, edit, disable, enable, dissolve } =
     getOrganizationListActionFlags(organization)
@@ -67,29 +56,12 @@ export function OrganizationsRowActions({
     setOpen(type)
   }
 
-  const handleEnter = async () => {
-    try {
-      await enterOrganization(
-        organization.id,
-        isOrganizationEnterable(organization)
-      )
-    } catch (error) {
-      // A failed context switch would leave the target page showing nothing but
-      // a context mismatch, so the failure is reported here instead.
-      toast.error(
-        error instanceof Error && error.message
-          ? error.message
-          : t(ERROR_MESSAGES.UNEXPECTED)
-      )
-    }
-  }
-
   return (
-    <DataTableRowActionMenu
-      ariaLabel={t('Open menu')}
-      contentClassName='w-48'
-    >
-      <DropdownMenuItem onSelect={() => void handleEnter()} disabled={!enter}>
+    <DataTableRowActionMenu ariaLabel={t('Open menu')} contentClassName='w-48'>
+      <DropdownMenuItem
+        onSelect={() => void openOrganization(organization)}
+        disabled={!enter}
+      >
         {t('Open')}
         <DropdownMenuShortcut>
           <LogIn size={16} />

@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import type { ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 
@@ -29,11 +30,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { formatNumber, formatQuota, formatTimestamp } from '@/lib/format'
-
 import { ORGANIZATION_STATUSES } from '@/features/organization/constants'
 import type { OrganizationManagementView } from '@/features/organization/types'
+import { formatNumber, formatQuota, formatTimestamp } from '@/lib/format'
 
+import { PLATFORM_ORGANIZATION_DEFAULT_TAB } from '../lib'
 import { PlatformOrganizationsRowActions } from './platform-organizations-row-actions'
 
 /**
@@ -64,7 +65,19 @@ export function usePlatformOrganizationsColumns(options: {
       header: t('Organization'),
       cell: ({ row }) => (
         <div className='flex min-w-0 flex-col gap-0.5'>
-          <span className='truncate font-medium'>{row.original.name}</span>
+          {/* The name is the way into the organization, the same as the row
+              menu's View. Nothing is switched here: an administrator reads an
+              organization through their own identity, never as a member. */}
+          <Link
+            to='/admin/organizations/$organizationId/$section'
+            params={{
+              organizationId: String(row.original.id),
+              section: PLATFORM_ORGANIZATION_DEFAULT_TAB,
+            }}
+            className='truncate font-medium hover:underline focus-visible:underline focus-visible:outline-none'
+          >
+            {row.original.name}
+          </Link>
           <span className='text-muted-foreground truncate text-xs'>
             {row.original.slug}
           </span>
@@ -209,7 +222,9 @@ export function usePlatformOrganizationsColumns(options: {
       accessorKey: 'request_count',
       header: t('Requests'),
       cell: ({ row }) => (
-        <span className='text-sm'>{formatNumber(row.original.request_count)}</span>
+        <span className='text-sm'>
+          {formatNumber(row.original.request_count)}
+        </span>
       ),
       enableSorting: false,
       size: 120,
@@ -251,7 +266,11 @@ export function usePlatformOrganizationsColumns(options: {
  * order has to be learned.
  */
 // eslint-disable-next-line react-refresh/only-export-components
-function CountsCell(props: { active: number; disabled: number; total: number }) {
+function CountsCell(props: {
+  active: number
+  disabled: number
+  total: number
+}) {
   const { t } = useTranslation()
 
   return (
