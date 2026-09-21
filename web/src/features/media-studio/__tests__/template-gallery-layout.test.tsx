@@ -22,12 +22,12 @@ import { expect, test, vi } from 'vitest'
 
 import { TemplateGallery } from '../components/template-gallery'
 
-test('template cards keep quarter-size columns on desktop and two-up on phones', () => {
+test('template cards top out at five columns so each card stays large', () => {
   render(<TemplateGallery disabled={false} onApply={vi.fn()} />)
   const grid = screen
     .getByRole('region', { name: 'Template gallery' })
     .querySelector('div.grid')
   expect(grid?.className.split(' ')).toEqual(
-    expect.arrayContaining(['grid-cols-2', 'md:grid-cols-4', 'xl:grid-cols-6'])
+    expect.arrayContaining(['grid-cols-2', 'md:grid-cols-4', 'xl:grid-cols-5'])
   )
 })

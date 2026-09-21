@@ -67,7 +67,7 @@ export function TemplateGallery(props: {
           </Button>
         ))}
       </div>
-      <div className='grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-6'>
+      <div className='grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5'>
         {visible.map((item) => (
           <button
             key={item.id}
