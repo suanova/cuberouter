@@ -29,6 +29,20 @@ import type {
   WorkflowJob,
 } from './workflow-types'
 
+/**
+ * 本地图片与生成记录的标识。不要直接用 crypto.randomUUID()：该 API 只在安全上下文
+ * （HTTPS 或 localhost）暴露，而本项目常部署在 http://<ip>:<port>，此时它是 undefined，
+ * 会让造 id 的每一步抛 TypeError，成功生成的图片反而报错显示不出来。
+ * crypto.getRandomValues 在非安全上下文同样可用，故作为替代。
+ */
+function newId(): string {
+  if (typeof crypto?.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 export function blobDataURL(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -46,29 +60,57 @@ export async function referenceAsset(file: Blob): Promise<StudioAsset> {
     throw new Error('Upload PNG, JPEG or WebP files of at most 10 MB each.')
   }
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     mime: file.type,
     url: await blobDataURL(file),
   }
 }
-// 上游 data URL 的媒体类型不受控：除 image/png、image/jpeg 外，还出现过
-// image/jpg 别名、带 charset 参数、非 base64 的百分号编码，以及
-// application/octet-stream。只要不是可执行的文本类型就按自包含资源处理。
-const SELF_CONTAINED_IMAGE =
-  /^data:(image\/[a-z0-9.+-]+|application\/octet-stream)/i
+// data URL 是自包含资源：<img> 直接渲染，既不经过网络也不携带凭据。上游声明的
+// 媒体类型完全不受控——除 image/png、image/jpeg 外，出现过 image/jpg 别名、带
+// charset 参数、binary/octet-stream，以及干脆省略媒体类型的 `data:;base64,`。
+// 一旦按类型白名单过滤，这些都能正常显示的结果反而会被判成非法网址，因此这里只
+// 判断 scheme：data: 一定自包含，无需再看后面的媒体类型。
+const SELF_CONTAINED_URL = /^data:/i
 
-/** 取 data URL 声明的媒体类型，并把 image/jpg 归一为 image/jpeg。 */
+/** 取 data URL 声明的媒体类型（仅用于本地历史的元数据），image/jpg 归一为 image/jpeg。 */
 function dataUrlMime(url: string): string {
-  const end = url.slice(5).search(/[;,]/)
-  const mime = end === -1 ? 'application/octet-stream' : url.slice(5, 5 + end)
+  const body = url.slice(5)
+  const end = body.search(/[;,]/)
+  const mime = end === -1 ? body : body.slice(0, end)
+  if (!mime.includes('/')) return 'application/octet-stream'
   return /^image\/jpg$/i.test(mime) ? 'image/jpeg' : mime
 }
 
+/**
+ * 浏览器能直接当作图片加载的地址，用于「显示」而不是「保存」：
+ * data:（自包含）、http/https（包括带凭据或没有扩展名的上游网址）、blob:。
+ * 相对路径按当前页面解析。只有 javascript: 之类的 scheme 既不能进 <img src>，
+ * 放进下载链接还会带执行风险，必须拒绝。
+ */
+function renderableUrl(url: string): string | null {
+  if (SELF_CONTAINED_URL.test(url)) {
+    // 原样返回：重新序列化可能改动 base64 里的字符。
+    return url
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(url, window.location.href)
+  } catch {
+    return null
+  }
+  return ['http:', 'https:', 'blob:'].includes(parsed.protocol)
+    ? parsed.href
+    : null
+}
+
 // Download only in the browser, without CubeRouter credentials or a server URL proxy.
+// 这个函数比 renderableUrl 严格得多：它要产出可存进 IndexedDB、后续还能上传的
+// 自包含资源，因此会拒绝带凭据的网址和无法内联的远程地址。拒绝只影响「能否保存」，
+// 调用方必须回退到 renderableUrl 继续显示，不能因此让一次成功的生成失败。
 export async function localImage(url: string): Promise<StudioAsset> {
-  if (SELF_CONTAINED_IMAGE.test(url)) {
+  if (SELF_CONTAINED_URL.test(url)) {
     return {
-      id: crypto.randomUUID(),
+      id: newId(),
       mime: dataUrlMime(url),
       url,
     }
@@ -102,7 +144,7 @@ export async function localImage(url: string): Promise<StudioAsset> {
     throw new Error('Unsupported image download.')
   }
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     mime: blob.type,
     url: await blobDataURL(blob),
   }
@@ -164,18 +206,15 @@ export const workflowAPI = {
       try {
         assets.push(await localImage(image.url))
       } catch {
-        // Keep a successful provider result usable even when its CORS policy prevents persistence.
-        const fallback = new URL(image.url, window.location.href)
-        if (
-          !['https:', 'http:'].includes(fallback.protocol) ||
-          fallback.username ||
-          fallback.password
-        ) {
+        // 保存失败不影响显示：上游网址只要浏览器能加载就照原样用。CORS、跨域凭据、
+        // 非白名单媒体类型都只意味着「存不进本地历史」，不是「这张图不能用」。
+        const href = renderableUrl(image.url)
+        if (!href) {
           throw new Error('Unsupported image URL.')
         }
         assets.push({
-          id: crypto.randomUUID(),
-          url: fallback.href,
+          id: newId(),
+          url: href,
           mime: 'image/png',
         })
         warning =
@@ -184,7 +223,7 @@ export const workflowAPI = {
     }
     return {
       job: {
-        id: crypto.randomUUID(),
+        id: newId(),
         created_at: Date.now(),
         request: structuredClone(draft),
         images: assets,

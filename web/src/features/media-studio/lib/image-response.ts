@@ -59,10 +59,16 @@ export function b64ToDataUrl(b64: string): string {
 }
 
 /**
+ * 有些上游不区分 url / b64_json：经中转的 DashScope 会把完整 data URL 塞进
+ * b64_json，部分中转还会直接把图片网址写进去。这两种值都已可直接渲染，再拼一次
+ * base64 前缀只会得到无法解码的 URL（页面表现为「看不到图片」）。
+ * base64 字母表不含 `:`，因此以 `data:` 或 `http(s)://` 开头的值必定不是 base64。
+ */
+const ALREADY_RENDERABLE = /^(data:|https?:\/\/)/i
+
+/**
  * 把 OpenAI images 响应体中的 data[] 提取为可渲染的图片列表：
- * 优先 url，其次 b64_json（转 data URL）；两者皆无的条目跳过。
- * 部分上游（经中转的 DashScope 等）会把完整 data URL 塞进 b64_json，
- * 此时必须原样使用，否则会二次拼接前缀得到无法解码的 URL。
+ * 优先 url，其次 b64_json（已是网址则原样使用，否则转 data URL）；两者皆无的条目跳过。
  */
 export function extractImages(body: ImageResponseBody): GeneratedImage[] {
   const items = Array.isArray(body?.data) ? body.data : []
@@ -78,7 +84,7 @@ export function extractImages(body: ImageResponseBody): GeneratedImage[] {
     }
     if (typeof entry.b64_json === 'string' && entry.b64_json !== '') {
       images.push({
-        url: entry.b64_json.startsWith('data:')
+        url: ALREADY_RENDERABLE.test(entry.b64_json)
           ? entry.b64_json
           : b64ToDataUrl(entry.b64_json),
       })

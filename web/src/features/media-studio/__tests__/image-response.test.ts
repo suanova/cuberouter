@@ -41,6 +41,17 @@ describe('extractImages', () => {
     ])
   })
 
+  test('keeps b64_json items that are provider URLs instead of base64 bytes', () => {
+    const body = {
+      created: 1,
+      data: [{ b64_json: 'https://dashscope.example/result.png' }],
+    }
+
+    expect(extractImages(body)).toEqual([
+      { url: 'https://dashscope.example/result.png' },
+    ])
+  })
+
   test('converts b64_json items to data URLs when url is absent', () => {
     const b64 = 'iVBORw0KGgoAAAANSUhEUg'
     const body = { created: 1, data: [{ b64_json: b64 }] }
