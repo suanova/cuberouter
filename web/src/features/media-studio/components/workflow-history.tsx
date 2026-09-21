@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Trash2 } from 'lucide-react'
+
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -27,11 +29,17 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 
 import type { WorkflowJob } from '../workflow-types'
 
+/**
+ * 本地生成历史：紧凑列表，选中项在结果区展开。
+ * 图片为自包含 data URL，可跨会话还原。
+ */
 export function WorkflowHistory(props: {
   jobs: WorkflowJob[]
+  selected?: string
   busy: boolean
   onSelect: (id: string) => void
   onDelete: (id?: string) => void
@@ -39,63 +47,83 @@ export function WorkflowHistory(props: {
   const { t } = useTranslation()
   const [deleting, setDeleting] = useState<string | null>(null)
   return (
-    <section className='space-y-4' aria-label={t('Creation history')}>
-      {!!props.jobs.length && (
-        <Button
-          variant='outline'
-          size='sm'
-          disabled={props.busy}
-          onClick={() => setDeleting('')}
-        >
-          {t('Clear history')}
-        </Button>
-      )}
+    <section className='space-y-3' aria-label={t('Creation history')}>
+      <header className='flex items-center justify-between gap-2'>
+        <h2 className='text-muted-foreground text-xs font-semibold tracking-wide uppercase'>
+          {t('Creation history')}
+        </h2>
+        {!!props.jobs.length && (
+          <Button
+            variant='ghost'
+            size='xs'
+            disabled={props.busy}
+            onClick={() => setDeleting('')}
+          >
+            <Trash2 aria-hidden='true' />
+            {t('Clear history')}
+          </Button>
+        )}
+      </header>
       {!props.jobs.length && (
-        <p className='text-muted-foreground py-12 text-center text-sm'>
+        <p className='text-muted-foreground rounded-lg border border-dashed p-4 text-center text-xs'>
           {t('No generations in this browser yet.')}
         </p>
       )}
-      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
-        {props.jobs.map((job) => (
-          <article
-            key={job.id}
-            className='bg-card overflow-hidden rounded-xl border'
-          >
-            <button
-              type='button'
-              className='w-full text-left'
-              aria-label={`${t('Open creation')}: ${job.request.prompt}`}
-              onClick={() => props.onSelect(job.id)}
-            >
-              <img
-                src={job.images[0]?.url}
-                alt={job.request.prompt}
-                className='aspect-video w-full object-cover'
-              />
-              <div className='space-y-1 p-3'>
-                <p className='line-clamp-2 text-xs'>{job.request.prompt}</p>
-                <p className='text-muted-foreground text-xs'>
-                  {job.request.model} ·{' '}
-                  {new Date(job.created_at).toLocaleString()}
-                </p>
-                {job.request.parent_id && (
-                  <p className='text-muted-foreground text-xs'>
-                    {t('Edited from a previous version')}
-                  </p>
-                )}
+      <ul className='flex flex-col gap-1.5'>
+        {props.jobs.map((job) => {
+          const current = job.id === props.selected
+          return (
+            <li key={job.id}>
+              <div className='flex items-start gap-2'>
+                <button
+                  type='button'
+                  aria-pressed={current}
+                  aria-label={`${t('Open creation')}: ${job.request.prompt}`}
+                  onClick={() => props.onSelect(job.id)}
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center gap-3 rounded-lg border p-2 text-left transition-colors',
+                    current
+                      ? 'border-primary/60 bg-muted'
+                      : 'border-border hover:bg-muted'
+                  )}
+                >
+                  {job.images[0] && (
+                    <img
+                      src={job.images[0].url}
+                      alt=''
+                      aria-hidden='true'
+                      loading='lazy'
+                      className='border-border bg-muted size-12 shrink-0 rounded-md border object-cover'
+                    />
+                  )}
+                  <span className='min-w-0 flex-1'>
+                    <span className='block truncate text-xs font-medium'>
+                      {job.request.prompt}
+                    </span>
+                    <span className='text-muted-foreground block text-[11px]'>
+                      {job.request.model} ·{' '}
+                      {new Date(job.created_at).toLocaleString()}
+                      {job.request.parent_id
+                        ? ` · ${t('Edited from a previous version')}`
+                        : ''}
+                    </span>
+                  </span>
+                </button>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='icon-xs'
+                  disabled={props.busy}
+                  aria-label={t('Delete creation')}
+                  onClick={() => setDeleting(job.id)}
+                >
+                  <Trash2 aria-hidden='true' />
+                </Button>
               </div>
-            </button>
-            <Button
-              variant='ghost'
-              size='sm'
-              disabled={props.busy}
-              onClick={() => setDeleting(job.id)}
-            >
-              {t('Delete creation')}
-            </Button>
-          </article>
-        ))}
-      </div>
+            </li>
+          )
+        })}
+      </ul>
       <Dialog
         open={deleting !== null}
         onOpenChange={(open) => {

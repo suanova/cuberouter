@@ -18,15 +18,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 
-import { draftSchema, numericSettings } from '../lib/workflow'
+import { QUALITY_OPTIONS } from '../constants'
+import { draftSchema } from '../lib/workflow'
+import type { Quality } from '../types'
 import type { WorkflowConfig, WorkflowDraft } from '../workflow-types'
 
 export function WorkflowComposer(props: {
@@ -41,37 +43,10 @@ export function WorkflowComposer(props: {
   onReset: () => void
 }) {
   const { t } = useTranslation()
-  const [numbers, setNumbers] = useState({
-    steps: String(props.draft.steps),
-    seed: String(props.draft.seed),
-    cfg: String(props.draft.cfg),
-  })
-  useEffect(
-    () =>
-      setNumbers((value) => ({ ...value, steps: String(props.draft.steps) })),
-    [props.draft.steps]
-  )
-  useEffect(
-    () => setNumbers((value) => ({ ...value, seed: String(props.draft.seed) })),
-    [props.draft.seed]
-  )
-  useEffect(
-    () => setNumbers((value) => ({ ...value, cfg: String(props.draft.cfg) })),
-    [props.draft.cfg]
-  )
   const editing = props.draft.mode === 'edit'
   const models = props.models.filter(
     (name) => !editing || props.config.edit_models.includes(name)
   )
-  const parsed = numericSettings.safeParse(
-    Object.fromEntries(
-      Object.entries(numbers).map(([key, value]) => [
-        key,
-        value.trim() === '' ? Number.NaN : Number(value),
-      ])
-    )
-  )
-  const numericValid = !props.draft.advanced || parsed.success
   const form = useForm<WorkflowDraft>({
     values: props.draft,
     resolver: zodResolver(draftSchema),
@@ -80,7 +55,6 @@ export function WorkflowComposer(props: {
     props.onChange({ ...props.draft, ...patch })
   const valid =
     draftSchema.safeParse(props.draft).success &&
-    numericValid &&
     models.includes(props.draft.model) &&
     (!editing || props.config.upload_enabled)
   return (
@@ -244,67 +218,31 @@ export function WorkflowComposer(props: {
       <p className='text-muted-foreground text-xs'>
         {t('Supported sizes and image counts depend on the selected provider.')}
       </p>
-      <label className='flex items-center gap-2 text-xs'>
-        <input
-          type='checkbox'
-          checked={props.draft.advanced}
+      <div className='space-y-1'>
+        <span className='block text-sm'>{t('Quality')}</span>
+        <RadioGroup
+          aria-label={t('Quality')}
+          value={props.draft.quality}
+          onValueChange={(value) => update({ quality: value as Quality })}
           disabled={props.busy}
-          onChange={(event) => update({ advanced: event.target.checked })}
-        />
-        {t('Send model-specific advanced settings')}
-      </label>
-      {props.draft.advanced && (
-        <div className='grid grid-cols-3 gap-2'>
-          {(
-            [
-              { key: 'steps', label: 'Steps', min: 1, max: 100, step: 1 },
-              { key: 'cfg', label: 'CFG', min: 0, max: 10, step: 0.5 },
-              {
-                key: 'seed',
-                label: 'Seed',
-                min: 0,
-                max: 9007199254740987,
-                step: 1,
-              },
-            ] as const
-          ).map((field) => (
-            <label className='text-xs' key={field.key}>
-              {t(field.label)}
-              <Input
-                type='number'
-                value={numbers[field.key]}
-                min={field.min}
-                max={field.max}
-                step={field.step}
-                disabled={props.busy}
-                aria-invalid={
-                  !numericSettings.shape[field.key].safeParse(
-                    numbers[field.key] === ''
-                      ? Number.NaN
-                      : Number(numbers[field.key])
-                  ).success
-                }
-                onChange={(event) => {
-                  const value = event.target.value
-                  setNumbers((current) => ({ ...current, [field.key]: value }))
-                  if (
-                    value !== '' &&
-                    numericSettings.shape[field.key].safeParse(Number(value))
-                      .success
-                  ) {
-                    update({ [field.key]: Number(value) })
-                  }
-                }}
+          className='grid-cols-3'
+        >
+          {QUALITY_OPTIONS.map((option) => (
+            <div key={option.id} className='flex items-center gap-2'>
+              <RadioGroupItem
+                value={option.id}
+                id={`workflow-quality-${option.id}`}
               />
-            </label>
+              <label
+                htmlFor={`workflow-quality-${option.id}`}
+                className='cursor-pointer text-xs'
+              >
+                {t(option.labelKey)}
+              </label>
+            </div>
           ))}
-        </div>
-      )}
-      {!numericValid && (
-        <p role='alert' className='text-destructive text-xs'>
-          {t('Check the numeric settings before generating.')}
-        </p>
-      )}
+        </RadioGroup>
+      </div>
       <Button
         type='submit'
         className='w-full'
@@ -317,10 +255,7 @@ export function WorkflowComposer(props: {
         variant='ghost'
         className='w-full'
         disabled={props.busy}
-        onClick={() => {
-          setNumbers({ steps: '40', seed: '42', cfg: '4' })
-          props.onReset()
-        }}
+        onClick={() => props.onReset()}
       >
         {t('Reset settings')}
       </Button>

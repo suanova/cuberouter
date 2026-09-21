@@ -91,13 +91,22 @@ test('standard channel generation saves actual bytes locally and reloads history
   await screen.findByAltText('Generated image')
   expect(http.post).toHaveBeenCalledWith(
     '/pg/images/generations',
-    { model: 'image-model', prompt: 'A cat', n: 1, size: '1024x1024' },
+    {
+      model: 'image-model',
+      prompt: 'A cat',
+      n: 1,
+      size: '1024x1024',
+      quality: 'standard',
+      num_inference_steps: 30,
+      seed: 42,
+      true_cfg_scale: 4,
+    },
     expect.anything()
   )
   await waitFor(async () => expect(await listStudioJobs(301)).toHaveLength(1))
   view.unmount()
   page()
-  fireEvent.click(screen.getByRole('button', { name: 'Creation history' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Result' }))
   await screen.findByRole('button', { name: 'Open creation: A cat' })
 })
 test('continuing from a generated image preserves the original and switches to reference editing', async () => {
@@ -143,9 +152,42 @@ test('switching signed-in accounts clears the previous account result and histor
       .auth.setUser({ id: 302, username: 'another', role: 1 })
   })
   expect(screen.queryByAltText('Generated image')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Creation history' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Result' }))
   await screen.findByText('No generations in this browser yet.')
   expect(
     screen.queryByRole('button', { name: 'Open creation: Account 301 cat' })
   ).not.toBeInTheDocument()
+})
+test('the result view stacks the image preview above the creation history', async () => {
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'A cat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByAltText('Generated image')
+  // 结果与历史合并后，导航只剩「模版图库」和「结果」两个入口。
+  expect(
+    screen.queryByRole('button', { name: 'Creation history' })
+  ).not.toBeInTheDocument()
+  const preview = screen.getByRole('region', { name: 'Image preview' })
+  const history = screen.getByRole('region', { name: 'Creation history' })
+  expect(preview.compareDocumentPosition(history)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING
+  )
+  await screen.findByRole('button', { name: 'Open creation: A cat' })
+})
+test('the local history note is shown on the merged result view only', async () => {
+  const note = /^History is stored in this browser/
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  expect(screen.queryByText(note)).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'A cat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByAltText('Generated image')
+  expect(screen.getByText(note)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Template gallery' }))
+  expect(screen.queryByText(note)).not.toBeInTheDocument()
 })

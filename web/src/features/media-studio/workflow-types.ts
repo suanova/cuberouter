@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { Quality } from './types'
+
 export interface StudioAsset {
   id: string
   url: string
@@ -32,10 +34,7 @@ export interface WorkflowDraft {
   prompt: string
   size: string
   count: number
-  advanced: boolean
-  steps: number
-  seed: number
-  cfg: number
+  quality: Quality
   references: StudioAsset[]
   parent_id?: string
 }

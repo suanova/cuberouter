@@ -51,30 +51,24 @@ function Composer(props: { generate: () => void; config?: WorkflowConfig }) {
     />
   )
 }
-test('clearing a numeric field keeps it empty and prevents a request until repaired', async () => {
+test('the composer offers quality tiers instead of model-specific numeric settings', () => {
+  render(<Composer generate={vi.fn()} />)
+  expect(
+    screen.queryByLabelText('Send model-specific advanced settings')
+  ).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Steps')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('CFG')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+})
+test('selecting a quality tier marks the chosen tier and keeps generation enabled', async () => {
   const generate = vi.fn()
   render(<Composer generate={generate} />)
-  fireEvent.click(
-    screen.getByLabelText('Send model-specific advanced settings')
-  )
-  fireEvent.change(screen.getByLabelText('Seed'), { target: { value: '' } })
-  fireEvent.change(screen.getByLabelText('CFG'), { target: { value: '2' } })
-  expect(screen.getByLabelText('Seed')).toHaveValue(null)
-  expect(screen.getByLabelText('Seed')).toHaveAttribute('aria-invalid', 'true')
-  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
-  expect(generate).not.toHaveBeenCalled()
-  fireEvent.change(screen.getByLabelText('Seed'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('radio', { name: 'High' }))
+  expect(screen.getByRole('radio', { name: 'High' })).toBeChecked()
+  expect(screen.getByRole('radio', { name: 'Standard' })).not.toBeChecked()
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
-})
-test('out-of-range advanced steps disable generation without silently restoring old values', () => {
-  render(<Composer generate={vi.fn()} />)
-  fireEvent.click(
-    screen.getByLabelText('Send model-specific advanced settings')
-  )
-  fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '101' } })
-  expect(screen.getByLabelText('Steps')).toHaveValue(101)
-  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
 })
 test('edit mode lists only operator-confirmed edit models and requires a reference', () => {
   render(<Composer generate={vi.fn()} />)

@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { isAxiosError } from 'axios'
 import { z } from 'zod'
 
+import { DEFAULT_PARAMS, qualitySteps } from '../constants'
 import type { StudioTemplate, WorkflowDraft } from '../workflow-types'
 
 export const initialDraft: WorkflowDraft = {
@@ -28,17 +29,9 @@ export const initialDraft: WorkflowDraft = {
   prompt: '',
   size: '1024x1024',
   count: 1,
-  advanced: false,
-  steps: 40,
-  seed: 42,
-  cfg: 4,
+  quality: 'standard',
   references: [],
 }
-export const numericSettings = z.object({
-  steps: z.number().int().min(1).max(100),
-  seed: z.number().int().min(0).max(9007199254740987),
-  cfg: z.number().min(0).max(10),
-})
 export const draftSchema = z
   .object({
     mode: z.enum(['create', 'edit']),
@@ -46,8 +39,7 @@ export const draftSchema = z
     prompt: z.string().trim().min(1).max(16000),
     size: z.string().regex(/^[1-9]\d{1,3}x[1-9]\d{1,3}$/),
     count: z.number().int().min(1).max(4),
-    advanced: z.boolean(),
-    ...numericSettings.shape,
+    quality: z.enum(['fast', 'standard', 'high']),
     references: z
       .array(z.object({ id: z.string(), url: z.string(), mime: z.string() }))
       .max(3),
@@ -98,13 +90,12 @@ export function imageRequest(
     prompt: draft.prompt.trim(),
     n: draft.count,
     size: draft.size,
-  }
-  if (draft.advanced) {
-    Object.assign(body, {
-      num_inference_steps: draft.steps,
-      seed: draft.seed,
-      true_cfg_scale: draft.cfg,
-    })
+    // 画质档位既用于按张计费价目表,也决定机器原生推理步数;
+    // seed 与 true_cfg_scale 是机器原生扩展字段,页面不暴露可调项。
+    quality: draft.quality,
+    num_inference_steps: qualitySteps(draft.quality),
+    seed: DEFAULT_PARAMS.seed,
+    true_cfg_scale: DEFAULT_PARAMS.cfg,
   }
   if (draft.mode === 'edit') {
     body.images = imageURLs.map((image_url) => ({ image_url }))
