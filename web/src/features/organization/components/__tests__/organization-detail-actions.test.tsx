@@ -33,6 +33,10 @@ import { OrganizationDetail } from '../organization-detail'
  * other child. It never mounted, so the button looked broken. A harness
  * assembling the button and the confirm itself would pass whether or not that
  * defect is present.
+ *
+ * The leave action is covered here for a related reason: it is a member's only
+ * way out of an organization, and it used to live solely inside the members
+ * section, which a member no longer has.
  */
 const fixtures = vi.hoisted(() => ({
   refetch: vi.fn(),
@@ -135,6 +139,35 @@ vi.mock(
   })
 )
 
+// Observable exactly while it is open, which is how the header button opens it.
+// The dialog's own request belongs to its own test.
+vi.mock(
+  '@/features/organization/components/organization-member-dialogs',
+  () => ({
+    OrganizationExitDialog: (props: { open: boolean }) =>
+      props.open ? <div data-testid='exit-dialog' /> : null,
+  })
+)
+
+/** A plain member of an active organization: no roster, no wide data. */
+const MEMBER_CAPABILITIES = {
+  ...fixtures.ownerCapabilities,
+  can_view_organization_wide_data: false,
+  can_update_organization: false,
+  can_disable_organization: false,
+  can_manage_members: false,
+  can_transfer_owner: false,
+  can_view_invites: false,
+  can_create_invites: false,
+  can_revoke_invites: false,
+  can_manage_all_tokens: false,
+  can_modify_organization_group: false,
+  can_dissolve_organization: false,
+  can_view_audit: false,
+  can_view_organization_billing_summary: false,
+  show_return_organization_center: false,
+}
+
 function renderDetail() {
   render(
     <QueryClientProvider client={new QueryClient()}>
@@ -158,5 +191,35 @@ describe('organization detail header actions', () => {
     )
 
     expect(screen.getByTestId('dissolve-confirm')).toBeInTheDocument()
+  })
+
+  test('offers a member the way out that the members section used to hold', async () => {
+    fixtures.section = 'tokens'
+    fixtures.capabilities = MEMBER_CAPABILITIES
+    renderDetail()
+
+    // The section that carried the Leave button is gone for this caller. Both
+    // halves are asserted together because it is the coupling that matters: the
+    // action may not disappear along with the tab that used to host it.
+    expect(
+      screen.queryByRole('tab', { name: 'Members' })
+    ).not.toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Leave organization' })
+    )
+
+    expect(screen.getByTestId('exit-dialog')).toBeInTheDocument()
+  })
+
+  test('keeps the leave action out of the header for a caller with a members section', () => {
+    renderDetail()
+
+    // An owner reaches the roster, so the button stays where it has always been
+    // rather than appearing in two places at once.
+    expect(screen.getByRole('tab', { name: 'Members' })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Leave organization' })
+    ).not.toBeInTheDocument()
   })
 })

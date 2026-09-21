@@ -78,12 +78,12 @@ func TestEvaluateOrganizationPolicyCapabilityMatrix(t *testing.T) {
 			wantRole: model.OrganizationRoleMember,
 			wantCapabilities: []string{
 				OrganizationCapabilityViewOrganization,
-				OrganizationCapabilityViewMembersLimited,
 				OrganizationCapabilityViewOrganizationTokens,
 				OrganizationCapabilityViewOrganizationLogs,
 				OrganizationCapabilityViewOrganizationUsage,
 			},
 			denyCapabilities: []string{
+				OrganizationCapabilityViewMembersFull,
 				OrganizationCapabilityUpdateOrganization,
 				OrganizationCapabilityManageMembers,
 				OrganizationCapabilityManageInvitations,

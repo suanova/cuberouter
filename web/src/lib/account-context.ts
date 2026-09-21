@@ -45,7 +45,6 @@ export const organizationCapabilitiesSchema = z.object({
   can_view_organization: z.boolean(),
   can_view_organization_wide_data: z.boolean(),
   can_view_organization_usage: z.boolean(),
-  can_view_members_limited: z.boolean(),
   can_view_organization_tokens: z.boolean(),
   can_view_organization_logs: z.boolean(),
   can_update_organization: z.boolean(),

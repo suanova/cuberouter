@@ -43,7 +43,6 @@ function capabilities(
     can_view_organization: false,
     can_view_organization_wide_data: false,
     can_view_organization_usage: false,
-    can_view_members_limited: false,
     can_view_organization_tokens: false,
     can_view_organization_logs: false,
     can_update_organization: false,
@@ -94,6 +93,26 @@ function ownerCapabilities(
     can_view_organization_billing_summary: true,
     show_return_organization_center: true,
     show_return_personal_center: true,
+    ...overrides,
+  })
+}
+
+/**
+ * A plain member of an active organization: exactly what the backend grants
+ * `organization_role: member`, and nothing more.
+ *
+ * Notably absent is the wide grant, which is what carries the organization
+ * overview and the member roster.
+ */
+function memberCapabilities(
+  overrides: Partial<OrganizationCapabilities> = {}
+): OrganizationCapabilities {
+  return capabilities({
+    can_view_organization: true,
+    can_view_organization_usage: true,
+    can_view_organization_tokens: true,
+    can_view_organization_logs: true,
+    can_exit_organization: true,
     ...overrides,
   })
 }
@@ -202,28 +221,29 @@ describe('getOrganizationTabs', () => {
     ])
   })
 
-  test('a member without capabilities sees only the overview', () => {
-    // Nothing is shown disabled: the backend would reject the data requests.
-    expect(
-      getOrganizationTabs({
-        capabilities: capabilities({ can_view_organization: true }),
-        status: 'active',
-      }).map((tab) => tab.key)
-    ).toEqual(['overview'])
+  test('a plain member gets neither the overview nor the members tab', () => {
+    const keys = getOrganizationTabs({
+      capabilities: memberCapabilities(),
+      status: 'active',
+    }).map((tab) => tab.key)
+
+    // Absent rather than shown-and-narrowed: the backend refuses the roster and
+    // the organization-wide usage outright, so a tab here would lead nowhere.
+    expect(keys).not.toContain('overview')
+    expect(keys).not.toContain('members')
+    // What a member may still read is untouched by that, including the keyring
+    // they manage their own keys from.
+    expect(keys).toEqual(['tokens', 'logs', 'usage', 'tasks'])
   })
 
-  test('a limited viewer gets the members tab but flagged as narrowed', () => {
-    const tabs = getOrganizationTabs({
-      capabilities: capabilities({
-        can_view_organization: true,
-        can_view_members_limited: true,
-      }),
+  test('an owner keeps the overview and the members tab', () => {
+    const keys = getOrganizationTabs({
+      capabilities: ownerCapabilities(),
       status: 'active',
-    })
-    const members = tabs.find((tab) => tab.key === 'members')
+    }).map((tab) => tab.key)
 
-    expect(members?.limitedView).toBe(true)
-    expect(tabs.some((tab) => tab.key === 'settings')).toBe(false)
+    expect(keys).toContain('overview')
+    expect(keys).toContain('members')
   })
 
   test('wide-data access removes the narrowed flag from the log sections', () => {
@@ -270,6 +290,9 @@ describe('getOrganizationTabs', () => {
     const tabs = getOrganizationTabs({
       capabilities: capabilities({
         can_view_organization: true,
+        // A platform administrator always holds this one; it is what carries
+        // the overview and the roster.
+        can_view_organization_wide_data: true,
         can_view_organization_logs: true,
         can_view_audit: true,
         can_dissolve_organization: true,
@@ -281,6 +304,7 @@ describe('getOrganizationTabs', () => {
     // `tasks` rides on the log capability, not on usage.
     expect(tabs.map((tab) => tab.key)).toEqual([
       'overview',
+      'members',
       'logs',
       'tasks',
       'audit-logs',

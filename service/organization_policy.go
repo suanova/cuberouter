@@ -44,7 +44,6 @@ const (
 	OrganizationCapabilityEnableOrganization            = "enable_organization"
 	OrganizationCapabilityDissolveOrganization          = "dissolve_organization"
 	OrganizationCapabilityViewMembersFull               = "view_members_full"
-	OrganizationCapabilityViewMembersLimited            = "view_members_limited"
 	OrganizationCapabilityManageMembers                 = "manage_members"
 	OrganizationCapabilityTransferOwner                 = "transfer_owner"
 	OrganizationCapabilityViewInvitations               = "view_invitations"
@@ -372,7 +371,6 @@ func capabilitiesForOrganizationRole(role string, input OrganizationPolicyInput,
 	case model.OrganizationRoleMember:
 		return []string{
 			OrganizationCapabilityViewOrganization,
-			OrganizationCapabilityViewMembersLimited,
 			OrganizationCapabilityViewOrganizationTokens,
 			OrganizationCapabilityViewOrganizationLogs,
 			OrganizationCapabilityViewOrganizationUsage,

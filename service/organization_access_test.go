@@ -47,7 +47,6 @@ func TestOrganizationActorContextMemberCapabilities(t *testing.T) {
 	require.Equal(t, model.OrganizationRoleMember, actor.OperatorRoleForAudit)
 	require.True(t, actor.Capabilities.CanViewOrganization)
 	require.False(t, actor.Capabilities.CanViewOrganizationWideData)
-	require.True(t, actor.Capabilities.CanViewMembersLimited)
 	require.False(t, actor.Capabilities.CanManageMembers)
 	require.True(t, actor.Capabilities.CanViewOrganizationTokens)
 	require.True(t, actor.Capabilities.CanViewOrganizationLogs)

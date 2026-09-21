@@ -163,15 +163,20 @@ export function getOrganizationTabs(
   > = [
     {
       key: 'overview',
-      visible: capabilities.can_view_organization,
+      // Organization-wide numbers — the quota, the traffic, the per-model
+      // breakdown. `can_view_organization` only says the caller may read the
+      // organization at all, which every member may; seeing what the whole
+      // organization spent is the wider grant.
+      visible: capabilities.can_view_organization_wide_data,
       limitedView: false,
     },
     {
       key: 'members',
-      visible:
-        capabilities.can_manage_members ||
-        capabilities.can_view_members_limited ||
-        capabilities.can_view_organization_wide_data,
+      // The roster is refused to anyone without the wide grant, so the tab
+      // follows the same switch: a member sees no members tab at all, not even
+      // their own row. Managing members implies the wide grant on every role
+      // that has it, so it needs no term of its own.
+      visible: capabilities.can_view_organization_wide_data,
       // Members are listed, but the caller only sees their own usage.
       limitedView: !capabilities.can_manage_members,
     },

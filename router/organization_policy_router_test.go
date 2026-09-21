@@ -250,6 +250,54 @@ func TestOrganizationBillingSummaryRouteRequiresFullMemberVisibility(t *testing.
 	require.Contains(t, recorder.Body.String(), "organization access denied")
 }
 
+// The member roster and the organization overview both describe the organization
+// rather than the caller, so a plain member is refused both. The overview's
+// numbers come from the quota-data endpoint behind the Overview section, which
+// is why that route carries the same gate.
+func TestOrganizationRosterAndOverviewRoutesRequireFullMemberVisibility(t *testing.T) {
+	setupOrganizationPolicyRouterTestDB(t)
+	owner := createOrganizationPolicyRouterUser(t, "router-roster-owner", common.RoleCommonUser)
+	member := createOrganizationPolicyRouterUser(t, "router-roster-member", common.RoleCommonUser)
+	organization, err := service.CreateOrganization(owner.Id, service.CreateOrganizationRequest{Name: "Router Roster Org"})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: member.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive}).Error)
+
+	router := gin.New()
+	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("router-test-secret"))))
+	SetApiRouter(router)
+
+	cases := []struct {
+		name       string
+		user       model.User
+		path       string
+		wantStatus int
+	}{
+		{"member cannot read the roster", member, "/members", http.StatusForbidden},
+		{"member cannot read the organization overview data", member, "/quota-data", http.StatusForbidden},
+		{"owner can read the roster", owner, "/members", http.StatusOK},
+		{"owner can read the organization overview data", owner, "/quota-data", http.StatusOK},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/organizations/"+strconv.Itoa(organization.Id)+tc.path, nil)
+			req.Header.Set("Authorization", tc.user.GetAccessToken())
+			req.Header.Set("New-Api-User", strconv.Itoa(tc.user.Id))
+			req.Header.Set("X-Account-Context-Type", "organization")
+			req.Header.Set("X-Account-Context-Id", strconv.Itoa(organization.Id))
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+
+			require.Equal(t, tc.wantStatus, recorder.Code)
+			if tc.wantStatus == http.StatusOK {
+				require.Contains(t, recorder.Body.String(), `"success":true`)
+				return
+			}
+			require.Contains(t, recorder.Body.String(), "organization access denied")
+		})
+	}
+}
+
 func TestAdminOrganizationDetailRouteIgnoresAccountContextHeader(t *testing.T) {
 	setupOrganizationPolicyRouterTestDB(t)
 	platformAdmin := createOrganizationPolicyRouterUser(t, "router-admin-org-detail", common.RoleAdminUser)
@@ -590,6 +638,9 @@ func setupOrganizationPolicyRouterTestDB(t *testing.T) {
 		&model.OrganizationQuotaAdjustment{},
 		&model.Task{},
 		&model.Midjourney{},
+		// The Overview section reads this one, so the quota-data route must be
+		// servable here for a caller the gate lets through.
+		&model.QuotaData{},
 	))
 
 	t.Cleanup(func() {

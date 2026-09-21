@@ -46,7 +46,6 @@ function capabilities(
     can_view_organization: true,
     can_view_organization_wide_data: true,
     can_view_organization_usage: true,
-    can_view_members_limited: false,
     can_view_organization_tokens: true,
     can_view_organization_logs: true,
     can_update_organization: true,

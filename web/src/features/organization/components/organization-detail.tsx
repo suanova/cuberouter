@@ -44,6 +44,7 @@ import {
   normalizeOrganizationTabKey,
 } from '../lib'
 import { OrganizationDissolveConfirm } from './organization-dissolve-confirm'
+import { OrganizationExitDialog } from './organization-member-dialogs'
 import { OrganizationPageProvider } from './organization-page-provider'
 import { OrganizationSections } from './organization-sections'
 
@@ -68,6 +69,7 @@ export function OrganizationDetail() {
   const activeTab = normalizeOrganizationTabKey(section)
   const { detail, refetch } = useOrganizationDetail('member', organizationId)
   const [isDissolving, setIsDissolving] = useState(false)
+  const [isLeaving, setIsLeaving] = useState(false)
 
   /**
    * Re-read the account contexts, drop everything cached under them and return
@@ -166,6 +168,14 @@ export function OrganizationDetail() {
     currentTab === 'settings' &&
     actor.capabilities.can_dissolve_organization &&
     !readOnly
+  // Leaving is a member's own way out, and the button for it lives in the
+  // members section — which a member does not have. Offered in the header for
+  // exactly the callers that section cannot host it for; an administrator who
+  // can see the roster keeps the button where it always was.
+  const canLeaveFromHeader =
+    actor.capabilities.can_exit_organization &&
+    !readOnly &&
+    !tabs.some((tab) => tab.key === 'members')
   return (
     <>
       {/* A sibling of the layout, not a child of it: SectionPageLayout renders
@@ -189,6 +199,11 @@ export function OrganizationDetail() {
           </span>
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
+          {canLeaveFromHeader && (
+            <Button variant='outline' onClick={() => setIsLeaving(true)}>
+              {t('Leave organization')}
+            </Button>
+          )}
           {canDissolve && (
             <Button variant='destructive' onClick={() => setIsDissolving(true)}>
               {t('Dissolve Organization')}
@@ -243,6 +258,13 @@ export function OrganizationDetail() {
         organization={isDissolving ? organization : null}
         onOpenChange={(value) => !value && setIsDissolving(false)}
         onDissolved={leaveOrganization}
+      />
+
+      <OrganizationExitDialog
+        organizationId={organization.id}
+        open={isLeaving}
+        onOpenChange={setIsLeaving}
+        onExited={leaveOrganization}
       />
     </>
   )

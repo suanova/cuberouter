@@ -39,14 +39,17 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		organizationRoute.DELETE("/:id", middleware.OrganizationManagementAuth(service.OrganizationCapabilityDissolveOrganization), controller.DissolveOrganization)
 		organizationRoute.PUT("/:id/owner", middleware.OrganizationManagementAuth(), controller.TransferOrganizationOwner)
 		organizationRoute.GET("/:id/groups", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganization), controller.GetOrganizationGroups)
-		organizationRoute.GET("/:id/members", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganization), controller.ListOrganizationMembers)
+		// 成员名单只给能看到全组织数据的人：普通成员连自己那一行也看不到，成员页整体对他们不存在。
+		organizationRoute.GET("/:id/members", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.ListOrganizationMembers)
 		organizationRoute.PATCH("/:id/members/:userId", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMembers), controller.UpdateOrganizationMember)
 		organizationRoute.DELETE("/:id/members/me", middleware.OrganizationAccountContextAuth(service.OrganizationCapabilityExitOrganization), controller.ExitOrganization)
 		organizationRoute.DELETE("/:id/members/:userId", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMembers), controller.RemoveOrganizationMember)
 		organizationRoute.GET("/:id/invitations", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewInvitations), controller.ListOrganizationInvites)
 		organizationRoute.GET("/:id/tokens", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.ListOrganizationTokens)
 		organizationRoute.GET("/:id/tokens/:tokenId", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.GetOrganizationToken)
-		organizationRoute.GET("/:id/quota-data", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationQuotaData)
+		// 概览页的每个数字都属于组织而非浏览者，所以除了 view_organization_usage 还要
+		// view_members_full：成员看得到自己那份用量（/billing/members/me），看不到组织总量。
+		organizationRoute.GET("/:id/quota-data", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull, service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationQuotaData)
 		organizationRoute.GET("/:id/logs", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.ListOrganizationLogs)
 		organizationRoute.GET("/:id/logs/stats", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.GetOrganizationLogStats)
 		organizationRoute.GET("/:id/tasks", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.ListOrganizationTasks)

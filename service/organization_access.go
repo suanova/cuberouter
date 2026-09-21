@@ -35,7 +35,6 @@ type OrganizationActorCapabilities struct {
 	CanViewOrganization               bool `json:"can_view_organization"`
 	CanViewOrganizationWideData       bool `json:"can_view_organization_wide_data"`
 	CanViewOrganizationUsage          bool `json:"can_view_organization_usage"`
-	CanViewMembersLimited             bool `json:"can_view_members_limited"`
 	CanViewOrganizationTokens         bool `json:"can_view_organization_tokens"`
 	CanViewOrganizationLogs           bool `json:"can_view_organization_logs"`
 	CanUpdateOrganization             bool `json:"can_update_organization"`
@@ -185,7 +184,6 @@ func organizationActorCapabilitiesFromPolicy(decision OrganizationPolicyDecision
 		CanViewOrganization:               decision.HasCapability(OrganizationCapabilityViewOrganization),
 		CanViewOrganizationWideData:       decision.HasCapability(OrganizationCapabilityViewMembersFull),
 		CanViewOrganizationUsage:          decision.HasCapability(OrganizationCapabilityViewOrganizationUsage),
-		CanViewMembersLimited:             decision.HasCapability(OrganizationCapabilityViewMembersLimited),
 		CanViewOrganizationTokens:         decision.HasCapability(OrganizationCapabilityViewOrganizationTokens) || decision.HasCapability(OrganizationCapabilityManageOrganizationTokens),
 		CanViewOrganizationLogs:           decision.HasCapability(OrganizationCapabilityViewOrganizationLogs),
 		CanUpdateOrganization:             decision.HasCapability(OrganizationCapabilityUpdateOrganization),

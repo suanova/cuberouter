@@ -56,7 +56,6 @@ const noOrganizationCapabilities = {
   can_view_organization: false,
   can_view_organization_wide_data: false,
   can_view_organization_usage: false,
-  can_view_members_limited: false,
   can_view_organization_tokens: false,
   can_view_organization_logs: false,
   can_update_organization: false,

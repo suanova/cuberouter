@@ -203,12 +203,16 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
 
   // The responsible-user filter lists anyone eligible to hold a key; a public
   // key only ever belongs to an owner or an administrator.
+  //
+  // Fetched only for a caller the roster is open to: the filter is the sole
+  // consumer, and the backend refuses the member list to a plain member, so
+  // asking on their behalf would buy a rejected request and an error toast.
   const { options: responsibleFilterOptions } =
     useOrganizationTokenResponsibleOptions(
       surface,
       props.organizationId,
       'private',
-      props.canView
+      props.canManageAllTokens
     )
 
   const flagsFor = (token: OrganizationTokenRow) =>
