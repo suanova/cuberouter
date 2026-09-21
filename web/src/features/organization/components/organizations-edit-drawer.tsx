@@ -223,6 +223,7 @@ export function OrganizationsEditDrawer({
                           value={field.value}
                           onValueChange={field.onChange}
                           placeholder={t('Select a group')}
+                          size='compact'
                         />
                       </FormControl>
                       <FormDescription>
