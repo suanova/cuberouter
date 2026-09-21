@@ -42,9 +42,10 @@ type relayChainCase struct {
 }
 
 // TestRelayChainNonTaskModes 锁定多模态非任务链路契约：chat/responses/
-// embeddings/image 四种模式共用同一 OpenAI 直传链路——上游路径沿用客户端
+// embeddings/rerank/image 五种模式共用同一 OpenAI 直传链路——上游路径沿用客户端
 // 路径、携带 Bearer 鉴权、请求体原样转发；响应按各自协议解析：chat/embeddings/
-// image 走 chat 处理器，responses 走 Responses 处理器并取其原生 usage。
+// image 走 chat 处理器，rerank 走 Rerank 处理器并取其原生 usage，responses
+// 走 Responses 处理器并取其原生 usage。
 func TestRelayChainNonTaskModes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -108,6 +109,17 @@ func TestRelayChainNonTaskModes(t *testing.T) {
 			upstreamBody:     `{"object":"list","data":[{"object":"embedding","index":0,"embedding":[0.1,0.2]}],"model":"text-embedding-3-large","usage":{"prompt_tokens":8,"total_tokens":8}}`,
 			wantPromptTokens: 8, wantCompletionTokens: 0,
 			wantBodyContains: `"embedding"`,
+		},
+		{
+			name:             "rerank",
+			path:             "/v1/rerank",
+			relayMode:        relayconstant.RelayModeRerank,
+			relayFormat:      types.RelayFormatRerank,
+			model:            "qwen3-reranker-8b",
+			requestBody:      `{"model":"qwen3-reranker-8b","query":"hi","documents":["a","b"]}`,
+			upstreamBody:     `{"results":[{"index":0,"document":{"text":"a"},"relevance_score":0.97},{"index":1,"document":{"text":"b"},"relevance_score":0.19}],"usage":{"total_tokens":42}}`,
+			wantPromptTokens: 42, wantCompletionTokens: -1,
+			wantBodyContains: `"relevance_score"`,
 		},
 		{
 			name:             "image generation",

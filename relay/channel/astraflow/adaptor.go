@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/common_handler"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -104,7 +105,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
-	return nil, errors.New("not implemented")
+	return request, nil
 }
 
 func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
@@ -170,6 +171,10 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			return openai.OaiResponsesStreamHandler(c, info, resp)
 		}
 		return openai.OaiResponsesHandler(c, info, resp)
+	case info.RelayMode == constant.RelayModeRerank:
+		// rerank 的响应是 Jina/Cohere 形状(results + relevance_score),不是 OpenAI
+		// chat 报文,chat 处理器解析不出 usage;交给 Rerank 处理器解析并回写。
+		return common_handler.RerankHandler(c, info, resp)
 	default:
 		if info.IsStream {
 			return openai.OaiStreamHandler(c, info, resp)

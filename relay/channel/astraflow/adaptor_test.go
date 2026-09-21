@@ -109,6 +109,19 @@ func TestConvertEmbeddingRequestPassthrough(t *testing.T) {
 	assert.Equal(t, request, got)
 }
 
+// TestConvertRerankRequestPassthrough 锁定 /v1/rerank 直传契约：
+// Rerank 请求必须原样转发给上游，而不是返回 not implemented。
+func TestConvertRerankRequestPassthrough(t *testing.T) {
+	adaptor := &Adaptor{}
+	request := dto.RerankRequest{Model: "qwen3-reranker-8b", Query: "hi", Documents: []any{"a", "b"}}
+
+	out, err := adaptor.ConvertRerankRequest(nil, relayconstant.RelayModeRerank, request)
+	require.NoError(t, err)
+	got, ok := out.(dto.RerankRequest)
+	require.True(t, ok, "expected dto.RerankRequest, got %T", out)
+	assert.Equal(t, request, got)
+}
+
 // TestConvertImageRequestPassthrough 锁定 /v1/images/generations 直传契约：
 // Image 请求必须原样转发给上游，而不是返回 not implemented。
 func TestConvertImageRequestPassthrough(t *testing.T) {
