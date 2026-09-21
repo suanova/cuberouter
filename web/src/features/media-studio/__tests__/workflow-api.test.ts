@@ -197,10 +197,12 @@ test('a non-secure origin can upload a reference and inline a downloaded result'
     'fetch',
     vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
       if (String(input) === 'https://provider.example/result.png') {
-        return new Response('PNG', {
-          status: 200,
-          headers: { 'Content-Type': 'image/png' },
-        })
+        // 直接给出带媒体类型的 blob：各运行时把 Response 头映射到 blob.type 的行为并不一致，
+        // 这里要验证的是「下载到的 png 能被内联」，不是运行时的头解析。
+        return {
+          ok: true,
+          blob: async () => new Blob(['PNG'], { type: 'image/png' }),
+        }
       }
       if (String(input).startsWith('data:')) {
         return nativeFetch(input, options)
