@@ -22,6 +22,7 @@ import { expect, test } from 'vitest'
 
 import english from '@/i18n/locales/en.json'
 import traditional from '@/i18n/locales/zh-TW.json'
+import simplified from '@/i18n/locales/zh.json'
 
 test('switching to Traditional Chinese translates workflow and template labels from the real resource bundle', async () => {
   const i18n = createInstance()
@@ -39,4 +40,15 @@ test('switching to Traditional Chinese translates workflow and template labels f
   expect(i18n.t('Create, refine and keep every version.')).not.toBe(
     'Create, refine and keep every version.'
   )
+})
+
+test('Simplified Chinese workflow uses simplified wording', async () => {
+  const i18n = createInstance()
+  await i18n.init({
+    lng: 'zh',
+    keySeparator: false,
+    resources: { zh: simplified },
+  })
+  expect(i18n.t('Template gallery')).toBe('模板图库')
+  expect(i18n.t('Before and after comparison')).toBe('修改前后对比')
 })

@@ -367,9 +367,6 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
-	if c.GetBool("media_studio_relay") {
-		return false
-	}
 	if openaiErr == nil {
 		return false
 	}

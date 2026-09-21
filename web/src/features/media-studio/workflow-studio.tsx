@@ -17,246 +17,194 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation } from '@tanstack/react-query'
-import { Sparkles, LayoutGrid, History, Image } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Sparkles } from 'lucide-react'
+
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 
-import { ImageEditor } from './components/image-editor'
+import { getStudioModels } from './api'
 import { TemplateGallery } from './components/template-gallery'
 import { WorkflowComposer } from './components/workflow-composer'
 import { WorkflowHistory } from './components/workflow-history'
 import { WorkflowResults } from './components/workflow-results'
 import { useWorkflow } from './hooks/use-workflow'
 import { initialDraft, templateDraft, workflowError } from './lib/workflow'
-import { workflowAPI } from './workflow-api'
-import type {
-  StudioAsset,
-  WorkflowConfig,
-  WorkflowDraft,
-  WorkflowJob,
-} from './workflow-types'
+import { localImage, referenceAsset, workflowAPI } from './workflow-api'
+import type { WorkflowDraft } from './workflow-types'
 
-export function WorkflowStudio(props: {
-  config: WorkflowConfig
-  onBasic?: () => void
-  onReconnect?: () => void
-}) {
+export function WorkflowStudio(props: { owner: number }) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<WorkflowDraft>({ ...initialDraft })
-  const [references, setReferences] = useState<StudioAsset[]>([])
   const [view, setView] = useState<'templates' | 'result' | 'history'>(
     'templates'
   )
-  const [templateUndo, setTemplateUndo] = useState<WorkflowDraft>()
-  const [editor, setEditor] = useState<{
-    asset: StudioAsset
-    parent?: WorkflowJob
-  }>()
-  const connected = props.config.enabled !== false
-  const workflow = useWorkflow(connected)
-  const upload = useMutation({
-    mutationFn: async (files: File[]) => {
-      if (!connected) throw new Error('Image service is not connected')
+  const models = useQuery({
+    queryKey: ['studio-models', props.owner],
+    queryFn: getStudioModels,
+    retry: false,
+  })
+  const configuration = useQuery({
+    queryKey: ['studio-config', props.owner],
+    queryFn: workflowAPI.config,
+    retry: false,
+  })
+  const config = configuration.data ?? {
+    upload_enabled: false,
+    edit_models: [],
+  }
+  const eligible = (models.data ?? []).filter(
+    (name) => draft.mode === 'create' || config.edit_models.includes(name)
+  )
+  const current = {
+    ...draft,
+    model: eligible.includes(draft.model) ? draft.model : (eligible[0] ?? ''),
+  }
+  const workflow = useWorkflow(props.owner)
+  const references = useMutation({
+    mutationFn: async (files: Blob[]) => {
       if (files.length + draft.references.length > 3) {
         throw new Error('Choose at most three reference images.')
       }
+      return Promise.all(files.map(referenceAsset))
+    },
+    onSuccess: (assets) =>
+      setDraft((value) => ({
+        ...value,
+        references: [...value.references, ...assets],
+      })),
+    retry: false,
+  })
+  const continuation = useMutation({
+    mutationFn: async (args: { url: string; parent: string }) => {
+      const asset = await localImage(args.url)
       if (
-        files.some(
-          (file) =>
-            file.size > 10 * 1024 * 1024 ||
-            !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
-        )
+        !['image/png', 'image/jpeg', 'image/webp'].includes(asset.mime) ||
+        asset.url.length > 14 * 1024 * 1024
       ) {
         throw new Error('Upload PNG, JPEG or WebP files of at most 10 MB each.')
       }
-      for (const file of files) {
-        const asset = await workflowAPI.upload(file)
-        setReferences((current) => [...current, asset])
-        setDraft((current) => ({
-          ...current,
-          references: [...current.references, asset.id],
-        }))
-      }
+      return { ...args, asset }
     },
+    onSuccess: ({ asset, parent }) =>
+      setDraft({
+        ...initialDraft,
+        mode: 'edit',
+        references: [asset],
+        parent_id: parent,
+      }),
     retry: false,
   })
+  const busy =
+    workflow.generation.isPending ||
+    references.isPending ||
+    continuation.isPending
   const errors = [
+    models.error,
+    configuration.error,
+    references.error,
+    continuation.error,
     workflow.generation.error,
     workflow.deletion.error,
-    workflow.history.error,
-    upload.error,
   ].filter(Boolean)
-  const locked = workflow.busy || upload.isPending
   return (
     <div className='min-h-0 flex-1 overflow-y-auto'>
       <div className='mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 sm:p-6'>
-        <header className='flex flex-wrap items-start justify-between gap-4'>
-          <div className='flex items-center gap-3'>
-            <div className='bg-primary/10 rounded-2xl p-3'>
-              <Sparkles className='text-primary size-5' aria-hidden='true' />
-            </div>
-            <div>
-              <h1 className='text-xl font-semibold tracking-tight'>
-                {t('Media Studio')}
-              </h1>
-              <p className='text-muted-foreground mt-1 text-xs'>
-                {t('Create, refine and keep every version.')}
-              </p>
-            </div>
-          </div>
-          <div className='flex flex-wrap gap-2 text-[10px]'>
-            {Object.entries(props.config.health).map(([name, state]) => (
-              <span
-                key={name}
-                className='bg-card rounded-full border px-3 py-1.5'
-              >
-                {t(name)}{' '}
-                <span className='text-muted-foreground'>· {t(state)}</span>
-              </span>
-            ))}
+        <header className='flex items-center gap-3'>
+          <Sparkles className='text-primary size-6' aria-hidden='true' />
+          <div>
+            <h1 className='text-xl font-semibold'>{t('Media Studio')}</h1>
+            <p className='text-muted-foreground text-xs'>
+              {t('Create, refine and keep every version.')}
+            </p>
           </div>
         </header>
-        {!connected && (
-          <section
-            className='bg-muted/50 space-y-3 rounded-xl border p-4'
-            aria-label={t('Image service is not connected')}
-          >
-            <p role='status' className='text-sm font-medium'>
-              {t('Image service is not connected')}
-            </p>
-            <p className='text-muted-foreground text-sm'>
-              {t(
-                'Explore templates and image-to-image settings. Uploading, generation and saved history become available after your administrator connects the image service.'
-              )}
-            </p>
-            <div className='flex flex-wrap gap-2'>
-              {props.onReconnect && (
-                <Button size='sm' variant='outline' onClick={props.onReconnect}>
-                  {t('Reconnect')}
-                </Button>
-              )}
-              {props.onBasic && (
-                <Button size='sm' variant='outline' onClick={props.onBasic}>
-                  {t('Use basic image generation')}
-                </Button>
-              )}
-            </div>
-          </section>
-        )}
-        <div className='grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)] xl:grid-cols-[370px_minmax(0,1fr)]'>
-          <aside className='bg-card rounded-2xl border p-4 xl:p-5'>
+        <div className='grid items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)]'>
+          <aside className='bg-card rounded-2xl border p-4'>
             <WorkflowComposer
-              draft={draft}
-              config={props.config}
-              references={references}
-              busy={workflow.busy}
-              uploading={upload.isPending}
+              draft={current}
+              config={config}
+              models={models.data ?? []}
+              busy={busy}
+              loading={models.isPending}
               onChange={setDraft}
-              onUpload={(files) => upload.mutate(files)}
-              onTemplates={() => setView('templates')}
-              onTools={(asset) => setEditor({ asset })}
-              onReset={() => {
-                setDraft({ ...initialDraft })
-                setTemplateUndo(undefined)
-              }}
+              onUpload={(files) => references.mutate(files)}
               onGenerate={() => {
                 setView('result')
-                workflow.generation.mutate({ ...draft })
+                workflow.generation.mutate(structuredClone(current))
               }}
+              onReset={() => setDraft({ ...initialDraft })}
             />
-            {templateUndo && (
-              <Button
-                variant='ghost'
-                size='sm'
-                className='mt-3 w-full'
-                disabled={locked}
-                onClick={() => {
-                  setDraft(templateUndo)
-                  setTemplateUndo(undefined)
-                }}
-              >
-                {t('Undo template')}
-              </Button>
-            )}
           </aside>
           <main className='min-w-0 space-y-4'>
-            <div
-              className='flex flex-wrap items-center gap-1 border-b pb-3'
+            <nav
+              className='flex flex-wrap gap-1 border-b pb-3'
               aria-label={t('Studio views')}
             >
               {(
                 [
-                  {
-                    id: 'templates',
-                    label: 'Template gallery',
-                    icon: LayoutGrid,
-                  },
-                  { id: 'result', label: 'Result', icon: Image },
-                  { id: 'history', label: 'Creation history', icon: History },
+                  { id: 'templates', label: 'Template gallery' },
+                  { id: 'result', label: 'Result' },
+                  { id: 'history', label: 'Creation history' },
                 ] as const
               ).map((item) => (
                 <Button
                   key={item.id}
-                  variant={view === item.id ? 'secondary' : 'ghost'}
                   size='sm'
+                  variant={view === item.id ? 'secondary' : 'ghost'}
                   aria-pressed={view === item.id}
-                  disabled={!connected && item.id === 'history'}
                   onClick={() => setView(item.id)}
                 >
-                  <item.icon className='size-4' />
                   {t(item.label)}
-                  {item.id === 'history' && (
-                    <span className='text-muted-foreground'>
-                      {workflow.jobs.length}
-                    </span>
-                  )}
                 </Button>
               ))}
-            </div>
+            </nav>
             {errors.map((error) => (
               <p
                 key={workflowError(error)}
                 role='alert'
-                className='bg-destructive/10 text-destructive rounded-xl p-3 text-sm'
+                className='text-destructive text-sm'
               >
                 {t(workflowError(error))}
               </p>
             ))}
+            {!!workflow.warning && (
+              <p role='status' className='text-muted-foreground text-sm'>
+                {t(workflow.warning)}
+              </p>
+            )}
+            {workflow.history.isError && (
+              <p role='status' className='text-muted-foreground text-sm'>
+                {t(
+                  'Local history storage is unavailable. Download images to keep them.'
+                )}
+              </p>
+            )}
             {view === 'templates' && (
               <TemplateGallery
-                disabled={locked}
-                onApply={(template, fields) => {
-                  setTemplateUndo(draft)
-                  setDraft(templateDraft(template, fields, draft))
-                }}
+                disabled={busy}
+                onApply={(template, fields) =>
+                  setDraft(templateDraft(template, fields, current))
+                }
               />
             )}
             {view === 'result' && (
               <WorkflowResults
                 job={workflow.selected}
-                busy={locked}
-                onEdit={(asset, job) => {
-                  setReferences([asset])
-                  setDraft({
-                    ...initialDraft,
-                    mode: 'edit',
-                    size: 'auto',
-                    references: [asset.id],
-                    parent_id: job.id,
-                    expected_text: job.request.expected_text ?? '',
-                  })
-                }}
-                onTools={(asset, job) => setEditor({ asset, parent: job })}
+                busy={workflow.generation.isPending}
+                submitted={workflow.generation.variables}
+                elapsed={workflow.elapsed}
+                onEdit={(asset, job) =>
+                  continuation.mutate({ url: asset.url, parent: job.id })
+                }
               />
             )}
             {view === 'history' && (
               <WorkflowHistory
-                jobs={workflow.jobs}
-                selected={workflow.selected?.id}
-                busy={workflow.busy}
+                jobs={workflow.history.data ?? []}
+                busy={busy}
                 onSelect={(id) => {
                   workflow.select(id)
                   setView('result')
@@ -264,34 +212,14 @@ export function WorkflowStudio(props: {
                 onDelete={(id) => workflow.deletion.mutate(id)}
               />
             )}
-            {connected && (
-              <p className='text-muted-foreground border-t pt-4 text-[11px] leading-relaxed'>
-                {t(
-                  'Your uploads and saved versions belong to your account. Studio copies expire after {{days}} days.',
-                  { days: props.config.retention_days }
-                )}
-              </p>
-            )}
+            <p className='text-muted-foreground border-t pt-4 text-xs'>
+              {t(
+                'History is stored in this browser for this account, up to 50 creations or 100 MB. It does not sync across devices and may be cleared by your browser. Download important images.'
+              )}
+            </p>
           </main>
         </div>
       </div>
-      {editor && (
-        <ImageEditor
-          key={editor.asset.id}
-          asset={editor.asset}
-          parent={editor.parent}
-          onClose={() => setEditor(undefined)}
-          onSaved={(job) => {
-            workflow.select(job.id)
-            setView('result')
-            void workflow.refresh()
-          }}
-          onRegional={async (next) => {
-            setView('result')
-            await workflow.generation.mutateAsync(next)
-          }}
-        />
-      )}
     </div>
   )
 }

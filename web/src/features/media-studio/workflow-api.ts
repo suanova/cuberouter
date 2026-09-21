@@ -19,85 +19,166 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
+import { GENERATION_TIMEOUT_MS } from './constants'
+import { extractImages, type ImageResponseBody } from './lib/image-response'
+import { imageRequest } from './lib/workflow'
 import type {
-  OCRResult,
-  PreparedJob,
   StudioAsset,
-  TextLayer,
   WorkflowConfig,
   WorkflowDraft,
   WorkflowJob,
 } from './workflow-types'
 
-const base = '/api/v1/media-studio'
+export function blobDataURL(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(new Error('Could not read image.'))
+    reader.readAsDataURL(blob)
+  })
+}
+export async function referenceAsset(file: Blob): Promise<StudioAsset> {
+  if (
+    !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
+    file.size <= 0 ||
+    file.size > 10 * 1024 * 1024
+  ) {
+    throw new Error('Upload PNG, JPEG or WebP files of at most 10 MB each.')
+  }
+  return {
+    id: crypto.randomUUID(),
+    mime: file.type,
+    url: await blobDataURL(file),
+  }
+}
+// Download only in the browser, without CubeRouter credentials or a server URL proxy.
+export async function localImage(url: string): Promise<StudioAsset> {
+  if (/^data:image\/(png|jpeg|webp|gif|bmp);base64,/.test(url)) {
+    return {
+      id: crypto.randomUUID(),
+      mime: url.slice(5, url.indexOf(';')),
+      url,
+    }
+  }
+  const parsed = new URL(url)
+  if (
+    !['https:', 'http:'].includes(parsed.protocol) ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new Error('Unsupported image URL.')
+  }
+  const response = await fetch(url, {
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+  })
+  if (!response.ok) {
+    throw new Error('Could not download image for local history.')
+  }
+  const blob = await response.blob()
+  if (
+    ![
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif',
+      'image/bmp',
+    ].includes(blob.type) ||
+    blob.size > 20 * 1024 * 1024
+  ) {
+    throw new Error('Unsupported image download.')
+  }
+  return {
+    id: crypto.randomUUID(),
+    mime: blob.type,
+    url: await blobDataURL(blob),
+  }
+}
+async function uploadReference(asset: StudioAsset): Promise<string> {
+  const file = await (await fetch(asset.url)).blob()
+  if (
+    file.size <= 0 ||
+    file.size > 10 * 1024 * 1024 ||
+    !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
+  ) {
+    throw new Error('Upload PNG, JPEG or WebP files of at most 10 MB each.')
+  }
+  const { data } = await api.post<{
+    upload_url: string
+    image_url: string
+    headers: Record<string, string>
+  }>(
+    '/api/media-studio/uploads/presign',
+    { content_type: file.type, size: file.size },
+    { skipErrorHandler: true }
+  )
+  const response = await fetch(data.upload_url, {
+    method: 'PUT',
+    headers: data.headers,
+    body: file,
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+  })
+  if (!response.ok) {
+    throw new Error('Reference upload failed. No generation was submitted.')
+  }
+  return data.image_url
+}
 export const workflowAPI = {
   config: async (): Promise<WorkflowConfig> =>
-    (await api.get(`${base}/config`, { skipErrorHandler: true })).data,
-  jobs: async (): Promise<WorkflowJob[]> =>
-    (await api.get(`${base}/jobs`, { skipErrorHandler: true })).data,
-  prepare: async (draft: WorkflowDraft): Promise<PreparedJob> =>
-    (await api.post(`${base}/jobs`, draft, { skipErrorHandler: true })).data,
-  relay: async (body: Record<string, unknown>): Promise<unknown> =>
-    (
-      await api.post('/pg/images/generations/studio', body, {
-        timeout: 620000,
-        skipErrorHandler: true,
-      })
-    ).data,
-  remove: async (id: string): Promise<void> => {
-    await api.delete(`${base}/jobs/${id}`)
+    (await api.get('/api/media-studio/config', { skipErrorHandler: true }))
+      .data,
+  generate: async (
+    draft: WorkflowDraft
+  ): Promise<{ job: WorkflowJob; warning?: string }> => {
+    const started = Date.now()
+    const images = []
+    if (draft.mode === 'edit') {
+      for (const asset of draft.references) {
+        images.push(await uploadReference(asset))
+      }
+    }
+    const response = await api.post<ImageResponseBody>(
+      `/pg/images/${draft.mode === 'edit' ? 'edits' : 'generations'}`,
+      imageRequest(draft, images),
+      { timeout: GENERATION_TIMEOUT_MS, skipErrorHandler: true }
+    )
+    const output = extractImages(response.data)
+    if (!output.length) throw new Error('The model returned no images.')
+    let warning: string | undefined
+    const assets: StudioAsset[] = []
+    for (const image of output) {
+      try {
+        assets.push(await localImage(image.url))
+      } catch {
+        // Keep a successful provider result usable even when its CORS policy prevents persistence.
+        const fallback = new URL(image.url)
+        if (
+          !['https:', 'http:'].includes(fallback.protocol) ||
+          fallback.username ||
+          fallback.password
+        ) {
+          throw new Error('Unsupported image URL.')
+        }
+        assets.push({
+          id: crypto.randomUUID(),
+          url: image.url,
+          mime: 'image/png',
+        })
+        warning =
+          'This result could not be saved locally. Download it before leaving this page.'
+      }
+    }
+    return {
+      job: {
+        id: crypto.randomUUID(),
+        created_at: Date.now(),
+        request: structuredClone(draft),
+        images: assets,
+        elapsed_ms: Date.now() - started,
+        request_id: response.headers?.['x-request-id'],
+      },
+      warning,
+    }
   },
-  upload: async (file: File): Promise<StudioAsset> =>
-    (
-      await api.post(`${base}/uploads`, file, {
-        headers: { 'Content-Type': file.type },
-        timeout: 90000,
-        skipErrorHandler: true,
-      })
-    ).data,
-  asset: async (id: string, signal?: AbortSignal): Promise<Blob> =>
-    (
-      await api.get(`${base}/assets/${id}/content`, {
-        responseType: 'blob',
-        signal,
-        disableDuplicate: true,
-        skipErrorHandler: true,
-      })
-    ).data,
-  mask: async (assetId: string, png: string): Promise<{ id: string }> =>
-    (
-      await api.post(
-        `${base}/masks`,
-        { asset_id: assetId, png_base64: png },
-        { skipErrorHandler: true }
-      )
-    ).data,
-  ocr: async (assetId: string, expected: string): Promise<OCRResult> =>
-    (
-      await api.post(
-        `${base}/ocr`,
-        { asset_id: assetId, expected_text: expected },
-        { timeout: 90000, skipErrorHandler: true }
-      )
-    ).data,
-  text: async (
-    assetId: string,
-    layers: TextLayer[],
-    parentId?: string
-  ): Promise<WorkflowJob> =>
-    (
-      await api.post(
-        `${base}/text`,
-        { asset_id: assetId, layers, parent_id: parentId },
-        { skipErrorHandler: true }
-      )
-    ).data,
-  preview: async (assetId: string, layers: TextLayer[]): Promise<Blob> =>
-    (
-      await api.post(
-        `${base}/preview`,
-        { asset_id: assetId, layers },
-        { responseType: 'blob', skipErrorHandler: true }
-      )
-    ).data,
 }

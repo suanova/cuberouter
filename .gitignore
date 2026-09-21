@@ -14,8 +14,6 @@ node_modules/
 web/dist
 web/node_modules
 .env
-.env.media-studio
-.media-studio/
 one-api
 cuberouter
 new-api

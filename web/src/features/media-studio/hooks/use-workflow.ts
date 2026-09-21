@@ -18,57 +18,75 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
 
-import { useAuthStore } from '@/stores/auth-store'
+import { useEffect, useRef, useState } from 'react'
 
-import { isActiveJob } from '../lib/workflow'
+import {
+  deleteStudioJob,
+  listStudioJobs,
+  saveStudioJob,
+} from '../lib/studio-storage'
+import { workflowError } from '../lib/workflow'
 import { workflowAPI } from '../workflow-api'
-import type { WorkflowDraft } from '../workflow-types'
+import type { WorkflowDraft, WorkflowJob } from '../workflow-types'
 
-export function useWorkflow(enabled = true) {
-  const owner = useAuthStore((state) => state.auth.user?.id)
-  const queryClient = useQueryClient()
-  const key = ['media-studio', owner, 'jobs']
-  const [selectedId, setSelectedId] = useState<string>()
+export function useWorkflow(owner: number) {
+  const client = useQueryClient()
+  const key = ['studio-local-history', owner]
   const history = useQuery({
     queryKey: key,
-    queryFn: workflowAPI.jobs,
-    enabled,
-    refetchInterval: (query) =>
-      query.state.data?.some(isActiveJob) ? 3000 : 15000,
-    retry: 1,
+    queryFn: () => listStudioJobs(owner),
+    retry: false,
   })
-  const refresh = () => queryClient.invalidateQueries({ queryKey: key })
+  const [selected, setSelected] = useState<WorkflowJob>()
+  const [warning, setWarning] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+  const started = useRef(0)
   const generation = useMutation({
     mutationFn: async (draft: WorkflowDraft) => {
-      if (!enabled) throw new Error('Image service is not connected')
-      const prepared = await workflowAPI.prepare(draft)
-      setSelectedId(prepared.job.id)
-      void refresh()
-      // Never retry this mutation: a timeout does not mean the GPU did not run.
-      await workflowAPI.relay(prepared.relay_body)
+      started.current = Date.now()
+      setElapsed(0)
+      setWarning('')
+      setSelected(undefined)
+      const output = await workflowAPI.generate(draft)
+      let notice = output.warning ?? ''
+      try {
+        await saveStudioJob(owner, output.job)
+      } catch (error) {
+        notice = workflowError(error)
+      }
+      return { ...output, notice }
     },
     retry: false,
-    onSettled: refresh,
-  })
-  const deletion = useMutation({
-    mutationFn: async (id: string) => {
-      if (!enabled) throw new Error('Image service is not connected')
-      return workflowAPI.remove(id)
+    onSuccess: (output) => {
+      setSelected(output.job)
+      setWarning(output.notice)
+      void client.invalidateQueries({ queryKey: key })
     },
-    onSuccess: refresh,
   })
-  const jobs = enabled ? (history.data ?? []) : []
-  const selected = jobs.find((job) => job.id === selectedId) ?? jobs[0]
+  useEffect(() => {
+    if (!generation.isPending) return
+    const timer = setInterval(
+      () => setElapsed(Date.now() - started.current),
+      1000
+    )
+    return () => clearInterval(timer)
+  }, [generation.isPending])
+  const deletion = useMutation({
+    mutationFn: (id?: string) => deleteStudioJob(owner, id),
+    onSuccess: (_, id) => {
+      if (!id || selected?.id === id) setSelected(undefined)
+      void client.invalidateQueries({ queryKey: key })
+    },
+  })
   return {
-    history,
-    jobs,
-    selected,
-    select: setSelectedId,
     generation,
     deletion,
-    refresh,
-    busy: generation.isPending || jobs.some(isActiveJob),
+    history,
+    selected,
+    warning,
+    elapsed,
+    select: (id: string) =>
+      setSelected(history.data?.find((job) => job.id === id)),
   }
 }

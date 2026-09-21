@@ -17,95 +17,35 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type StudioMode = 'create' | 'edit' | 'regional' | 'text'
 export interface StudioAsset {
   id: string
-  width: number
-  height: number
-  expires_at: number
+  url: string
+  mime: string
 }
 export interface WorkflowConfig {
-  models: Record<'create' | 'edit' | 'regional', string>
-  health: Record<'create' | 'edit' | 'tools', string>
-  retention_days: number
-  enabled?: boolean
+  upload_enabled: boolean
+  edit_models: string[]
 }
 export interface WorkflowDraft {
-  mode: 'create' | 'edit' | 'regional'
+  mode: 'create' | 'edit'
+  model: string
   prompt: string
   size: string
   count: number
+  advanced: boolean
   steps: number
   seed: number
   cfg: number
-  references: string[]
-  negative_prompt: string
-  expected_text: string
+  references: StudioAsset[]
   parent_id?: string
-  mask_id?: string
-  edit_mode?: string
-}
-export interface StudioComparison {
-  original?: StudioAsset
-  revised?: StudioAsset
-  candidate?: StudioAsset
-  repair_applied?: boolean
-  repair_attempted?: boolean
-  method?: string
-  notice?: string
 }
 export interface WorkflowJob {
   id: string
-  mode: StudioMode
-  state: string
-  stage: string
   created_at: number
-  expires_at: number
-  request: Partial<WorkflowDraft> & { prompt: string; layers?: TextLayer[] }
-  parent_id?: string
-  completed_steps?: number
-  total_steps?: number
-  error?: string
+  request: WorkflowDraft
+  images: StudioAsset[]
+  elapsed_ms: number
   request_id?: string
-  billing: 'pending' | 'relay_completed' | 'relay_failed' | 'cpu_tool'
-  result?: {
-    images: StudioAsset[]
-    comparisons: StudioComparison[]
-    quality?: unknown[]
-    text_quality?: unknown
-    notice?: string
-    inference_seconds?: number
-    workflow_seconds?: number
-  }
-}
-export interface PreparedJob {
-  job: WorkflowJob
-  relay_body: Record<string, unknown>
-}
-export type SelectionBox = [number, number, number, number]
-export interface TextLayer {
-  box: SelectionBox
-  text: string
-  font_size: number
-  color: string
-  background: string
-  cover: boolean
-  align: 'left' | 'center'
-}
-export interface OCRResult {
-  regions: Array<{
-    text: string
-    box: SelectionBox
-    confidence: number
-    suggested_background: string
-  }>
-  recognized_text: string
-  comparison: {
-    expected_provided: boolean
-    matches: boolean
-    differences: Array<{ expected: string; recognized: string }>
-  }
-  seconds: number
 }
 export interface StudioTemplate {
   id: string

@@ -17,152 +17,93 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+
+import { useState } from 'react'
+import { expect, test, vi } from 'vitest'
 
 import { TemplateGallery } from '../components/template-gallery'
-import { WorkflowResults } from '../components/workflow-results'
-import { WorkflowStudio } from '../workflow-studio'
-import type { WorkflowConfig, WorkflowJob } from '../workflow-types'
+import { WorkflowComposer } from '../components/workflow-composer'
+import { initialDraft } from '../lib/workflow'
+import type { WorkflowConfig } from '../workflow-types'
 
-const http = vi.hoisted(() => ({
-  get: vi.fn(),
-  post: vi.fn(),
-  delete: vi.fn(),
-}))
-vi.mock('@/lib/api', () => ({ api: http }))
 const config: WorkflowConfig = {
-  models: {
-    create: 'qwen-image-2512',
-    edit: 'qwen-image-edit-2511',
-    regional: 'qwen-image-edit-2511',
-  },
-  health: { create: 'ready', edit: 'ready', tools: 'ready' },
-  retention_days: 30,
+  upload_enabled: true,
+  edit_models: ['image-edit'],
 }
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  http.get.mockResolvedValue({ data: [] })
+function Composer(props: { generate: () => void; config?: WorkflowConfig }) {
+  const [draft, setDraft] = useState({
+    ...initialDraft,
+    model: 'image-model',
+    prompt: 'Cat',
+  })
+  return (
+    <WorkflowComposer
+      draft={draft}
+      models={['image-model', 'image-edit']}
+      config={props.config ?? config}
+      busy={false}
+      loading={false}
+      onChange={setDraft}
+      onUpload={vi.fn()}
+      onGenerate={props.generate}
+      onReset={vi.fn()}
+    />
+  )
+}
+test('clearing a numeric field keeps it empty and prevents a request until repaired', async () => {
+  const generate = vi.fn()
+  render(<Composer generate={generate} />)
+  fireEvent.click(
+    screen.getByLabelText('Send model-specific advanced settings')
+  )
+  fireEvent.change(screen.getByLabelText('Seed'), { target: { value: '' } })
+  fireEvent.change(screen.getByLabelText('CFG'), { target: { value: '2' } })
+  expect(screen.getByLabelText('Seed')).toHaveValue(null)
+  expect(screen.getByLabelText('Seed')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+  expect(generate).not.toHaveBeenCalled()
+  fireEvent.change(screen.getByLabelText('Seed'), { target: { value: '0' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
 })
-describe('Integrated image studio', () => {
-  test('shows real animal templates and filters editing examples without submitting a GPU request', () => {
-    const apply = vi.fn()
-    render(<TemplateGallery disabled={false} onApply={apply} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
-    expect(screen.getByAltText('Pet comic strip')).toBeInTheDocument()
-    expect(
-      screen.queryByAltText('Studio product photo')
-    ).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Animals' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
-    expect(apply).not.toHaveBeenCalled()
-    expect(http.post).not.toHaveBeenCalled()
-  })
-  test('requires a reference in edit mode and switches the displayed model', async () => {
-    const query = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false },
-        mutations: { retry: false },
-      },
-    })
-    render(
-      <QueryClientProvider client={query}>
-        <WorkflowStudio config={config} />
-      </QueryClientProvider>
-    )
-    fireEvent.click(
-      screen.getAllByRole('button', { name: 'Image to image' })[0]
-    )
-    fireEvent.change(screen.getByLabelText('Describe your changes'), {
-      target: { value: 'Turn the coat blue' },
-    })
-    expect(screen.getByText('qwen-image-edit-2511')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Generate image' })
-    ).toBeDisabled()
-    expect(screen.getByLabelText('Upload reference images')).toHaveAttribute(
-      'accept',
-      'image/png,image/jpeg,image/webp'
-    )
-    await waitFor(() =>
-      expect(http.get).toHaveBeenCalledWith(
-        '/api/v1/media-studio/jobs',
-        expect.anything()
-      )
-    )
-    query.clear()
-  })
-  test('informational OCR keeps a successful no-text image separate from a generation failure', () => {
-    const job: WorkflowJob = {
-      id: 'job',
-      mode: 'create',
-      state: 'completed',
-      stage: 'Completed',
-      request: { prompt: 'A forest, no text' },
-      billing: 'relay_completed',
-      created_at: 1,
-      expires_at: 100,
-      result: { images: [], comparisons: [], text_quality: 'informational' },
-    }
-    render(
-      <WorkflowResults
-        job={job}
-        busy={false}
-        onEdit={vi.fn()}
-        onTools={vi.fn()}
-      />
-    )
-    expect(
-      screen.getByText('Text check is informational; generation is complete.')
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(
-      screen.queryByText('Image generated. Please review the requested text.')
-    ).not.toBeInTheDocument()
-  })
-  test('restored running work shows server progress and disables a second generation', async () => {
-    http.get.mockResolvedValue({
-      data: [
-        {
-          id: 'pending',
-          state: 'running',
-          stage: 'Denoising',
-          mode: 'create',
-          request: { prompt: 'Cat' },
-          created_at: 1,
-          expires_at: 100,
-          billing: 'pending',
-          completed_steps: 3,
-          total_steps: 20,
-        },
-      ],
-    })
-    const query = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    })
-    render(
-      <QueryClientProvider client={query}>
-        <WorkflowStudio config={config} />
-      </QueryClientProvider>
-    )
-    await waitFor(() =>
-      expect(
-        screen.getByRole('button', { name: 'Generation in progress…' })
-      ).toBeDisabled()
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Result' }))
-    expect(
-      screen.getByRole('progressbar', { name: 'Generation progress' })
-    ).toHaveAttribute('value', '3')
-    expect(
-      screen.getByText(
-        'You can refresh this page. The submitted job continues on the server.'
-      )
-    ).toBeInTheDocument()
-    query.clear()
-  })
+test('out-of-range advanced steps disable generation without silently restoring old values', () => {
+  render(<Composer generate={vi.fn()} />)
+  fireEvent.click(
+    screen.getByLabelText('Send model-specific advanced settings')
+  )
+  fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '101' } })
+  expect(screen.getByLabelText('Steps')).toHaveValue(101)
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+})
+test('edit mode lists only operator-confirmed edit models and requires a reference', () => {
+  render(<Composer generate={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Image to image' }))
+  expect(screen.getByLabelText('Model')).toHaveValue('image-edit')
+  expect(
+    screen.queryByRole('option', { name: 'image-model' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+})
+test('unconfigured uploads explain disabled editing while text-to-image stays available', () => {
+  render(
+    <Composer
+      generate={vi.fn()}
+      config={{ upload_enabled: false, edit_models: [] }}
+    />
+  )
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Image to image' }))
+  expect(
+    screen.getByText('Reference uploads are not configured.')
+  ).toBeInTheDocument()
+  expect(screen.getByLabelText('Upload reference images')).toBeDisabled()
+})
+test('animal template browsing does not submit a generation', () => {
+  const apply = vi.fn()
+  render(<TemplateGallery disabled={false} onApply={apply} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
+  expect(screen.getByAltText('Pet comic strip')).toBeInTheDocument()
+  expect(screen.queryByAltText('Studio product photo')).not.toBeInTheDocument()
+  expect(apply).not.toHaveBeenCalled()
 })

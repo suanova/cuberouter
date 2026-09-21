@@ -1,7 +1,5 @@
 .github
 .git
-.env.media-studio
-.media-studio
 *.md
 .vscode
 .gitignore

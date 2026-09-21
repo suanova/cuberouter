@@ -17,130 +17,135 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import i18next from 'i18next'
-import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import 'fake-indexeddb/auto'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, expect, test, vi } from 'vitest'
 
-const apiFns = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
-vi.mock('@/lib/api', () => ({ api: { get: apiFns.get, post: apiFns.post } }))
+import { useAuthStore } from '@/stores/auth-store'
 
-const storageFns = vi.hoisted(() => ({
-  listHistoryEntries: vi.fn(),
-  saveHistoryEntry: vi.fn(),
-  deleteHistoryEntry: vi.fn(),
-  clearHistoryEntries: vi.fn(),
-}))
-vi.mock('../lib/history-storage', () => ({
-  ...storageFns,
-  MAX_HISTORY_ENTRIES: 50,
-  sortHistoryEntries: (entries: Array<{ createdAt: number }>) =>
-    [...entries].sort((a, b) => b.createdAt - a.createdAt),
-}))
+import { MediaStudio } from '../index'
+import { deleteStudioJob, listStudioJobs } from '../lib/studio-storage'
 
-import { BasicMediaStudio as MediaStudio } from '../basic-studio'
-import type { HistoryEntry } from '../types'
-
-describe('MediaStudio history persistence', () => {
-  beforeAll(() => {
-    i18next.addResourceBundle('en', 'translation', {
-      'Media Studio': 'Media Studio',
-      'Turn your ideas into images.': 'Turn your ideas into images.',
-      Model: 'Model',
-      Prompt: 'Prompt',
-      'Image aspect ratio': 'Image aspect ratio',
-      'Images per batch': 'Images per batch',
-      '{{count}} image': '{{count}} image',
-      Quality: 'Quality',
-      Fast: 'Fast',
-      Standard: 'Standard',
-      High: 'High',
-      'Generate image': 'Generate image',
-      'Image preview': 'Image preview',
-      'Your images will appear here.': 'Your images will appear here.',
-      'Generated image': 'Generated image',
-      Download: 'Download',
-      '{{count}} image · {{steps}} steps · elapsed {{time}}':
-        '{{count}} image · {{steps}} steps · elapsed {{time}}',
-      'Recent generations': 'Recent generations',
-      'No generations in this browser yet.':
-        'No generations in this browser yet.',
-    })
-  })
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    apiFns.get.mockResolvedValue({
-      data: {
-        success: true,
-        data: {
-          pricings: [
-            {
-              model_name: 'qwen-image-2512',
-              supported_endpoint_types: ['image-generation'],
+const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
+vi.mock('@/lib/api', () => ({ api: http }))
+beforeEach(async () => {
+  vi.clearAllMocks()
+  await deleteStudioJob(301)
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 301, username: 'reviewer', role: 1 })
+  http.get.mockImplementation(async (path: string) =>
+    path.endsWith('/config')
+      ? { data: { upload_enabled: true, edit_models: ['edit-model'] } }
+      : {
+          data: {
+            success: true,
+            data: {
+              pricings: [
+                {
+                  model_name: 'image-model',
+                  supported_endpoint_types: ['image-generation'],
+                },
+                {
+                  model_name: 'edit-model',
+                  supported_endpoint_types: ['image-generation'],
+                },
+                {
+                  model_name: 'chat-model',
+                  supported_endpoint_types: ['openai'],
+                },
+              ],
             },
-          ],
-        },
-      },
-    })
-    apiFns.post.mockResolvedValue({
-      data: { created: 7, data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
-    })
-    storageFns.listHistoryEntries.mockResolvedValue([])
-    storageFns.saveHistoryEntry.mockImplementation(
-      async (entry: HistoryEntry) => [entry]
-    )
+          },
+        }
+  )
+  http.post.mockResolvedValue({
+    data: { created: 7, data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
+    headers: { 'x-request-id': 'req-1' },
   })
-
-  test('saves a history entry with data URLs after a successful generation', async () => {
-    render(<MediaStudio />)
-
-    const modelSelect = screen.getByLabelText('Model')
-    await waitFor(() => expect(modelSelect).toBeEnabled())
-
-    fireEvent.change(screen.getByLabelText('Prompt'), {
-      target: { value: 'a cat' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-
-    await waitFor(() =>
-      expect(screen.getByAltText('Generated image')).toBeDefined()
-    )
-    await waitFor(() =>
-      expect(storageFns.saveHistoryEntry).toHaveBeenCalledTimes(1)
-    )
-
-    const [entry] = storageFns.saveHistoryEntry.mock.calls[0] as [HistoryEntry]
-    expect(entry.imageUrls).toEqual(['data:image/png;base64,iVBORw0KGgoAAAAB'])
-    expect(entry.model).toBe('qwen-image-2512')
-    expect(entry.prompt).toBe('a cat')
-    expect(entry.params.ratio).toBe('16:9')
-    expect(entry.imageUrls.length).toBe(1)
+})
+function page() {
+  const query = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-
-  test('does not save a duplicate entry when params change after success', async () => {
-    render(<MediaStudio />)
-
-    const modelSelect = screen.getByLabelText('Model')
-    await waitFor(() => expect(modelSelect).toBeEnabled())
-
-    const prompt = screen.getByLabelText('Prompt')
-    fireEvent.change(prompt, { target: { value: 'a cat' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-
-    await waitFor(() =>
-      expect(storageFns.saveHistoryEntry).toHaveBeenCalledTimes(1)
-    )
-
-    // 成功后继续编辑参数会触发保存 effect 重新运行，不应重复保存
-    fireEvent.change(prompt, { target: { value: 'a dog' } })
-    await waitFor(() => expect(prompt).toHaveValue('a dog'))
-    expect(storageFns.saveHistoryEntry).toHaveBeenCalledTimes(1)
+  return render(
+    <QueryClientProvider client={query}>
+      <MediaStudio />
+    </QueryClientProvider>
+  )
+}
+test('standard channel generation saves actual bytes locally and reloads history', async () => {
+  const view = page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  expect(
+    screen.queryByRole('option', { name: 'chat-model' })
+  ).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Model'), {
+    target: { value: 'image-model' },
   })
-
-  test('page content is bounded by a vertical scroll container', () => {
-    render(<MediaStudio />)
-
-    const heading = screen.getByRole('heading', { name: 'Media Studio' })
-    expect(heading.closest('.overflow-y-auto')).not.toBeNull()
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'A cat' },
   })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByAltText('Generated image')
+  expect(http.post).toHaveBeenCalledWith(
+    '/pg/images/generations',
+    { model: 'image-model', prompt: 'A cat', n: 1, size: '1024x1024' },
+    expect.anything()
+  )
+  await waitFor(async () => expect(await listStudioJobs(301)).toHaveLength(1))
+  view.unmount()
+  page()
+  fireEvent.click(screen.getByRole('button', { name: 'Creation history' }))
+  await screen.findByRole('button', { name: 'Open creation: A cat' })
+})
+test('continuing from a generated image preserves the original and switches to reference editing', async () => {
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'A cat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByAltText('Generated image')
+  fireEvent.click(screen.getByRole('button', { name: 'Continue editing' }))
+  await screen.findByAltText('Reference image')
+  expect(screen.getByLabelText('Model')).toHaveValue('edit-model')
+  expect(
+    screen.getByText('Editing a previous version. The original is preserved.')
+  ).toBeInTheDocument()
+  expect(await listStudioJobs(301)).toHaveLength(1)
+})
+test('generation failure exposes the error and never creates a successful history entry', async () => {
+  http.post.mockRejectedValue(new Error('Provider unavailable'))
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'Cat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByText('Provider unavailable')
+  expect(await listStudioJobs(301)).toEqual([])
+  expect(http.post).toHaveBeenCalledTimes(1)
+})
+
+test('switching signed-in accounts clears the previous account result and history view', async () => {
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.change(screen.getByLabelText('Prompt'), {
+    target: { value: 'Account 301 cat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByAltText('Generated image')
+  await act(async () => {
+    useAuthStore
+      .getState()
+      .auth.setUser({ id: 302, username: 'another', role: 1 })
+  })
+  expect(screen.queryByAltText('Generated image')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Creation history' }))
+  await screen.findByText('No generations in this browser yet.')
+  expect(
+    screen.queryByRole('button', { name: 'Open creation: Account 301 cat' })
+  ).not.toBeInTheDocument()
 })

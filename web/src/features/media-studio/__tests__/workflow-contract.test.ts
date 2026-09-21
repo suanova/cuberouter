@@ -17,98 +17,107 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { describe, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
 
 import catalog from '../catalog.json'
 import {
   draftSchema,
   initialDraft,
+  imageRequest,
   publicCommand,
   templateDraft,
 } from '../lib/workflow'
-import type { StudioTemplate, WorkflowJob } from '../workflow-types'
+import type { StudioTemplate } from '../workflow-types'
 
-describe('Studio workflow requests', () => {
-  test('text correction examples call the CPU tool rather than starting another paid GPU job', () => {
-    const command = publicCommand({
-      mode: 'text',
-      request: {
-        prompt: 'Text correction',
-        references: ['source'],
-        layers: [],
-      },
-      parent_id: 'parent',
-    } as unknown as WorkflowJob)
-    expect(command).toContain('/api/v1/media-studio/text')
-    expect(command).toContain('"asset_id": "source"')
-    expect(command).not.toContain('/pg/images/generations')
+const reference = {
+  id: 'photo',
+  mime: 'image/png',
+  url: 'data:image/png;base64,YQ==',
+}
+test('edit templates preserve references without uploading catalog example images', () => {
+  const template = catalog.templates.find(
+    (item) => item.id === 'pet-comic'
+  ) as StudioTemplate
+  const draft = templateDraft(
+    template,
+    { story: 'The cat makes tea', style: 'Watercolor' },
+    {
+      ...initialDraft,
+      model: 'channel-model',
+      references: [reference],
+      parent_id: 'old',
+    }
+  )
+  expect(draft.references).toEqual([reference])
+  expect(draft.parent_id).toBe('old')
+  expect(draft.prompt).toContain('The cat makes tea')
+  expect(draft.model).toBe('channel-model')
+})
+test('create templates clear edit references and preserve provider-specific size', () => {
+  const template = catalog.templates.find(
+    (item) => item.id === 'chibi-animal'
+  ) as StudioTemplate
+  const draft = templateDraft(
+    template,
+    {},
+    {
+      ...initialDraft,
+      size: '1024x1536',
+      references: [reference],
+      parent_id: 'old',
+    }
+  )
+  expect(draft.references).toEqual([])
+  expect(draft.parent_id).toBeUndefined()
+  expect(draft.size).toBe('1024x1536')
+})
+test('explicit zero seed and CFG are preserved for advanced requests', () => {
+  const draft = draftSchema.parse({
+    ...initialDraft,
+    model: 'image-model',
+    prompt: 'Cat',
+    advanced: true,
+    count: 4,
+    seed: 0,
+    cfg: 0,
   })
-  test('edit templates preserve user references without importing example images', () => {
-    const template = catalog.templates.find(
-      (item) => item.id === 'pet-comic'
-    ) as StudioTemplate
-    const draft = templateDraft(
-      template,
-      { story: 'The cat makes tea', style: 'Watercolor' },
-      {
-        ...initialDraft,
-        references: ['my-photo'],
-        parent_id: 'previous-version',
-      }
-    )
-    expect(draft.mode).toBe('edit')
-    expect(draft.references).toEqual(['my-photo'])
-    expect(draft.parent_id).toBe('previous-version')
-    expect(draft.prompt).toContain('The cat makes tea')
-    expect(draft.prompt).not.toContain('{{')
-    expect(draft.count).toBe(1)
+  expect(imageRequest(draft)).toMatchObject({
+    n: 4,
+    seed: 0,
+    true_cfg_scale: 0,
   })
-  test('create templates clear edit lineage and use the native aspect-ratio size', () => {
-    const template = catalog.templates.find(
-      (item) => item.id === 'chibi-animal'
-    ) as StudioTemplate
-    const draft = templateDraft(
-      template,
-      {},
-      { ...initialDraft, references: ['photo'], parent_id: 'old' }
-    )
-    expect(draft.references).toEqual([])
-    expect(draft.parent_id).toBeUndefined()
-    expect(draft.size).toBe('1328x1328')
+})
+test('generic requests omit Qwen-specific settings until opted in', () => {
+  expect(
+    imageRequest({ ...initialDraft, model: 'image-model', prompt: 'Cat' })
+  ).toEqual({ model: 'image-model', prompt: 'Cat', n: 1, size: '1024x1024' })
+})
+test('counts above four are rejected', () =>
+  expect(
+    draftSchema.safeParse({
+      ...initialDraft,
+      model: 'model',
+      prompt: 'Cat',
+      count: 5,
+    }).success
+  ).toBe(false))
+test('edit requests without references are rejected', () =>
+  expect(
+    draftSchema.safeParse({
+      ...initialDraft,
+      model: 'model',
+      prompt: 'Cat',
+      mode: 'edit',
+    }).success
+  ).toBe(false))
+test('public examples redact reference content and use the standard image edit route', () => {
+  const command = publicCommand({
+    ...initialDraft,
+    mode: 'edit',
+    references: [reference],
   })
-  test('four-image requests preserve explicit zero seed and CFG while oversized counts fail', () => {
-    expect(
-      draftSchema.parse({
-        ...initialDraft,
-        prompt: 'Cat',
-        count: 4,
-        seed: 0,
-        cfg: 0,
-      }).count
-    ).toBe(4)
-    expect(
-      draftSchema.safeParse({ ...initialDraft, prompt: 'Cat', count: 5 })
-        .success
-    ).toBe(false)
-    expect(
-      draftSchema.safeParse({
-        ...initialDraft,
-        mode: 'edit',
-        prompt: 'Cat',
-        references: [],
-      }).success
-    ).toBe(false)
-  })
-  test('copyable commands show the public prepare and relay flow without embedding credentials', () => {
-    const job = {
-      id: 'job',
-      request: { ...initialDraft, prompt: 'A cat' },
-    } as WorkflowJob
-    const command = publicCommand(job)
-    expect(command).toContain('/api/v1/media-studio/jobs')
-    expect(command).toContain('/pg/images/generations/studio')
-    expect(command).toContain('$SessionToken')
-    expect(command).not.toContain('studio_token')
-    expect(command).not.toContain('165.154.')
-  })
+  expect(command).toContain('/pg/images/edits')
+  expect(command).toContain('<reference image URL>')
+  expect(command).not.toContain('YQ==')
+  expect(command).not.toContain('studio_token')
 })

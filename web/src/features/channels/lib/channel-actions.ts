@@ -278,8 +278,7 @@ export async function handleTestChannel(
     success: boolean,
     responseTime?: number,
     error?: string,
-    errorCode?: string,
-    testMode?: ChannelTestResponse['test_mode']
+    errorCode?: string
   ) => void
 ): Promise<void> {
   const payload =
@@ -300,35 +299,18 @@ export async function handleTestChannel(
     const target = getChannelTestLabel(options)
     if (response.success) {
       if (!options?.silent) {
-        if (response.test_mode === 'studio-readiness') {
-          toast.success(
-            i18next.t('{{target}} connection check passed', { target }),
-            {
-              description: i18next.t(
-                'Model service is ready. No image was generated; test generation and editing in Image Studio.'
-              ),
-            }
-          )
-        } else {
-          toast.success(
-            i18next.t('{{target}} test succeeded', { target }),
-            duration
-              ? {
-                  description: i18next.t('Response time: {{duration}}', {
-                    duration,
-                  }),
-                }
-              : undefined
-          )
-        }
+        toast.success(
+          i18next.t('{{target}} test succeeded', { target }),
+          duration
+            ? {
+                description: i18next.t('Response time: {{duration}}', {
+                  duration,
+                }),
+              }
+            : undefined
+        )
       }
-      onTestComplete?.(
-        true,
-        responseTime,
-        undefined,
-        undefined,
-        response.test_mode
-      )
+      onTestComplete?.(true, responseTime)
     } else {
       const errorMsg = response.message || i18next.t(ERROR_MESSAGES.TEST_FAILED)
       if (!options?.silent) {
@@ -338,13 +320,7 @@ export async function handleTestChannel(
             : errorMsg,
         })
       }
-      onTestComplete?.(
-        false,
-        responseTime,
-        errorMsg,
-        response.error_code,
-        response.test_mode
-      )
+      onTestComplete?.(false, responseTime, errorMsg, response.error_code)
     }
   } catch (_error: unknown) {
     const err = _error as { response?: { data?: { message?: string } } }
