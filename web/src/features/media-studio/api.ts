@@ -19,14 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS, GENERATION_TIMEOUT_MS, IMAGE_GENERATION_ENDPOINT } from './constants'
+import {
+  API_ENDPOINTS,
+  GENERATION_TIMEOUT_MS,
+  STUDIO_TAG_IMAGE_TO_IMAGE,
+  STUDIO_TAG_TEXT_TO_IMAGE,
+} from './constants'
 import { extractImages, type ImageResponseBody } from './lib/image-response'
 import type { GenerationRequestBody } from './lib/request-builder'
 import type { GeneratedImage } from './types'
+import type { StudioModelCatalog } from './workflow-types'
 
 interface PricingModelItem {
   model_name?: unknown
-  supported_endpoint_types?: unknown
+  tags?: unknown
 }
 
 interface PricingResponseData {
@@ -35,10 +41,27 @@ interface PricingResponseData {
 }
 
 /**
- * 拉取当前用户可用、且支持图片生成（supported_endpoint_types 含
- * "image-generation"）的模型名，去重后按名称排序返回。
+ * 解析 /api/pricing 的标签串。只按逗号切分，与模型元数据抽屉的写入契约
+ * （values.tags.join(',')）一致——TagInput 允许标签内含空格，所以不能按空白切分。
+ * 大小写与首尾空白不敏感，与后端 common.HasModelTag 语义保持一致。
  */
-export async function getStudioModels(): Promise<string[]> {
+function parseModelTags(value: unknown): string[] {
+  if (typeof value !== 'string') {
+    return []
+  }
+  return value
+    .split(',')
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+/**
+ * 拉取当前用户可用、并按运维声明的模型标签分类的模型名。
+ * text-to-image 进文生图列表，image-to-image 进图生图列表，两者互不推断：
+ * 只支持编辑的模型绝不会出现在文生图列表里。supported_endpoint_types 不参与
+ * 分类——按模型名推断的端点类型曾把 qwen-image-edit-* 误列成文生图模型。
+ */
+export async function getStudioModels(): Promise<StudioModelCatalog> {
   const res = await api.get<PricingResponseData>(API_ENDPOINTS.PRICING)
   const body: PricingResponseData = res.data
 
@@ -47,20 +70,25 @@ export async function getStudioModels(): Promise<string[]> {
       ? (body.data.pricings as PricingModelItem[])
       : []
 
-  const names = new Set<string>()
+  const textToImage = new Set<string>()
+  const imageToImage = new Set<string>()
   for (const item of pricings) {
     if (!item || typeof item.model_name !== 'string' || item.model_name === '') {
       continue
     }
-    const endpoints = Array.isArray(item.supported_endpoint_types)
-      ? item.supported_endpoint_types
-      : []
-    if (endpoints.includes(IMAGE_GENERATION_ENDPOINT)) {
-      names.add(item.model_name)
+    const tags = parseModelTags(item.tags)
+    if (tags.includes(STUDIO_TAG_TEXT_TO_IMAGE)) {
+      textToImage.add(item.model_name)
+    }
+    if (tags.includes(STUDIO_TAG_IMAGE_TO_IMAGE)) {
+      imageToImage.add(item.model_name)
     }
   }
 
-  return [...names].sort((a, b) => a.localeCompare(b))
+  return {
+    textToImage: [...textToImage].sort((a, b) => a.localeCompare(b)),
+    imageToImage: [...imageToImage].sort((a, b) => a.localeCompare(b)),
+  }
 }
 
 export interface GenerationApiResult {

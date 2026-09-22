@@ -311,6 +311,25 @@ func updatePricing() {
 		}
 	}
 
+	// 再补充模型标签声明的图片能力。text-to-image 表示该模型可用于
+	// /v1/images/generations，即 image-generation 端点；前置于列表首位，与
+	// IsImageGenerationModel 的既有顺序一致——端点列表首项是各处的默认示例端点
+	// （定价页据此选默认展示的示例）。image-to-image 走 /v1/images/edits，没有
+	// 对应的端点类型，刻意不在此声明，否则仅支持编辑的模型会再次被当成文生图模型。
+	// 标签跟随元数据行的匹配规则（前缀/包含/后缀）生效，可能同时作用于多个模型，
+	// 因此图片能力应当按精确模型名单独建行声明。
+	for modelName, meta := range metaMap {
+		if !common.HasModelTag(meta.Tags, common.ModelTagTextToImage) {
+			continue
+		}
+		endpoints := modelSupportEndpointsStr[modelName]
+		if common.StringsContains(endpoints, string(constant.EndpointTypeImageGeneration)) {
+			continue
+		}
+		modelSupportEndpointsStr[modelName] = append(
+			[]string{string(constant.EndpointTypeImageGeneration)}, endpoints...)
+	}
+
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
 	for model, endpoints := range modelSupportEndpointsStr {
 		supportedEndpoints := make([]constant.EndpointType, 0)

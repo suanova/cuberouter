@@ -56,36 +56,64 @@ describe('getStudioModels', () => {
     get.mockReset()
   })
 
-  test('keeps only image-generation models, deduped and sorted', async () => {
+  test('classifies models by declared tags and ignores endpoint types', async () => {
     get.mockResolvedValue(
       pricingResponse([
-        { model_name: 'qwen-image-2512', supported_endpoint_types: ['image-generation', 'openai'] },
-        { model_name: 'flux-dev', supported_endpoint_types: ['image-generation'] },
-        { model_name: 'qwen-image-2512', supported_endpoint_types: ['image-generation'] },
-        { model_name: 'gpt-4o', supported_endpoint_types: ['openai'] },
-        { model_name: 'doubao-video', supported_endpoint_types: ['openai-video'] },
-        { model_name: 'no-endpoints-model' },
-      ]),
+        {
+          model_name: 'qwen-image-2512',
+          tags: 'text-to-image,hot',
+          supported_endpoint_types: ['image-generation', 'openai'],
+        },
+        {
+          // 回归锚点：它带着 image-generation 端点类型（按名字推断的遗留结果），
+          // 但只声明了 image-to-image。旧的端点类型过滤会把它混进文生图列表，
+          // 用户在那里选它就会拿到上游 404。
+          model_name: 'qwen-image-edit-2511',
+          tags: 'image-to-image',
+          supported_endpoint_types: ['image-generation', 'openai'],
+        },
+        {
+          model_name: 'both-modes-model',
+          tags: 'text-to-image,image-to-image',
+        },
+        // 标签大小写与首尾空白不敏感；模型名保持小写，避免断言依赖 locale 的排序规则。
+        { model_name: 'case-tag-model', tags: ' Text-To-Image ' },
+        {
+          model_name: 'no-tags-model',
+          supported_endpoint_types: ['image-generation'],
+        },
+        { model_name: 'chat-model', tags: 'chat' },
+        { model_name: 'qwen-image-2512', tags: 'text-to-image' },
+      ])
     )
 
-    await expect(getStudioModels()).resolves.toEqual(['flux-dev', 'qwen-image-2512'])
+    await expect(getStudioModels()).resolves.toEqual({
+      textToImage: ['both-modes-model', 'case-tag-model', 'qwen-image-2512'],
+      imageToImage: ['both-modes-model', 'qwen-image-edit-2511'],
+    })
     expect(get).toHaveBeenCalledWith('/api/pricing')
   })
 
-  test('returns an empty list when no model supports image generation', async () => {
+  test('returns empty catalogs when no model carries an image label', async () => {
     get.mockResolvedValue(
       pricingResponse([
         { model_name: 'gpt-4o', supported_endpoint_types: ['openai'] },
-      ]),
+      ])
     )
 
-    await expect(getStudioModels()).resolves.toEqual([])
+    await expect(getStudioModels()).resolves.toEqual({
+      textToImage: [],
+      imageToImage: [],
+    })
   })
 
-  test('returns an empty list when the pricing payload is unusable', async () => {
+  test('returns empty catalogs when the pricing payload is unusable', async () => {
     get.mockResolvedValue({ data: { success: false, data: null } })
 
-    await expect(getStudioModels()).resolves.toEqual([])
+    await expect(getStudioModels()).resolves.toEqual({
+      textToImage: [],
+      imageToImage: [],
+    })
   })
 })
 
