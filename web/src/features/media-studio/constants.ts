@@ -24,8 +24,12 @@ export const API_ENDPOINTS = {
   PRICING: '/api/pricing',
 } as const
 
-/** 支持图片生成的端点类型（与 /api/pricing 的 supported_endpoint_types 对齐） */
-export const IMAGE_GENERATION_ENDPOINT = 'image-generation'
+/**
+ * 模型元数据标签：由运维在「模型元数据」页声明模型的图片能力。Media Studio 据此
+ * 分类模型，不再按模型名或端点类型猜测——名字分不清生成与编辑。
+ */
+export const STUDIO_TAG_TEXT_TO_IMAGE = 'text-to-image'
+export const STUDIO_TAG_IMAGE_TO_IMAGE = 'image-to-image'
 
 /**
  * Aspect ratios and their native output dimensions (px),

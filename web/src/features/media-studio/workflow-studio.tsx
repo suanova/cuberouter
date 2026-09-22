@@ -49,13 +49,10 @@ export function WorkflowStudio(props: { owner: number }) {
     queryFn: workflowAPI.config,
     retry: false,
   })
-  const config = configuration.data ?? {
-    upload_enabled: false,
-    edit_models: [],
-  }
-  const eligible = (models.data ?? []).filter(
-    (name) => draft.mode === 'create' || config.edit_models.includes(name)
-  )
+  const config = configuration.data ?? { upload_enabled: false }
+  const catalog = models.data ?? { textToImage: [], imageToImage: [] }
+  const eligible =
+    draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
   const current = {
     ...draft,
     model: eligible.includes(draft.model) ? draft.model : (eligible[0] ?? ''),
@@ -124,7 +121,8 @@ export function WorkflowStudio(props: { owner: number }) {
             <WorkflowComposer
               draft={current}
               config={config}
-              models={models.data ?? []}
+              textToImageModels={catalog.textToImage}
+              imageToImageModels={catalog.imageToImage}
               busy={busy}
               loading={models.isPending}
               onChange={setDraft}

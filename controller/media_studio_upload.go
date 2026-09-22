@@ -21,8 +21,6 @@ package controller
 
 import (
 	"net/http"
-	"os"
-	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -30,17 +28,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// These are protocol capabilities confirmed by the operator, not guessed from model names.
+// 图片能力由运维在模型元数据里用 text-to-image / image-to-image 标签声明，
+// 前端从 /api/pricing 的 tags 读取，这里只汇报参考图上传是否可用。
 func MediaStudioConfig(c *gin.Context) {
 	_, err := service.LoadStudioUploadConfig()
-	models := []string{}
-	for _, name := range strings.Split(os.Getenv("MEDIA_STUDIO_EDIT_MODELS"), ",") {
-		if name = strings.TrimSpace(name); name != "" {
-			models = append(models, name)
-		}
-	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"upload_enabled": err == nil, "edit_models": models})
+	c.JSON(http.StatusOK, gin.H{"upload_enabled": err == nil})
 }
 
 func MediaStudioUpload(c *gin.Context) {

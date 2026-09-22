@@ -37,7 +37,7 @@ beforeEach(async () => {
     .auth.setUser({ id: 301, username: 'reviewer', role: 1 })
   http.get.mockImplementation(async (path: string) =>
     path.endsWith('/config')
-      ? { data: { upload_enabled: true, edit_models: ['edit-model'] } }
+      ? { data: { upload_enabled: true } }
       : {
           data: {
             success: true,
@@ -45,14 +45,18 @@ beforeEach(async () => {
               pricings: [
                 {
                   model_name: 'image-model',
-                  supported_endpoint_types: ['image-generation'],
+                  tags: 'text-to-image',
                 },
                 {
+                  // 带 image-generation 端点类型但只声明 image-to-image：只支持编辑的
+                  // 模型不该出现在文生图列表里。
                   model_name: 'edit-model',
+                  tags: 'image-to-image',
                   supported_endpoint_types: ['image-generation'],
                 },
                 {
                   model_name: 'chat-model',
+                  tags: 'chat',
                   supported_endpoint_types: ['openai'],
                 },
               ],

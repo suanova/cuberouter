@@ -34,7 +34,8 @@ import type { WorkflowConfig, WorkflowDraft } from '../workflow-types'
 export function WorkflowComposer(props: {
   draft: WorkflowDraft
   config: WorkflowConfig
-  models: string[]
+  textToImageModels: string[]
+  imageToImageModels: string[]
   busy: boolean
   loading: boolean
   onChange: (draft: WorkflowDraft) => void
@@ -44,9 +45,7 @@ export function WorkflowComposer(props: {
 }) {
   const { t } = useTranslation()
   const editing = props.draft.mode === 'edit'
-  const models = props.models.filter(
-    (name) => !editing || props.config.edit_models.includes(name)
-  )
+  const models = editing ? props.imageToImageModels : props.textToImageModels
   const form = useForm<WorkflowDraft>({
     values: props.draft,
     resolver: zodResolver(draftSchema),
@@ -78,10 +77,10 @@ export function WorkflowComposer(props: {
             variant={props.draft.mode === mode ? 'secondary' : 'ghost'}
             disabled={props.busy}
             onClick={() => {
-              const eligible = props.models.filter(
-                (name) =>
-                  mode === 'create' || props.config.edit_models.includes(name)
-              )
+              const eligible =
+                mode === 'edit'
+                  ? props.imageToImageModels
+                  : props.textToImageModels
               update({
                 mode,
                 model: eligible.includes(props.draft.model)
