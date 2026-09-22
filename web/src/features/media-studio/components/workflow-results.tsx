@@ -94,15 +94,20 @@ export function WorkflowResults(props: {
                 referrerPolicy='no-referrer'
               />
               <div className='flex flex-wrap gap-2'>
-                <a
-                  className='rounded-lg border px-3 py-2 text-xs'
-                  href={asset.url}
-                  download={`image-${index + 1}.png`}
-                  target='_blank'
-                  rel='noreferrer'
+                <Button
+                  variant='outline'
+                  size='sm'
+                  render={
+                    <a
+                      href={asset.url}
+                      download={`image-${index + 1}.png`}
+                      target='_blank'
+                      rel='noreferrer'
+                    />
+                  }
                 >
                   {t('Download')}
-                </a>
+                </Button>
                 <Button
                   size='sm'
                   disabled={props.busy}
