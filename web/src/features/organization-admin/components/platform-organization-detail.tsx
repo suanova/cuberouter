@@ -37,6 +37,8 @@ import {
 } from '@/features/organization/constants'
 import { useOrganizationDetail } from '@/features/organization/hooks/use-organization-detail'
 import { formatTimestamp } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getPlatformOrganizationDetailActions,
@@ -46,6 +48,7 @@ import {
 } from '../lib'
 import { PlatformOrganizationDissolveDialog } from './platform-organization-dissolve-dialog'
 import { PlatformOrganizationEditDrawer } from './platform-organization-edit-drawer'
+import { PlatformOrganizationJoinRules } from './platform-organization-join-rules'
 import { PlatformOrganizationOwnerRepair } from './platform-organization-owner-repair'
 import { PlatformOrganizationStatusDialog } from './platform-organization-status-dialog'
 
@@ -75,6 +78,12 @@ export function PlatformOrganizationDetail() {
   const search = route.useSearch()
   const activeTab = normalizePlatformOrganizationTabKey(section)
   const { detail, refetch } = useOrganizationDetail('admin', organizationId)
+  // The join rules are the platform root's alone, and the capability set cannot
+  // say so: the backend resolves the same platform capabilities for every
+  // administrator, root or not. Read here rather than beside `access`, because
+  // a hook cannot follow the early return below.
+  const isRoot =
+    useAuthStore((state) => state.auth.user?.role ?? 0) >= ROLE.SUPER_ADMIN
 
   const [isEditing, setIsEditing] = useState(false)
   const [isChangingStatus, setIsChangingStatus] = useState(false)
@@ -140,6 +149,7 @@ export function PlatformOrganizationDetail() {
   const access = {
     capabilities: actor.capabilities,
     status: organization.status,
+    isRoot,
   }
   const actions = getPlatformOrganizationDetailActions(access)
   const tabs = getPlatformOrganizationTabs(access)
@@ -149,6 +159,11 @@ export function PlatformOrganizationDetail() {
   const currentTab = tabs.some((tab) => tab.key === activeTab)
     ? activeTab
     : (tabs[0]?.key ?? activeTab)
+  // Two of the platform's sections are not the organization center's own —
+  // owner repair and the join rules — so they take the body whole and the
+  // shared renderer gets every other tab.
+  const showsOrganizationSections =
+    currentTab !== 'owner-repair' && currentTab !== 'join-rules'
   // An unrecognized status would otherwise crash the page; `OrganizationStatus`
   // is only as narrow as the backend keeps it.
   const statusMeta = ORGANIZATION_STATUSES[organization.status] ?? {
@@ -243,14 +258,21 @@ export function PlatformOrganizationDetail() {
                 search={search}
                 navigate={navigate}
               >
-                {currentTab === 'owner-repair' ? (
+                {currentTab === 'owner-repair' && (
                   <PlatformOrganizationOwnerRepair
                     organizationId={organization.id}
                     slug={organization.slug}
                     ownerUserId={organization.owner_user_id}
                     onTransferred={refetch}
                   />
-                ) : (
+                )}
+                {currentTab === 'join-rules' && (
+                  <PlatformOrganizationJoinRules
+                    organizationId={organization.id}
+                    readOnly={actions.readOnly}
+                  />
+                )}
+                {showsOrganizationSections && (
                   <OrganizationSections
                     detail={detail}
                     tab={currentTab}

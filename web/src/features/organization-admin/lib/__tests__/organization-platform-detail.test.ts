@@ -88,7 +88,13 @@ function member(
 
 describe('normalizePlatformOrganizationTabKey', () => {
   it('keeps the keys the platform page defines', () => {
-    for (const key of ['overview', 'members', 'tokens', 'owner-repair']) {
+    for (const key of [
+      'overview',
+      'members',
+      'tokens',
+      'join-rules',
+      'owner-repair',
+    ]) {
       expect(normalizePlatformOrganizationTabKey(key)).toBe(key)
     }
   })
@@ -299,6 +305,28 @@ describe('getPlatformOrganizationTabs', () => {
     })
 
     expect(tabs.map((tab) => tab.key)).not.toContain('owner-repair')
+  })
+
+  it('offers the join rules to the root alone, last but for owner repair', () => {
+    // Every platform administrator is answered the same capability set, root or
+    // not, so this tab cannot be read from it: the join rules decide who becomes
+    // a member, and only the root may widen that.
+    const rootTabs = getPlatformOrganizationTabs({
+      capabilities: capabilities(),
+      status: 'active',
+      isRoot: true,
+    })
+
+    expect(rootTabs.at(-2)?.key).toBe('join-rules')
+    expect(rootTabs.at(-2)?.labelKey).toBe('Join Rules')
+    expect(rootTabs.at(-1)?.key).toBe('owner-repair')
+
+    const adminTabs = getPlatformOrganizationTabs({
+      capabilities: capabilities(),
+      status: 'active',
+    })
+
+    expect(adminTabs.map((tab) => tab.key)).not.toContain('join-rules')
   })
 })
 

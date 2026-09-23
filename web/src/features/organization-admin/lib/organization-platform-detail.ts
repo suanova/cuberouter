@@ -49,6 +49,7 @@ export const PLATFORM_ORGANIZATION_TAB_KEYS = [
   'tasks',
   'usage',
   'audit-logs',
+  'join-rules',
   'owner-repair',
 ] as const
 
@@ -79,6 +80,7 @@ export const PLATFORM_ORGANIZATION_TAB_LABEL_KEYS: Record<
   tasks: 'Tasks',
   usage: 'Usage',
   'audit-logs': 'Audit Logs',
+  'join-rules': 'Join Rules',
   'owner-repair': 'Transfer Ownership',
 }
 
@@ -179,6 +181,8 @@ export interface PlatformOrganizationTabSpec {
 export function getPlatformOrganizationTabs(input: {
   capabilities: OrganizationCapabilities
   status?: string
+  /** 加入规则决定组织成员边界，只有 root 能配置，也只有 root 该看到这个入口。 */
+  isRoot?: boolean
 }): PlatformOrganizationTabSpec[] {
   const { capabilities } = input
   const readOnly = isPlatformOrganizationReadOnly(input.status)
@@ -196,6 +200,10 @@ export function getPlatformOrganizationTabs(input: {
     { key: 'tasks', visible: capabilities.can_view_organization_logs },
     { key: 'usage', visible: capabilities.can_view_organization_usage },
     { key: 'audit-logs', visible: capabilities.can_view_audit },
+    // The join rules decide who becomes a member, so unlike every other section
+    // here they are not read from the capability set — the backend answers every
+    // platform administrator with the same one, root or not.
+    { key: 'join-rules', visible: Boolean(input.isRoot) },
     // Offered whenever the backend would allow the transfer, not only on an
     // active organization: repointing an organization whose owner is gone is
     // what this tab is for, and that owner is just as gone while the
