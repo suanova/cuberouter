@@ -429,11 +429,17 @@ func CreateOrganizationJoinRules(operatorUserId, organizationId int, accessMode 
 				if !JoinRulesOverlap(&candidate, &existing[i]) {
 					continue
 				}
-				if existing[i].OrganizationId == organizationId && existing[i].PatternNormalized == normalized {
+				sameOrganization := existing[i].OrganizationId == organizationId
+				patternTaken := existing[i].PatternNormalized == normalized
+				bothDomains := existing[i].MatchType == model.OrganizationJoinRuleMatchTypeDomain && matchType == model.OrganizationJoinRuleMatchTypeDomain
+				if sameOrganization && patternTaken {
 					conflict = true // 本组织已有同一条：幂等跳过
 					break
 				}
-				if existing[i].MatchType == model.OrganizationJoinRuleMatchTypeDomain && matchType == model.OrganizationJoinRuleMatchTypeDomain {
+				// 跨组织时同一 pattern 被占用（地址规则之间、域名规则之间），或任意
+				// 两条域名规则互为父子域，都是硬冲突：必须报出行级冲突并指名占用者，
+				// 否则管理员只会撞到唯一索引，看到的是一条原始数据库错误而不是"谁占着"。
+				if (patternTaken && !sameOrganization) || bothDomains {
 					result.LineErrors = append(result.LineErrors, JoinRuleLineError{
 						Line:             line,
 						Pattern:          pattern,

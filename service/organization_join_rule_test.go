@@ -413,6 +413,24 @@ func TestCreateOrganizationJoinRulesRejectsOverlappingDomains(t *testing.T) {
 	assert.Equal(t, organization.Name, second.LineErrors[0].OrganizationName)
 }
 
+// 同一个地址被别的组织占用时必须是行级冲突并指名占用者 ——
+// 放它过去只会撞唯一索引，管理员看到的是原始数据库错误。
+func TestCreateOrganizationJoinRulesRejectsForeignAddressPattern(t *testing.T) {
+	setupServiceTestDB(t)
+	_, firstOrg := createJoinRuleFixtureOrg(t, "rule-addr-first")
+	root, secondOrg := createJoinRuleFixtureOrg(t, "rule-addr-second")
+
+	_, err := CreateOrganizationJoinRules(root.Id, firstOrg.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"user-a@enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+
+	result, err := CreateOrganizationJoinRules(root.Id, secondOrg.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"user-a@enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err, "必须报出行级冲突，而不是把唯一索引的原始错误抛出来")
+	require.Empty(t, result.Rules)
+	require.Len(t, result.LineErrors, 1)
+	assert.Equal(t, organizationJoinRuleLineErrorConflict, result.LineErrors[0].Kind)
+	assert.Equal(t, firstOrg.Name, result.LineErrors[0].OrganizationName)
+}
+
 func TestCreateOrganizationJoinRulesIsIdempotentForOwnRules(t *testing.T) {
 	setupServiceTestDB(t)
 	root, organization := createJoinRuleFixtureOrg(t, "rule-idempotent")
