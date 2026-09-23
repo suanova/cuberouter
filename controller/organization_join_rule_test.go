@@ -31,6 +31,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 // registerWithVerifiedEmail 走完整的注册处理器：注册验证码、带上它发请求。
@@ -180,4 +181,85 @@ func TestRegisterSkipsAutoJoinWhenEmailVerificationIsOff(t *testing.T) {
 	var count int64
 	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("user_id = ?", registered.Id).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+// 加入失败必须把整个注册事务回滚干净：不只是没有成员关系，连用户行都不能留下——
+// 半个人不应该存在，否则这个用户名/邮箱此后既注册不了，又对应一个不存在的账号。
+func TestRegisterRollsBackUserWhenAutoJoinFails(t *testing.T) {
+	setupControllerOrganizationTestDB(t)
+	setupRegisterJoinTestEnv(t)
+
+	owner := model.User{Username: "rollback-owner", AffCode: "rollback-owner", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&owner).Error)
+	organization := model.Organization{Name: "Rollback Org", Slug: "rollback-org", Status: model.OrganizationStatusActive, OwnerUserId: owner.Id, CreatedBy: owner.Id}
+	require.NoError(t, model.DB.Create(&organization).Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationJoinRule{
+		OrganizationId:    organization.Id,
+		MatchType:         model.OrganizationJoinRuleMatchTypeDomain,
+		Pattern:           "*.enterprise.com",
+		PatternNormalized: "*.enterprise.com",
+		CreatedBy:         owner.Id,
+	}).Error)
+
+	// 删掉规则表是为了逼出一次真实的数据库错误：加入路径只把这种错误往上抛
+	// （组织停用、邮箱无命中、解析歧义都只跳过），而解析器只在邮箱非空时查这张表，
+	// 所以删除它正好只打断加入这一段。
+	require.NoError(t, model.DB.Migrator().DropTable(&model.OrganizationJoinRule{}))
+
+	recorder := registerWithVerifiedEmail(t, "rollback-user", "newcomer@enterprise.com", "444444")
+	require.Equal(t, 200, recorder.Code, recorder.Body.String())
+	var response struct {
+		Success bool   `json:"success"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	assert.False(t, response.Success, "加入失败时注册必须整体失败：%s", recorder.Body.String())
+	// 失败必须来自加入那一步（错误里点名了被删的表）：否则一旦将来有更早的校验
+	// 把请求挡在插入之前，这个用例会在"根本没走到插入"的情况下假通过。
+	assert.Contains(t, response.Message, "organization_join_rules")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("username = ?", "rollback-user").Count(&count).Error)
+	assert.Zero(t, count, "加入失败必须连用户行一起回滚")
+}
+
+// OAuth 的创建路径不走自动加入：provider 给的邮箱没有任何验证证明，一旦挂上去，
+// 任何人都能用未验证的邮箱冒充组织成员——而成员能读到组织的 API key（花组织的额度）。
+// 这里不搭假的 OAuth provider，而是照着 controller/oauth.go 的创建块走一遍它调用的
+// 那两步模型调用（事务内 InsertWithTx，提交后 FinalizeOAuthUserCreation）；
+// 邮箱命中一条有效规则，且邮箱验证开着（规则最可能生效的配置），断言零成员关系。
+func TestOAuthUserCreationPathDoesNotAutoJoin(t *testing.T) {
+	setupControllerOrganizationTestDB(t)
+	setupRegisterJoinTestEnv(t)
+
+	owner := model.User{Username: "oauth-owner", AffCode: "oauth-owner", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&owner).Error)
+	organization := model.Organization{Name: "OAuth Org", Slug: "oauth-org", Status: model.OrganizationStatusActive, OwnerUserId: owner.Id, CreatedBy: owner.Id}
+	require.NoError(t, model.DB.Create(&organization).Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationJoinRule{
+		OrganizationId:    organization.Id,
+		MatchType:         model.OrganizationJoinRuleMatchTypeDomain,
+		Pattern:           "*.enterprise.com",
+		PatternNormalized: "*.enterprise.com",
+		CreatedBy:         owner.Id,
+	}).Error)
+
+	user := model.User{
+		Username:    "oauth-created-user",
+		DisplayName: "OAuth User",
+		Email:       "unverified@enterprise.com",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+	}
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return user.InsertWithTx(tx, 0)
+	}))
+	user.FinalizeOAuthUserCreation(0)
+
+	var registered model.User
+	require.NoError(t, model.DB.Where("username = ?", "oauth-created-user").First(&registered).Error)
+	require.Equal(t, "unverified@enterprise.com", registered.Email, "OAuth 路径照常写入邮箱")
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("user_id = ?", registered.Id).Count(&count).Error)
+	assert.Zero(t, count, "公共创建路径不得按邮箱自动加入组织")
 }
