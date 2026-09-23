@@ -76,3 +76,85 @@ func TestJoinRuleMatchTypeFor(t *testing.T) {
 	assert.Equal(t, model.OrganizationJoinRuleMatchTypeDomain, joinRuleMatchTypeFor("*.enterprise.com"))
 	assert.Equal(t, model.OrganizationJoinRuleMatchTypeDomain, joinRuleMatchTypeFor("enterprise.com"))
 }
+
+func joinRuleForTest(t *testing.T, matchType, pattern string) *model.OrganizationJoinRule {
+	t.Helper()
+	normalized, err := NormalizeJoinRulePattern(matchType, pattern)
+	require.NoError(t, err)
+	return &model.OrganizationJoinRule{
+		MatchType:         matchType,
+		Pattern:           pattern,
+		PatternNormalized: normalized,
+	}
+}
+
+func TestMatchJoinRuleDomainBoundaries(t *testing.T) {
+	wildcard := joinRuleForTest(t, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	bare := joinRuleForTest(t, model.OrganizationJoinRuleMatchTypeDomain, "enterprise.com")
+	cases := []struct {
+		name  string
+		rule  *model.OrganizationJoinRule
+		email string
+		want  bool
+	}{
+		{name: "wildcard matches apex", rule: wildcard, email: "a@enterprise.com", want: true},
+		{name: "wildcard matches subdomain", rule: wildcard, email: "a@mail.enterprise.com", want: true},
+		{name: "wildcard matches deep subdomain", rule: wildcard, email: "a@x.y.enterprise.com", want: true},
+		{name: "wildcard does not match suffix spoof", rule: wildcard, email: "a@evil-enterprise.com", want: false},
+		{name: "wildcard does not match reversed spoof", rule: wildcard, email: "a@enterprise.com.evil.com", want: false},
+		{name: "wildcard does not match unrelated", rule: wildcard, email: "a@enterprise.org", want: false},
+		{name: "bare matches apex", rule: bare, email: "a@enterprise.com", want: true},
+		{name: "bare does not match subdomain", rule: bare, email: "a@mail.enterprise.com", want: false},
+		{name: "empty email never matches", rule: wildcard, email: "", want: false},
+		{name: "email without at never matches", rule: wildcard, email: "enterprise.com", want: false},
+		{name: "trailing at never matches", rule: wildcard, email: "a@", want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, MatchJoinRule(tc.rule, tc.email))
+		})
+	}
+}
+
+func TestMatchJoinRuleAddressIsExact(t *testing.T) {
+	rule := joinRuleForTest(t, model.OrganizationJoinRuleMatchTypeEmail, "user-a@enterprise.com")
+	assert.True(t, MatchJoinRule(rule, "user-a@enterprise.com"))
+	assert.False(t, MatchJoinRule(rule, "xuser-a@enterprise.com"))
+	assert.False(t, MatchJoinRule(rule, "user-a@mail.enterprise.com"))
+	assert.False(t, MatchJoinRule(rule, "user-a+1@enterprise.com"))
+	assert.False(t, MatchJoinRule(rule, "someone-else@enterprise.com"))
+}
+
+func TestJoinRulesOverlap(t *testing.T) {
+	domain := func(pattern string) *model.OrganizationJoinRule {
+		return joinRuleForTest(t, model.OrganizationJoinRuleMatchTypeDomain, pattern)
+	}
+	address := func(pattern string) *model.OrganizationJoinRule {
+		return joinRuleForTest(t, model.OrganizationJoinRuleMatchTypeEmail, pattern)
+	}
+	cases := []struct {
+		name string
+		a    *model.OrganizationJoinRule
+		b    *model.OrganizationJoinRule
+		want bool
+	}{
+		{name: "same bare domain", a: domain("enterprise.com"), b: domain("enterprise.com"), want: true},
+		{name: "wildcard and its apex", a: domain("*.enterprise.com"), b: domain("enterprise.com"), want: true},
+		{name: "parent covers child", a: domain("*.enterprise.com"), b: domain("mail.enterprise.com"), want: true},
+		{name: "child covered by parent", a: domain("mail.enterprise.com"), b: domain("*.enterprise.com"), want: true},
+		{name: "sibling subdomains do not overlap", a: domain("mail.enterprise.com"), b: domain("vpn.enterprise.com"), want: false},
+		{name: "different domains do not overlap", a: domain("enterprise.com"), b: domain("partner.com"), want: false},
+		{name: "suffix spoof does not overlap", a: domain("enterprise.com"), b: domain("evil-enterprise.com"), want: false},
+		{name: "address inside a wildcard overlaps", a: address("user-a@enterprise.com"), b: domain("*.enterprise.com"), want: true},
+		{name: "address on a bare domain overlaps", a: domain("enterprise.com"), b: address("user-a@enterprise.com"), want: true},
+		{name: "address on a subdomain does not overlap a bare domain", a: domain("enterprise.com"), b: address("user-a@mail.enterprise.com"), want: false},
+		{name: "same address overlaps", a: address("user-a@enterprise.com"), b: address("user-a@enterprise.com"), want: true},
+		{name: "different addresses do not overlap", a: address("user-a@enterprise.com"), b: address("user-b@enterprise.com"), want: false},
+		{name: "nil rule never overlaps", a: nil, b: domain("enterprise.com"), want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, JoinRulesOverlap(tc.a, tc.b))
+		})
+	}
+}

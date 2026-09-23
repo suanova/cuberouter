@@ -80,3 +80,57 @@ func NormalizeJoinRulePattern(matchType, raw string) (string, error) {
 		return "", errors.New("invalid join rule match type")
 	}
 }
+
+// joinRuleBase 取域名规则的基准域：*.enterprise.com → enterprise.com
+func joinRuleBase(patternNormalized string) string {
+	return strings.TrimPrefix(patternNormalized, "*.")
+}
+
+// MatchJoinRule 判定一条规则是否命中归一化后的邮箱。地址规则严格全等；
+// 域名规则要求域等于基准域（裸域名规则）或为其子域（通配规则）。
+//
+// 子域判定必须锚定在 "." 上：HasSuffix(domain, base) 会让 evil-enterprise.com
+// 命中 enterprise.com，等于把整个企业域白名单送给了任何会注册近似域名的人。
+func MatchJoinRule(rule *model.OrganizationJoinRule, normalizedEmail string) bool {
+	if rule == nil || normalizedEmail == "" {
+		return false
+	}
+	if rule.MatchType == model.OrganizationJoinRuleMatchTypeEmail {
+		return normalizedEmail == rule.PatternNormalized
+	}
+	at := strings.LastIndex(normalizedEmail, "@")
+	if at < 0 || at == len(normalizedEmail)-1 {
+		return false
+	}
+	domain := normalizedEmail[at+1:]
+	base := joinRuleBase(rule.PatternNormalized)
+	if domain == base {
+		return true
+	}
+	if !strings.HasPrefix(rule.PatternNormalized, "*.") {
+		return false
+	}
+	return strings.HasSuffix(domain, "."+base)
+}
+
+// JoinRulesOverlap 判定两条规则是否可能命中同一个邮箱。域名规则之间同域或互为
+// 父子域即重叠——配置期用这个函数拒绝第二个占用者，运行时才会有唯一的域名候选。
+func JoinRulesOverlap(a, b *model.OrganizationJoinRule) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	if a.MatchType == model.OrganizationJoinRuleMatchTypeEmail && b.MatchType == model.OrganizationJoinRuleMatchTypeEmail {
+		return a.PatternNormalized == b.PatternNormalized
+	}
+	if a.MatchType == model.OrganizationJoinRuleMatchTypeEmail {
+		return MatchJoinRule(b, a.PatternNormalized)
+	}
+	if b.MatchType == model.OrganizationJoinRuleMatchTypeEmail {
+		return MatchJoinRule(a, b.PatternNormalized)
+	}
+	baseA := joinRuleBase(a.PatternNormalized)
+	baseB := joinRuleBase(b.PatternNormalized)
+	return baseA == baseB ||
+		strings.HasSuffix(baseA, "."+baseB) ||
+		strings.HasSuffix(baseB, "."+baseA)
+}
