@@ -49,6 +49,7 @@ const ORGANIZATION_AUDIT_ACTION_LABELS: Record<string, string> = {
   'member.update': 'Member Updated',
   'member.remove': 'Member Removed',
   'member.exit': 'Member Exited',
+  'member.auto_join': 'Member Auto-Joined',
   'member.key_transfer': 'API Keys Transferred',
   'member.key_transfer_blocked': 'API Key Transfer Blocked',
   'owner.transfer': 'Ownership Transferred',
@@ -62,6 +63,8 @@ const ORGANIZATION_AUDIT_ACTION_LABELS: Record<string, string> = {
   'invite.accept': 'Invitation Accepted',
   'invite.revoke': 'Invitation Revoked',
   'billing.repair_failed': 'Billing Repair Failed',
+  'join_rule.create': 'Join Rule Added',
+  'join_rule.delete': 'Join Rule Deleted',
 }
 
 /** Which colour an action reads as: destructive, additive, corrective, other. */
