@@ -49,6 +49,7 @@ import {
   OrganizationSection,
   OrganizationSectionRefresh,
 } from '@/features/organization/components/organization-section'
+import { getServerErrorMessageKey } from '@/lib/server-error-message'
 
 type PlatformOrganizationJoinRulesProps = {
   organizationId: number
@@ -139,7 +140,16 @@ export function PlatformOrganizationJoinRules(
       setLineErrors(payload?.line_errors ?? [])
       setNotices(payload?.notices ?? [])
       if (!payload?.line_errors?.length) {
-        toast.error(payload?.message || t('Failed to save the join rules'))
+        // The backend answers a stable code plus English text by this subsystem's
+        // convention, so the copy the operator reads comes from the shared code
+        // table — the same one the axios interceptor uses. Only a refusal whose
+        // code has no entry there falls back to the backend's own message.
+        const messageKey = getServerErrorMessageKey(error)
+        if (messageKey) {
+          toast.error(t(messageKey))
+        } else {
+          toast.error(payload?.message || t('Failed to save the join rules'))
+        }
       }
     } finally {
       setIsSubmitting(false)

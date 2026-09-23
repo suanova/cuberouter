@@ -227,7 +227,11 @@ describe('platform organization join rules', () => {
     expect(toastError).not.toHaveBeenCalled()
   })
 
-  test('falls back to a toast when the refusal names no line', async () => {
+  test('localizes the refusal from its stable code when no line is named', async () => {
+    // The backend answers with a stable code plus English text, and the copy the
+    // operator reads comes from the frontend's own code table — that is how the
+    // "email verification is disabled" refusal reaches a Chinese operator in
+    // Chinese instead of raw English.
     createMock.mockRejectedValue({
       response: {
         data: {
@@ -246,8 +250,35 @@ describe('platform organization join rules', () => {
 
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith(
-        'email verification is disabled, join rules will never take effect'
+        'Some lines of the join rules are not usable. Fix the flagged lines and submit again.'
       )
+    )
+    // The backend's English message is not what the operator is shown.
+    expect(toastError).not.toHaveBeenCalledWith(
+      'email verification is disabled, join rules will never take effect'
+    )
+  })
+
+  test('falls back to a toast when the refusal names no line', async () => {
+    createMock.mockRejectedValue({
+      response: {
+        data: {
+          success: false,
+          message: 'unexpected end of JSON input',
+        },
+      },
+    })
+    renderSection()
+    await screen.findByText(EMPTY_STATE)
+
+    fireEvent.input(patternsField(), { target: { value: '*.enterprise.com' } })
+    fireEvent.input(reasonField(), { target: { value: 'Onboarding' } })
+    fireEvent.click(saveButton())
+
+    // A refusal with no code from this subsystem has no local copy, so the
+    // backend's own message is all there is to show.
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith('unexpected end of JSON input')
     )
   })
 
