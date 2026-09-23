@@ -23,6 +23,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 
 	"github.com/stretchr/testify/assert"
@@ -157,4 +158,92 @@ func TestJoinRulesOverlap(t *testing.T) {
 			assert.Equal(t, tc.want, JoinRulesOverlap(tc.a, tc.b))
 		})
 	}
+}
+
+func createJoinRuleForTest(t *testing.T, organizationId int, matchType, pattern string) *model.OrganizationJoinRule {
+	t.Helper()
+	normalized, err := NormalizeJoinRulePattern(matchType, pattern)
+	require.NoError(t, err)
+	rule := &model.OrganizationJoinRule{
+		OrganizationId:    organizationId,
+		MatchType:         matchType,
+		Pattern:           pattern,
+		PatternNormalized: normalized,
+		CreatedBy:         1,
+		CreatedAt:         common.GetTimestamp(),
+		UpdatedAt:         common.GetTimestamp(),
+	}
+	require.NoError(t, model.DB.Create(rule).Error)
+	return rule
+}
+
+func TestResolveOrganizationJoinRulePrefersAddressRule(t *testing.T) {
+	setupServiceTestDB(t)
+	domainRule := createJoinRuleForTest(t, 1, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	addressRule := createJoinRuleForTest(t, 2, model.OrganizationJoinRuleMatchTypeEmail, "user-a@enterprise.com")
+
+	rule, err := ResolveOrganizationJoinRuleWithTx(model.DB, "user-a@enterprise.com")
+	require.NoError(t, err)
+	require.NotNil(t, rule)
+	assert.Equal(t, addressRule.Id, rule.Id)
+
+	// 域名规则仍然覆盖同一域里的其他人。
+	rule, err = ResolveOrganizationJoinRuleWithTx(model.DB, "user-b@enterprise.com")
+	require.NoError(t, err)
+	require.NotNil(t, rule)
+	assert.Equal(t, domainRule.Id, rule.Id)
+}
+
+func TestResolveOrganizationJoinRuleFindsWildcardAsAncestor(t *testing.T) {
+	setupServiceTestDB(t)
+	createJoinRuleForTest(t, 1, model.OrganizationJoinRuleMatchTypeDomain, "enterprise.com")
+	other := createJoinRuleForTest(t, 2, model.OrganizationJoinRuleMatchTypeEmail, "user-a@enterprise.com")
+
+	// 三级子域不在裸域名规则的范围内。
+	resolved, err := ResolveOrganizationJoinRuleWithTx(model.DB, "user-c@deep.mail.enterprise.com")
+	require.NoError(t, err)
+	assert.Nil(t, resolved)
+
+	resolved, err = ResolveOrganizationJoinRuleWithTx(model.DB, "user-a@enterprise.com")
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, other.Id, resolved.Id)
+}
+
+func TestResolveOrganizationJoinRuleReportsAmbiguity(t *testing.T) {
+	setupServiceTestDB(t)
+	// 直接绕过配置期检查写入两条会同时命中的域名规则，模拟历史脏数据或检查被绕过。
+	createJoinRuleForTest(t, 1, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	require.NoError(t, model.DB.Create(&model.OrganizationJoinRule{
+		OrganizationId:    2,
+		MatchType:         model.OrganizationJoinRuleMatchTypeDomain,
+		Pattern:           "mail.enterprise.com",
+		PatternNormalized: "mail.enterprise.com",
+		CreatedBy:         1,
+	}).Error)
+
+	_, err := ResolveOrganizationJoinRuleWithTx(model.DB, "user-a@mail.enterprise.com")
+	require.ErrorIs(t, err, ErrOrganizationJoinRuleAmbiguous)
+}
+
+func TestResolveOrganizationJoinRuleReturnsNilWhenNothingMatches(t *testing.T) {
+	setupServiceTestDB(t)
+	createJoinRuleForTest(t, 1, model.OrganizationJoinRuleMatchTypeDomain, "partner.com")
+
+	rule, err := ResolveOrganizationJoinRuleWithTx(model.DB, "user@enterprise.com")
+	require.NoError(t, err)
+	assert.Nil(t, rule)
+
+	rule, err = ResolveOrganizationJoinRuleWithTx(model.DB, "not-an-email")
+	require.NoError(t, err)
+	assert.Nil(t, rule)
+}
+
+func TestJoinRuleDomainCandidatesCoverBareAndWildcardForms(t *testing.T) {
+	got := joinRuleDomainCandidates("a.b.enterprise.com")
+	assert.Equal(t, []string{
+		"a.b.enterprise.com", "*.a.b.enterprise.com",
+		"b.enterprise.com", "*.b.enterprise.com",
+		"enterprise.com", "*.enterprise.com",
+	}, got)
 }

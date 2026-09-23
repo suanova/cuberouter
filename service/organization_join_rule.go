@@ -21,11 +21,14 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+
+	"gorm.io/gorm"
 )
 
 // 唯一索引列是 varchar(191)：MySQL 5.7.8 的 utf8mb4 索引上限是 767 字节，
@@ -133,4 +136,70 @@ func JoinRulesOverlap(a, b *model.OrganizationJoinRule) bool {
 	return baseA == baseB ||
 		strings.HasSuffix(baseA, "."+baseB) ||
 		strings.HasSuffix(baseB, "."+baseA)
+}
+
+// ErrOrganizationJoinRuleAmbiguous 表示一个邮箱同时命中多条域名规则。配置期互斥
+// 保证它不该发生；真发生了就放弃加入并告警，绝不猜。
+var ErrOrganizationJoinRuleAmbiguous = errors.New("organization join rule resolution is ambiguous")
+
+// joinRuleDomainCandidates 列出某个域可能被哪些形态的域名规则命中：
+// 每个后缀的裸域名形式与通配形式各一份。查询因此仍是一次唯一索引等值命中。
+func joinRuleDomainCandidates(domain string) []string {
+	labels := strings.Split(domain, ".")
+	candidates := make([]string, 0, len(labels)*2)
+	// 只枚举到倒数第二个标签为止：校验器要求域名至少两个标签，所以单标签后缀
+	// （"com"、"*.com"）永远不可能是合法规则。把它们放进候选集只会让手写进库的
+	// 脏行对每一个 .com 地址生效 —— 那不是放宽查询，那是放大一个坏行的爆炸半径。
+	for i := 0; i+1 < len(labels); i++ {
+		suffix := strings.Join(labels[i:], ".")
+		candidates = append(candidates, suffix, "*."+suffix)
+	}
+	return candidates
+}
+
+// ResolveOrganizationJoinRuleWithTx 解析一个邮箱命中的唯一规则。地址规则优先；
+// 域名规则用后缀候选集打唯一索引，不做全表扫描。
+func ResolveOrganizationJoinRuleWithTx(tx *gorm.DB, normalizedEmail string) (*model.OrganizationJoinRule, error) {
+	if tx == nil || normalizedEmail == "" {
+		return nil, nil
+	}
+	at := strings.LastIndex(normalizedEmail, "@")
+	if at < 0 || at == len(normalizedEmail)-1 {
+		return nil, nil
+	}
+
+	var addressRules []model.OrganizationJoinRule
+	if err := tx.Where("match_type = ? AND pattern_normalized = ?", model.OrganizationJoinRuleMatchTypeEmail, normalizedEmail).Limit(2).Find(&addressRules).Error; err != nil {
+		return nil, err
+	}
+	if len(addressRules) > 1 {
+		return nil, fmt.Errorf("%w: multiple address rules for %s", ErrOrganizationJoinRuleAmbiguous, normalizedEmail)
+	}
+	if len(addressRules) == 1 {
+		return &addressRules[0], nil
+	}
+
+	domain := normalizedEmail[at+1:]
+	var domainRules []model.OrganizationJoinRule
+	if err := tx.Where("match_type = ? AND pattern_normalized IN ?", model.OrganizationJoinRuleMatchTypeDomain, joinRuleDomainCandidates(domain)).Find(&domainRules).Error; err != nil {
+		return nil, err
+	}
+	var matched []model.OrganizationJoinRule
+	for i := range domainRules {
+		if MatchJoinRule(&domainRules[i], normalizedEmail) {
+			matched = append(matched, domainRules[i])
+		}
+	}
+	switch len(matched) {
+	case 0:
+		return nil, nil
+	case 1:
+		return &matched[0], nil
+	default:
+		ids := make([]int, 0, len(matched))
+		for _, rule := range matched {
+			ids = append(ids, rule.Id)
+		}
+		return nil, fmt.Errorf("%w: rules %v for %s", ErrOrganizationJoinRuleAmbiguous, ids, normalizedEmail)
+	}
 }
