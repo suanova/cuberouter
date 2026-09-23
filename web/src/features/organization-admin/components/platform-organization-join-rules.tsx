@@ -214,13 +214,17 @@ export function PlatformOrganizationJoinRules(
           </CardDescription>
         </CardHeader>
         <CardContent className='space-y-3'>
-          <Textarea
-            rows={6}
-            value={patterns}
-            disabled={props.readOnly || isSubmitting}
-            onChange={(event) => setPatterns(event.target.value)}
-            placeholder={'*.enterprise.com\nuser-a@enterprise.com'}
-          />
+          <div className='flex flex-col gap-2'>
+            <Label htmlFor='join-rule-patterns'>{t('Patterns')}</Label>
+            <Textarea
+              id='join-rule-patterns'
+              rows={6}
+              value={patterns}
+              disabled={props.readOnly || isSubmitting}
+              onChange={(event) => setPatterns(event.target.value)}
+              placeholder={'*.enterprise.com\nuser-a@enterprise.com'}
+            />
+          </div>
           {previewPatterns.length > 0 ? (
             <ul className='text-muted-foreground space-y-1 text-xs'>
               {previewPatterns.map((pattern) => (
@@ -228,12 +232,16 @@ export function PlatformOrganizationJoinRules(
               ))}
             </ul>
           ) : null}
-          <Input
-            value={reason}
-            disabled={props.readOnly || isSubmitting}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder={t('Why are these rules being added?')}
-          />
+          <div className='flex flex-col gap-2'>
+            <Label htmlFor='join-rule-reason'>{t('Reason')}</Label>
+            <Input
+              id='join-rule-reason'
+              value={reason}
+              disabled={props.readOnly || isSubmitting}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder={t('Why are these rules being added?')}
+            />
+          </div>
 
           {lineErrors.length > 0 ? (
             <Alert variant='destructive'>
@@ -336,7 +344,14 @@ export function PlatformOrganizationJoinRules(
 
       <ConfirmDialog
         open={pendingDelete !== null}
-        onOpenChange={(open) => !open && setPendingDelete(null)}
+        onOpenChange={(open) => {
+          if (open) return
+          // The reason is written for the rule this dialog was opened for, so it
+          // leaves with it: a cancelled dialog must not arm the next one with a
+          // free-text reason that would then be recorded against another rule.
+          setPendingDelete(null)
+          setDeleteReason('')
+        }}
         title={t('Delete join rule')}
         desc={t(
           'Registrations matching {{pattern}} will no longer join this organization. It does not remove members who already joined.',

@@ -89,16 +89,14 @@ function renderSection(props: { readOnly?: boolean } = {}): void {
   )
 }
 
-/** The field is named by the examples in its placeholder; the query sees the
- * line break between them collapsed to a space. */
+/** The two add-form fields are reached by their labels: the placeholder is only
+ * a hint, and it disappears as soon as the operator types. */
 function patternsField(): HTMLTextAreaElement {
-  return screen.getByPlaceholderText(
-    '*.enterprise.com user-a@enterprise.com'
-  ) as HTMLTextAreaElement
+  return screen.getByLabelText('Patterns') as HTMLTextAreaElement
 }
 
 function reasonField(): HTMLInputElement {
-  return screen.getByPlaceholderText('Why are these rules being added?')
+  return screen.getByLabelText('Reason')
 }
 
 function saveButton(): HTMLElement {
@@ -306,6 +304,41 @@ describe('platform organization join rules', () => {
     await waitFor(() =>
       expect(toastSuccess).toHaveBeenCalledWith('Join rule deleted')
     )
+  })
+
+  test('does not carry a cancelled reason over to the next rule', async () => {
+    listMock.mockResolvedValue({
+      success: true,
+      data: [
+        rule({ id: 31, pattern: '*.enterprise.com' }),
+        rule({ id: 32, pattern: 'user-a@enterprise.com' }),
+      ],
+    })
+    renderSection()
+
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Delete' }))[0]
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    fireEvent.input(within(dialog).getByLabelText('Reason'), {
+      target: { value: 'Pilot ended' },
+    })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    )
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Delete' })[1])
+
+    // The reason written for the first rule is gone with its dialog: it would
+    // otherwise be recorded in the audit trail as the reason the *second* rule
+    // was removed.
+    const secondDialog = await screen.findByRole('alertdialog')
+    expect(within(secondDialog).getByLabelText('Reason')).toHaveValue('')
+    expect(
+      within(secondDialog).getByRole('button', { name: 'Delete' })
+    ).toBeDisabled()
+    expect(deleteMock).not.toHaveBeenCalled()
   })
 
   test('offers no way to change the rules on a read-only organization', async () => {
