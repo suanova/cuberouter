@@ -75,6 +75,7 @@ func setupModelTestDB(t *testing.T) {
 		&OrganizationBillingRecord{},
 		&OrganizationAuditLog{},
 		&OrganizationQuotaAdjustment{},
+		&OrganizationJoinRule{},
 	))
 	// logs.billing_event_key 的唯一索引不是 AutoMigrate 建的：生产上由
 	// prepareLogBillingEventKeyMigration 补列、ensureOrganizationBillingLogIndexes 补索引
