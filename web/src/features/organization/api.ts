@@ -466,6 +466,99 @@ export async function revokeOrganizationInvite(
 }
 
 // ============================================================================
+// Join Rules
+// ============================================================================
+
+/**
+ * One automatic-join rule: a pattern that decides who becomes a member of this
+ * organization when they register.
+ *
+ * `pattern_normalized` is the server's canonical form of `pattern` — the one
+ * the uniqueness check actually compares — so it is what a reader should be
+ * shown when the two differ in ways the author did not intend.
+ */
+export interface OrganizationJoinRule {
+  id: number
+  organization_id: number
+  match_type: 'domain' | 'email'
+  pattern: string
+  pattern_normalized: string
+  created_by: number
+  creator_username?: string
+  creator_display_name?: string
+  created_at: number
+  updated_at: number
+}
+
+/**
+ * Why one line of a submitted batch was rejected. The whole batch is refused
+ * when any line is bad, so the caller renders these next to the lines they
+ * name, keyed by `kind`.
+ */
+export interface OrganizationJoinRuleLineError {
+  line: number
+  pattern: string
+  kind: string
+  message: string
+  organization_name?: string
+}
+
+/**
+ * A line that was accepted but did something worth telling the author about —
+ * for instance matching an address that already belongs to another
+ * organization. Not a failure: the rule was written.
+ */
+export interface OrganizationJoinRuleNotice {
+  pattern: string
+  kind: string
+  organization_name: string
+  pattern_conflict: string
+}
+
+export async function listOrganizationJoinRules(
+  organizationId: number
+): Promise<OrganizationApiResponse<OrganizationJoinRule[]>> {
+  const res = await api.get(
+    `/api/admin/organizations/${organizationId}/join-rules`
+  )
+  return res.data
+}
+
+/**
+ * 整批写入。后端在任何一行非法时整批拒绝，逐行原因在 400 的
+ * `line_errors` 里，因此调用方要带着 `skipErrorHandler` 发请求，自己渲染
+ * 行级错误，而不是让拦截器弹一个笼统的 toast。
+ */
+export async function createOrganizationJoinRules(
+  organizationId: number,
+  data: { patterns: string[]; reason: string }
+): Promise<
+  OrganizationApiResponse<{
+    rules: OrganizationJoinRule[]
+    notices: OrganizationJoinRuleNotice[]
+  }>
+> {
+  const res = await api.post(
+    `/api/admin/organizations/${organizationId}/join-rules`,
+    data,
+    { skipErrorHandler: true }
+  )
+  return res.data
+}
+
+export async function deleteOrganizationJoinRule(
+  organizationId: number,
+  ruleId: number,
+  reason: string
+): Promise<ApiEnvelope> {
+  const res = await api.delete(
+    `/api/admin/organizations/${organizationId}/join-rules/${ruleId}`,
+    { data: { reason } }
+  )
+  return res.data
+}
+
+// ============================================================================
 // Invitation Landing
 // ============================================================================
 
