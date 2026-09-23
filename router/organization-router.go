@@ -119,18 +119,22 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		adminOrganizationRoute.GET("/:id/billing/monthly-summaries", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingMonthlySummaries)
 		adminOrganizationRoute.GET("/:id/billing/records", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingDetails)
 		adminOrganizationRoute.GET("/:id/audit-logs", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationAuditLogs), controller.ListOrganizationAuditLogs)
+	}
 
-		// 加入规则决定谁能进这个组织，而普通成员就能读到组织全部 API Key，
-		// 所以配置权收在 root。OrganizationAdminAuth 负责写入访问模式上下文
-		// （controller 的 organizationAccessMode 依赖它），RootAuth 在其之上再
-		// 把平台管理员挡在外面——只挂 RootAuth 会让访问模式为空，服务层直接拒绝。
-		adminOrganizationJoinRuleRoute := adminOrganizationRoute.Group("/:id/join-rules")
-		adminOrganizationJoinRuleRoute.Use(middleware.OrganizationAdminAuth(), middleware.RootAuth())
-		{
-			adminOrganizationJoinRuleRoute.GET("", controller.ListOrganizationJoinRules)
-			adminOrganizationJoinRuleRoute.POST("", controller.CreateOrganizationJoinRules)
-			adminOrganizationJoinRuleRoute.DELETE("/:ruleId", controller.DeleteOrganizationJoinRule)
-		}
+	// 加入规则决定谁能进这个组织，而普通成员就能读到组织全部 API Key，所以配置权
+	// 收在 root。这里用同前缀的兄弟分组，而不是 adminOrganizationRoute 里追加中间件：
+	// authHelper 自己会 c.Next()，叠在父组的 AdminAuth 之上会让同一个请求跑两遍认证，
+	// 并留下两条重复的操作审计行（理由同 organizationCreationRoute）。
+	//
+	// 顺序不能反：RootAuth 也是 authHelper，它先跑才有 c.GetInt("id") 给
+	// OrganizationAdminAuth 用——后者负责写入访问模式上下文（controller 的
+	// organizationAccessMode 依赖它），RootAuth 则把平台管理员挡在外面。
+	joinRuleRoute := apiRouter.Group("/admin/organizations/:id/join-rules")
+	joinRuleRoute.Use(middleware.RootAuth(), middleware.OrganizationAdminAuth())
+	{
+		joinRuleRoute.GET("", controller.ListOrganizationJoinRules)
+		joinRuleRoute.POST("", controller.CreateOrganizationJoinRules)
+		joinRuleRoute.DELETE("/:ruleId", controller.DeleteOrganizationJoinRule)
 	}
 
 	adminOrganizationAuditRoute := apiRouter.Group("/admin/organization-audit-logs")
