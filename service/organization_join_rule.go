@@ -275,3 +275,268 @@ func JoinOrganizationByJoinRuleWithTx(tx *gorm.DB, user *model.User, verifiedEma
 	}
 	return recordOrganizationAudit(tx, &organization, user.Id, organizationAuditOperatorRoleSystem, organizationAuditActionMemberAutoJoin, "member", member.Id, nil, member, "join_rule:"+rule.PatternNormalized)
 }
+
+const organizationJoinRuleMaxBatchSize = 500
+
+const (
+	organizationJoinRuleLineErrorInvalidPattern = "invalid_pattern"
+	organizationJoinRuleLineErrorConflict       = "conflict"
+)
+
+const (
+	organizationJoinRuleNoticeCoveredByOtherOrganization   = "covered_by_other_organization"
+	organizationJoinRuleNoticeCoversOtherOrganizationEntry = "covers_other_organization_address"
+)
+
+// ErrOrganizationJoinRuleEmailVerificationDisabled 表示当前没有开启邮箱验证：
+// 规则永远不会生效，所以拒绝配置，而不是让管理员配完一堆死规则。
+var ErrOrganizationJoinRuleEmailVerificationDisabled = errors.New("email verification is disabled")
+
+type JoinRuleView struct {
+	Id                 int    `json:"id"`
+	OrganizationId     int    `json:"organization_id"`
+	MatchType          string `json:"match_type"`
+	Pattern            string `json:"pattern"`
+	PatternNormalized  string `json:"pattern_normalized"`
+	CreatedBy          int    `json:"created_by"`
+	CreatorUsername    string `json:"creator_username"`
+	CreatorDisplayName string `json:"creator_display_name"`
+	CreatedAt          int64  `json:"created_at"`
+	UpdatedAt          int64  `json:"updated_at"`
+}
+
+type CreateJoinRulesRequest struct {
+	Patterns []string
+	Reason   string
+}
+
+type JoinRuleLineError struct {
+	Line             int    `json:"line"`
+	Pattern          string `json:"pattern"`
+	Kind             string `json:"kind"`
+	Message          string `json:"message"`
+	OrganizationName string `json:"organization_name,omitempty"`
+}
+
+type JoinRuleNotice struct {
+	Pattern          string `json:"pattern"`
+	Kind             string `json:"kind"`
+	OrganizationName string `json:"organization_name"`
+	PatternConflict  string `json:"pattern_conflict"`
+}
+
+type CreateJoinRulesResult struct {
+	Rules      []JoinRuleView      `json:"rules"`
+	LineErrors []JoinRuleLineError `json:"line_errors"`
+	Notices    []JoinRuleNotice    `json:"notices"`
+}
+
+func ListOrganizationJoinRules(operatorUserId, organizationId int, accessMode string) ([]JoinRuleView, error) {
+	if operatorUserId <= 0 || organizationId <= 0 {
+		return nil, errors.New("invalid organization join rule request")
+	}
+	actor, err := GetOrganizationActorContextForAccessMode(operatorUserId, organizationId, accessMode, true)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.Capabilities.CanViewOrganization {
+		return nil, errors.New("permission denied")
+	}
+	rules := make([]JoinRuleView, 0)
+	if err := model.DB.Table("organization_join_rules").
+		Select("organization_join_rules.*, users.username AS creator_username, users.display_name AS creator_display_name").
+		Joins("LEFT JOIN users ON users.id = organization_join_rules.created_by").
+		Where("organization_join_rules.organization_id = ?", organizationId).
+		Order("organization_join_rules.id asc").
+		Scan(&rules).Error; err != nil {
+		return nil, err
+	}
+	return rules, nil
+}
+
+// CreateOrganizationJoinRules 批量写入规则。整批先校验再写：任何一行硬失败都不写库，
+// 避免留下半批需要人工比对的脏数据。
+func CreateOrganizationJoinRules(operatorUserId, organizationId int, accessMode string, req CreateJoinRulesRequest, auditMetadata ...OrganizationAuditRequestMetadata) (*CreateJoinRulesResult, error) {
+	if operatorUserId <= 0 || organizationId <= 0 {
+		return nil, errors.New("invalid organization join rule request")
+	}
+	if !common.EmailVerificationEnabled {
+		return nil, ErrOrganizationJoinRuleEmailVerificationDisabled
+	}
+	if len(req.Patterns) > organizationJoinRuleMaxBatchSize {
+		return nil, errors.New("too many join rule patterns in one request")
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		return nil, errors.New("join rule reason is required")
+	}
+	result := &CreateJoinRulesResult{Rules: []JoinRuleView{}, LineErrors: []JoinRuleLineError{}, Notices: []JoinRuleNotice{}}
+	now := common.GetTimestamp()
+
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		organization, decision, err := lockedOrganizationManagementDecisionWithTx(tx, operatorUserId, organizationId, accessMode, OrganizationCapabilityManageMembers)
+		if err != nil {
+			return err
+		}
+		if decision.Role != OrganizationPolicyRolePlatformAdmin && decision.Role != OrganizationPolicyRolePlatformRoot {
+			return errors.New("permission denied")
+		}
+
+		// 规则总量是几十条量级：一次性读出来做互斥与提示，比逐行查库更省事也更一致。
+		var existing []model.OrganizationJoinRule
+		if err := tx.Find(&existing).Error; err != nil {
+			return err
+		}
+		organizations := map[int]model.Organization{}
+		var organizationRows []model.Organization
+		if err := tx.Select("id", "name").Find(&organizationRows).Error; err != nil {
+			return err
+		}
+		for _, row := range organizationRows {
+			organizations[row.Id] = row
+		}
+
+		accepted := make([]model.OrganizationJoinRule, 0, len(req.Patterns))
+		seen := map[string]struct{}{}
+		for index, raw := range req.Patterns {
+			line := index + 1
+			pattern := strings.TrimSpace(raw)
+			if pattern == "" {
+				continue
+			}
+			matchType := joinRuleMatchTypeFor(pattern)
+			normalized, err := NormalizeJoinRulePattern(matchType, pattern)
+			if err != nil {
+				result.LineErrors = append(result.LineErrors, JoinRuleLineError{
+					Line: line, Pattern: pattern, Kind: organizationJoinRuleLineErrorInvalidPattern, Message: err.Error(),
+				})
+				continue
+			}
+			if _, duplicated := seen[normalized]; duplicated {
+				continue // 同一次粘贴里的重复行不是错误
+			}
+			candidate := model.OrganizationJoinRule{
+				OrganizationId:    organizationId,
+				MatchType:         matchType,
+				Pattern:           pattern,
+				PatternNormalized: normalized,
+				CreatedBy:         operatorUserId,
+				CreatedAt:         now,
+				UpdatedAt:         now,
+			}
+			conflict := false
+			for i := range existing {
+				if !JoinRulesOverlap(&candidate, &existing[i]) {
+					continue
+				}
+				if existing[i].OrganizationId == organizationId && existing[i].PatternNormalized == normalized {
+					conflict = true // 本组织已有同一条：幂等跳过
+					break
+				}
+				if existing[i].MatchType == model.OrganizationJoinRuleMatchTypeDomain && matchType == model.OrganizationJoinRuleMatchTypeDomain {
+					result.LineErrors = append(result.LineErrors, JoinRuleLineError{
+						Line:             line,
+						Pattern:          pattern,
+						Kind:             organizationJoinRuleLineErrorConflict,
+						Message:          "pattern conflicts with an existing join rule",
+						OrganizationName: organizations[existing[i].OrganizationId].Name,
+					})
+					conflict = true
+					break
+				}
+			}
+			if conflict {
+				continue
+			}
+			seen[normalized] = struct{}{}
+			accepted = append(accepted, candidate)
+		}
+		if len(result.LineErrors) > 0 {
+			return nil
+		}
+
+		// 提示：地址规则落在别的组织域名规则里（或反过来）时，两个组织的成员边界
+		// 会在这几条地址上交叉，管理员需要在写死之前看到。
+		for i := range accepted {
+			for j := range existing {
+				if existing[j].OrganizationId == organizationId || !JoinRulesOverlap(&accepted[i], &existing[j]) {
+					continue
+				}
+				kind := organizationJoinRuleNoticeCoveredByOtherOrganization
+				if accepted[i].MatchType == model.OrganizationJoinRuleMatchTypeDomain {
+					kind = organizationJoinRuleNoticeCoversOtherOrganizationEntry
+				}
+				result.Notices = append(result.Notices, JoinRuleNotice{
+					Pattern:          accepted[i].Pattern,
+					Kind:             kind,
+					OrganizationName: organizations[existing[j].OrganizationId].Name,
+					PatternConflict:  existing[j].Pattern,
+				})
+				break
+			}
+		}
+
+		for i := range accepted {
+			if err := tx.Create(&accepted[i]).Error; err != nil {
+				return err
+			}
+			view := JoinRuleView{
+				Id:                accepted[i].Id,
+				OrganizationId:    accepted[i].OrganizationId,
+				MatchType:         accepted[i].MatchType,
+				Pattern:           accepted[i].Pattern,
+				PatternNormalized: accepted[i].PatternNormalized,
+				CreatedBy:         accepted[i].CreatedBy,
+				CreatedAt:         accepted[i].CreatedAt,
+				UpdatedAt:         accepted[i].UpdatedAt,
+			}
+			var creator model.User
+			if err := tx.Select("id", "username", "display_name").Where("id = ?", operatorUserId).First(&creator).Error; err == nil {
+				view.CreatorUsername = creator.Username
+				view.CreatorDisplayName = creator.DisplayName
+			}
+			result.Rules = append(result.Rules, view)
+			if err := recordOrganizationAudit(tx, organization, operatorUserId, decision.Role, organizationAuditActionJoinRuleCreate, "join_rule", accepted[i].Id, nil, accepted[i], reason, auditMetadata...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	// 规则是跨组织的全局约束，冲突要能在组织审计之外被平台侧看到。
+	common.SysLog(fmt.Sprintf("organization %d join rules created by user %d: %d rule(s), %d notice(s)", organizationId, operatorUserId, len(result.Rules), len(result.Notices)))
+	return result, nil
+}
+
+func DeleteOrganizationJoinRule(operatorUserId, organizationId, ruleId int, accessMode string, reason string, auditMetadata ...OrganizationAuditRequestMetadata) error {
+	if operatorUserId <= 0 || organizationId <= 0 || ruleId <= 0 {
+		return errors.New("invalid organization join rule request")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return errors.New("join rule reason is required")
+	}
+	return model.DB.Transaction(func(tx *gorm.DB) error {
+		organization, decision, err := lockedOrganizationManagementDecisionWithTx(tx, operatorUserId, organizationId, accessMode, OrganizationCapabilityManageMembers)
+		if err != nil {
+			return err
+		}
+		if decision.Role != OrganizationPolicyRolePlatformAdmin && decision.Role != OrganizationPolicyRolePlatformRoot {
+			return errors.New("permission denied")
+		}
+		var rule model.OrganizationJoinRule
+		if err := tx.Where("id = ? AND organization_id = ?", ruleId, organizationId).First(&rule).Error; err != nil {
+			return err
+		}
+		if err := recordOrganizationAudit(tx, organization, operatorUserId, decision.Role, organizationAuditActionJoinRuleDelete, "join_rule", rule.Id, rule, nil, reason, auditMetadata...); err != nil {
+			return err
+		}
+		if err := tx.Delete(&model.OrganizationJoinRule{}, rule.Id).Error; err != nil {
+			return err
+		}
+		common.SysLog(fmt.Sprintf("organization %d join rule %d (%s) deleted by user %d", organizationId, rule.Id, rule.PatternNormalized, operatorUserId))
+		return nil
+	})
+}

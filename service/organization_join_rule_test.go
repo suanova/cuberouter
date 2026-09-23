@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 package service
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -374,4 +375,170 @@ func TestJoinOrganizationByJoinRuleIgnoresUnmatchedEmail(t *testing.T) {
 	var count int64
 	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("user_id = ?", user.Id).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+func createJoinRuleFixtureOrg(t *testing.T, slug string) (model.User, model.Organization) {
+	t.Helper()
+	// 规则管理的三个入口都以 common.EmailVerificationEnabled 为前置开关（关着直接返回
+	// ErrOrganizationJoinRuleEmailVerificationDisabled），而 service 包的测试进程里该全局
+	// 默认是 false（options 只在 main.go 的启动路径里加载）。所有规则管理用例都从这里取
+	// 组织，所以开关在这里打开；关闭态由 TestCreateOrganizationJoinRulesRequiresEmailVerification
+	// 自己覆盖。
+	originalEmailVerification := common.EmailVerificationEnabled
+	common.EmailVerificationEnabled = true
+	t.Cleanup(func() { common.EmailVerificationEnabled = originalEmailVerification })
+
+	root := createServiceTestUser(t, "join-rule-root-"+common.GetUUID(), common.RoleRootUser)
+	organization := model.Organization{Name: "Rule Org " + common.GetUUID(), Slug: slug + "-" + common.GetUUID(), Status: model.OrganizationStatusActive, OwnerUserId: root.Id, CreatedBy: root.Id}
+	require.NoError(t, model.DB.Create(&organization).Error)
+	return root, organization
+}
+
+func TestCreateOrganizationJoinRulesRejectsOverlappingDomains(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-first")
+	_, other := createJoinRuleFixtureOrg(t, "rule-second")
+
+	first, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"*.enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Empty(t, first.LineErrors)
+	require.Len(t, first.Rules, 1)
+
+	second, err := CreateOrganizationJoinRules(root.Id, other.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"mail.enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Len(t, second.Rules, 0)
+	require.Len(t, second.LineErrors, 1)
+	assert.Equal(t, "conflict", second.LineErrors[0].Kind)
+	assert.Equal(t, 1, second.LineErrors[0].Line)
+	assert.Equal(t, organization.Name, second.LineErrors[0].OrganizationName)
+}
+
+func TestCreateOrganizationJoinRulesIsIdempotentForOwnRules(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-idempotent")
+
+	_, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+
+	// 改完一处再整批重贴是常规动作：本组织已存在的规则静默跳过，不报错。
+	again, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"enterprise.com", "partner.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Empty(t, again.LineErrors)
+	require.Len(t, again.Rules, 1)
+	assert.Equal(t, "partner.com", again.Rules[0].Pattern)
+}
+
+// 方向一：地址规则落在别的组织域名规则范围内——允许，但必须提示。
+func TestCreateOrganizationJoinRulesNoticesAddressCoveredByForeignDomain(t *testing.T) {
+	setupServiceTestDB(t)
+	_, domainOrg := createJoinRuleFixtureOrg(t, "rule-domain-org")
+	root, addressOrg := createJoinRuleFixtureOrg(t, "rule-address-org")
+
+	_, err := CreateOrganizationJoinRules(root.Id, domainOrg.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"*.enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+
+	result, err := CreateOrganizationJoinRules(root.Id, addressOrg.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"user-a@enterprise.com"}, Reason: "contractor"})
+	require.NoError(t, err)
+	require.Empty(t, result.LineErrors, "地址规则落在别的组织域名规则里是允许的：地址更具体，例外正是这么表达的")
+	require.Len(t, result.Rules, 1)
+	require.Len(t, result.Notices, 1)
+	assert.Equal(t, organizationJoinRuleNoticeCoveredByOtherOrganization, result.Notices[0].Kind)
+	assert.Equal(t, domainOrg.Name, result.Notices[0].OrganizationName)
+	assert.Equal(t, "*.enterprise.com", result.Notices[0].PatternConflict)
+}
+
+// 方向二：后加的域名规则覆盖别的组织已有地址规则——同样允许并提示，
+// 因为地址规则更具体，那条地址仍然进原组织。
+func TestCreateOrganizationJoinRulesNoticesDomainCoveringForeignAddress(t *testing.T) {
+	setupServiceTestDB(t)
+	_, addressOrg := createJoinRuleFixtureOrg(t, "rule-cover-address")
+	root, domainOrg := createJoinRuleFixtureOrg(t, "rule-cover-domain")
+
+	_, err := CreateOrganizationJoinRules(root.Id, addressOrg.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"user-a@partner.com"}, Reason: "contractor"})
+	require.NoError(t, err)
+
+	result, err := CreateOrganizationJoinRules(root.Id, domainOrg.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"*.partner.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Empty(t, result.LineErrors)
+	require.Len(t, result.Rules, 1)
+	require.Len(t, result.Notices, 1)
+	assert.Equal(t, organizationJoinRuleNoticeCoversOtherOrganizationEntry, result.Notices[0].Kind)
+	assert.Equal(t, addressOrg.Name, result.Notices[0].OrganizationName)
+	assert.Equal(t, "user-a@partner.com", result.Notices[0].PatternConflict)
+}
+
+func TestCreateOrganizationJoinRulesRejectsInvalidLinesAtomically(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-invalid")
+
+	result, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"enterprise.com", "*"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Len(t, result.LineErrors, 1)
+	assert.Equal(t, 2, result.LineErrors[0].Line)
+	require.Empty(t, result.Rules)
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationJoinRule{}).Where("organization_id = ?", organization.Id).Count(&count).Error)
+	assert.Zero(t, count, "整批拒绝，不留半批脏数据")
+}
+
+func TestCreateOrganizationJoinRulesRejectsOversizedBatch(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-oversized")
+
+	patterns := make([]string, organizationJoinRuleMaxBatchSize+1)
+	for i := range patterns {
+		patterns[i] = fmt.Sprintf("host%d.example.com", i)
+	}
+	_, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: patterns, Reason: "onboarding"})
+	require.Error(t, err)
+}
+
+func TestCreateOrganizationJoinRulesRequiresEmailVerification(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-no-verify")
+	original := common.EmailVerificationEnabled
+	common.EmailVerificationEnabled = false
+	t.Cleanup(func() { common.EmailVerificationEnabled = original })
+
+	_, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"enterprise.com"}, Reason: "onboarding"})
+	require.ErrorIs(t, err, ErrOrganizationJoinRuleEmailVerificationDisabled)
+}
+
+func TestDeleteOrganizationJoinRuleRequiresReasonAndScope(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-delete")
+	_, other := createJoinRuleFixtureOrg(t, "rule-delete-other")
+
+	created, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Len(t, created.Rules, 1)
+
+	require.Error(t, DeleteOrganizationJoinRule(root.Id, organization.Id, created.Rules[0].Id, OrganizationAccessModeAdmin, ""))
+	require.Error(t, DeleteOrganizationJoinRule(root.Id, other.Id, created.Rules[0].Id, OrganizationAccessModeAdmin, "wrong org"))
+
+	var stored model.OrganizationJoinRule
+	require.NoError(t, model.DB.First(&stored, created.Rules[0].Id).Error)
+
+	require.NoError(t, DeleteOrganizationJoinRule(root.Id, organization.Id, created.Rules[0].Id, OrganizationAccessModeAdmin, "offboarding"))
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationJoinRule{}).Where("id = ?", stored.Id).Count(&count).Error)
+	assert.Zero(t, count)
+
+	var audit model.OrganizationAuditLog
+	require.NoError(t, model.DB.Where("action_type = ?", organizationAuditActionJoinRuleDelete).First(&audit).Error)
+	assert.Equal(t, "offboarding", audit.Reason)
+}
+
+func TestListOrganizationJoinRulesReturnsCreator(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-list")
+
+	_, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+
+	rules, err := ListOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	assert.Equal(t, root.Username, rules[0].CreatorUsername)
 }

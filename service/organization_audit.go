@@ -63,6 +63,8 @@ const (
 	organizationAuditActionInviteAccept              = "organization.invite.accept"
 	organizationAuditActionInviteRevoke              = "organization.invite.revoke"
 	organizationAuditActionBillingRepairFailed       = "organization.billing.repair_failed"
+	organizationAuditActionJoinRuleCreate            = "organization.join_rule.create"
+	organizationAuditActionJoinRuleDelete            = "organization.join_rule.delete"
 
 	organizationAuditReasonMemberDemoted = "member_demoted"
 	organizationAuditReasonMemberRemoved = "member_removed"
