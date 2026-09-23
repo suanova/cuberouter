@@ -122,6 +122,7 @@ func setupServiceTestDB(t *testing.T) {
 		&model.Organization{},
 		&model.OrganizationMember{},
 		&model.OrganizationInvite{},
+		&model.OrganizationJoinRule{},
 		&model.UserAccountContext{},
 		&model.OrganizationDisableRecord{},
 		&model.OrganizationTokenSystemBlocker{},
