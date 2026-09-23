@@ -70,6 +70,7 @@ func setupControllerOrganizationTestDB(t *testing.T) *gorm.DB {
 		&model.Organization{},
 		&model.OrganizationMember{},
 		&model.OrganizationInvite{},
+		&model.OrganizationJoinRule{},
 		&model.OrganizationAuditLog{},
 		&model.OrganizationDisableRecord{},
 		&model.OrganizationTokenSystemBlocker{},

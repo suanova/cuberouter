@@ -37,8 +37,10 @@ func setupCampaignTestDB(t *testing.T) {
 	// Drain in-flight campaign dispatch goroutines before restoring the global
 	// handles: cleanup is LIFO, so this drain runs before the restore above.
 	t.Cleanup(service.DrainCampaignDispatches)
+	// Register 的注册事务要查组织自动加入规则表，缺表会让开启邮箱验证的注册用例整体回滚。
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Redemption{}, &model.Log{},
-		&model.Campaign{}, &model.CampaignParticipant{}, &model.CampaignReward{}))
+		&model.Campaign{}, &model.CampaignParticipant{}, &model.CampaignReward{},
+		&model.OrganizationJoinRule{}))
 }
 
 type campaignResponse struct {

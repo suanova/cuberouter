@@ -305,6 +305,12 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
+	// verifiedEmail 是本请求里唯一可以拿来做权限判断的邮箱：它刚刚过了
+	// VerifyCodeWithKey。OAuth 等路径的邮箱没有这层证明，不能走自动加入。
+	verifiedEmail := ""
+	if common.EmailVerificationEnabled {
+		verifiedEmail = cleanUser.Email
+	}
 	// 通过邀请码注册时，新用户的分组继承邀请人所属分组。继承与插入在同一
 	// 事务中完成，并在事务内锁定邀请人行（GetUserGroupByIdTx）：与
 	// UpdateUser 的改分组守卫互斥，避免并发产生邀请人与下级分组不一致。
@@ -318,7 +324,10 @@ func Register(c *gin.Context) {
 				cleanUser.Group = inviterGroup
 			}
 		}
-		return cleanUser.InsertWithTx(tx, inviterId)
+		if err := cleanUser.InsertWithTx(tx, inviterId); err != nil {
+			return err
+		}
+		return service.JoinOrganizationByJoinRuleWithTx(tx, &cleanUser, verifiedEmail)
 	}); err != nil {
 		if errors.Is(err, model.ErrEmailAlreadyTaken) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailAlreadyTaken)
