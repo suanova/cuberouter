@@ -337,6 +337,30 @@ func TestJoinOrganizationByJoinRuleSkipsAmbiguousRules(t *testing.T) {
 	assert.Zero(t, count)
 }
 
+// 已存在的成员关系（哪怕是被移除的状态）不会被自动加入重新激活：
+// 移除是组织的决定，注册流程不是推翻它的地方。
+func TestJoinOrganizationByJoinRuleLeavesExistingMembershipAlone(t *testing.T) {
+	setupServiceTestDB(t)
+	organization := createJoinTestOrganization(t, model.OrganizationStatusActive)
+	createJoinRuleForTest(t, organization.Id, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	user := createJoinTestUser(t, "returning@enterprise.com")
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{
+		OrganizationId: organization.Id,
+		UserId:         user.Id,
+		Role:           model.OrganizationRoleMember,
+		Status:         model.OrganizationMemberStatusRemoved,
+	}).Error)
+
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return JoinOrganizationByJoinRuleWithTx(tx, &user, user.Email)
+	}))
+
+	var members []model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, user.Id).Find(&members).Error)
+	require.Len(t, members, 1, "重复插入必须被挡住，不能撞唯一索引")
+	assert.Equal(t, model.OrganizationMemberStatusRemoved, members[0].Status, "被移除的成员不会被注册流程重新激活")
+}
+
 func TestJoinOrganizationByJoinRuleIgnoresUnmatchedEmail(t *testing.T) {
 	setupServiceTestDB(t)
 	organization := createJoinTestOrganization(t, model.OrganizationStatusActive)

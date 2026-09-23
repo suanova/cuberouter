@@ -244,6 +244,23 @@ func JoinOrganizationByJoinRuleWithTx(tx *gorm.DB, user *model.User, verifiedEma
 		return nil
 	}
 
+	// 同一个用户在同一事务里只可能被加入一次；这里的检查是防御性的：万一将来
+	// 有人把本函数挂到第二个调用点（例如邮箱绑定），重复插入会撞上
+	// idx_org_user 并连带回滚整个注册事务 —— 与本函数其余分支"只跳过、不阻断"
+	// 的失败方向保持一致。
+	//
+	// 已存在时不重新激活：removed/exited 意味着组织已把这个人移除，注册流程
+	// 不是推翻那个决定的地方。
+	var existing model.OrganizationMember
+	err = tx.Where("organization_id = ? AND user_id = ?", organization.Id, user.Id).First(&existing).Error
+	if err == nil {
+		common.SysError(fmt.Sprintf("user %d already belongs to organization %d, join rule %d skipped", user.Id, organization.Id, rule.Id))
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+
 	now := common.GetTimestamp()
 	member := model.OrganizationMember{
 		OrganizationId: organization.Id,
