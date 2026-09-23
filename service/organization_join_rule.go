@@ -203,3 +203,58 @@ func ResolveOrganizationJoinRuleWithTx(tx *gorm.DB, normalizedEmail string) (*mo
 		return nil, fmt.Errorf("%w: rules %v for %s", ErrOrganizationJoinRuleAmbiguous, ids, normalizedEmail)
 	}
 }
+
+// JoinOrganizationByJoinRuleWithTx 依据已验证的邮箱把新用户加入命中的组织。
+//
+// 调用点只有注册路径（controller/user.go 的 Register，且只在邮箱验证通过的分支
+// 内）。OAuth 创建路径把 provider 返回的邮箱直接写进 users.email 且不做任何验证
+// （controller/oauth.go 的 OAuthEmailAlreadyTakenError 附近），一旦这里被挂到公共
+// 创建路径上，任何人都能用未验证的邮箱冒充组织成员。
+func JoinOrganizationByJoinRuleWithTx(tx *gorm.DB, user *model.User, verifiedEmail string) error {
+	if tx == nil || user == nil || user.Id <= 0 {
+		return errors.New("invalid organization join request")
+	}
+	normalizedEmail := model.NormalizeEmail(verifiedEmail)
+	if normalizedEmail == "" {
+		return nil
+	}
+	rule, err := ResolveOrganizationJoinRuleWithTx(tx, normalizedEmail)
+	if err != nil {
+		if errors.Is(err, ErrOrganizationJoinRuleAmbiguous) {
+			common.SysError(fmt.Sprintf("organization join rule resolution is ambiguous, user %d stays personal: %v", user.Id, err))
+			return nil
+		}
+		return err
+	}
+	if rule == nil {
+		return nil
+	}
+
+	var organization model.Organization
+	if err := tx.Select("id", "name", "slug", "status").Where("id = ?", rule.OrganizationId).First(&organization).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			common.SysError(fmt.Sprintf("organization %d referenced by join rule %d no longer exists", rule.OrganizationId, rule.Id))
+			return nil
+		}
+		return err
+	}
+	if organization.Status != model.OrganizationStatusActive {
+		// 一条失效规则不该把整个域的注册全部卡死：跳过加入，注册照常成功。
+		common.SysError(fmt.Sprintf("organization %d is %s, user %d matched join rule %d but was not added", organization.Id, organization.Status, user.Id, rule.Id))
+		return nil
+	}
+
+	now := common.GetTimestamp()
+	member := model.OrganizationMember{
+		OrganizationId: organization.Id,
+		UserId:         user.Id,
+		Role:           model.OrganizationRoleMember,
+		Status:         model.OrganizationMemberStatusActive,
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := tx.Create(&member).Error; err != nil {
+		return err
+	}
+	return recordOrganizationAudit(tx, &organization, user.Id, organizationAuditOperatorRoleSystem, organizationAuditActionMemberAutoJoin, "member", member.Id, nil, member, "join_rule:"+rule.PatternNormalized)
+}

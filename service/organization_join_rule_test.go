@@ -28,6 +28,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"gorm.io/gorm"
 )
 
 func TestNormalizeJoinRulePattern(t *testing.T) {
@@ -246,4 +248,106 @@ func TestJoinRuleDomainCandidatesCoverBareAndWildcardForms(t *testing.T) {
 		"b.enterprise.com", "*.b.enterprise.com",
 		"enterprise.com", "*.enterprise.com",
 	}, got)
+}
+
+func createJoinTestOrganization(t *testing.T, status string) model.Organization {
+	t.Helper()
+	owner := createServiceTestUser(t, "join-owner-"+common.GetUUID(), common.RoleCommonUser)
+	organization := model.Organization{
+		Name:        "Join Org " + common.GetUUID(),
+		Slug:        "join-org-" + common.GetUUID(),
+		Status:      status,
+		OwnerUserId: owner.Id,
+		CreatedBy:   owner.Id,
+	}
+	require.NoError(t, model.DB.Create(&organization).Error)
+	return organization
+}
+
+func createJoinTestUser(t *testing.T, email string) model.User {
+	t.Helper()
+	user := model.User{
+		Username:    "join-user-" + common.GetUUID(),
+		DisplayName: "join user",
+		Email:       email,
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		AffCode:     common.GetUUID(),
+	}
+	require.NoError(t, model.DB.Create(&user).Error)
+	return user
+}
+
+func TestJoinOrganizationByJoinRuleAddsVerifiedMember(t *testing.T) {
+	setupServiceTestDB(t)
+	organization := createJoinTestOrganization(t, model.OrganizationStatusActive)
+	rule := createJoinRuleForTest(t, organization.Id, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	user := createJoinTestUser(t, "newcomer@mail.enterprise.com")
+
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return JoinOrganizationByJoinRuleWithTx(tx, &user, user.Email)
+	}))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, user.Id).First(&member).Error)
+	assert.Equal(t, model.OrganizationRoleMember, member.Role)
+	assert.Equal(t, model.OrganizationMemberStatusActive, member.Status)
+	assert.Equal(t, 0, member.InvitedBy)
+
+	var audit model.OrganizationAuditLog
+	require.NoError(t, model.DB.Where("organization_id = ? AND action_type = ?", organization.Id, organizationAuditActionMemberAutoJoin).First(&audit).Error)
+	assert.Equal(t, user.Id, audit.OperatorUserId)
+	assert.Equal(t, "join_rule:"+rule.PatternNormalized, audit.Reason)
+}
+
+func TestJoinOrganizationByJoinRuleSkipsDisabledOrganization(t *testing.T) {
+	setupServiceTestDB(t)
+	organization := createJoinTestOrganization(t, model.OrganizationStatusDisabled)
+	createJoinRuleForTest(t, organization.Id, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	user := createJoinTestUser(t, "newcomer@enterprise.com")
+
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return JoinOrganizationByJoinRuleWithTx(tx, &user, user.Email)
+	}))
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("organization_id = ? AND user_id = ?", organization.Id, user.Id).Count(&count).Error)
+	assert.Zero(t, count, "停用的组织不吸收新成员")
+}
+
+func TestJoinOrganizationByJoinRuleSkipsAmbiguousRules(t *testing.T) {
+	setupServiceTestDB(t)
+	organization := createJoinTestOrganization(t, model.OrganizationStatusActive)
+	createJoinRuleForTest(t, organization.Id, model.OrganizationJoinRuleMatchTypeDomain, "*.enterprise.com")
+	require.NoError(t, model.DB.Create(&model.OrganizationJoinRule{
+		OrganizationId:    organization.Id,
+		MatchType:         model.OrganizationJoinRuleMatchTypeDomain,
+		Pattern:           "mail.enterprise.com",
+		PatternNormalized: "mail.enterprise.com",
+		CreatedBy:         1,
+	}).Error)
+	user := createJoinTestUser(t, "newcomer@mail.enterprise.com")
+
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return JoinOrganizationByJoinRuleWithTx(tx, &user, user.Email)
+	}), "脏数据只跳过加入，不阻断注册")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("user_id = ?", user.Id).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestJoinOrganizationByJoinRuleIgnoresUnmatchedEmail(t *testing.T) {
+	setupServiceTestDB(t)
+	organization := createJoinTestOrganization(t, model.OrganizationStatusActive)
+	createJoinRuleForTest(t, organization.Id, model.OrganizationJoinRuleMatchTypeDomain, "partner.com")
+	user := createJoinTestUser(t, "outsider@enterprise.com")
+
+	require.NoError(t, model.DB.Transaction(func(tx *gorm.DB) error {
+		return JoinOrganizationByJoinRuleWithTx(tx, &user, user.Email)
+	}))
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("user_id = ?", user.Id).Count(&count).Error)
+	assert.Zero(t, count)
 }

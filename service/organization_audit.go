@@ -49,6 +49,7 @@ const (
 	organizationAuditActionMemberAdd                 = "organization.member.add"
 	organizationAuditActionMemberRemove              = "organization.member.remove"
 	organizationAuditActionMemberExit                = "organization.member.exit"
+	organizationAuditActionMemberAutoJoin            = "organization.member.auto_join"
 	organizationAuditActionMemberKeyTransfer         = "organization.member.key_transfer"
 	organizationAuditActionMemberKeyTransferBlocked  = "organization.member.key_transfer_blocked"
 	organizationAuditActionOwnerTransfer             = "organization.owner.transfer"
