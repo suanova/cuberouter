@@ -274,6 +274,8 @@ func buildOrganizationAuditTargetSnapshot(tx *gorm.DB, targetType string, target
 			}
 		}
 		return auditTargetSnapshotResult(firstAuditString(metadata, "reason"), metadata)
+	case "join_rule":
+		return auditTargetSnapshotResult(firstAuditString(metadata, "pattern_normalized", "pattern"), metadata)
 	}
 	return auditTargetSnapshotResult(firstAuditString(metadata, "name", "target_email", "username", "display_name"), metadata)
 }

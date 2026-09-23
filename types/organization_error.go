@@ -41,6 +41,7 @@ const (
 	ErrorCodeOrganizationInviteDeliveryInProgress ErrorCode = "organization_invite_delivery_in_progress"
 	ErrorCodeOrganizationInviteRecipientRejected  ErrorCode = "organization_invite_recipient_rejected"
 	ErrorCodeOrganizationInviteAlreadySent        ErrorCode = "organization_invite_already_sent"
+	ErrorCodeOrganizationJoinRuleInvalid          ErrorCode = "organization_join_rule_invalid"
 )
 
 const (

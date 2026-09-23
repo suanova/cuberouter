@@ -636,6 +636,7 @@ func setupOrganizationPolicyRouterTestDB(t *testing.T) {
 		&model.OrganizationBillingSession{},
 		&model.OrganizationAuditLog{},
 		&model.OrganizationQuotaAdjustment{},
+		&model.OrganizationJoinRule{},
 		&model.Task{},
 		&model.Midjourney{},
 		// The Overview section reads this one, so the quota-data route must be

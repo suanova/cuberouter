@@ -119,6 +119,18 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		adminOrganizationRoute.GET("/:id/billing/monthly-summaries", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingMonthlySummaries)
 		adminOrganizationRoute.GET("/:id/billing/records", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingDetails)
 		adminOrganizationRoute.GET("/:id/audit-logs", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationAuditLogs), controller.ListOrganizationAuditLogs)
+
+		// 加入规则决定谁能进这个组织，而普通成员就能读到组织全部 API Key，
+		// 所以配置权收在 root。OrganizationAdminAuth 负责写入访问模式上下文
+		// （controller 的 organizationAccessMode 依赖它），RootAuth 在其之上再
+		// 把平台管理员挡在外面——只挂 RootAuth 会让访问模式为空，服务层直接拒绝。
+		adminOrganizationJoinRuleRoute := adminOrganizationRoute.Group("/:id/join-rules")
+		adminOrganizationJoinRuleRoute.Use(middleware.OrganizationAdminAuth(), middleware.RootAuth())
+		{
+			adminOrganizationJoinRuleRoute.GET("", controller.ListOrganizationJoinRules)
+			adminOrganizationJoinRuleRoute.POST("", controller.CreateOrganizationJoinRules)
+			adminOrganizationJoinRuleRoute.DELETE("/:ruleId", controller.DeleteOrganizationJoinRule)
+		}
 	}
 
 	adminOrganizationAuditRoute := apiRouter.Group("/admin/organization-audit-logs")
