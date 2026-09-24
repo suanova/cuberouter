@@ -211,7 +211,7 @@ func applyModelControls(req dto.Request, parsed parsedModelModifiers) error {
 				delete(reasoningConfig, "max_tokens")
 				request.ReasoningEffort = ""
 				if parsed.intent.Effort != "" {
-					request.ReasoningEffort = string(reasoning.OpenAIEffort(parsed.intent.Effort))
+					request.ReasoningEffort = string(parsed.intent.Effort)
 				}
 			}
 			if len(reasoningConfig) == 0 {
@@ -237,7 +237,7 @@ func applyModelControls(req dto.Request, parsed parsedModelModifiers) error {
 				if request.Reasoning == nil {
 					request.Reasoning = &dto.Reasoning{}
 				}
-				request.Reasoning.Effort = string(reasoning.OpenAIEffort(parsed.intent.Effort))
+				request.Reasoning.Effort = string(parsed.intent.Effort)
 			} else if request.Reasoning != nil && parsed.intent.BudgetTokens == nil {
 				request.Reasoning.Effort = ""
 			}
