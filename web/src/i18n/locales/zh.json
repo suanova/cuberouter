@@ -170,6 +170,7 @@
     "IP limits": "IP 限制",
     "It conflicts with a rule of {{organization}}.": "它与 {{organization}} 的规则冲突。",
     "It is not a usable domain or email address.": "它不是可用的域名或电子邮件地址。",
+    "It overlaps {{pattern}} on another line in this batch.": "它与本批次中另一行的 {{pattern}} 重叠。",
     "Its logs and billing records are retained for auditing.": "其日志和计费记录会保留以供审计。",
     "Join Rule Added": "加入规则已添加",
     "Join rule deleted": "加入规则已删除",

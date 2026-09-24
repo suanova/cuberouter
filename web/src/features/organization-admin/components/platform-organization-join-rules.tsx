@@ -104,6 +104,12 @@ export function PlatformOrganizationJoinRules(
     .map((line) => line.trim())
     .filter(Boolean)
 
+  // What the backend is sent is not `submittedPatterns`: it numbers its line
+  // errors by the index of the array it received and skips the blank entries
+  // itself, so dropping them here would shift every number past a blank line and
+  // point the operator at the wrong line.
+  const patternLines = patterns.split('\n')
+
   // The preview describes each distinct rule once: the same line pasted twice is
   // one rule, since the backend keeps the first and ignores the rest.
   const previewPatterns = [...new Set(submittedPatterns)]
@@ -114,7 +120,7 @@ export function PlatformOrganizationJoinRules(
     setNotices([])
     try {
       const result = await createOrganizationJoinRules(props.organizationId, {
-        patterns: submittedPatterns,
+        patterns: patternLines,
         reason: reason.trim(),
       })
       setPatterns('')
@@ -200,6 +206,24 @@ export function PlatformOrganizationJoinRules(
     return t('Will match only {{domain}}', { domain: pattern })
   }
 
+  /** Why one line was refused, in the operator's words. Which sentence is right
+   * depends on what the backend could name: another organization's rule, an
+   * earlier line of this same batch, or nothing at all — the last one is an
+   * unusable pattern, not a conflict. */
+  const lineErrorReason = (error: OrganizationJoinRuleLineError): string => {
+    if (error.kind === 'conflict' && error.organization_name) {
+      return t('It conflicts with a rule of {{organization}}.', {
+        organization: error.organization_name,
+      })
+    }
+    if (error.conflict_pattern) {
+      return t('It overlaps {{pattern}} on another line in this batch.', {
+        pattern: error.conflict_pattern,
+      })
+    }
+    return t('It is not a usable domain or email address.')
+  }
+
   return (
     <OrganizationSection
       icon='settings'
@@ -231,7 +255,13 @@ export function PlatformOrganizationJoinRules(
               rows={6}
               value={patterns}
               disabled={props.readOnly || isSubmitting}
-              onChange={(event) => setPatterns(event.target.value)}
+              onChange={(event) => {
+                setPatterns(event.target.value)
+                // The lines an error names are being rewritten, so the error
+                // would describe text that is no longer on screen. The notices
+                // stay: they describe the last save, which did happen.
+                setLineErrors([])
+              }}
               placeholder={'*.enterprise.com\nuser-a@enterprise.com'}
             />
           </div>
@@ -265,11 +295,7 @@ export function PlatformOrganizationJoinRules(
                         pattern: error.pattern,
                       })}
                       {' — '}
-                      {error.kind === 'conflict' && error.organization_name
-                        ? t('It conflicts with a rule of {{organization}}.', {
-                            organization: error.organization_name,
-                          })
-                        : t('It is not a usable domain or email address.')}
+                      {lineErrorReason(error)}
                     </li>
                   ))}
                 </ul>

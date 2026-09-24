@@ -170,6 +170,7 @@
     "IP limits": "IP limits",
     "It conflicts with a rule of {{organization}}.": "It conflicts with a rule of {{organization}}.",
     "It is not a usable domain or email address.": "It is not a usable domain or email address.",
+    "It overlaps {{pattern}} on another line in this batch.": "It overlaps {{pattern}} on another line in this batch.",
     "Its logs and billing records are retained for auditing.": "Its logs and billing records are retained for auditing.",
     "Join Rule Added": "Join Rule Added",
     "Join rule deleted": "Join rule deleted",

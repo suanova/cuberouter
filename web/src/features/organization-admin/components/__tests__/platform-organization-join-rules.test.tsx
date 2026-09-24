@@ -149,7 +149,7 @@ describe('platform organization join rules', () => {
     ).toBeInTheDocument()
   })
 
-  test('sends the pasted lines without blanks, keeping duplicates for the backend', async () => {
+  test('sends the pasted lines numbered as the operator sees them', async () => {
     createMock.mockResolvedValue({
       success: true,
       data: { rules: [], notices: [] },
@@ -169,11 +169,20 @@ describe('platform organization join rules', () => {
 
     await waitFor(() => expect(createMock).toHaveBeenCalled())
 
-    // Blank lines carry no rule and are dropped; the duplicate is left in — the
-    // backend de-duplicates within the batch, and dropping it here would hide
-    // the fact that the operator pasted the same line twice.
+    // The array goes over as pasted, blank lines and duplicate included: the
+    // backend numbers its line errors by the index of the array it received and
+    // skips the blanks itself, so dropping them here would shift every number
+    // past a blank line and name the wrong line to the operator.
     expect(createMock).toHaveBeenCalledWith(ORGANIZATION_ID, {
-      patterns: ['*.enterprise.com', 'user-a@enterprise.com', '*.enterprise.com'],
+      patterns: [
+        '',
+        '*.enterprise.com',
+        '',
+        'user-a@enterprise.com',
+        '*.enterprise.com',
+        '',
+        '',
+      ],
       reason: 'Onboarding the enterprise pilot',
     })
   })
@@ -225,6 +234,93 @@ describe('platform organization join rules', () => {
     // Line reasons are the message. A generic toast on top of them would name no
     // line and read as a second, unrelated failure.
     expect(toastError).not.toHaveBeenCalled()
+  })
+
+  test('names the other line when the batch collides with itself', async () => {
+    // Two lines of one paste that cannot both be stored. No organization is on
+    // the other side — the culprit is an earlier line on this very screen — so
+    // the sentence names that line, and the "not a usable domain or email
+    // address" fallback would be plainly wrong here: both lines are usable.
+    createMock.mockRejectedValue({
+      response: {
+        data: {
+          success: false,
+          message: 'organization join rule validation failed',
+          code: 'organization_join_rule_invalid',
+          line_errors: [
+            {
+              line: 2,
+              pattern: 'mail.enterprise.com',
+              kind: 'conflict',
+              message: 'pattern overlaps another pattern in this batch',
+              conflict_pattern: '*.enterprise.com',
+            },
+          ],
+          notices: [],
+        },
+      },
+    })
+    renderSection()
+    await screen.findByText(EMPTY_STATE)
+
+    fireEvent.input(patternsField(), {
+      target: { value: '*.enterprise.com\nmail.enterprise.com' },
+    })
+    fireEvent.input(reasonField(), { target: { value: 'Onboarding' } })
+    fireEvent.click(saveButton())
+
+    expect(
+      await screen.findByText('These lines cannot be saved')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Line 2: mail\.enterprise\.com — It overlaps \*\.enterprise\.com on another line in this batch\./
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/It is not a usable domain or email address\./)
+    ).not.toBeInTheDocument()
+  })
+
+  test('clears the line errors once the lines they name are edited', async () => {
+    createMock.mockRejectedValue({
+      response: {
+        data: {
+          success: false,
+          message: 'organization join rule validation failed',
+          code: 'organization_join_rule_invalid',
+          line_errors: [
+            {
+              line: 1,
+              pattern: 'not a domain',
+              kind: 'invalid_pattern',
+              message: 'invalid join rule pattern',
+            },
+          ],
+          notices: [],
+        },
+      },
+    })
+    renderSection()
+    await screen.findByText(EMPTY_STATE)
+
+    fireEvent.input(patternsField(), { target: { value: 'not a domain' } })
+    fireEvent.input(reasonField(), { target: { value: 'Onboarding' } })
+    fireEvent.click(saveButton())
+
+    expect(
+      await screen.findByText('These lines cannot be saved')
+    ).toBeInTheDocument()
+
+    fireEvent.input(patternsField(), { target: { value: 'not-a-domain.com' } })
+
+    // The alert describes the refused batch line by line, so it leaves with the
+    // text it describes instead of sitting there denying what is on screen.
+    await waitFor(() =>
+      expect(
+        screen.queryByText('These lines cannot be saved')
+      ).not.toBeInTheDocument()
+    )
   })
 
   test('localizes the refusal from its stable code when no line is named', async () => {

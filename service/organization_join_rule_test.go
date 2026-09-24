@@ -227,6 +227,10 @@ func TestResolveOrganizationJoinRuleReportsAmbiguity(t *testing.T) {
 
 	_, err := ResolveOrganizationJoinRuleWithTx(model.DB, "user-a@mail.enterprise.com")
 	require.ErrorIs(t, err, ErrOrganizationJoinRuleAmbiguous)
+	// 这条错误会被 JoinOrganizationByJoinRuleWithTx 原样写进 SysError：规则 ID 和域名
+	// 够定位问题，注册用的邮箱不进日志。
+	assert.Contains(t, err.Error(), "mail.enterprise.com")
+	assert.NotContains(t, err.Error(), "user-a@")
 }
 
 func TestResolveOrganizationJoinRuleReturnsNilWhenNothingMatches(t *testing.T) {
@@ -526,6 +530,58 @@ func TestCreateOrganizationJoinRulesNoticesPublicMailboxProviderDomains(t *testi
 			assert.Empty(t, result.Notices[0].OrganizationName, "提示背后没有另一个组织")
 		})
 	}
+}
+
+// 互斥必须在写入前成立，一批里也一样：*.enterprise.com 与 mail.enterprise.com
+// 同时入库，注册期的 ResolveOrganizationJoinRuleWithTx 就会对每个子域地址报歧义
+// 并整条放弃加入 —— 没有管理员可见的错误，那个人只是永远进不来。顺序无关：
+// 后一行永远是撞上先被接受的那一行。
+func TestCreateOrganizationJoinRulesRejectsOverlapWithinOneBatch(t *testing.T) {
+	cases := []struct {
+		name         string
+		patterns     []string
+		wantConflict string
+	}{
+		{name: "wildcard before its subdomain", patterns: []string{"*.enterprise.com", "mail.enterprise.com"}, wantConflict: "*.enterprise.com"},
+		{name: "subdomain before its wildcard", patterns: []string{"mail.enterprise.com", "*.enterprise.com"}, wantConflict: "mail.enterprise.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupServiceTestDB(t)
+			root, organization := createJoinRuleFixtureOrg(t, "rule-batch-overlap")
+
+			result, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: tc.patterns, Reason: "onboarding"})
+			require.NoError(t, err)
+			require.Empty(t, result.Rules)
+			require.Len(t, result.LineErrors, 1)
+			assert.Equal(t, organizationJoinRuleLineErrorConflict, result.LineErrors[0].Kind)
+			assert.Equal(t, 2, result.LineErrors[0].Line)
+			assert.Equal(t, tc.wantConflict, result.LineErrors[0].ConflictPattern)
+			assert.Empty(t, result.LineErrors[0].OrganizationName, "冲突的另一方是本批的另一行，没有组织可指名")
+
+			var count int64
+			require.NoError(t, model.DB.Model(&model.OrganizationJoinRule{}).Where("organization_id = ?", organization.Id).Count(&count).Error)
+			assert.Zero(t, count, "整批拒绝，不留半条规则")
+		})
+	}
+}
+
+// 地址规则落在域名规则里是刻意留的例外（地址更具体），同批贴入时也一样：
+// 两条都写进去，注册期地址优先，子域里其余的人走域名规则。
+func TestCreateOrganizationJoinRulesAcceptsAddressInsideDomainWithinOneBatch(t *testing.T) {
+	setupServiceTestDB(t)
+	root, organization := createJoinRuleFixtureOrg(t, "rule-batch-address")
+
+	result, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{"*.enterprise.com", "user-a@enterprise.com"}, Reason: "onboarding"})
+	require.NoError(t, err)
+	require.Empty(t, result.LineErrors)
+	require.Len(t, result.Rules, 2)
+	assert.Equal(t, "*.enterprise.com", result.Rules[0].Pattern)
+	assert.Equal(t, "user-a@enterprise.com", result.Rules[1].Pattern)
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationJoinRule{}).Where("organization_id = ?", organization.Id).Count(&count).Error)
+	assert.EqualValues(t, 2, count)
 }
 
 func TestCreateOrganizationJoinRulesRejectsInvalidLinesAtomically(t *testing.T) {

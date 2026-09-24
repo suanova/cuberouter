@@ -500,7 +500,13 @@ export interface OrganizationJoinRuleLineError {
   pattern: string
   kind: string
   message: string
+  /** Set when the line clashes with another organization's rule. */
   organization_name?: string
+  /**
+   * Set when the line clashes with an earlier line of the same batch: the two
+   * are the same user's mistake on one screen, so no organization is named.
+   */
+  conflict_pattern?: string
 }
 
 /**

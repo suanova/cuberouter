@@ -221,7 +221,9 @@ func ResolveOrganizationJoinRuleWithTx(tx *gorm.DB, normalizedEmail string) (*mo
 		return nil, err
 	}
 	if len(addressRules) > 1 {
-		return nil, fmt.Errorf("%w: multiple address rules for %s", ErrOrganizationJoinRuleAmbiguous, normalizedEmail)
+		// 不带地址：这条错误会经 JoinOrganizationByJoinRuleWithTx 原样进 SysError，
+		// 邮箱是用户凭据的一部分，日志里不留明文。
+		return nil, fmt.Errorf("%w: multiple address rules match one address", ErrOrganizationJoinRuleAmbiguous)
 	}
 	if len(addressRules) == 1 {
 		return &addressRules[0], nil
@@ -248,7 +250,9 @@ func ResolveOrganizationJoinRuleWithTx(tx *gorm.DB, normalizedEmail string) (*mo
 		for _, rule := range matched {
 			ids = append(ids, rule.Id)
 		}
-		return nil, fmt.Errorf("%w: rules %v for %s", ErrOrganizationJoinRuleAmbiguous, ids, normalizedEmail)
+		// 报域名而不是地址：规则 ID 已经能指认冲突，域名够定位问题，
+		// 而这条错误会原样进 SysError。
+		return nil, fmt.Errorf("%w: rules %v for domain %s", ErrOrganizationJoinRuleAmbiguous, ids, domain)
 	}
 }
 
@@ -360,11 +364,14 @@ type CreateJoinRulesRequest struct {
 }
 
 type JoinRuleLineError struct {
-	Line             int    `json:"line"`
-	Pattern          string `json:"pattern"`
-	Kind             string `json:"kind"`
-	Message          string `json:"message"`
+	Line    int    `json:"line"`
+	Pattern string `json:"pattern"`
+	Kind    string `json:"kind"`
+	Message string `json:"message"`
+	// 冲突的另一方是谁：落在别的组织时指名它，落在同一批的另一行时没有组织可指，
+	// 用 ConflictPattern 指认先被接受的那一行。两者都空表示这一行不是冲突。
 	OrganizationName string `json:"organization_name,omitempty"`
+	ConflictPattern  string `json:"conflict_pattern,omitempty"`
 }
 
 type JoinRuleNotice struct {
@@ -472,6 +479,31 @@ func CreateOrganizationJoinRules(operatorUserId, organizationId int, accessMode 
 				CreatedBy:         operatorUserId,
 				CreatedAt:         now,
 				UpdatedAt:         now,
+			}
+			// 先和本批已接受的行比：互斥是运行时的硬前提（ResolveOrganizationJoinRuleWithTx
+			// 同时命中两条域名规则就整条放弃），一批里贴进两条互为父子域的域名规则，
+			// 等于给那个子域的所有注册埋一个永远静默失败的分支。判定条件与下面 existing
+			// 的 bothDomains 一致：地址规则落在域名规则里是允许的例外。
+			batchConflict := false
+			for i := range accepted {
+				if accepted[i].MatchType != model.OrganizationJoinRuleMatchTypeDomain || matchType != model.OrganizationJoinRuleMatchTypeDomain {
+					continue
+				}
+				if !JoinRulesOverlap(&candidate, &accepted[i]) {
+					continue
+				}
+				result.LineErrors = append(result.LineErrors, JoinRuleLineError{
+					Line:            line,
+					Pattern:         pattern,
+					Kind:            organizationJoinRuleLineErrorConflict,
+					Message:         "pattern overlaps another pattern in this batch",
+					ConflictPattern: accepted[i].Pattern,
+				})
+				batchConflict = true
+				break
+			}
+			if batchConflict {
+				continue
 			}
 			conflict := false
 			for i := range existing {
