@@ -524,6 +524,11 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const isTopup = props.log.type === 1
   const isManage = props.log.type === 3
   const isSubscription = other?.billing_source === 'subscription'
+  // 结算只展示最终抵扣；旧日志缺 subscription_consumed 时用 预扣+结算差额 兜底
+  const subscriptionFinalConsumed =
+    other?.subscription_consumed ??
+    (other?.subscription_pre_consumed ?? 0) +
+      (other?.subscription_post_delta ?? 0)
   const isTieredBilling =
     isConsume &&
     !isViolation &&
@@ -1265,25 +1270,12 @@ export function DetailsDialog(props: DetailsDialogProps) {
                 mono
               />
             )}
-            {other.subscription_pre_consumed != null && (
-              <DetailRow
-                label={t('Pre-consumed')}
-                value={formatLogQuota(other.subscription_pre_consumed)}
-                mono
-              />
-            )}
-            {other.subscription_post_delta != null &&
-              other.subscription_post_delta !== 0 && (
-                <DetailRow
-                  label={t('Post Delta')}
-                  value={formatLogQuota(other.subscription_post_delta)}
-                  mono
-                />
-              )}
-            {other.subscription_consumed != null && (
+            {(other.subscription_consumed != null ||
+              other.subscription_pre_consumed != null ||
+              other.subscription_post_delta != null) && (
               <DetailRow
                 label={t('Final Consumed')}
-                value={formatLogQuota(other.subscription_consumed)}
+                value={formatLogQuota(subscriptionFinalConsumed)}
                 mono
               />
             )}

@@ -399,7 +399,8 @@ export function SubscriptionPlansCard({
                   const totalAmount = Number(subscription?.amount_total || 0)
                   const usedAmount = Number(subscription?.amount_used || 0)
                   const remainAmount =
-                    totalAmount > 0 ? Math.max(0, totalAmount - usedAmount) : 0
+                    // 透支时剩余为负数，如实展示（剩余价值折算处已有 remainAmount > 0 保护）
+                    totalAmount > 0 ? totalAmount - usedAmount : 0
                   const planTitle =
                     planTitleMap.get(subscription?.plan_id) || ''
                   const remainDays = getRemainingDays(sub)
