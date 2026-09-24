@@ -1,5 +1,19 @@
 # Upstream Sync Changelog
 
+## 2026-09-24 — 10 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `32c261923a97` | Return a plugin-specific 503 message (naming the claiming task plugin and suggesting disabling/overriding it) instead of the generic 'no available channel' text when a plugin-claimed model has no enabled channel in the request group. | bugfix | medium |
+| `3a9f41ee85cc` | Temporarily disable the Claude /messages/count_tokens endpoint by commenting out its route registration (and removing its registration test), citing issues with the current controller.CountClaudeTokens implementation | breaking | high |
+| `7c044d7c5c2d` | Rebuild model-name post-processing around explicit trailing @key:value modifiers (thinking/effort/temperature/topp) with canonical billing identity resolution, and drop the overly broad OpenRouter '-thinking' host alias as a breaking change. | breaking | high |
+| `6b659fd61c50` | Skip implicit reasoning-effort remapping when a model is configured to preserve its thinking suffix, so the original suffix/effort is forwarded upstream unchanged across DeepSeek, OpenAI, Volcengine, xAI, Claude, and Gemini relay paths. | bugfix | medium |
+| `d5803532bdcc` | Updates contributor guidelines in AGENTS.md to mandate that new built-in model prices be defined as self-contained billing expressions (not legacy ratio tables) and to require consolidated test coverage for pricing. | internal | low |
+| `eb99ab1b4034` | Add built-in expression-based billing defaults for the new gpt-6-astra model and expose the effective billing mode/expression settings (including built-in defaults not persisted by admins) through the options API. | feature | medium |
+| `2cf177ac487e` | Performance-optimize the shared generic DeepCopy helper by registering a copier type converter that bulk-copies json.RawMessage via bytes.Clone (instead of per-byte reflection), preserving independent storage for request mutation/retries, with extensive new clone tests for Responses requests. | refactor | medium |
+| `49ec46966825` | Fix OpenAI chat relay to apply model-specific parameter rules (max_completion_tokens, temperature, top_p, logprobs) to gpt-5 and all later generations by matching the major version rather than a literal 'gpt-5' prefix, and split out reusable compatibility rules. | bugfix | medium |
+| `d8cb177440ce` | Adds access-token lifecycle management (status/rotation/revocation) and a persistent audit-log subsystem (role snapshots, JSON metadata, audit.read permission, admin/self query APIs and UI), while moving account security settings into a dedicated /security page and upgrading the ClickHouse driver to v2.46.0. | feature | medium |
+| `9a8674425c5a` | Prevent redundant schema migrations on restart by upgrading the SQLite GORM driver to distinguish unique indexes from constraints and normalizing equivalent MySQL decimal defaults and PostgreSQL CHAR metadata during migration comparison. | bugfix | medium |
 ## 2026-09-14 — 9 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
