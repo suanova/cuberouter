@@ -40,18 +40,18 @@ func localUTCOffsetSeconds() int {
 // 当前部署为 Asia/Shanghai(无 DST),可安全使用。
 const daySeconds = 86400.0
 
-// GetUserBillingAgg 按 (username, 时间区间) 聚合消费日志(type=2),
+// GetUserBillingAgg 按 (user_id, 时间区间) 聚合消费日志(type=2),
 // 返回按 (model_name, 本地自然日) 分组的明细。调用方如需仅按模型汇总,
 // 传 withDaily=false 即只 GROUP BY model_name(DayKey 留 0)。
-func GetUserBillingAgg(username string, startTs, endTs int64, withDaily bool) ([]BillingAggRow, error) {
-	if username == "" {
-		return nil, errors.New("用户名不能为空")
+func GetUserBillingAgg(userId int, startTs, endTs int64, withDaily bool) ([]BillingAggRow, error) {
+	if userId <= 0 {
+		return nil, errors.New("用户 ID 无效")
 	}
 	offset := localUTCOffsetSeconds()
 
 	tx := LOG_DB.Table("logs").
 		Where("type = ?", LogTypeConsume).
-		Where("username = ?", username).
+		Where("user_id = ?", userId).
 		Where("created_at >= ?", startTs).
 		Where("created_at <= ?", endTs)
 

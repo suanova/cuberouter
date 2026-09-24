@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -24,6 +25,22 @@ var (
 	errBillingEndBeforeStart = errors.New("end 不能早于 start")
 	errBillingRangeTooWide   = errors.New("时间跨度不能超过 31 天")
 )
+
+// parseBillingUserId 解析并校验 query 参数 user_id(bigint)。
+// 解析失败或非正数时已写回 400 响应,调用方直接 return。
+func parseBillingUserId(c *gin.Context) (int, bool) {
+	raw := c.Query("user_id")
+	if raw == "" {
+		common.ApiErrorMsg(c, "user_id 不能为空")
+		return 0, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "user_id 需为正整数")
+		return 0, false
+	}
+	return int(id), true
+}
 
 // parseBillingDateRange 把 "YYYY-MM-DD" 解析为本地时区的闭区间 Unix 秒。
 // start 当日 00:00:00,end 当日 23:59:59。
@@ -76,12 +93,12 @@ func quotaToDisplayAmount(quota int) float64 {
 // GetUserBillingReport 与 GetOpsBillingReport 共享，避免报表装配逻辑漂移。
 func buildBillingReportData(user *model.User, startStr, endStr string, startTs, endTs int64) (dto.BillingReportData, error) {
 	// 汇总(按模型)
-	summaryRows, err := model.GetUserBillingAgg(user.Username, startTs, endTs, false)
+	summaryRows, err := model.GetUserBillingAgg(user.Id, startTs, endTs, false)
 	if err != nil {
 		return dto.BillingReportData{}, err
 	}
 	// 按日(按模型)
-	dailyRows, err := model.GetUserBillingAgg(user.Username, startTs, endTs, true)
+	dailyRows, err := model.GetUserBillingAgg(user.Id, startTs, endTs, true)
 	if err != nil {
 		return dto.BillingReportData{}, err
 	}
@@ -162,12 +179,11 @@ func buildBillingReportData(user *model.User, startStr, endStr string, startTs, 
 }
 
 // GetUserBillingReport 查询用户计费账单报表(管理员)。
-// 按用户名 + 日期范围(YYYY-MM-DD) 查询 token 用量与费用,含汇总与按日明细,
+// 按用户 ID + 日期范围(YYYY-MM-DD) 查询 token 用量与费用,含汇总与按日明细,
 // 均按 model_name 分组。最大跨度 31 天。
 func GetUserBillingReport(c *gin.Context) {
-	username := c.Query("username")
-	if username == "" {
-		common.ApiErrorMsg(c, "用户名不能为空")
+	userId, ok := parseBillingUserId(c)
+	if !ok {
 		return
 	}
 
@@ -179,9 +195,9 @@ func GetUserBillingReport(c *gin.Context) {
 		return
 	}
 
-	// 按用户名定位用户
+	// 按用户 ID 定位用户
 	var user model.User
-	if err := model.DB.Where("username = ?", username).First(&user).Error; err != nil {
+	if err := model.DB.First(&user, userId).Error; err != nil {
 		common.ApiErrorMsg(c, "用户不存在")
 		return
 	}
@@ -206,9 +222,8 @@ func GetOpsBillingReport(c *gin.Context) {
 		return
 	}
 
-	username := c.Query("username")
-	if username == "" {
-		common.ApiErrorMsg(c, "用户名不能为空")
+	userId, ok := parseBillingUserId(c)
+	if !ok {
 		return
 	}
 
@@ -220,9 +235,9 @@ func GetOpsBillingReport(c *gin.Context) {
 		return
 	}
 
-	// 按用户名定位用户
+	// 按用户 ID 定位用户
 	var user model.User
-	if err := model.DB.Where("username = ?", username).First(&user).Error; err != nil {
+	if err := model.DB.First(&user, userId).Error; err != nil {
 		common.ApiErrorMsg(c, "用户不存在")
 		return
 	}
