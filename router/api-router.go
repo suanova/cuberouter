@@ -149,22 +149,33 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
 			}
 
+			// 用户管理读接口：ops(role>=ops) 及以上可访问（运营只读浏览全量用户）。
+			// 写接口仍由下方 adminRoute 的 AdminAuth() 保护，确保 ops 无法增删改/导出。
+			userReadRoute := userRoute.Group("/")
+			userReadRoute.Use(middleware.OpsAuth())
+			{
+				userReadRoute.GET("/", controller.GetAllUsers)
+				userReadRoute.GET("/topup", controller.GetAllTopUps)
+				userReadRoute.GET("/search", controller.SearchUsers)
+				userReadRoute.GET("/columns", controller.GetUserColumns)
+				userReadRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
+				// 更具体的子路径在前，防御通配冲突（Gin radix tree 当前正确处理，
+				// 但显式顺序更安全；详见 router/user_invitees_route_test.go）
+				userReadRoute.GET("/:id/invitees", controller.GetUserInvitees)
+				userReadRoute.GET("/:id/quota-dates", controller.GetUserQuotaDatesByAdmin)
+				userReadRoute.GET("/:id", controller.GetUser)
+
+				// 2FA 统计（只读）
+				userReadRoute.GET("/2fa/stats", controller.Admin2FAStats)
+			}
+
+			// 用户管理写接口：仅 admin 及以上
 			adminRoute := userRoute.Group("/")
 			adminRoute.Use(middleware.AdminAuth())
 			{
-				adminRoute.GET("/", controller.GetAllUsers)
-				adminRoute.GET("/topup", controller.GetAllTopUps)
 				adminRoute.POST("/topup/complete", controller.AdminCompleteTopUp)
-				adminRoute.GET("/search", controller.SearchUsers)
-				adminRoute.GET("/columns", controller.GetUserColumns)
-				adminRoute.GET("/:id/oauth/bindings", controller.GetUserOAuthBindingsByAdmin)
 				adminRoute.DELETE("/:id/oauth/bindings/:provider_id", controller.UnbindCustomOAuthByAdmin)
 				adminRoute.DELETE("/:id/bindings/:binding_type", controller.AdminClearUserBinding)
-				// 更具体的子路径在前，防御通配冲突（Gin radix tree 当前正确处理，
-				// 但显式顺序更安全；详见 router/user_invitees_route_test.go）
-				adminRoute.GET("/:id/invitees", controller.GetUserInvitees)
-				adminRoute.GET("/:id/quota-dates", controller.GetUserQuotaDatesByAdmin)
-				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.POST("/export", controller.ExportUsers)
@@ -172,8 +183,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 
-				// Admin 2FA routes
-				adminRoute.GET("/2fa/stats", controller.Admin2FAStats)
+				// Admin 2FA routes (write)
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
 		}
@@ -363,10 +373,11 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 			opsDataRoute.GET("/billing", controller.GetOpsBillingReport)
 		}
 		logRoute := apiRouter.Group("/log")
-		logRoute.GET("/", middleware.AdminAuth(), controller.GetAllLogs)
-		logRoute.GET("/stat", middleware.AdminAuth(), controller.GetLogsStat)
+		// 只读日志：ops 及以上可查看全量日志（运营核查，只读）；/search 仍仅 admin
+		logRoute.GET("/", middleware.OpsAuth(), controller.GetAllLogs)
+		logRoute.GET("/stat", middleware.OpsAuth(), controller.GetLogsStat)
 		logRoute.GET("/self/stat", middleware.UserAuth(), controller.GetLogsSelfStat)
-		logRoute.GET("/channel_affinity_usage_cache", middleware.AdminAuth(), controller.GetChannelAffinityUsageCacheStats)
+		logRoute.GET("/channel_affinity_usage_cache", middleware.OpsAuth(), controller.GetChannelAffinityUsageCacheStats)
 		logRoute.GET("/search", middleware.AdminAuth(), controller.SearchAllLogs)
 		logRoute.GET("/self", middleware.UserAuth(), controller.GetUserLogs)
 		logRoute.GET("/self/search", middleware.UserAuth(), middleware.SearchRateLimit(), controller.SearchUserLogs)
