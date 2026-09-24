@@ -6,18 +6,18 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ModelPriceHelper 应把预扣计算中间值填入 PreConsumeDetail：
 // 预扣 tokens = max(估算 prompt, 保底) + 请求 max_tokens；预扣额度 = tokens × 模型倍率 × 分组倍率。
 func TestModelPriceHelperFillsPreConsumeDetail(t *testing.T) {
-	if err := ratio_setting.UpdateModelRatioByJSONString(`{"detail-test-model": 0.88}`); err != nil {
-		t.Fatalf("set model ratio: %v", err)
-	}
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"detail-test-model": 0.88}`), "set model ratio")
 	defer func() { _ = ratio_setting.UpdateModelRatioByJSONString("{}") }()
 
 	prevFloor := common.PreConsumedQuota
@@ -34,31 +34,17 @@ func TestModelPriceHelperFillsPreConsumeDetail(t *testing.T) {
 	meta := &types.TokenCountMeta{MaxTokens: 100}
 
 	priceData, err := ModelPriceHelper(ctx, info, 55, meta)
-	if err != nil {
-		t.Fatalf("ModelPriceHelper: %v", err)
-	}
+	require.NoError(t, err, "ModelPriceHelper")
 
 	d := priceData.PreConsumeDetail
-	if d == nil {
-		t.Fatalf("expect PreConsumeDetail filled, got nil")
-	}
+	require.NotNil(t, d, "expect PreConsumeDetail filled")
 	// max(55, 500) + 100 = 600 tokens; 600 × 0.88 × 1 = 528
-	if d.EstimatedPromptTokens != 55 {
-		t.Errorf("EstimatedPromptTokens: want 55, got %d", d.EstimatedPromptTokens)
-	}
-	if d.FloorTokens != 500 {
-		t.Errorf("FloorTokens: want 500, got %d", d.FloorTokens)
-	}
-	if d.RequestMaxTokens != 100 {
-		t.Errorf("RequestMaxTokens: want 100, got %d", d.RequestMaxTokens)
-	}
-	if d.PreConsumedTokens != 600 {
-		t.Errorf("PreConsumedTokens: want 600, got %d", d.PreConsumedTokens)
-	}
-	if d.ModelRatio != 0.88 || d.GroupRatio != 1 {
-		t.Errorf("ratios: want 0.88/1, got %v/%v", d.ModelRatio, d.GroupRatio)
-	}
-	if d.Quota != 528 || d.Quota != priceData.QuotaToPreConsume {
-		t.Errorf("Quota: want 528 (== QuotaToPreConsume), got %d (QuotaToPreConsume=%d)", d.Quota, priceData.QuotaToPreConsume)
-	}
+	assert.EqualValues(t, 55, d.EstimatedPromptTokens)
+	assert.EqualValues(t, 500, d.FloorTokens)
+	assert.EqualValues(t, 100, d.RequestMaxTokens)
+	assert.EqualValues(t, 600, d.PreConsumedTokens)
+	assert.InDelta(t, 0.88, d.ModelRatio, 1e-9)
+	assert.EqualValues(t, 1, d.GroupRatio)
+	assert.EqualValues(t, 528, d.Quota, "want 528")
+	assert.EqualValues(t, priceData.QuotaToPreConsume, d.Quota, "want d.Quota == QuotaToPreConsume")
 }

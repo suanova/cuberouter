@@ -22,16 +22,24 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
-import type { ChannelAffinityInfo } from '../types'
+import type { ChannelAffinityInfo, LogCategory } from '../types'
 
 export type LogsViewScope = 'all' | 'self'
 export type LogsViewAccess = 'self' | 'admin' | 'root'
 
+/**
+ * Resolves the effective log view tier. Ops and above may read the common
+ * log endpoint (OpsAuth), but the drawing (/api/mj) and task (/api/task)
+ * read endpoints are still AdminAuth — for those categories ops is pinned
+ * to the self tier so "All" never issues a request it cannot authorize.
+ */
 export function resolveLogsViewAccess(
   role: number,
-  viewScope: LogsViewScope
+  viewScope: LogsViewScope,
+  logCategory: LogCategory = 'common'
 ): LogsViewAccess {
   if (viewScope !== 'all' || role < ROLE.OPS) return 'self'
+  if (logCategory !== 'common' && role < ROLE.ADMIN) return 'self'
   return role === ROLE.SUPER_ADMIN ? 'root' : 'admin'
 }
 
@@ -97,17 +105,20 @@ export function useUsageLogsContext() {
  * Resolves the effective admin scope for usage logs: whether the current
  * user is allowed to view all users' logs (`canManageScope`), and whether
  * their current view preference (`viewScope`) has that scope active
- * (`isAdminView`). Data fetching and admin-only UI should key off
- * `isAdminView` rather than raw role, so an admin who switches to "only
- * mine" is treated exactly like a regular user for that view.
+ * (`isAdminView`) for the given `logCategory`. Data fetching and admin-only
+ * UI should key off `isAdminView` rather than raw role, so an admin who
+ * switches to "only mine" is treated exactly like a regular user for that
+ * view, and ops are pinned to self on drawing/task categories.
  */
-export function useLogsViewScope() {
+export function useLogsViewScope(logCategory: LogCategory = 'common') {
   const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
   const { viewScope, setViewScope } = useUsageLogsContext()
-  // Ops and above may view all users' logs (read-only; the log table has no
-  // write actions); only admin and above manage channels etc. downstream.
-  const canManageScope = role >= ROLE.OPS
-  const viewAccess = resolveLogsViewAccess(role, viewScope)
+  // Whether the "All" tier is reachable for this category: ops and above
+  // for common logs (read-only; the log table has no write actions), admin
+  // and above for drawing/task (their read endpoints are AdminAuth).
+  const canManageScope =
+    resolveLogsViewAccess(role, 'all', logCategory) !== 'self'
+  const viewAccess = resolveLogsViewAccess(role, viewScope, logCategory)
   const isAdminView = viewAccess !== 'self'
   const isRootView = viewAccess === 'root'
 

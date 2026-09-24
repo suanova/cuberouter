@@ -6,6 +6,8 @@ const (
 	ContextKeyTokenCountMeta  ContextKey = "token_count_meta"
 	ContextKeyPromptTokens    ContextKey = "prompt_tokens"
 	ContextKeyEstimatedTokens ContextKey = "estimated_tokens"
+	// 当前请求的 token 估算构成分解（请求作用域，由 CountRequestToken 写入）
+	ContextKeyTokenEstimateBreakdown ContextKey = "token_estimate_breakdown"
 
 	ContextKeyOriginalModel    ContextKey = "original_model"
 	ContextKeyRequestStartTime ContextKey = "request_start_time"

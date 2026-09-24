@@ -100,7 +100,9 @@ export type ApiKeyFormValues = z.infer<ReturnType<typeof getApiKeyFormSchema>>
 
 export const API_KEY_FORM_DEFAULT_VALUES: ApiKeyFormValues = {
   name: '',
-  remain_quota: 0,
+  // 默认 10 美元额度（1 USD = 500_000 quota）：取消"不限量"后未编辑输入框
+  // 也能提交正数额度，与移植前的 $10 默认行为一致
+  remain_quota: 5_000_000,
   expired_time: undefined,
   unlimited_quota: true,
   model_limits: [],

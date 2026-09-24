@@ -321,8 +321,11 @@ function buildOpsUserColumn(
       }
     case 'quota':
       // Effective-subscription token basis (port from develop 51b3f79/#86,
-      // 2c55d2e); the used quota moved into the tooltip.
+      // 2c55d2e); the used quota moved into the tooltip. Explicit id keeps
+      // the columnId aligned with the column metadata (quota visibility
+      // settings resolve against 'quota', not the accessor key).
       return {
+        id: 'quota',
         accessorKey: 'subscription_remain_quota',
         header,
         cell: ({ row }) => {
@@ -340,8 +343,10 @@ function buildOpsUserColumn(
       }
     case 'money_balance':
       // Plan-price-converted subscription remaining value (port from
-      // develop 58cf985/#94, 2c55d2e).
+      // develop 58cf985/#94, 2c55d2e). Explicit id keeps the columnId
+      // aligned with the column metadata.
       return {
+        id: 'money_balance',
         accessorKey: 'subscription_remain_value',
         header,
         cell: ({ row }) => {

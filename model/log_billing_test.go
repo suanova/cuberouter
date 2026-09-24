@@ -4,15 +4,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/glebarez/sqlite"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
 func newBillingTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	previousRedisEnabled := common.RedisEnabled
 	common.RedisEnabled = false
+	t.Cleanup(func() { common.RedisEnabled = previousRedisEnabled })
 	if commonGroupCol == "" {
 		commonGroupCol = "`group`"
 		commonKeyCol = "`key`"
@@ -20,12 +23,8 @@ func newBillingTestDB(t *testing.T) *gorm.DB {
 		commonFalseVal = "0"
 	}
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open test db: %v", err)
-	}
-	if err := db.AutoMigrate(&Log{}); err != nil {
-		t.Fatalf("migrate log: %v", err)
-	}
+	require.NoError(t, err, "open test db")
+	require.NoError(t, db.AutoMigrate(&Log{}), "migrate log")
 	return db
 }
 
@@ -53,9 +52,7 @@ func TestGetUserBillingAgg(t *testing.T) {
 		{UserId: 11, Username: "bob", ModelName: "gpt-4o", Type: LogTypeConsume, CreatedAt: day1, Quota: 9999},
 	}
 	for i := range logs {
-		if err := db.Create(&logs[i]).Error; err != nil {
-			t.Fatalf("create log: %v", err)
-		}
+		require.NoError(t, db.Create(&logs[i]).Error, "create log")
 	}
 
 	// 汇总(按模型)
@@ -118,14 +115,12 @@ func TestGetReconciliationReport(t *testing.T) {
 		{UserId: 10, Username: "alice", ModelName: "gpt-4o", Type: LogTypeTopup, CreatedAt: day1, Quota: 9999},
 	}
 	for i := range logs {
-		if err := db.Create(&logs[i]).Error; err != nil {
-			t.Fatalf("create log: %v", err)
-		}
+		require.NoError(t, db.Create(&logs[i]).Error, "create log")
 	}
 
 	rows, err := GetReconciliationReport(startTs, endTs)
-	assert.NoError(t, err)
-	assert.Len(t, rows, 2)
+	require.NoError(t, err, "reconciliation query")
+	require.Len(t, rows, 2, "want exactly two user rows before indexed access")
 	// 按 quota 降序:bob(5000) 在前,alice(3000) 在后
 	assert.Equal(t, 11, rows[0].UserId)
 	assert.Equal(t, 5000, rows[0].Quota)

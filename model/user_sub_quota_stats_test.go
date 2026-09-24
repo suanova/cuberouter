@@ -29,11 +29,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-
-	"github.com/QuantumNous/new-api/common"
 )
 
 // setupSubQuotaTestDB builds an isolated SQLite database with the users,
@@ -48,35 +49,24 @@ func setupSubQuotaTestDB(t *testing.T) {
 
 	previousDB := DB
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	requireSubQuotaTestNoError(t, err, "open sqlite")
+	require.NoError(t, err, "open sqlite")
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
 
-	if err := DB.AutoMigrate(&User{}, &UserSubscription{}, &SubscriptionPlan{}); err != nil {
-		t.Fatalf("migrate tables: %v", err)
-	}
-}
-
-func requireSubQuotaTestNoError(t *testing.T, err error, context string) {
-	t.Helper()
-	if err != nil {
-		t.Fatalf("%s: %v", context, err)
-	}
+	require.NoError(t, DB.AutoMigrate(&User{}, &UserSubscription{}, &SubscriptionPlan{}), "migrate tables")
 }
 
 // seedPlanRaw inserts a plan via raw SQL (bypassing hooks); returns plan id.
 func seedPlanRaw(t *testing.T, title string, priceAmount float64) int {
 	t.Helper()
-	if err := DB.Exec(
+	require.NoError(t, DB.Exec(
 		"INSERT INTO subscription_plans (title, price_amount) VALUES (?, ?)",
 		title, priceAmount,
-	).Error; err != nil {
-		t.Fatalf("seed plan %s: %v", title, err)
-	}
+	).Error, "seed plan %s", title)
 	var id int
-	if err := DB.Raw("SELECT id FROM subscription_plans WHERE title = ?", title).Scan(&id).Error; err != nil || id == 0 {
-		t.Fatalf("query seed plan %s: id=%d err=%v", title, id, err)
-	}
+	require.NoError(t, DB.Raw("SELECT id FROM subscription_plans WHERE title = ?", title).Scan(&id).Error,
+		"query seed plan %s", title)
+	require.NotZero(t, id, "seed plan id for %s", title)
 	// The plan cache is process-wide; invalidate after seeding so other
 	// cases cannot observe a stale entry under the same id.
 	InvalidateSubscriptionPlanCache(id)
@@ -87,16 +77,14 @@ func seedPlanRaw(t *testing.T, title string, priceAmount float64) int {
 // validation).
 func seedUserRaw(t *testing.T, username string) int {
 	t.Helper()
-	if err := DB.Exec(
+	require.NoError(t, DB.Exec(
 		"INSERT INTO users (username, password, aff_code, role, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
 		username, "pwd12345", username+"-aff", 1, 1, time.Now().Unix(),
-	).Error; err != nil {
-		t.Fatalf("seed user %s: %v", username, err)
-	}
+	).Error, "seed user %s", username)
 	var id int
-	if err := DB.Raw("SELECT id FROM users WHERE username = ?", username).Scan(&id).Error; err != nil || id == 0 {
-		t.Fatalf("query seed user %s: id=%d err=%v", username, id, err)
-	}
+	require.NoError(t, DB.Raw("SELECT id FROM users WHERE username = ?", username).Scan(&id).Error,
+		"query seed user %s", username)
+	require.NotZero(t, id, "seed user id for %s", username)
 	return id
 }
 
@@ -104,12 +92,10 @@ func seedUserRaw(t *testing.T, username string) int {
 // (bypassing the BeforeCreate hook).
 func seedSubscriptionRaw(t *testing.T, userId, planId int, amountTotal, amountUsed int64, status string, endTime int64) {
 	t.Helper()
-	if err := DB.Exec(
+	require.NoError(t, DB.Exec(
 		"INSERT INTO user_subscriptions (user_id, plan_id, amount_total, amount_used, start_time, end_time, status, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'order', 0, 0)",
 		userId, planId, amountTotal, amountUsed, endTime-1000, endTime, status,
-	).Error; err != nil {
-		t.Fatalf("seed subscription user=%d: %v", userId, err)
-	}
+	).Error, "seed subscription user=%d", userId)
 }
 
 // No active subscription -> all zero values.
@@ -126,13 +112,11 @@ func TestFillUsersSubscriptionQuotaStats_NoActive(t *testing.T) {
 	FillUsersSubscriptionQuotaStats(users)
 
 	u := users[0]
-	if u.SubscriptionTotalQuota != 0 || u.SubscriptionRemainQuota != 0 || u.SubscriptionUsedQuota != 0 || u.SubscriptionUnlimited {
-		t.Errorf("no active sub: got total=%d remain=%d used=%d unlimited=%v, want all zero",
-			u.SubscriptionTotalQuota, u.SubscriptionRemainQuota, u.SubscriptionUsedQuota, u.SubscriptionUnlimited)
-	}
-	if u.SubscriptionRemainValue != 0 {
-		t.Errorf("no active sub: RemainValue=%v, want 0", u.SubscriptionRemainValue)
-	}
+	assert.EqualValues(t, 0, u.SubscriptionTotalQuota)
+	assert.EqualValues(t, 0, u.SubscriptionRemainQuota)
+	assert.EqualValues(t, 0, u.SubscriptionUsedQuota)
+	assert.False(t, u.SubscriptionUnlimited)
+	assert.InDelta(t, 0, u.SubscriptionRemainValue, 1e-9)
 }
 
 // Single active limited subscription: total=amount_total,
@@ -148,22 +132,12 @@ func TestFillUsersSubscriptionQuotaStats_SingleActive(t *testing.T) {
 	FillUsersSubscriptionQuotaStats(users)
 
 	u := users[0]
-	if u.SubscriptionTotalQuota != 1000 {
-		t.Errorf("total=%d, want 1000", u.SubscriptionTotalQuota)
-	}
-	if u.SubscriptionRemainQuota != 800 {
-		t.Errorf("remain=%d, want 800", u.SubscriptionRemainQuota)
-	}
-	if u.SubscriptionUsedQuota != 200 {
-		t.Errorf("used=%d, want 200", u.SubscriptionUsedQuota)
-	}
-	if u.SubscriptionUnlimited {
-		t.Error("unlimited=true, want false")
-	}
+	assert.EqualValues(t, 1000, u.SubscriptionTotalQuota)
+	assert.EqualValues(t, 800, u.SubscriptionRemainQuota)
+	assert.EqualValues(t, 200, u.SubscriptionUsedQuota)
+	assert.False(t, u.SubscriptionUnlimited)
 	// Plan price 9.9: remain value = 9.9 x 800/1000 = 7.92
-	if u.SubscriptionRemainValue < 7.919 || u.SubscriptionRemainValue > 7.921 {
-		t.Errorf("RemainValue=%v, want 7.92", u.SubscriptionRemainValue)
-	}
+	assert.InDelta(t, 7.92, u.SubscriptionRemainValue, 0.001)
 }
 
 // Summing across subscriptions + over-used subscription clamped to 0 +
@@ -197,39 +171,26 @@ func TestFillUsersSubscriptionQuotaStats_Mixed(t *testing.T) {
 
 	a := users[0]
 	// total counts limited subscriptions only: 1000+500=1500
-	if a.SubscriptionTotalQuota != 1500 {
-		t.Errorf("A total=%d, want 1500", a.SubscriptionTotalQuota)
-	}
+	assert.EqualValues(t, 1500, a.SubscriptionTotalQuota)
 	// remain = max(0,1000-200) + max(0,500-600) = 800 + 0 = 800
-	if a.SubscriptionRemainQuota != 800 {
-		t.Errorf("A remain=%d, want 800", a.SubscriptionRemainQuota)
-	}
+	assert.EqualValues(t, 800, a.SubscriptionRemainQuota)
 	// used includes the unlimited subscription usage: 200+600+50=850
-	if a.SubscriptionUsedQuota != 850 {
-		t.Errorf("A used=%d, want 850", a.SubscriptionUsedQuota)
-	}
-	if !a.SubscriptionUnlimited {
-		t.Error("A unlimited=false, want true (has an amount_total<=0 active sub)")
-	}
+	assert.EqualValues(t, 850, a.SubscriptionUsedQuota)
+	assert.True(t, a.SubscriptionUnlimited, "want unlimited (has an amount_total<=0 active sub)")
 	// remain value: limited with remaining = 10 x 800/1000 = 8
-	if a.SubscriptionRemainValue < 7.999 || a.SubscriptionRemainValue > 8.001 {
-		t.Errorf("A RemainValue=%v, want 8", a.SubscriptionRemainValue)
-	}
+	assert.InDelta(t, 8, a.SubscriptionRemainValue, 0.001)
 
 	b := users[1]
-	if b.SubscriptionTotalQuota != 300 || b.SubscriptionRemainQuota != 200 || b.SubscriptionUsedQuota != 100 || b.SubscriptionUnlimited {
-		t.Errorf("B got total=%d remain=%d used=%d unlimited=%v, want 300/200/100/false",
-			b.SubscriptionTotalQuota, b.SubscriptionRemainQuota, b.SubscriptionUsedQuota, b.SubscriptionUnlimited)
-	}
+	assert.EqualValues(t, 300, b.SubscriptionTotalQuota)
+	assert.EqualValues(t, 200, b.SubscriptionRemainQuota)
+	assert.EqualValues(t, 100, b.SubscriptionUsedQuota)
+	assert.False(t, b.SubscriptionUnlimited)
 	// B remain value = 10 x 200/300 = 6.6667
-	if b.SubscriptionRemainValue < 6.666 || b.SubscriptionRemainValue > 6.667 {
-		t.Errorf("B RemainValue=%v, want 6.6667", b.SubscriptionRemainValue)
-	}
+	assert.InDelta(t, 6.6667, b.SubscriptionRemainValue, 0.001)
 
 	d := users[2]
-	if d.SubscriptionTotalQuota != 0 || d.SubscriptionUsedQuota != 0 {
-		t.Errorf("D (expired) got total=%d used=%d, want 0/0", d.SubscriptionTotalQuota, d.SubscriptionUsedQuota)
-	}
+	assert.EqualValues(t, 0, d.SubscriptionTotalQuota, "expired sub must not count")
+	assert.EqualValues(t, 0, d.SubscriptionUsedQuota, "expired sub must not count")
 }
 
 // Empty list: no query, no panic.
@@ -240,10 +201,9 @@ func TestFillUsersSubscriptionQuotaStats_Empty(t *testing.T) {
 	FillUsersSubscriptionQuotaStats([]*User{})
 }
 
-// When running against PostgreSQL the aggregation SQL must be valid
-// (DOUBLE is not a PG type; FLOAT8 is required). SQLite unit tests cannot
-// cover that dialect difference, so verify once against a live PG when
-// TEST_PG_DSN is provided.
+// When running against PostgreSQL the aggregation SQL must be valid. The
+// * 1.0 division is dialect-portable, but SQLite unit tests cannot cover a
+// live PG run, so verify once against a real PG when TEST_PG_DSN is provided.
 func TestFillUsersSubscriptionQuotaStats_PostgresDialect(t *testing.T) {
 	dsn := os.Getenv("TEST_PG_DSN")
 	if dsn == "" {
@@ -258,9 +218,7 @@ func TestFillUsersSubscriptionQuotaStats_PostgresDialect(t *testing.T) {
 	if err != nil {
 		t.Skipf("open test pg: %v", err)
 	}
-	if err := db.AutoMigrate(&User{}, &UserSubscription{}, &SubscriptionPlan{}); err != nil {
-		t.Fatalf("migrate pg tables: %v", err)
-	}
+	require.NoError(t, db.AutoMigrate(&User{}, &UserSubscription{}, &SubscriptionPlan{}), "migrate pg tables")
 	DB = db
 	t.Cleanup(func() { DB = previousDB })
 
@@ -272,11 +230,7 @@ func TestFillUsersSubscriptionQuotaStats_PostgresDialect(t *testing.T) {
 	FillUsersSubscriptionQuotaStats(users)
 
 	u := users[0]
-	if u.SubscriptionRemainQuota != 750 {
-		t.Errorf("remain=%d, want 750", u.SubscriptionRemainQuota)
-	}
+	assert.EqualValues(t, 750, u.SubscriptionRemainQuota)
 	// 10 x 750/1000 = 7.5
-	if u.SubscriptionRemainValue < 7.499 || u.SubscriptionRemainValue > 7.501 {
-		t.Errorf("RemainValue=%v, want 7.5", u.SubscriptionRemainValue)
-	}
+	assert.InDelta(t, 7.5, u.SubscriptionRemainValue, 0.001)
 }

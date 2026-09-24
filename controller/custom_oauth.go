@@ -494,14 +494,16 @@ func GetUserOAuthBindingsByAdmin(c *gin.Context) {
 		return
 	}
 
-	targetUser, err := model.GetUserById(userId, false)
-	if err != nil {
+	// 仅校验用户存在；读权限不再取决于目标角色（见下方只读范围说明）
+	if _, err := model.GetUserById(userId, false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
 	myRole := c.GetInt("role")
-	if !canManageTargetRole(myRole, targetUser.Role) {
+	// 只读范围：ops 及以上可查看任意用户的 OAuth 绑定（与 GetAllUsers 读范围一致）；
+	// 解绑（写操作）仍受 canManageTargetRole 约束
+	if myRole < common.RoleOpsUser {
 		common.ApiErrorMsg(c, "no permission")
 		return
 	}

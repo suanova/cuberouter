@@ -320,7 +320,7 @@ func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relayco
 	}
 
 	breakdown.Total = tkm
-	recordTokenEstimateBreakdown(breakdown)
+	common.SetContextKey(c, constant.ContextKeyTokenEstimateBreakdown, breakdown)
 	common.SetContextKey(c, constant.ContextKeyPromptTokens, tkm)
 	return tkm, nil
 }

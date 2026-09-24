@@ -5,6 +5,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,9 +102,9 @@ func TestBuildCreateUserRemark(t *testing.T) {
 			got, ok := buildCreateUserRemark(tc.remark, tc.userValidity)
 			require.Equal(t, tc.expectedHasRx, ok, "ok = %v, want %v", ok, tc.expectedHasRx)
 			if tc.expectedHasRx {
-				require.Equal(t, tc.expected, got)
+				assert.Equal(t, tc.expected, got)
 				// Issue #89 不变量：最终写入的 remark 不超过 255 字符
-				require.LessOrEqual(t, utf8.RuneCountInString(got), 255)
+				assert.LessOrEqual(t, utf8.RuneCountInString(got), 255)
 			}
 		})
 	}

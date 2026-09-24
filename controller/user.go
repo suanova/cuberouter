@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -451,7 +452,9 @@ func GetUser(c *gin.Context) {
 		return
 	}
 	myRole := c.GetInt("role")
-	if !canManageTargetRole(myRole, user.Role) {
+	// 只读范围：ops 及以上可查看任意用户详情（与 GetAllUsers 读范围一致）；
+	// 写操作（更新/管理/重置等）仍受 canManageTargetRole 约束
+	if myRole < common.RoleOpsUser {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionSameLevel)
 		return
 	}
@@ -1437,8 +1440,9 @@ func EmailBind(c *gin.Context) {
 	email := req.Email
 	email = model.NormalizeEmail(email)
 	// Issue #91: 邮箱长度上限 50，与 User.Email validate:"max=50" 对齐
-	// （验证码核验前先做长度校验，避免超长邮箱经绑定流程直接写库）
-	if len(email) > 50 {
+	// （验证码核验前先做长度校验，避免超长邮箱经绑定流程直接写库）。
+	// 按 Unicode 字符计数，与聚合 API 建号入口一致，避免非 ASCII 邮箱被字节数误拒。
+	if utf8.RuneCountInString(email) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgUserEmailTooLong)
 		return
 	}

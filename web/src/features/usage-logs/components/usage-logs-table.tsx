@@ -83,7 +83,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     isAdminView: isAdmin,
     isRootView: isRoot,
     viewAccess,
-  } = useLogsViewScope()
+  } = useLogsViewScope(logCategory)
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
 

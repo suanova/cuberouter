@@ -353,8 +353,8 @@ export function ApiKeysMutateDrawer({
     form.setValue('expired_time', now)
   }
 
-  const quotaLabel = t('Native Quota (tokens)')
-  const quotaPlaceholder = t('Enter the native quota in tokens')
+  const quotaLabel = t('Native Quota')
+  const quotaPlaceholder = t('Enter the native quota amount')
   const autoGroupsMode = form.watch('auto_groups_mode')
   const unlimitedQuota = form.watch('unlimited_quota')
 

@@ -8,6 +8,8 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // GenerateTextOtherInfo 应把 PriceData 中的预扣计算明细（PreConsumeDetail）
@@ -33,15 +35,12 @@ func TestGenerateTextOtherInfoOutputsPreConsumeDetail(t *testing.T) {
 	other := GenerateTextOtherInfo(ctx, relayInfo, 0.88, 1, 3.99, 0, 0.1, -1, -1)
 
 	detail, ok := other["pre_consume_detail"].(*types.PreConsumeDetail)
-	if !ok {
-		t.Fatalf("expect other[\"pre_consume_detail\"] to be *types.PreConsumeDetail, got %T", other["pre_consume_detail"])
-	}
-	if detail.EstimatedPromptTokens != 15 || detail.PreConsumedTokens != 15 || detail.Quota != 13 {
-		t.Fatalf("unexpected detail: %+v", detail)
-	}
-	if detail.ModelRatio != 0.88 || detail.GroupRatio != 1 {
-		t.Fatalf("unexpected ratios: %+v", detail)
-	}
+	require.True(t, ok, "expect other[\"pre_consume_detail\"] to be *types.PreConsumeDetail, got %T", other["pre_consume_detail"])
+	assert.EqualValues(t, 15, detail.EstimatedPromptTokens)
+	assert.EqualValues(t, 15, detail.PreConsumedTokens)
+	assert.EqualValues(t, 13, detail.Quota)
+	assert.InDelta(t, 0.88, detail.ModelRatio, 1e-9)
+	assert.EqualValues(t, 1, detail.GroupRatio)
 }
 
 // 未填充明细（旧数据/免费模型路径未构造 detail）时不应输出该键。
@@ -52,7 +51,6 @@ func TestGenerateTextOtherInfoOmitsNilPreConsumeDetail(t *testing.T) {
 	ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
 	other := GenerateTextOtherInfo(ctx, relayInfo, 0.88, 1, 3.99, 0, 0.1, -1, -1)
 
-	if _, ok := other["pre_consume_detail"]; ok {
-		t.Fatalf("expect no pre_consume_detail key when detail is nil")
-	}
+	_, ok := other["pre_consume_detail"]
+	assert.False(t, ok, "expect no pre_consume_detail key when detail is nil")
 }

@@ -34,7 +34,15 @@ import { type UserFormData, type User } from '../types'
 // ============================================================================
 
 export const userFormSchema = z.object({
-  username: z.string().min(1, 'Username is required'),
+  // 50-codepoint limit: the backend counts Unicode characters (rune), while
+  // the HTML maxLength attribute counts UTF-16 units — the two disagree for
+  // supplementary-plane characters, so enforce codepoints explicitly.
+  username: z
+    .string()
+    .min(1, 'Username is required')
+    .refine((value) => Array.from(value).length <= 50, {
+      message: 'Username must be at most 50 characters',
+    }),
   display_name: z.string().optional(),
   password: z.string().optional(),
   role: z.number().optional(),

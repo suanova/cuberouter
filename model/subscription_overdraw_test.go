@@ -5,13 +5,17 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
 
 // newSubscriptionOverdrawTestDB 内存 SQLite 测试库（订阅表）
 func newSubscriptionOverdrawTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	previousRedisEnabled := common.RedisEnabled
 	common.RedisEnabled = false
+	t.Cleanup(func() { common.RedisEnabled = previousRedisEnabled })
 	if commonGroupCol == "" {
 		commonGroupCol = "`group`"
 		commonKeyCol = "`key`"
@@ -19,12 +23,8 @@ func newSubscriptionOverdrawTestDB(t *testing.T) *gorm.DB {
 		commonFalseVal = "0"
 	}
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open test db: %v", err)
-	}
-	if err := db.AutoMigrate(&SubscriptionPlan{}, &UserSubscription{}); err != nil {
-		t.Fatalf("migrate subscription tables: %v", err)
-	}
+	require.NoError(t, err, "open test db")
+	require.NoError(t, db.AutoMigrate(&SubscriptionPlan{}, &UserSubscription{}), "migrate subscription tables")
 	return db
 }
 
@@ -42,21 +42,13 @@ func TestPostConsumeUserSubscriptionDeltaAllowsOverdraw(t *testing.T) {
 		AmountUsed:  900,
 		Status:      "active",
 	}
-	if err := DB.Create(sub).Error; err != nil {
-		t.Fatalf("create subscription: %v", err)
-	}
+	require.NoError(t, DB.Create(sub).Error, "create subscription")
 
-	if err := PostConsumeUserSubscriptionDelta(sub.Id, 500); err != nil {
-		t.Fatalf("expect overdraw settle to succeed, got error: %v", err)
-	}
+	require.NoError(t, PostConsumeUserSubscriptionDelta(sub.Id, 500), "expect overdraw settle to succeed")
 
 	var got UserSubscription
-	if err := DB.First(&got, sub.Id).Error; err != nil {
-		t.Fatalf("reload subscription: %v", err)
-	}
-	if got.AmountUsed != 1400 {
-		t.Fatalf("expect amount_used=1400 (total 1000), got %d", got.AmountUsed)
-	}
+	require.NoError(t, DB.First(&got, sub.Id).Error, "reload subscription")
+	assert.EqualValues(t, 1400, got.AmountUsed, "want amount_used=1400 (total 1000)")
 }
 
 // 退款（负 delta）仍不允许把 used 打到 0 以下 —— 下界 clamp 保持不变。
@@ -72,19 +64,11 @@ func TestPostConsumeUserSubscriptionDeltaClampsAtZero(t *testing.T) {
 		AmountUsed:  100,
 		Status:      "active",
 	}
-	if err := DB.Create(sub).Error; err != nil {
-		t.Fatalf("create subscription: %v", err)
-	}
+	require.NoError(t, DB.Create(sub).Error, "create subscription")
 
-	if err := PostConsumeUserSubscriptionDelta(sub.Id, -200); err != nil {
-		t.Fatalf("expect refund settle to succeed, got error: %v", err)
-	}
+	require.NoError(t, PostConsumeUserSubscriptionDelta(sub.Id, -200), "expect refund settle to succeed")
 
 	var got UserSubscription
-	if err := DB.First(&got, sub.Id).Error; err != nil {
-		t.Fatalf("reload subscription: %v", err)
-	}
-	if got.AmountUsed != 0 {
-		t.Fatalf("expect amount_used clamped to 0, got %d", got.AmountUsed)
-	}
+	require.NoError(t, DB.First(&got, sub.Id).Error, "reload subscription")
+	assert.EqualValues(t, 0, got.AmountUsed, "want amount_used clamped to 0")
 }

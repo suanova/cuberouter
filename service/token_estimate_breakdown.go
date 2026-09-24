@@ -1,31 +1,29 @@
 package service
 
 import (
-	"sync"
-
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
 )
 
-// recordTokenEstimateBreakdown 记录最近一次估算的构成（每个请求在其 goroutine 内覆盖写入）。
-// 构成结构体定义在 types 包（types.TokenEstimateBreakdown），随 PriceData.PreConsumeDetail 落库。
-func recordTokenEstimateBreakdown(d *types.TokenEstimateBreakdown) {
-	lastTokenEstimateMu.Lock()
-	lastTokenEstimateBreakdown = d
-	lastTokenEstimateMu.Unlock()
-}
-
-// GetLastTokenEstimateBreakdown 返回最近一次估算构成的副本（无记录时返回 nil）。
-func GetLastTokenEstimateBreakdown() *types.TokenEstimateBreakdown {
-	lastTokenEstimateMu.Lock()
-	defer lastTokenEstimateMu.Unlock()
-	if lastTokenEstimateBreakdown == nil {
+// GetTokenEstimateBreakdown 返回当前请求的 token 估算构成分解（请求作用域：
+// 由 CountRequestToken 写入 gin context，随 PriceData.PreConsumeDetail 落库）。
+// CountToken 关闭或该请求未经过估算时返回 nil。每个请求只读自己的 context，
+// 并发请求互不干扰，也不会复用其他请求的过期数据。
+func GetTokenEstimateBreakdown(c *gin.Context) *types.TokenEstimateBreakdown {
+	if c == nil {
 		return nil
 	}
-	cp := *lastTokenEstimateBreakdown
+	v, ok := common.GetContextKey(c, constant.ContextKeyTokenEstimateBreakdown)
+	if !ok {
+		return nil
+	}
+	bd, ok := v.(*types.TokenEstimateBreakdown)
+	if !ok {
+		return nil
+	}
+	cp := *bd
 	return &cp
 }
-
-var (
-	lastTokenEstimateMu        sync.Mutex
-	lastTokenEstimateBreakdown *types.TokenEstimateBreakdown
-)

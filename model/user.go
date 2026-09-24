@@ -1856,8 +1856,8 @@ type userSubQuotaStat struct {
 //
 // 使用一条 GROUP BY (user_id, plan_id) 聚合查询批量获取，避免逐用户 N+1；
 // 剩余额度的 max(0, ...) 截断通过标准 SQL CASE WHEN 实现。
-// 注意：CAST(... AS FLOAT8) 为 PostgreSQL/SQLite 方言，MySQL 下该聚合查询会报错，
-// 本函数查询失败时静默降级为零值（与源实现行为一致）。
+// 剩余/总量的除法用 * 1.0 强制非整除，SQLite/MySQL/PostgreSQL 三库均可移植
+// （避免 CAST(... AS FLOAT8/DOUBLE) 之类的方言类型）。
 // 套餐价格经 getSubscriptionPlanByIdTx 的缓存层批量预取，与订阅汇总下发的
 // plan_price_amount 同源。
 func FillUsersSubscriptionQuotaStats(users []*User) {
@@ -1879,7 +1879,7 @@ func FillUsersSubscriptionQuotaStats(users []*User) {
 				"SUM(amount_used) AS used_sum, "+
 				"SUM(CASE WHEN amount_total > 0 AND amount_total - amount_used > 0 THEN amount_total - amount_used ELSE 0 END) AS remain_sum, "+
 				"SUM(CASE WHEN amount_total <= 0 THEN 1 ELSE 0 END) AS unlimited, "+
-				"SUM(CASE WHEN amount_total > 0 AND amount_total - amount_used > 0 THEN CAST(amount_total - amount_used AS FLOAT8) / amount_total ELSE 0 END) AS remain_value").
+				"SUM(CASE WHEN amount_total > 0 AND amount_total - amount_used > 0 THEN (amount_total - amount_used) * 1.0 / amount_total ELSE 0 END) AS remain_value").
 		Where("user_id IN ? AND status = ? AND end_time > ?", ids, "active", now).
 		Group("user_id, plan_id").
 		Find(&stats).Error

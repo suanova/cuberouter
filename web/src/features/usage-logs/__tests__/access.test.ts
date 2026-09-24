@@ -34,4 +34,21 @@ describe('usage log access tier', () => {
     assert.equal(resolveLogsViewAccess(ROLE.ADMIN, 'all'), 'admin')
     assert.equal(resolveLogsViewAccess(ROLE.SUPER_ADMIN, 'all'), 'root')
   })
+
+  test('pins ops to the self tier on drawing/task categories (AdminAuth endpoints)', () => {
+    // Common logs are OpsAuth: ops may view all.
+    assert.equal(resolveLogsViewAccess(ROLE.OPS, 'all', 'common'), 'admin')
+    // Drawing/task read endpoints are AdminAuth: ops must stay on self.
+    assert.equal(resolveLogsViewAccess(ROLE.OPS, 'all', 'drawing'), 'self')
+    assert.equal(resolveLogsViewAccess(ROLE.OPS, 'all', 'task'), 'self')
+    // Admin and above are unaffected by the category restriction.
+    assert.equal(resolveLogsViewAccess(ROLE.ADMIN, 'all', 'drawing'), 'admin')
+    assert.equal(resolveLogsViewAccess(ROLE.ADMIN, 'all', 'task'), 'admin')
+    assert.equal(
+      resolveLogsViewAccess(ROLE.SUPER_ADMIN, 'all', 'task'),
+      'root'
+    )
+    // Self tier stays self regardless of category.
+    assert.equal(resolveLogsViewAccess(ROLE.OPS, 'self', 'drawing'), 'self')
+  })
 })

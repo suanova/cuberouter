@@ -86,10 +86,12 @@ func GetUserBillingAgg(userId int, startTs, endTs int64, withDaily bool) ([]Bill
 	return rows, nil
 }
 
-// BillingDayKeyToDate 把本地自然日序号还原为 YYYY-MM-DD(本地时区)。
+// BillingDayKeyToDate 把本地自然日序号还原为 YYYY-MM-DD。
+// dayKey 由 FLOOR((created_at + 本地UTC偏移) / 86400) 得出，即"本地日历"
+// 在 UTC 时间轴上的日序号：dayKey*86400 正好是该日历日的 UTC 00:00，
+// 必须按 UTC 格式化——若转回 time.Local，西半时区会漂到前一天。
 func BillingDayKeyToDate(dayKey int64) string {
-	// dayKey*86400 落在某个 UTC 自然日的 00:00,本地时区下仍属同一日。
-	return time.Unix(dayKey*int64(daySeconds), 0).In(time.Local).Format("2006-01-02")
+	return time.Unix(dayKey*int64(daySeconds), 0).UTC().Format("2006-01-02")
 }
 
 // ReconciliationRow 计费对账报表按用户聚合行。

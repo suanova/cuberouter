@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 package controller
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
 
 // Port from develop (58cf985/#94, 2c55d2e): quota basis column metadata.
 func TestGetUserColumnsList(t *testing.T) {
@@ -28,20 +33,14 @@ func TestGetUserColumnsList(t *testing.T) {
 		"quota", "money_balance", "group", "role",
 		"invite_info", "created_at", "last_login_at", "actions",
 	}
-	if len(userColumns) != len(expectedOrder) {
-		t.Fatalf("userColumns length = %d, want %d", len(userColumns), len(expectedOrder))
-	}
+	require.Len(t, userColumns, len(expectedOrder))
 	for i, want := range expectedOrder {
-		if userColumns[i].Key != want {
-			t.Errorf("userColumns[%d].Key = %q, want %q", i, userColumns[i].Key, want)
-		}
+		assert.Equal(t, want, userColumns[i].Key, "userColumns[%d].Key", i)
 	}
 
 	// No history-money column in the subscription-basis layout.
 	for _, c := range userColumns {
-		if c.Key == "money_used" {
-			t.Errorf("column %q should have been removed", c.Key)
-		}
+		assert.NotEqual(t, "money_used", c.Key, "column should have been removed")
 	}
 
 	required := map[string]bool{}
@@ -51,26 +50,16 @@ func TestGetUserColumnsList(t *testing.T) {
 		}
 	}
 	for _, k := range []string{"select", "id", "username", "actions"} {
-		if !required[k] {
-			t.Errorf("column %q should be required", k)
-		}
+		assert.True(t, required[k], "column %q should be required", k)
 	}
-	if len(required) != 4 {
-		t.Errorf("required column count = %d, want 4", len(required))
-	}
+	assert.Len(t, required, 4)
 
 	// Labels must be non-empty and use the subscription-basis wording.
 	labels := map[string]string{}
 	for _, c := range userColumns {
-		if c.Label == "" {
-			t.Errorf("column %q has empty label", c.Key)
-		}
+		assert.NotEmpty(t, c.Label, "column %q has empty label", c.Key)
 		labels[c.Key] = c.Label
 	}
-	if labels["money_balance"] != "Subscription Balance" {
-		t.Errorf("money_balance label = %q, want Subscription Balance", labels["money_balance"])
-	}
-	if labels["quota"] != "Remaining/Total Quota" {
-		t.Errorf("quota label = %q, want Remaining/Total Quota", labels["quota"])
-	}
+	assert.Equal(t, "Subscription Balance", labels["money_balance"])
+	assert.Equal(t, "Remaining/Total Quota", labels["quota"])
 }

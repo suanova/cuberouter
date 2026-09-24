@@ -71,7 +71,11 @@ function UsageLogsContent() {
     affinityDialogOpen,
     setAffinityDialogOpen,
   } = useUsageLogsContext()
-  const { canManageScope, viewScope, setViewScope } = useLogsViewScope()
+  // Category-aware: ops keep the switch only on common logs; drawing/task
+  // "all" views require admin (their read endpoints are AdminAuth).
+  const { canManageScope, viewScope, setViewScope } = useLogsViewScope(
+    activeCategory
+  )
   const tabNavGroups = useMemo<NavGroup[]>(
     () => [
       {
