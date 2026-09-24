@@ -18,17 +18,18 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, Flame, ShieldCheck, TrendingDown } from 'lucide-react'
+import { ArrowRight, CreditCard, Flame, ShieldCheck, TrendingDown } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StaggerContainer, StaggerItem } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
 import { getUserQuotaDates } from '@/features/dashboard/api'
+import { useSubscriptionNativeQuota } from '@/features/dashboard/hooks/use-subscription-native-quota'
 import { useSummaryCardsConfig } from '@/features/dashboard/hooks/use-dashboard-config'
 import type { QuotaDataItem } from '@/features/dashboard/types'
 import { useStatus } from '@/hooks/use-status'
-import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
+import { formatCurrencyFromUSD, getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
@@ -180,6 +181,29 @@ export function SummaryCards() {
       ? statusCurrencyFlag
       : currencyEnabledFromStore
   const currencyLabel = currencyEnabled ? getCurrencyLabel() : 'Tokens'
+
+  // 订阅余额（adec8c7）：生效订阅按套餐现价折算的剩余价值 + 剩余比例
+  const {
+    remainQuota: subRemainQuota,
+    totalQuota: subTotalQuota,
+    remainValue: subRemainValue,
+    hasActive: subHasActive,
+    hasUnlimited: subHasUnlimited,
+  } = useSubscriptionNativeQuota()
+  const subscriptionBalanceDisplay = !subHasActive
+    ? t('None')
+    : subHasUnlimited
+      ? t('Unlimited')
+      : currencyEnabled
+        ? formatCurrencyFromUSD(subRemainValue, { digitsLarge: 2, digitsSmall: 2 })
+        : formatQuota(subRemainQuota)
+  const subscriptionRemainPercent =
+    subHasActive &&
+    !subHasUnlimited &&
+    subTotalQuota > 0 &&
+    subRemainQuota > 0
+      ? `${((subRemainQuota / subTotalQuota) * 100).toFixed(1)}%`
+      : null
 
   const sparklineData = useMemo(
     () =>
@@ -340,6 +364,23 @@ export function SummaryCards() {
                 >
                   {runwayDisplay}
                 </div>
+              </div>
+            </div>
+
+            <div className='bg-background/60 rounded-lg px-2.5 py-2'>
+              <div className='text-muted-foreground flex items-center gap-1 text-[11px] leading-none font-medium'>
+                <CreditCard className='size-3 shrink-0' aria-hidden='true' />
+                <span className='truncate'>{t('Subscription balance')}</span>
+              </div>
+              <div className='mt-1.5 flex items-baseline gap-1.5'>
+                <span className='text-foreground truncate text-xs font-semibold tabular-nums'>
+                  {subscriptionBalanceDisplay}
+                </span>
+                {subscriptionRemainPercent != null && (
+                  <span className='text-muted-foreground text-[11px] font-medium tabular-nums'>
+                    {subscriptionRemainPercent}
+                  </span>
+                )}
               </div>
             </div>
           </div>
