@@ -499,6 +499,11 @@ func TestCreateOrganizationJoinRulesNoticesPublicMailboxProviderDomains(t *testi
 		{name: "wildcard on a public provider", slug: "rule-public-wildcard", pattern: "*.gmail.com", wantProvider: "gmail.com"},
 		{name: "address on a public provider is the legitimate use", slug: "rule-public-address", pattern: "user-a@163.com"},
 		{name: "corporate domain is not a public provider", slug: "rule-public-corporate", pattern: "*.enterprise.com"},
+		// 三条后缀陷阱。判定必须锚定在 "." 上，跟 MatchJoinRule 的 evil-enterprise.com
+		// 一样：裸 HasSuffix 会让它们全部命中，而这些域跟服务商一点关系都没有。
+		{name: "suffix collision is not a public provider", slug: "rule-public-collision-suffix", pattern: "notgmail.com"},
+		{name: "prefix collision is not a public provider", slug: "rule-public-collision-prefix", pattern: "my163.com"},
+		{name: "provider label as a prefix is not a public provider", slug: "rule-public-collision-reversed", pattern: "163.com.evil.com"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

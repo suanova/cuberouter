@@ -313,6 +313,42 @@ describe('platform organization join rules', () => {
     ).toBeInTheDocument()
   })
 
+  test('renders the mailbox note with its provider instead of the overlap sentence', async () => {
+    createMock.mockResolvedValue({
+      success: true,
+      data: {
+        rules: [rule({ id: 33, pattern: '163.com', pattern_normalized: '163.com' })],
+        notices: [
+          {
+            pattern: '163.com',
+            kind: 'public_mailbox_provider',
+            organization_name: '',
+            pattern_conflict: '163.com',
+          },
+        ],
+      },
+    })
+    renderSection()
+    await screen.findByText(EMPTY_STATE)
+
+    fireEvent.input(patternsField(), { target: { value: '163.com' } })
+    fireEvent.input(reasonField(), { target: { value: 'Onboarding' } })
+    fireEvent.click(saveButton())
+
+    expect(await screen.findByText('Saved, with a note')).toBeInTheDocument()
+    // `kind` is the whole contract between this branch and the backend's notice
+    // constant (service/organization_join_rule.go): the two strings are linked by
+    // nothing but their text, so a drifted literal would quietly fall through to
+    // the overlap sentence — which has no organization to name here and would read
+    // as "163.com overlaps rule 163.com.".
+    expect(
+      screen.getByText(
+        '163.com admits anyone who registers with a 163.com mailbox. List exact addresses instead if you only mean specific people.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/overlaps/)).not.toBeInTheDocument()
+  })
+
   test('deletes a rule only once a reason is written', async () => {
     deleteMock.mockResolvedValue({ success: true })
     listMock.mockResolvedValue({ success: true, data: [rule()] })
