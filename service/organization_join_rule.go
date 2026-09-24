@@ -89,6 +89,54 @@ func joinRuleBase(patternNormalized string) string {
 	return strings.TrimPrefix(patternNormalized, "*.")
 }
 
+// organizationJoinRulePublicMailboxDomains 是一份刻意保持小巧的内置公共邮箱服务商清单。
+//
+// 它只服务于一条提示（见 CreateOrganizationJoinRules）：163.com 这类域只有两个标签，
+// 校验器当然放行，但它的注册对全世界开放，配成域名规则等于把组织白送给任何会用邮箱
+// 注册的人。清单不追求完整、也不从外部维护，因为它的失败方向是安全的——漏掉一个域
+// 只是少一句提示，宁缺毋滥；也正因为如此，它只能用来提示，绝不能用来拦截：
+// 漏项一旦变成拒绝配置，就成了对合法域的误封。
+var organizationJoinRulePublicMailboxDomains = map[string]struct{}{
+	"163.com":        {},
+	"126.com":        {},
+	"yeah.net":       {},
+	"qq.com":         {},
+	"foxmail.com":    {},
+	"sina.com":       {},
+	"sohu.com":       {},
+	"139.com":        {},
+	"gmail.com":      {},
+	"googlemail.com": {},
+	"outlook.com":    {},
+	"hotmail.com":    {},
+	"live.com":       {},
+	"yahoo.com":      {},
+	"icloud.com":     {},
+	"me.com":         {},
+	"aol.com":        {},
+	"proton.me":      {},
+	"protonmail.com": {},
+	"zoho.com":       {},
+	"gmx.net":        {},
+	"mail.ru":        {},
+	"yandex.com":     {},
+	"naver.com":      {},
+}
+
+// joinRulePublicMailboxProvider 返回基准域落在哪个公共邮箱服务商域上：
+// 它本身就是清单里的一条，或是清单里某一条的子域（mail.163.com → 163.com）。
+// 不是公共邮箱返回空串。
+func joinRulePublicMailboxProvider(base string) string {
+	labels := strings.Split(base, ".")
+	for i := 0; i+1 < len(labels); i++ {
+		suffix := strings.Join(labels[i:], ".")
+		if _, ok := organizationJoinRulePublicMailboxDomains[suffix]; ok {
+			return suffix
+		}
+	}
+	return ""
+}
+
 // MatchJoinRule 判定一条规则是否命中归一化后的邮箱。地址规则严格全等；
 // 域名规则要求域等于基准域（裸域名规则）或为其子域（通配规则）。
 //
@@ -286,6 +334,7 @@ const (
 const (
 	organizationJoinRuleNoticeCoveredByOtherOrganization   = "covered_by_other_organization"
 	organizationJoinRuleNoticeCoversOtherOrganizationEntry = "covers_other_organization_address"
+	organizationJoinRuleNoticePublicMailboxProvider        = "public_mailbox_provider"
 )
 
 // ErrOrganizationJoinRuleEmailVerificationDisabled 表示当前没有开启邮箱验证：
@@ -480,6 +529,24 @@ func CreateOrganizationJoinRules(operatorUserId, organizationId int, accessMode 
 				})
 				break
 			}
+		}
+
+		// 提示：域名规则落在公共邮箱服务商上等于对所有人开放。配置仍然放行——只想
+		// 放行具体的人时该写地址规则，地址规则在这里不产生提示——但管理员必须知道
+		// 这条域名规则吸收的是"任何能注册 163.com 邮箱的人"，而不是某个组织。
+		for i := range accepted {
+			if accepted[i].MatchType != model.OrganizationJoinRuleMatchTypeDomain {
+				continue
+			}
+			provider := joinRulePublicMailboxProvider(joinRuleBase(accepted[i].PatternNormalized))
+			if provider == "" {
+				continue
+			}
+			result.Notices = append(result.Notices, JoinRuleNotice{
+				Pattern:         accepted[i].Pattern,
+				Kind:            organizationJoinRuleNoticePublicMailboxProvider,
+				PatternConflict: provider,
+			})
 		}
 
 		for i := range accepted {

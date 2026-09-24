@@ -284,11 +284,24 @@ export function PlatformOrganizationJoinRules(
                 <ul className='space-y-1'>
                   {notices.map((notice) => (
                     <li key={`${notice.pattern}-${notice.pattern_conflict}`}>
-                      {t('{{pattern}} overlaps {{organization}} rule {{conflict}}.', {
-                        pattern: notice.pattern,
-                        organization: notice.organization_name,
-                        conflict: notice.pattern_conflict,
-                      })}
+                      {/* A domain rule on a public mailbox provider is allowed but
+                          admits everyone who registers there, which is why the
+                          backend flags it with its own kind: the provider domain
+                          travels in `pattern_conflict`, and no organization is on
+                          the other side of this note. */}
+                      {notice.kind === 'public_mailbox_provider'
+                        ? t(
+                            '{{pattern}} admits anyone who registers with a {{provider}} mailbox. List exact addresses instead if you only mean specific people.',
+                            {
+                              pattern: notice.pattern,
+                              provider: notice.pattern_conflict,
+                            }
+                          )
+                        : t('{{pattern}} overlaps {{organization}} rule {{conflict}}.', {
+                            pattern: notice.pattern,
+                            organization: notice.organization_name,
+                            conflict: notice.pattern_conflict,
+                          })}
                     </li>
                   ))}
                 </ul>

@@ -69,7 +69,7 @@ func CreateOrganizationJoinRules(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"success": false,
 				"message": "email verification is disabled, join rules will never take effect",
-				"code":    types.ErrorCodeOrganizationJoinRuleInvalid,
+				"code":    types.ErrorCodeOrganizationJoinRuleEmailVerificationDisabled,
 			})
 			return
 		}

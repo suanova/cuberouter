@@ -231,13 +231,14 @@ describe('platform organization join rules', () => {
     // The backend answers with a stable code plus English text, and the copy the
     // operator reads comes from the frontend's own code table — that is how the
     // "email verification is disabled" refusal reaches a Chinese operator in
-    // Chinese instead of raw English.
+    // Chinese instead of raw English. It carries its own code rather than the
+    // per-line one, because no line is at fault: the fix is a platform setting.
     createMock.mockRejectedValue({
       response: {
         data: {
           success: false,
           message: 'email verification is disabled, join rules will never take effect',
-          code: 'organization_join_rule_invalid',
+          code: 'organization_join_rule_email_verification_disabled',
         },
       },
     })
@@ -250,7 +251,7 @@ describe('platform organization join rules', () => {
 
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith(
-        'Some lines of the join rules are not usable. Fix the flagged lines and submit again.'
+        'Email verification is disabled, so join rules cannot take effect. A platform administrator has to enable it first.'
       )
     )
     // The backend's English message is not what the operator is shown.

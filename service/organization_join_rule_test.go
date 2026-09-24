@@ -485,6 +485,44 @@ func TestCreateOrganizationJoinRulesNoticesDomainCoveringForeignAddress(t *testi
 	assert.Equal(t, "user-a@partner.com", result.Notices[0].PatternConflict)
 }
 
+// 公共邮箱服务商上的域名规则吸收的是"任何能注册这个邮箱的人"，而不是某个组织，
+// 必须在写入前说清楚；地址规则（user-a@163.com）是这条功能的正当用法，不提示。
+func TestCreateOrganizationJoinRulesNoticesPublicMailboxProviderDomains(t *testing.T) {
+	cases := []struct {
+		name    string
+		slug    string
+		pattern string
+		// 提示里该指名的服务商域；空表示这条规则不该产生提示。
+		wantProvider string
+	}{
+		{name: "domain on a public provider", slug: "rule-public-domain", pattern: "163.com", wantProvider: "163.com"},
+		{name: "wildcard on a public provider", slug: "rule-public-wildcard", pattern: "*.gmail.com", wantProvider: "gmail.com"},
+		{name: "address on a public provider is the legitimate use", slug: "rule-public-address", pattern: "user-a@163.com"},
+		{name: "corporate domain is not a public provider", slug: "rule-public-corporate", pattern: "*.enterprise.com"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupServiceTestDB(t)
+			root, organization := createJoinRuleFixtureOrg(t, tc.slug)
+
+			result, err := CreateOrganizationJoinRules(root.Id, organization.Id, OrganizationAccessModeAdmin, CreateJoinRulesRequest{Patterns: []string{tc.pattern}, Reason: "onboarding"})
+			require.NoError(t, err)
+			require.Empty(t, result.LineErrors)
+			require.Len(t, result.Rules, 1)
+
+			if tc.wantProvider == "" {
+				assert.Empty(t, result.Notices)
+				return
+			}
+			require.Len(t, result.Notices, 1)
+			assert.Equal(t, organizationJoinRuleNoticePublicMailboxProvider, result.Notices[0].Kind)
+			assert.Equal(t, tc.pattern, result.Notices[0].Pattern)
+			assert.Equal(t, tc.wantProvider, result.Notices[0].PatternConflict)
+			assert.Empty(t, result.Notices[0].OrganizationName, "提示背后没有另一个组织")
+		})
+	}
+}
+
 func TestCreateOrganizationJoinRulesRejectsInvalidLinesAtomically(t *testing.T) {
 	setupServiceTestDB(t)
 	root, organization := createJoinRuleFixtureOrg(t, "rule-invalid")
