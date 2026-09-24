@@ -67,7 +67,7 @@ export function TemplateGallery(props: {
           </Button>
         ))}
       </div>
-      <div className='grid grid-cols-2 gap-3 xl:grid-cols-3'>
+      <div className='grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5'>
         {visible.map((item) => (
           <button
             key={item.id}
@@ -89,15 +89,15 @@ export function TemplateGallery(props: {
               className='h-full w-full object-cover transition-transform duration-300 group-hover:scale-105'
               loading='lazy'
             />
-            <div className='absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-3 pt-12 pb-3 text-white'>
-              <span className='mb-1 block text-[10px] tracking-wider uppercase'>
+            <div className='absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pt-8 pb-2 text-white'>
+              <span className='mb-0.5 block text-[10px] tracking-wider uppercase'>
                 {t(
                   item.mode === 'edit'
                     ? 'Reference image needed'
                     : 'Start from a prompt'
                 )}
               </span>
-              <span className='text-sm font-medium'>{t(item.title)}</span>
+              <span className='text-xs font-medium'>{t(item.title)}</span>
             </div>
           </button>
         ))}

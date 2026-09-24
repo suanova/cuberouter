@@ -18,7 +18,7 @@ flowchart LR
 ```
 
 - Text-to-image uses `POST /pg/images/generations`; editing uses `POST /pg/images/edits`. Both share the existing `PlaygroundImage` handler, channel selection, quota reservation/settlement and logs. This PR does not add another accounting callback, wallet, database schema or server image-history store.
-- The model selector uses `/api/pricing` image-generation endpoint metadata. Edit models are the intersection of that available list and the operator-confirmed `MEDIA_STUDIO_EDIT_MODELS` list. The UI does not guess editing support from a model's name.
+- The model selector classifies `/api/pricing` models by the operator-declared model-metadata labels `text-to-image` and `image-to-image` (see below). Endpoint metadata and model names no longer take part: a model's name cannot distinguish generation from editing. The UI does not guess image capability.
 - Edit requests use the JSON image-edit contract: `images: [{"image_url": "<signed GET URL>"}]`. Only register a model for editing after verifying its channel supports that protocol. Multipart-only or custom workflow APIs need a provider-side adapter outside this repository.
 - The page waits for a synchronous image response. It shows elapsed time, the submitted command and result metadata. It does not display invented denoising progress. The frontend does not automatically resubmit a paid request; the backend retains the existing channel retry policy. After a timeout, check Usage Logs before retrying; refresh does not resume a server job in this version.
 - Templates, one to three references, one to four outputs, download, generated-image continuation, original/edit comparison and local history are supported. Size/count support still depends on the provider. Seed, steps and CFG are opt-in extensions; they are omitted from generic requests by default.
@@ -47,7 +47,6 @@ Configure the CubeRouter server:
 | `MEDIA_STUDIO_S3_REGION` | Signing region, e.g. `us-east-1` |
 | `MEDIA_STUDIO_S3_ACCESS_KEY` | Server-side key restricted to the upload prefix |
 | `MEDIA_STUDIO_S3_SECRET_KEY` | Corresponding secret; never sent to the browser |
-| `MEDIA_STUDIO_EDIT_MODELS` | Comma-separated model names verified to support the JSON edit contract |
 
 The signer uses the existing AWS SDK dependency, path-style bucket URLs and long-lived server credentials. HTTP is accepted only for literal loopback addresses in local development. The bucket must be reachable by both the browser and the selected image provider.
 
@@ -62,6 +61,25 @@ Object-store setup is separate from deploying the application:
 5. Generate an image, reload local history, continue editing it, then check the associated CubeRouter Usage Logs. Verify quota behavior and actual output against the selected provider before publishing the test service.
 
 Without valid object-store settings, text-to-image remains available and editing shows that uploads need configuration. No infrastructure addresses or deployment credentials are included in this repository. The internal demo remains a separate service; its public web page is not a channel API endpoint.
+
+## Declaring image capability with labels
+
+The model selector reads the **Tags** field on the Model Metadata page (`/models/metadata`). Two labels are recognised:
+
+| Label | Meaning | Media Studio mode | Relay |
+| --- | --- | --- | --- |
+| `text-to-image` | prompt produces an image | Text to image | `POST /pg/images/generations` |
+| `image-to-image` | prompt plus a reference produces an image | Image to image | `POST /pg/images/edits` |
+
+Labels are comma-separated, matched as whole items and case-insensitively, so `text-to-imagex` is not `text-to-image`. A model carrying neither label never appears in Media Studio.
+
+- `text-to-image` also adds the `image-generation` endpoint type to `/api/pricing` and `/v1/models`, first in the list, so the pricing page and channel test dialog pick the image example.
+- `image-to-image` adds **no** endpoint type. There is no edit endpoint type; edit requests are relayed by path. Advertising one would present an edit-only model as a generator, and `/v1/images/generations` fails upstream for it.
+- Tag edits take effect immediately; model metadata writes refresh the pricing cache.
+- **Use an exact-name metadata row.** A row with a prefix/contains/suffix matching rule applies its label to every model it matches. A *contains* row on `qwen-image` tagged `text-to-image` would label both `qwen-image-2512` and `qwen-image-edit-2511` and reintroduce exactly the failure these labels prevent.
+- A model with no metadata row cannot carry a label.
+
+Migration: the previous `qwen-image` name heuristic is gone and `MEDIA_STUDIO_EDIT_MODELS` is no longer read. Label your text-to-image models **before** deploying, otherwise they leave Media Studio and lose the `image-generation` endpoint type. Ship the frontend and backend together: in between, the old frontend no longer sees `image-generation` for models that only the name heuristic used to provide it.
 
 ## Code and dependencies
 
@@ -88,6 +106,7 @@ bun run typecheck
 bun run build
 cd ..
 go test ./service ./controller ./relay/constant -run 'TestStudio|TestPath2RelayMode' -count=1
+go test ./common ./model -run 'TestQwenImageName|TestHasModelTag|TestPricingModelTag' -count=1
 go build ./...
 ```
 

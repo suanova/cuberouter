@@ -99,3 +99,17 @@ func TestAstraFlowEndpointTypeDiffersFromOpenAIVideo(t *testing.T) {
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeArkVideo}, astraFlow)
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, sora)
 }
+
+// TestQwenImageNameDoesNotDeclareImageGeneration 锁定回归：ImageGenerationModels
+// 里的 "qwen-image" 子串曾把只支持编辑的 qwen-image-edit-2511 也推断成
+// /v1/images/generations 模型，Media Studio 于是在文生图选择器里列出它，请求被
+// 上游 404 拒绝。模型名不再声明图片能力——改由模型元数据标签声明，见
+// model/pricing.go 的标签端点推断。qwen-image-2512 一并覆盖：它同样是靠标签
+// 重新获得 image-generation，而不是继续靠名字。
+func TestQwenImageNameDoesNotDeclareImageGeneration(t *testing.T) {
+	for _, model := range []string{"qwen-image-edit-2511", "qwen-image-2512"} {
+		endpointTypes := GetEndpointTypesByChannelType(constant.ChannelTypeOpenAI, model)
+		assert.NotContains(t, endpointTypes, constant.EndpointTypeImageGeneration, model)
+		assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, endpointTypes, model)
+	}
+}

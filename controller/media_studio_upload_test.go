@@ -65,15 +65,16 @@ func TestStudioUploadValidationAndOwnership(t *testing.T) {
 }
 func TestStudioConfigDisablesUploadsWithoutCredentials(t *testing.T) {
 	t.Setenv("MEDIA_STUDIO_S3_ENDPOINT", "")
-	t.Setenv("MEDIA_STUDIO_EDIT_MODELS", "model-a, model-b")
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	MediaStudioConfig(c)
 	var body struct {
-		UploadEnabled bool     `json:"upload_enabled"`
-		EditModels    []string `json:"edit_models"`
+		UploadEnabled bool `json:"upload_enabled"`
 	}
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
 	assert.False(t, body.UploadEnabled)
-	assert.Equal(t, []string{"model-a", "model-b"}, body.EditModels)
+	// 编辑能力改由模型元数据的 image-to-image 标签声明（前端读 /api/pricing 的
+	// tags），这里不再返回第二份模型名单。
+	assert.NotContains(t, recorder.Body.String(), "edit_models")
+	assert.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
 }

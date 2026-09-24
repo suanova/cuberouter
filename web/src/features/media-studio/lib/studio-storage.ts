@@ -59,7 +59,9 @@ export async function saveStudioJob(
 ): Promise<void> {
   if (
     [...job.images, ...job.request.references].some(
-      (asset) => !/^data:image\/(png|jpeg|webp|gif|bmp);base64,/.test(asset.url)
+      // 与 workflow-api 的自包含判定一致：只保存 data URL，避免把上游临时网址
+      // （含签名参数、可能被 CORS 或过期拒绝）写进本地历史。
+      (asset) => !/^data:/i.test(asset.url)
     )
   ) {
     throw new Error(

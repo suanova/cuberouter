@@ -413,3 +413,45 @@ func TestOffPeakWindowOptionUpdatesWindow(t *testing.T) {
 	assert.Equal(t, 23, w.StartHour)
 	assert.Equal(t, 7, w.EndHour)
 }
+
+// TestPricingModelTagDeclaresImageGenerationEndpoint 锁定模型标签到端点类型的契约：
+// 只有 text-to-image 会补上 image-generation，且位于列表首位——端点列表首项是各
+// 处的默认示例端点，定价页据此选默认展示的示例。image-to-image 是仅编辑模型
+// （走 /v1/images/edits，没有对应端点类型），刻意不声明该端点，否则它又会像
+// "qwen-image" 子串那样被当成文生图模型被调用并收到上游 404 响应。
+// 标签必须整项相等：text-to-imagex 不算命中。
+func TestPricingModelTagDeclaresImageGenerationEndpoint(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	insertPricingEndpointChannel(t, 601, constant.ChannelTypeOpenAI, dto.ChannelOtherSettings{})
+	models := []string{
+		"qwen-image-2512",
+		"qwen-image-edit-2511",
+		"plain-chat-model",
+		"both-modes-model",
+	}
+	for _, name := range models {
+		insertPricingEndpointAbility(t, 601, name)
+	}
+	for _, meta := range []Model{
+		{ModelName: "qwen-image-2512", Tags: "text-to-image,hot", Status: 1, NameRule: NameRuleExact},
+		{ModelName: "qwen-image-edit-2511", Tags: "image-to-image", Status: 1, NameRule: NameRuleExact},
+		{ModelName: "plain-chat-model", Tags: "text-to-imagex", Status: 1, NameRule: NameRuleExact},
+		{ModelName: "both-modes-model", Tags: "text-to-image,image-to-image", Status: 1, NameRule: NameRuleExact},
+	} {
+		require.NoError(t, DB.Create(&meta).Error)
+	}
+
+	byModel := pricingEndpointTypesByModel(t)
+
+	assert.Equal(t, []constant.EndpointType{
+		constant.EndpointTypeImageGeneration,
+		constant.EndpointTypeOpenAI,
+	}, byModel["qwen-image-2512"])
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, byModel["qwen-image-edit-2511"])
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, byModel["plain-chat-model"])
+	assert.Equal(t, []constant.EndpointType{
+		constant.EndpointTypeImageGeneration,
+		constant.EndpointTypeOpenAI,
+	}, byModel["both-modes-model"])
+}

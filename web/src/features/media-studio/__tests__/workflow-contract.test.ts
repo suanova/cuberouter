@@ -24,9 +24,9 @@ import {
   draftSchema,
   initialDraft,
   imageRequest,
-  publicCommand,
   templateDraft,
 } from '../lib/workflow'
+import type { Quality } from '../types'
 import type { StudioTemplate } from '../workflow-types'
 
 const reference = {
@@ -71,26 +71,36 @@ test('create templates clear edit references and preserve provider-specific size
   expect(draft.parent_id).toBeUndefined()
   expect(draft.size).toBe('1024x1536')
 })
-test('explicit zero seed and CFG are preserved for advanced requests', () => {
-  const draft = draftSchema.parse({
-    ...initialDraft,
-    model: 'image-model',
-    prompt: 'Cat',
-    advanced: true,
-    count: 4,
-    seed: 0,
-    cfg: 0,
-  })
-  expect(imageRequest(draft)).toMatchObject({
-    n: 4,
-    seed: 0,
-    true_cfg_scale: 0,
-  })
+test('image requests derive the diffusion step count from the selected quality tier', () => {
+  const tiers: Array<[Quality, number]> = [
+    ['fast', 20],
+    ['standard', 30],
+    ['high', 50],
+  ]
+  for (const [quality, steps] of tiers) {
+    expect(
+      imageRequest({
+        ...initialDraft,
+        model: 'image-model',
+        prompt: 'Cat',
+        quality,
+      })
+    ).toMatchObject({ quality, num_inference_steps: steps })
+  }
 })
-test('generic requests omit Qwen-specific settings until opted in', () => {
+test('image requests always carry the quality tier with the machine-native defaults', () => {
   expect(
     imageRequest({ ...initialDraft, model: 'image-model', prompt: 'Cat' })
-  ).toEqual({ model: 'image-model', prompt: 'Cat', n: 1, size: '1024x1024' })
+  ).toEqual({
+    model: 'image-model',
+    prompt: 'Cat',
+    n: 1,
+    size: '1024x1024',
+    quality: 'standard',
+    num_inference_steps: 30,
+    seed: 42,
+    true_cfg_scale: 4,
+  })
 })
 test('counts above four are rejected', () =>
   expect(
@@ -110,14 +120,3 @@ test('edit requests without references are rejected', () =>
       mode: 'edit',
     }).success
   ).toBe(false))
-test('public examples redact reference content and use the standard image edit route', () => {
-  const command = publicCommand({
-    ...initialDraft,
-    mode: 'edit',
-    references: [reference],
-  })
-  expect(command).toContain('/pg/images/edits')
-  expect(command).toContain('<reference image URL>')
-  expect(command).not.toContain('YQ==')
-  expect(command).not.toContain('studio_token')
-})

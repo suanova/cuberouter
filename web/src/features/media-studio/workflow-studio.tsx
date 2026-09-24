@@ -38,9 +38,7 @@ import type { WorkflowDraft } from './workflow-types'
 export function WorkflowStudio(props: { owner: number }) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<WorkflowDraft>({ ...initialDraft })
-  const [view, setView] = useState<'templates' | 'result' | 'history'>(
-    'templates'
-  )
+  const [view, setView] = useState<'templates' | 'result'>('templates')
   const models = useQuery({
     queryKey: ['studio-models', props.owner],
     queryFn: getStudioModels,
@@ -51,13 +49,10 @@ export function WorkflowStudio(props: { owner: number }) {
     queryFn: workflowAPI.config,
     retry: false,
   })
-  const config = configuration.data ?? {
-    upload_enabled: false,
-    edit_models: [],
-  }
-  const eligible = (models.data ?? []).filter(
-    (name) => draft.mode === 'create' || config.edit_models.includes(name)
-  )
+  const config = configuration.data ?? { upload_enabled: false }
+  const catalog = models.data ?? { textToImage: [], imageToImage: [] }
+  const eligible =
+    draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
   const current = {
     ...draft,
     model: eligible.includes(draft.model) ? draft.model : (eligible[0] ?? ''),
@@ -126,7 +121,8 @@ export function WorkflowStudio(props: { owner: number }) {
             <WorkflowComposer
               draft={current}
               config={config}
-              models={models.data ?? []}
+              textToImageModels={catalog.textToImage}
+              imageToImageModels={catalog.imageToImage}
               busy={busy}
               loading={models.isPending}
               onChange={setDraft}
@@ -147,7 +143,6 @@ export function WorkflowStudio(props: { owner: number }) {
                 [
                   { id: 'templates', label: 'Template gallery' },
                   { id: 'result', label: 'Result' },
-                  { id: 'history', label: 'Creation history' },
                 ] as const
               ).map((item) => (
                 <Button
@@ -191,32 +186,35 @@ export function WorkflowStudio(props: { owner: number }) {
               />
             )}
             {view === 'result' && (
-              <WorkflowResults
-                job={workflow.selected}
-                busy={workflow.generation.isPending}
-                submitted={workflow.generation.variables}
-                elapsed={workflow.elapsed}
-                onEdit={(asset, job) =>
-                  continuation.mutate({ url: asset.url, parent: job.id })
-                }
-              />
+              // 结果与本地历史合并在同一视图：结果在上，历史列表在下。
+              <div className='space-y-4'>
+                <div className='bg-card rounded-2xl border p-4'>
+                  <WorkflowResults
+                    job={workflow.selected}
+                    busy={workflow.generation.isPending}
+                    count={workflow.generation.variables?.count ?? 1}
+                    elapsed={workflow.elapsed}
+                    onEdit={(asset, job) =>
+                      continuation.mutate({ url: asset.url, parent: job.id })
+                    }
+                  />
+                </div>
+                <div className='bg-card rounded-2xl border p-4'>
+                  <WorkflowHistory
+                    jobs={workflow.history.data ?? []}
+                    selected={workflow.selected?.id}
+                    busy={busy}
+                    onSelect={workflow.select}
+                    onDelete={(id) => workflow.deletion.mutate(id)}
+                  />
+                </div>
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    'History is stored in this browser for this account, up to 50 creations or 100 MB. It does not sync across devices and may be cleared by your browser. Download important images.'
+                  )}
+                </p>
+              </div>
             )}
-            {view === 'history' && (
-              <WorkflowHistory
-                jobs={workflow.history.data ?? []}
-                busy={busy}
-                onSelect={(id) => {
-                  workflow.select(id)
-                  setView('result')
-                }}
-                onDelete={(id) => workflow.deletion.mutate(id)}
-              />
-            )}
-            <p className='text-muted-foreground border-t pt-4 text-xs'>
-              {t(
-                'History is stored in this browser for this account, up to 50 creations or 100 MB. It does not sync across devices and may be cleared by your browser. Download important images.'
-              )}
-            </p>
           </main>
         </div>
       </div>
