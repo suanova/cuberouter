@@ -2,9 +2,12 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -146,4 +149,27 @@ export const protocols = {openai_responses: {
   renderFinal: function() { return {output: []}; },
 }};
 `, key, key, channelType)
+}
+
+func TestNoAvailableChannelMessageNamesClaimingTaskPlugin(t *testing.T) {
+	require.NoError(t, i18n.Init())
+	registry := jsplugin.NewRegistry()
+	plugin, err := registry.Register(distributorTaskPluginSource("claimer", constant.ChannelTypeKling), jsplugin.Options{})
+	require.NoError(t, err)
+
+	pinned, _ := gin.CreateTestContext(nil)
+	pinned.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	pinned.Request.Header.Set("Accept-Language", "en")
+	pinned.Set(jsplugin.ContextKeyPinnedPlugin, jsplugin.PinnedPlugin{Generation: registry.Generation(), Plugin: plugin})
+	message := noAvailableChannelMessage(pinned, "default", "kling-v1")
+	assert.Contains(t, message, `"claimer"`)
+	assert.Contains(t, message, "disable or override")
+	assert.Contains(t, message, "kling-v1")
+
+	plain, _ := gin.CreateTestContext(nil)
+	plain.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	plain.Request.Header.Set("Accept-Language", "en")
+	generic := noAvailableChannelMessage(plain, "default", "gpt-4o")
+	assert.NotContains(t, generic, "task plugin")
+	assert.Contains(t, generic, "gpt-4o")
 }
