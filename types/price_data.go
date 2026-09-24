@@ -29,7 +29,34 @@ type PriceData struct {
 	UsePrice             bool
 	Quota                int // 按次计费的最终额度（MJ / Task）
 	QuotaToPreConsume    int // 按量计费的预消耗额度
+	PreConsumeDetail     *PreConsumeDetail
 	GroupRatioInfo       GroupRatioInfo
+}
+
+// PreConsumeDetail 记录预扣额度的计算过程，随消费日志输出，便于追溯预扣值来源。
+type PreConsumeDetail struct {
+	EstimatedPromptTokens int     `json:"estimated_prompt_tokens"` // 请求前本地估算的 prompt tokens（CountToken 关闭时为 0）
+	FloorTokens           int     `json:"floor_tokens"`            // 后台 PreConsumedQuota 保底设置
+	RequestMaxTokens      int     `json:"request_max_tokens"`      // 请求携带的 max_tokens（0=未携带）
+	PreConsumedTokens     int     `json:"pre_consumed_tokens"`     // max(估算, 保底) + max_tokens
+	ModelRatio            float64 `json:"model_ratio"`             // 模型倍率
+	GroupRatio            float64 `json:"group_ratio"`             // 分组倍率
+	UsePrice              bool    `json:"use_price"`               // true=按次计费（quota = 单价 × QuotaPerUnit × 分组倍率）
+	Quota                 int     `json:"quota"`                   // 最终预扣额度
+	// 估算构成分解（CountToken 关闭时为 nil）
+	EstimateBreakdown *TokenEstimateBreakdown `json:"estimate_breakdown,omitempty"`
+}
+
+// TokenEstimateBreakdown 估算 tokens 的构成（与 service 层共享定义，避免循环依赖由 types 承载）。
+type TokenEstimateBreakdown struct {
+	MethodName       string `json:"method_name"`       // 估算方式：heuristic / rune_count
+	TextTokens       int    `json:"text_tokens"`       // 文本分词（含 role 等拼接文本）
+	MessagesOverhead int    `json:"messages_overhead"` // 每条消息格式化开销（MessagesCount × 3）
+	ToolsOverhead    int    `json:"tools_overhead"`    // 工具定义开销（ToolsCount × 8）
+	NamesOverhead    int    `json:"names_overhead"`    // 具名消息开销（NameCount × 3）
+	BaseOverhead     int    `json:"base_overhead"`     // 基础开销（OpenAI 格式固定 +3）
+	MediaTokens      int    `json:"media_tokens"`      // 图片/音频/文件等媒体 token
+	Total            int    `json:"total"`             // 与估算返回值一致
 }
 
 func (p *PriceData) AddOtherRatio(key string, ratio float64) {

@@ -9,11 +9,11 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
-	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -101,8 +101,13 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 	var audioRatio float64
 	var audioCompletionRatio float64
 	var freeModel bool
+	var requestMaxTokens int
+	if meta != nil {
+		requestMaxTokens = meta.MaxTokens
+	}
+	var preConsumedTokens int
 	if !usePrice {
-		preConsumedTokens := common.Max(promptTokens, common.PreConsumedQuota)
+		preConsumedTokens = common.Max(promptTokens, common.PreConsumedQuota)
 		if meta.MaxTokens != 0 {
 			preConsumedTokens += meta.MaxTokens
 		}
@@ -197,6 +202,17 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 			return hosttypes.PriceData{}, err
 		}
 		priceData.QuotaToPreConsume = quota
+	}
+
+	priceData.PreConsumeDetail = &hosttypes.PreConsumeDetail{
+		EstimatedPromptTokens: promptTokens,
+		FloorTokens:           common.PreConsumedQuota,
+		RequestMaxTokens:      requestMaxTokens,
+		PreConsumedTokens:     preConsumedTokens,
+		ModelRatio:            modelRatio,
+		GroupRatio:            groupRatioInfo.GroupRatio,
+		UsePrice:              usePrice,
+		Quota:                 priceData.QuotaToPreConsume,
 	}
 
 	if common.DebugEnabled {

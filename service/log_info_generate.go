@@ -80,6 +80,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["model_price"] = modelPrice
 	other["user_group_ratio"] = userGroupRatio
 	other["frt"] = float64(relayInfo.FirstResponseTime.UnixMilli() - relayInfo.StartTime.UnixMilli())
+	if relayInfo.PriceData.PreConsumeDetail != nil {
+		other["pre_consume_detail"] = relayInfo.PriceData.PreConsumeDetail
+	}
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
 	}
@@ -212,10 +215,8 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 			usedFinal = 0
 		}
 		if relayInfo.SubscriptionAmountTotal > 0 {
+			// 透支时 remain 为负数，如实记录（负余额由预扣校验拦截后续请求）
 			remain := relayInfo.SubscriptionAmountTotal - usedFinal
-			if remain < 0 {
-				remain = 0
-			}
 			other["subscription_total"] = relayInfo.SubscriptionAmountTotal
 			other["subscription_used"] = usedFinal
 			other["subscription_remain"] = remain

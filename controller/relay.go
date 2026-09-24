@@ -164,6 +164,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
+	// 把估算构成分解挂到预扣明细上，随消费日志输出
+	if bd := service.GetLastTokenEstimateBreakdown(); bd != nil && priceData.PreConsumeDetail != nil {
+		priceData.PreConsumeDetail.EstimateBreakdown = bd
+	}
 
 	// common.SetContextKey(c, constant.ContextKeyTokenCountMeta, meta)
 

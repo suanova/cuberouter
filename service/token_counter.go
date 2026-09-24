@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	constant2 "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/gin-gonic/gin"
@@ -228,17 +229,27 @@ func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relayco
 	model := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 	tkm := 0
 
+	// 估算构成分解（供消费日志展示预扣估算的来龙去脉）
+	breakdown := &hosttypes.TokenEstimateBreakdown{}
+
 	if meta.TokenType == types.TokenTypeTextNumber {
+		breakdown.MethodName = "rune_count"
 		tkm += utf8.RuneCountInString(meta.CombineText)
 	} else {
+		breakdown.MethodName = "heuristic"
 		tkm += CountTextToken(meta.CombineText, model)
 	}
+	breakdown.TextTokens = tkm
 
 	if info.RelayFormat == types.RelayFormatOpenAI {
-		tkm += meta.ToolsCount * 8
-		tkm += meta.MessagesCount * 3 // 每条消息的格式化token数量
-		tkm += meta.NameCount * 3
-		tkm += 3
+		breakdown.ToolsOverhead = meta.ToolsCount * 8
+		breakdown.MessagesOverhead = meta.MessagesCount * 3 // 每条消息的格式化token数量
+		breakdown.NamesOverhead = meta.NameCount * 3
+		breakdown.BaseOverhead = 3
+		tkm += breakdown.ToolsOverhead
+		tkm += breakdown.MessagesOverhead
+		tkm += breakdown.NamesOverhead
+		tkm += breakdown.BaseOverhead
 	}
 
 	shouldFetchFiles := true
@@ -287,21 +298,29 @@ func CountRequestToken(c *gin.Context, meta *types.TokenCountMeta, info *relayco
 				if err != nil {
 					return 0, fmt.Errorf("error counting image token, media index[%d], identifier[%s], err: %v", i, file.GetIdentifier(), err)
 				}
+				breakdown.MediaTokens += token
 				tkm += token
 			} else {
+				breakdown.MediaTokens += 520
 				tkm += 520
 			}
 		case types.FileTypeAudio:
+			breakdown.MediaTokens += 256
 			tkm += 256
 		case types.FileTypeVideo:
+			breakdown.MediaTokens += 4096 * 2
 			tkm += 4096 * 2
 		case types.FileTypeFile:
+			breakdown.MediaTokens += 4096
 			tkm += 4096
 		default:
+			breakdown.MediaTokens += 4096
 			tkm += 4096 // Default case for unknown file types
 		}
 	}
 
+	breakdown.Total = tkm
+	recordTokenEstimateBreakdown(breakdown)
 	common.SetContextKey(c, constant.ContextKeyPromptTokens, tkm)
 	return tkm, nil
 }

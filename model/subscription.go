@@ -1524,9 +1524,8 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		if newUsed < 0 {
 			newUsed = 0
 		}
-		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
-		}
+		// 允许透支：超额补扣记为负余额（remain = total - used < 0），
+		// 预扣校验（remain < amount）会自然拦截该订阅的后续请求。
 		sub.AmountUsed = newUsed
 		return tx.Save(&sub).Error
 	})
