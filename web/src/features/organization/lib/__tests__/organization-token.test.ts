@@ -24,6 +24,7 @@ import {
   maskOrganizationTokenKey,
   organizationTokenErrorMessageKey,
   organizationTokenErrorText,
+  organizationTokenFullKey,
   organizationTokenKeyPreview,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,
@@ -113,6 +114,31 @@ describe('organizationTokenKeyPreview', () => {
       organizationTokenKeyPreview({ key: 'sk-abcdefghijklmnop' })
     ).toBe('sk-abcd**********mnop')
     expect(organizationTokenKeyPreview({ key: '' })).toBe('')
+  })
+})
+
+describe('organizationTokenFullKey', () => {
+  test('restores the prefix on the bare body the backend stores', () => {
+    expect(organizationTokenFullKey({ key: 'abcdefghijklmnop' })).toBe(
+      'sk-abcdefghijklmnop'
+    )
+  })
+
+  test('leaves an already prefixed key alone', () => {
+    expect(organizationTokenFullKey({ key: 'sk-abcdefghijklmnop' })).toBe(
+      'sk-abcdefghijklmnop'
+    )
+  })
+
+  test('trims surrounding space the relay would not expect', () => {
+    expect(organizationTokenFullKey({ key: '  abcdefghijklmnop\n' })).toBe(
+      'sk-abcdefghijklmnop'
+    )
+  })
+
+  test('has nothing to hand over when there is no key', () => {
+    expect(organizationTokenFullKey({ key: '' })).toBe('')
+    expect(organizationTokenFullKey({ key: '   ' })).toBe('')
   })
 })
 

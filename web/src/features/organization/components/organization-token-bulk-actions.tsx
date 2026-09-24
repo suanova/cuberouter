@@ -34,7 +34,10 @@ import {
 } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
-import { getOrganizationTokenBatchDeletePlan } from '../lib'
+import {
+  getOrganizationTokenBatchDeletePlan,
+  organizationTokenFullKey,
+} from '../lib'
 import type { OrganizationTokenRow } from '../types'
 import { OrganizationTokensBatchDeleteDialog } from './organization-token-delete-dialogs'
 
@@ -85,7 +88,7 @@ export function OrganizationTokensBulkActions(
   const copyWithNames = () =>
     void copy(
       copyable
-        .map((token) => `${token.name}\t${fullKeyOf(token)}`)
+        .map((token) => `${token.name}\t${organizationTokenFullKey(token)}`)
         .filter((line) => line.trim().length > 1)
         .join('\n'),
       copyable.length
@@ -94,7 +97,7 @@ export function OrganizationTokensBulkActions(
   const copyKeysOnly = () =>
     void copy(
       copyable
-        .map((token) => fullKeyOf(token))
+        .map((token) => organizationTokenFullKey(token))
         .filter(Boolean)
         .join('\n'),
       copyable.length
@@ -251,11 +254,4 @@ export function OrganizationTokensBulkActions(
       />
     </>
   )
-}
-
-/** The plaintext key, with the `sk-` prefix the relay expects. */
-function fullKeyOf(token: OrganizationTokenRow): string {
-  const key = (token.key ?? '').trim()
-  if (!key) return ''
-  return key.startsWith('sk-') ? key : `sk-${key}`
 }

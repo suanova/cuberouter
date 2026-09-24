@@ -148,6 +148,7 @@ export {
   maskOrganizationTokenKey,
   organizationTokenErrorMessageKey,
   organizationTokenErrorText,
+  organizationTokenFullKey,
   organizationTokenKeyPreview,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,

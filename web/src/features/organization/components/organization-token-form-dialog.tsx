@@ -62,6 +62,7 @@ import {
   isOrganizationTokenHandover,
   organizationTokenErrorText,
   organizationTokenFormSchema,
+  organizationTokenFullKey,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS,
   ORGANIZATION_TOKEN_FORM_DEFAULT_VALUES,
@@ -796,7 +797,7 @@ async function copyCreatedTokens(
 ) {
   const lines = tokens
     .map((token) => {
-      const key = (token.key ?? '').trim()
+      const key = organizationTokenFullKey(token)
       return key ? `${token.name || token.id}\t${key}` : ''
     })
     .filter(Boolean)

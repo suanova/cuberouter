@@ -154,6 +154,23 @@ export function organizationTokenKeyPreview(
   return token.key_preview?.trim() || maskOrganizationTokenKey(token.key)
 }
 
+/**
+ * The key as a client has to send it, with the `sk-` prefix restored.
+ *
+ * The stored value is the bare key body, which is why every surface that hands
+ * a key to a caller — the mask above, the bulk copy, the create dialog — puts
+ * the prefix back on. Copying the bare body produces a string that matches
+ * neither what the table shows nor what a relay is normally given, so this is
+ * the one place that decides what a caller receives.
+ */
+export function organizationTokenFullKey(
+  token: Pick<OrganizationTokenRow, 'key'>
+): string {
+  const key = (token.key ?? '').trim()
+  if (!key) return ''
+  return key.startsWith(KEY_PREFIX) ? key : `${KEY_PREFIX}${key}`
+}
+
 // ============================================================================
 // Per-row authority
 // ============================================================================

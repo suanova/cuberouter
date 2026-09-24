@@ -26,7 +26,7 @@ import { Button } from '@/components/ui/button'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
 
-import { organizationTokenKeyPreview } from '../lib'
+import { organizationTokenFullKey, organizationTokenKeyPreview } from '../lib'
 import type { OrganizationTokenRow } from '../types'
 
 /**
@@ -45,7 +45,9 @@ export function OrganizationTokenKeyCell(props: {
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const fullKey = (props.token.key ?? '').trim()
+  // Revealed and copied alike: the caller gets the same `sk-`-prefixed string
+  // the mask advertises, never the bare body that sits in the database.
+  const fullKey = organizationTokenFullKey(props.token)
   const display = revealed && fullKey
     ? fullKey
     : organizationTokenKeyPreview(props.token)
