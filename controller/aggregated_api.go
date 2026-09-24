@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -65,6 +66,45 @@ type AggregatedCreateUserRequest struct {
 	Username     string `json:"username"`
 	UserValidity string `json:"user_validity"` // ISO 8601 date, e.g. "2026-12-31"
 	InviterId    int    `json:"inviter_id"`    // 运营用户邀请人 user id
+	// 用户备注，最长 255 字符；与 user_validity 同时传入时最终 remark 为「用户备注；账户有效期至 YYYY-MM-DD」，
+	// 拼接后超过 255 字符时自动截断为 255 字符（保留用户备注头部，Issue #89）
+	Remark string `json:"remark"`
+}
+
+// userRemarkMaxRunes 与 model.User.Remark 列 varchar(255) 的字符上限保持一致。
+const userRemarkMaxRunes = 255
+
+// capRemarkRunes 将 s 收敛到最多 userRemarkMaxRunes 个字符（rune），不超过时原样返回（Issue #89）。
+func capRemarkRunes(s string) string {
+	if utf8.RuneCountInString(s) <= userRemarkMaxRunes {
+		return s
+	}
+	return string([]rune(s)[:userRemarkMaxRunes])
+}
+
+// buildCreateUserRemark 组合创建用户时的最终 remark（Issue #88 / #89）。
+//
+// 规则（与 PM 验收标准一致）：
+//   - 仅传 user_validity（解析成功）：返回「账户有效期至 YYYY-MM-DD」，保持原有行为；
+//   - 仅传 remark：返回 remark 本身（已由调用方 TrimSpace）；
+//   - 两者同时传入且 user_validity 解析成功：返回「remark；账户有效期至 YYYY-MM-DD」，
+//     不覆盖用户传入的备注；
+//   - user_validity 为空或解析失败：不做任何 remark 更新，返回 ok=false；
+//   - 拼接结果超过 255 字符（users.remark varchar(255) 列上限）时按 255 字符截断，
+//     保留用户 remark 头部，不拒绝请求（Issue #89，人类确认口径：截断）。
+func buildCreateUserRemark(remark string, userValidity string) (string, bool) {
+	if userValidity == "" {
+		return "", false
+	}
+	validityTime, err := time.Parse("2006-01-02", userValidity)
+	if err != nil {
+		return "", false
+	}
+	validityPart := fmt.Sprintf("账户有效期至 %s", validityTime.Format("2006-01-02"))
+	if remark == "" {
+		return capRemarkRunes(validityPart), true
+	}
+	return capRemarkRunes(fmt.Sprintf("%s；%s", remark, validityPart)), true
 }
 
 // AggregatedCreateUser 创建用户（默认可用状态）并绑定订阅计划
@@ -95,6 +135,13 @@ func AggregatedCreateUser(c *gin.Context) {
 	// 密码长度校验（与现有 User 模型 validate tag 一致）
 	if len(req.Password) < 8 || len(req.Password) > 20 {
 		aggregatedFail(c, "密码长度必须在 8-20 个字符之间")
+		return
+	}
+
+	// 备注（Issue #88）：去除首尾空白，长度上限 255 字符（与 User.Remark 列 varchar(255) 一致）
+	req.Remark = strings.TrimSpace(req.Remark)
+	if utf8.RuneCountInString(req.Remark) > userRemarkMaxRunes {
+		aggregatedFail(c, "remark 长度不能超过 255 个字符")
 		return
 	}
 
@@ -131,6 +178,7 @@ func AggregatedCreateUser(c *gin.Context) {
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
 		InviterId:   req.InviterId,
+		Remark:      req.Remark,
 	}
 	if myRole <= common.RoleCommonUser {
 		// 安全：确保不会创建比自己角色更高的用户（RoleCommonUser 已是最低）
@@ -176,11 +224,9 @@ func AggregatedCreateUser(c *gin.Context) {
 		}
 	}
 
-	// 处理 user_validity：解析 ISO 8601 日期并记录到 remark（格式已在
-	// Insert 前校验，此处解析不会失败）
-	if req.UserValidity != "" {
-		validityTime, _ := time.Parse("2006-01-02", req.UserValidity)
-		remark := fmt.Sprintf("账户有效期至 %s", validityTime.Format("2006-01-02"))
+	// 处理 user_validity（Issue #88）：解析成功时与用户备注组合后写入 remark，
+	// 不覆盖用户传入的备注（格式已在 Insert 前校验，此处解析不会失败）
+	if remark, ok := buildCreateUserRemark(req.Remark, req.UserValidity); ok {
 		if err := model.DB.Model(&model.User{}).Where("id = ?", cleanUser.Id).Update("remark", remark).Error; err != nil {
 			common.SysError(fmt.Sprintf("AggregatedCreateUser 更新 remark 失败: %v", err))
 		}

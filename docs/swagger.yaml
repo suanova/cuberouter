@@ -30,6 +30,11 @@ definitions:
         type: string
       plan_id:
         type: integer
+      remark:
+        description: |-
+          用户备注，最长 255 字符；与 user_validity 同时传入时最终 remark 为「用户备注；账户有效期至 YYYY-MM-DD」，
+          拼接后超过 255 字符时自动截断为 255 字符（保留用户备注头部，Issue #89）
+        type: string
       user_validity:
         description: ISO 8601 date, e.g. "2026-12-31"
         type: string
