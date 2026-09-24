@@ -31,7 +31,7 @@ export function resolveLogsViewAccess(
   role: number,
   viewScope: LogsViewScope
 ): LogsViewAccess {
-  if (viewScope !== 'all' || role < ROLE.ADMIN) return 'self'
+  if (viewScope !== 'all' || role < ROLE.OPS) return 'self'
   return role === ROLE.SUPER_ADMIN ? 'root' : 'admin'
 }
 
@@ -104,7 +104,9 @@ export function useUsageLogsContext() {
 export function useLogsViewScope() {
   const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
   const { viewScope, setViewScope } = useUsageLogsContext()
-  const canManageScope = role >= ROLE.ADMIN
+  // Ops and above may view all users' logs (read-only; the log table has no
+  // write actions); only admin and above manage channels etc. downstream.
+  const canManageScope = role >= ROLE.OPS
   const viewAccess = resolveLogsViewAccess(role, viewScope)
   const isAdminView = viewAccess !== 'self'
   const isRootView = viewAccess === 'root'
