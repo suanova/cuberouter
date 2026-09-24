@@ -17,12 +17,17 @@ type UserColumnMeta struct {
 // table; the order is the default column order. Labels are stable English
 // source strings that the frontend translates with t(); New columns must be
 // added here and in the frontend column defs together.
+// Port from develop 51b3f79/#86, 58cf985/#94, 2c55d2e, 9df4a57: quota columns
+// use the effective-subscription basis — "quota" shows subscription
+// remain/total tokens, "money_balance" shows the plan-price-converted
+// remaining value (user.subscription_remain_value). No history-money column.
 var userColumns = []UserColumnMeta{
 	{Key: "select", Label: "Select", Required: true},
 	{Key: "id", Label: "ID", Required: true},
 	{Key: "username", Label: "Username", Required: true},
 	{Key: "status", Label: "Status"},
-	{Key: "quota", Label: "Quota"},
+	{Key: "quota", Label: "Remaining/Total Quota"},
+	{Key: "money_balance", Label: "Subscription Balance"},
 	{Key: "group", Label: "Group"},
 	{Key: "role", Label: "Role"},
 	{Key: "invite_info", Label: "Invite Info"},

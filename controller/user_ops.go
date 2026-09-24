@@ -56,10 +56,19 @@ func csvSafeCell(s string) string {
 // formatOpsUserRow maps a User to one CSV row, with the status label resolved
 // for the request locale. User-controlled cells are neutralized against
 // formula injection.
+//
+// Port from develop 51b3f79/#86: 总额度/已用额度按有效订阅 token 口径输出
+// （与页面显示一致，不输出货币换算值；不限量订阅总额度输出「不限」）。
 func formatOpsUserRow(c *gin.Context, u *model.User) []string {
 	createdAt := ""
 	if u.CreatedAt > 0 {
 		createdAt = time.Unix(u.CreatedAt, 0).Format("2006-01-02 15:04:05")
+	}
+	formatSubQuota := func(v int64, unlimited bool) string {
+		if unlimited {
+			return i18n.T(c, i18n.MsgOpsExportUnlimited)
+		}
+		return fmt.Sprintf("%d", v)
 	}
 	status := fmt.Sprintf("%s(%d)", i18n.T(c, i18n.MsgOpsStatusUnknown), u.Status)
 	switch u.Status {
@@ -75,8 +84,8 @@ func formatOpsUserRow(c *gin.Context, u *model.User) []string {
 		common.MaskPhone(u.Phone),
 		status,
 		csvSafeCell(u.Group),
-		fmt.Sprintf("%d", u.Quota),
-		fmt.Sprintf("%d", u.UsedQuota),
+		formatSubQuota(u.SubscriptionTotalQuota, u.SubscriptionUnlimited),
+		formatSubQuota(u.SubscriptionUsedQuota, false),
 		fmt.Sprintf("%d", u.RequestCount),
 		fmt.Sprintf("%d", u.TotalPromptTokens),
 		fmt.Sprintf("%d", u.TotalCompletionTokens),
@@ -97,6 +106,9 @@ func GetOpsInvitees(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	// 有效订阅 token 额度统计（port from develop 51b3f79/#86：额度列改订阅口径）
+	model.FillUsersSubscriptionQuotaStats(users)
 
 	for _, u := range users {
 		if u.Phone != "" {
@@ -120,6 +132,9 @@ func SearchOpsInvitees(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	// 有效订阅 token 额度统计（port from develop 51b3f79/#86：额度列改订阅口径）
+	model.FillUsersSubscriptionQuotaStats(users)
 
 	for _, u := range users {
 		if u.Phone != "" {
@@ -169,6 +184,9 @@ func ExportOpsInvitees(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	// 有效订阅 token 额度统计（port from develop 51b3f79/#86：导出 CSV 与页面显示口径一致）
+	model.FillUsersSubscriptionQuotaStats(users)
 
 	// ASCII filename: non-ASCII Content-Disposition filenames render as
 	// garbage in browsers regardless of charset hints.

@@ -33,9 +33,11 @@ import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
-import { formatQuota, formatTimestamp } from '@/lib/format'
+import { formatTimestamp } from '@/lib/format'
 import { getRoleLabel } from '@/lib/roles'
 
+import { SubscriptionBalanceCell } from '../../users/components/subscription-balance-cell'
+import { UserQuotaCell } from '../../users/components/user-quota-cell'
 import { USER_STATUSES } from '../../users/constants'
 import { getOpsUserColumns } from '../api'
 import type { OpsUser, OpsUserColumnMeta } from '../types'
@@ -53,8 +55,8 @@ const OPS_USER_COLUMN_LABEL_KEYS: Record<string, string> = {
   role: 'Role',
   status: 'Status',
   group: 'Group',
-  quota: 'Quota',
-  used_quota: 'Used Quota',
+  quota: 'Remaining/Total Quota',
+  money_balance: 'Subscription Balance',
   request_count: 'Requests',
   total_prompt_tokens: 'Prompt Tokens',
   total_completion_tokens: 'Completion Tokens',
@@ -73,8 +75,8 @@ const DEFAULT_OPS_USER_COLUMNS: OpsUserColumnMeta[] = [
   { key: 'role', label: 'Role', required: false },
   { key: 'status', label: 'Status', required: false },
   { key: 'group', label: 'Group', required: false },
-  { key: 'quota', label: 'Quota', required: false },
-  { key: 'used_quota', label: 'Used Quota', required: false },
+  { key: 'quota', label: 'Remaining/Total Quota', required: false },
+  { key: 'money_balance', label: 'Subscription Balance', required: false },
   { key: 'request_count', label: 'Requests', required: false },
   { key: 'total_prompt_tokens', label: 'Prompt Tokens', required: false },
   {
@@ -318,16 +320,43 @@ function buildOpsUserColumn(
         size: 140,
       }
     case 'quota':
-    case 'used_quota':
+      // Effective-subscription token basis (port from develop 51b3f79/#86,
+      // 2c55d2e); the used quota moved into the tooltip.
       return {
-        accessorKey: columnId,
+        accessorKey: 'subscription_remain_quota',
         header,
-        cell: ({ row }) => (
-          <span className='font-mono text-sm'>
-            {formatQuota(row.getValue(columnId) as number)}
-          </span>
-        ),
-        size: 120,
+        cell: ({ row }) => {
+          const user = row.original
+          return (
+            <UserQuotaCell
+              used={user.subscription_used_quota || 0}
+              remaining={user.subscription_remain_quota || 0}
+              total={user.subscription_total_quota || 0}
+              unlimited={user.subscription_unlimited}
+            />
+          )
+        },
+        size: 160,
+      }
+    case 'money_balance':
+      // Plan-price-converted subscription remaining value (port from
+      // develop 58cf985/#94, 2c55d2e).
+      return {
+        accessorKey: 'subscription_remain_value',
+        header,
+        cell: ({ row }) => {
+          const user = row.original
+          return (
+            <SubscriptionBalanceCell
+              remainValue={user.subscription_remain_value || 0}
+              remaining={user.subscription_remain_quota || 0}
+              used={user.subscription_used_quota || 0}
+              total={user.subscription_total_quota || 0}
+              unlimited={user.subscription_unlimited}
+            />
+          )
+        },
+        size: 150,
       }
     case 'request_count':
     case 'total_prompt_tokens':

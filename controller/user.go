@@ -387,6 +387,9 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 
+	// 有效订阅 token 额度统计（port from develop 51b3f79/#86：运营侧额度显示改订阅口径）
+	model.FillUsersSubscriptionQuotaStats(users)
+
 	pageInfo.SetTotal(int(total))
 	for _, u := range users {
 		u.Phone = common.MaskPhone(u.Phone)
@@ -419,6 +422,9 @@ func SearchUsers(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	// 有效订阅 token 额度统计（port from develop 51b3f79/#86：运营侧额度显示改订阅口径）
+	model.FillUsersSubscriptionQuotaStats(users)
 
 	pageInfo.SetTotal(int(total))
 	for _, u := range users {

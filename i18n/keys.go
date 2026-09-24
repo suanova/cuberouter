@@ -154,6 +154,7 @@ const (
 	MsgOpsExportHeaderAffCode               = "ops.export_header.aff_code"
 	MsgOpsExportHeaderAffCount              = "ops.export_header.aff_count"
 	MsgOpsExportHeaderInviterId             = "ops.export_header.inviter_id"
+	MsgOpsExportUnlimited                   = "ops.export.unlimited"
 	MsgOpsStatusEnabled                     = "ops.status.enabled"
 	MsgOpsStatusDisabled                    = "ops.status.disabled"
 	MsgOpsStatusUnknown                     = "ops.status.unknown"

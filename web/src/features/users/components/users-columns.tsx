@@ -39,6 +39,7 @@ import {
 } from '../constants'
 import type { User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
+import { SubscriptionBalanceCell } from './subscription-balance-cell'
 import UsernameCell from './username-cell'
 import { UserQuotaCell } from './user-quota-cell'
 
@@ -132,14 +133,39 @@ export function useUsersColumns(): ColumnDef<User>[] {
     {
       id: 'quota',
       accessorKey: 'quota',
-      header: t('Quota'),
+      header: t('Remaining/Total Quota'),
       cell: ({ row }) => {
         const user = row.original
-        return <UserQuotaCell used={user.used_quota} remaining={user.quota} />
+        return (
+          <UserQuotaCell
+            used={user.subscription_used_quota || 0}
+            remaining={user.subscription_remain_quota || 0}
+            total={user.subscription_total_quota || 0}
+            unlimited={user.subscription_unlimited}
+          />
+        )
       },
       size: 300,
       minSize: 260,
       meta: { mobileOrder: 40 },
+    },
+    {
+      accessorKey: 'subscription_remain_value',
+      header: t('Subscription Balance'),
+      cell: ({ row }) => {
+        const user = row.original
+        return (
+          <SubscriptionBalanceCell
+            remainValue={user.subscription_remain_value || 0}
+            remaining={user.subscription_remain_quota || 0}
+            used={user.subscription_used_quota || 0}
+            total={user.subscription_total_quota || 0}
+            unlimited={user.subscription_unlimited}
+          />
+        )
+      },
+      size: 170,
+      meta: { mobileOrder: 50 },
     },
     {
       accessorKey: 'group',

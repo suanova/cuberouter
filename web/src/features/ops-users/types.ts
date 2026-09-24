@@ -25,6 +25,13 @@ export interface OpsUser {
   group: string
   quota: number
   used_quota: number
+  // Effective-subscription token quota stats (non-persistent; filled by the
+  // list endpoints via FillUsersSubscriptionQuotaStats).
+  subscription_total_quota?: number
+  subscription_remain_quota?: number
+  subscription_used_quota?: number
+  subscription_unlimited?: boolean
+  subscription_remain_value?: number
   request_count: number
   total_prompt_tokens: number
   total_completion_tokens: number

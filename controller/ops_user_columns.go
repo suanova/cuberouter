@@ -17,6 +17,10 @@ type OpsUserColumnMeta struct {
 // table; the order is the default column order. Labels are stable English
 // source strings that the frontend translates with t(); New columns must be
 // added here and in the frontend column defs together.
+// Port from develop 51b3f79/#86, 58cf985/#94, 2c55d2e: quota uses the
+// effective-subscription basis (used quota moves into the quota column
+// tooltip, so the standalone used_quota column is removed); "money_balance"
+// shows the plan-price-converted remaining value. No history-money column.
 var opsUserColumns = []OpsUserColumnMeta{
 	{Key: "id", Label: "ID", Required: true},
 	{Key: "username", Label: "Username", Required: true},
@@ -25,8 +29,8 @@ var opsUserColumns = []OpsUserColumnMeta{
 	{Key: "role", Label: "Role"},
 	{Key: "status", Label: "Status"},
 	{Key: "group", Label: "Group"},
-	{Key: "quota", Label: "Quota"},
-	{Key: "used_quota", Label: "Used Quota"},
+	{Key: "quota", Label: "Remaining/Total Quota"},
+	{Key: "money_balance", Label: "Subscription Balance"},
 	{Key: "request_count", Label: "Requests"},
 	{Key: "total_prompt_tokens", Label: "Prompt Tokens"},
 	{Key: "total_completion_tokens", Label: "Completion Tokens"},

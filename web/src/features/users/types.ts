@@ -45,6 +45,13 @@ export const userSchema = z.object({
   email: z.string().optional(),
   quota: z.number(),
   used_quota: z.number(),
+  // Effective-subscription token quota stats (non-persistent; filled by the
+  // list endpoints via FillUsersSubscriptionQuotaStats).
+  subscription_total_quota: z.number().optional(),
+  subscription_remain_quota: z.number().optional(),
+  subscription_used_quota: z.number().optional(),
+  subscription_unlimited: z.boolean().optional(),
+  subscription_remain_value: z.number().optional(),
   request_count: z.number(),
   group: z.string(),
   aff_code: z.string().optional(),

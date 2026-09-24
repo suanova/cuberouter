@@ -75,43 +75,55 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
-	Id               int                        `json:"id"`
-	Username         string                     `json:"username" gorm:"unique;index" validate:"max=50"`
-	Password         string                     `json:"password" gorm:"not null;" validate:"min=8,max=20,passwordStrength"`
-	OriginalPassword string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
-	DisplayName      string                     `json:"display_name" gorm:"index" validate:"max=20"`
-	Role             int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
-	Status           int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
-	Email            string                     `json:"email" gorm:"index" validate:"max=50"`
-	GitHubId         string                     `json:"github_id" gorm:"column:github_id;index"`
-	DiscordId        string                     `json:"discord_id" gorm:"column:discord_id;index"`
-	OidcId           string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
-	WeChatId         string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
-	TelegramId       string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
-	VerificationCode string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
-	AccessToken      *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
-	Quota            int                        `json:"quota" gorm:"type:int;default:0"`
-	UsedQuota        int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
-	RequestCount        int    `json:"request_count" gorm:"type:int;default:0;"` // request number
-	TotalPromptTokens   int64  `json:"total_prompt_tokens" gorm:"type:bigint;default:0;column:total_prompt_tokens"`
-	TotalCompletionTokens int64 `json:"total_completion_tokens" gorm:"type:bigint;default:0;column:total_completion_tokens"`
-	TotalCacheTokens    int64  `json:"total_cache_tokens" gorm:"type:bigint;default:0;column:total_cache_tokens"`
-	Group               string `json:"group" gorm:"type:varchar(64);default:'default'"`
-	AffCode          string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
-	AffCount         int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
-	AffQuota         int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
-	AffHistoryQuota  int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
-	InviterId        int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
-	DeletedAt        gorm.DeletedAt             `gorm:"index"`
-	LinuxDOId        string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
-	Setting          string                     `json:"setting" gorm:"type:text;column:setting"`
-	Remark           string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
-	Phone            string                     `json:"phone" gorm:"type:varchar(32);index" validate:"max=32"`
-	StripeCustomer   string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
-	CreatedAt        int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
-	LastLoginAt      int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
-	AuthVersion      int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
-	AdminPermissions map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+	Id                    int                        `json:"id"`
+	Username              string                     `json:"username" gorm:"unique;index" validate:"max=50"`
+	Password              string                     `json:"password" gorm:"not null;" validate:"min=8,max=20,passwordStrength"`
+	OriginalPassword      string                     `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
+	DisplayName           string                     `json:"display_name" gorm:"index" validate:"max=20"`
+	Role                  int                        `json:"role" gorm:"type:int;default:1"`   // admin, common
+	Status                int                        `json:"status" gorm:"type:int;default:1"` // enabled, disabled
+	Email                 string                     `json:"email" gorm:"index" validate:"max=50"`
+	GitHubId              string                     `json:"github_id" gorm:"column:github_id;index"`
+	DiscordId             string                     `json:"discord_id" gorm:"column:discord_id;index"`
+	OidcId                string                     `json:"oidc_id" gorm:"column:oidc_id;index"`
+	WeChatId              string                     `json:"wechat_id" gorm:"column:wechat_id;index"`
+	TelegramId            string                     `json:"telegram_id" gorm:"column:telegram_id;index"`
+	VerificationCode      string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
+	AccessToken           *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // this token is for system management
+	Quota                 int                        `json:"quota" gorm:"type:int;default:0"`
+	UsedQuota             int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
+	RequestCount          int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
+	TotalPromptTokens     int64                      `json:"total_prompt_tokens" gorm:"type:bigint;default:0;column:total_prompt_tokens"`
+	TotalCompletionTokens int64                      `json:"total_completion_tokens" gorm:"type:bigint;default:0;column:total_completion_tokens"`
+	TotalCacheTokens      int64                      `json:"total_cache_tokens" gorm:"type:bigint;default:0;column:total_cache_tokens"`
+	Group                 string                     `json:"group" gorm:"type:varchar(64);default:'default'"`
+	AffCode               string                     `json:"aff_code" gorm:"type:varchar(32);column:aff_code;uniqueIndex"`
+	AffCount              int                        `json:"aff_count" gorm:"type:int;default:0;column:aff_count"`
+	AffQuota              int                        `json:"aff_quota" gorm:"type:int;default:0;column:aff_quota"`           // 邀请剩余额度
+	AffHistoryQuota       int                        `json:"aff_history_quota" gorm:"type:int;default:0;column:aff_history"` // 邀请历史额度
+	InviterId             int                        `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
+	DeletedAt             gorm.DeletedAt             `gorm:"index"`
+	LinuxDOId             string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	Setting               string                     `json:"setting" gorm:"type:text;column:setting"`
+	Remark                string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
+	Phone                 string                     `json:"phone" gorm:"type:varchar(32);index" validate:"max=32"`
+	StripeCustomer        string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
+	CreatedAt             int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
+	LastLoginAt           int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
+	AuthVersion           int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
+	AdminPermissions      map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
+
+	// 以下为非持久化字段（port from develop 51b3f79/#86）：用户有效订阅
+	//（status=active 且 end_time>now）的原生 token 额度统计，由 controller 层查询
+	// user_subscriptions 聚合后填充。口径与数据看板「当前余额/历史消耗」保持一致：
+	// 不做货币换算，直接展示订阅 token 数值。
+	SubscriptionTotalQuota  int64 `json:"subscription_total_quota" gorm:"-"`  // 有效订阅 token 总和（仅有限订阅 amount_total>0）
+	SubscriptionRemainQuota int64 `json:"subscription_remain_quota" gorm:"-"` // 剩余 token 总和（逐订阅 max(0, amount_total-amount_used) 后求和）
+	SubscriptionUsedQuota   int64 `json:"subscription_used_quota" gorm:"-"`   // 有效订阅已使用 token 总和
+	SubscriptionUnlimited   bool  `json:"subscription_unlimited" gorm:"-"`    // 存在 amount_total<=0 的有效订阅（不限量）
+	// 订阅剩余价值（USD）：逐有限订阅按 套餐现价 × 剩余/总量 折算后求和，
+	// 口径与数据看板「订阅余额」一致。
+	SubscriptionRemainValue float64 `json:"subscription_remain_value" gorm:"-"`
 }
 
 func (user *User) ToBaseUser() *UserBase {
@@ -1813,4 +1825,115 @@ func ExportUsersByFilter(keyword, group string, maxRows int) ([]*User, error) {
 		page++
 	}
 	return allUsers, nil
+}
+
+// ============================================================
+// 用户有效订阅 token 额度统计（port from develop 51b3f79/#86, 2c55d2e, f951584）
+// ============================================================
+
+// userSubQuotaStat 单用户单套餐有效订阅额度聚合结果
+type userSubQuotaStat struct {
+	UserId      int     `json:"user_id"`
+	PlanId      int     `json:"plan_id"`
+	TotalSum    int64   `json:"total_sum"`  // 有限订阅 amount_total 之和
+	UsedSum     int64   `json:"used_sum"`   // 全部有效订阅 amount_used 之和
+	RemainSum   int64   `json:"remain_sum"` // 有限订阅 max(0, amount_total-amount_used) 之和
+	Unlimited   int64   `json:"unlimited"`  // amount_total<=0 的有效订阅条数
+	RemainValue float64 `json:"remain_value"`
+}
+
+// FillUsersSubscriptionQuotaStats 为一批用户填充有效订阅 token 额度统计字段
+// （SubscriptionTotalQuota/SubscriptionRemainQuota/SubscriptionUsedQuota/
+// SubscriptionUnlimited/SubscriptionRemainValue，均为非持久化字段）。
+//
+// 口径与数据看板「当前余额/历史消耗/订阅余额」保持一致：有效订阅 =
+// user_subscriptions.status='active' AND end_time > now；
+// - 剩余（当前余额）= Σ max(0, amount_total - amount_used)，仅统计 amount_total>0 的订阅
+// - 已使用 = Σ amount_used（含不限量订阅的使用量，与看板一致）
+// - 总额度 = Σ amount_total，仅统计 amount_total>0 的订阅
+// - 存在 amount_total<=0 的有效订阅时 Unlimited=true（前端显示「不限」）
+// - 剩余价值（USD）= Σ 套餐现价 × 剩余/总量，仅统计 amount_total>0 且套餐价>0 的订阅
+//
+// 使用一条 GROUP BY (user_id, plan_id) 聚合查询批量获取，避免逐用户 N+1；
+// 剩余额度的 max(0, ...) 截断通过标准 SQL CASE WHEN 实现。
+// 注意：CAST(... AS FLOAT8) 为 PostgreSQL/SQLite 方言，MySQL 下该聚合查询会报错，
+// 本函数查询失败时静默降级为零值（与源实现行为一致）。
+// 套餐价格经 getSubscriptionPlanByIdTx 的缓存层批量预取，与订阅汇总下发的
+// plan_price_amount 同源。
+func FillUsersSubscriptionQuotaStats(users []*User) {
+	if len(users) == 0 {
+		return
+	}
+
+	ids := make([]int, 0, len(users))
+	for _, u := range users {
+		ids = append(ids, u.Id)
+	}
+
+	now := common.GetTimestamp()
+	var stats []userSubQuotaStat
+	err := DB.Model(&UserSubscription{}).
+		Select(
+			"user_id, plan_id, "+
+				"SUM(CASE WHEN amount_total > 0 THEN amount_total ELSE 0 END) AS total_sum, "+
+				"SUM(amount_used) AS used_sum, "+
+				"SUM(CASE WHEN amount_total > 0 AND amount_total - amount_used > 0 THEN amount_total - amount_used ELSE 0 END) AS remain_sum, "+
+				"SUM(CASE WHEN amount_total <= 0 THEN 1 ELSE 0 END) AS unlimited, "+
+				"SUM(CASE WHEN amount_total > 0 AND amount_total - amount_used > 0 THEN CAST(amount_total - amount_used AS FLOAT8) / amount_total ELSE 0 END) AS remain_value").
+		Where("user_id IN ? AND status = ? AND end_time > ?", ids, "active", now).
+		Group("user_id, plan_id").
+		Find(&stats).Error
+	if err != nil {
+		common.SysError(fmt.Sprintf("FillUsersSubscriptionQuotaStats query err: %v", err))
+		return
+	}
+
+	// 批量预取涉及的套餐价格（带缓存）
+	planIds := make(map[int]struct{}, len(stats))
+	for i := range stats {
+		if stats[i].PlanId > 0 {
+			planIds[stats[i].PlanId] = struct{}{}
+		}
+	}
+	planPrices := make(map[int]float64, len(planIds))
+	for planId := range planIds {
+		if plan, err := getSubscriptionPlanByIdTx(nil, planId); err == nil && plan != nil {
+			planPrices[planId] = plan.PriceAmount
+		}
+	}
+
+	type accStat struct {
+		totalSum    int64
+		usedSum     int64
+		remainSum   int64
+		unlimited   bool
+		remainValue float64
+	}
+	accMap := make(map[int]*accStat, len(stats))
+	for i := range stats {
+		s := &stats[i]
+		acc, ok := accMap[s.UserId]
+		if !ok {
+			acc = &accStat{}
+			accMap[s.UserId] = acc
+		}
+		acc.totalSum += s.TotalSum
+		acc.usedSum += s.UsedSum
+		acc.remainSum += s.RemainSum
+		if s.Unlimited > 0 {
+			acc.unlimited = true
+		}
+		acc.remainValue += planPrices[s.PlanId] * s.RemainValue
+	}
+
+	for _, u := range users {
+		if acc, ok := accMap[u.Id]; ok {
+			u.SubscriptionTotalQuota = acc.totalSum
+			u.SubscriptionRemainQuota = acc.remainSum
+			u.SubscriptionUsedQuota = acc.usedSum
+			u.SubscriptionUnlimited = acc.unlimited
+			u.SubscriptionRemainValue = acc.remainValue
+		}
+		// 无有效订阅的用户保持零值（前端显示 0）
+	}
 }
