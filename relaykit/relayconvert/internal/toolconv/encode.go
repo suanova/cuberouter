@@ -59,12 +59,16 @@ func attachOpenAIChatRequest(request any, set Set) (any, []types.ConversionDiagn
 			if definition.Function == nil {
 				continue
 			}
+			parameters, err := functionParametersMap(definition.Function.Parameters)
+			if err != nil {
+				return nil, diagnostics, fmt.Errorf("tools[%d].parameters: %w", index, err)
+			}
 			target.Tools = append(target.Tools, dto.ToolCallRequest{
 				Type: "function",
 				Function: dto.FunctionRequest{
 					Name:        definition.Function.Name,
 					Description: definition.Function.Description,
-					Parameters:  definition.Function.Parameters,
+					Parameters:  parameters,
 					Strict:      definition.Function.Strict,
 				},
 			})
@@ -120,11 +124,15 @@ func attachOpenAIResponsesRequest(request any, set Set) (any, []types.Conversion
 			if definition.Function == nil {
 				continue
 			}
+			parameters, err := functionParametersMap(definition.Function.Parameters)
+			if err != nil {
+				return nil, diagnostics, fmt.Errorf("tools[%d].parameters: %w", index, err)
+			}
 			tool := map[string]any{
 				"type":        "function",
 				"name":        definition.Function.Name,
 				"description": definition.Function.Description,
-				"parameters":  definition.Function.Parameters,
+				"parameters":  parameters,
 			}
 			if definition.Function.Strict != nil {
 				tool["strict"] = *definition.Function.Strict
