@@ -138,6 +138,16 @@ func AggregatedCreateUser(c *gin.Context) {
 		return
 	}
 
+	// Issue #91: 用户名/邮箱长度上限 50（与 User 模型 validate tag 一致）
+	if utf8.RuneCountInString(req.Username) > 50 {
+		aggregatedFail(c, "用户名长度不能超过 50 个字符")
+		return
+	}
+	if utf8.RuneCountInString(req.Email) > 50 {
+		aggregatedFail(c, "邮箱长度不能超过 50 个字符")
+		return
+	}
+
 	// 备注（Issue #88）：去除首尾空白，长度上限 255 字符（与 User.Remark 列 varchar(255) 一致）
 	req.Remark = strings.TrimSpace(req.Remark)
 	if utf8.RuneCountInString(req.Remark) > userRemarkMaxRunes {

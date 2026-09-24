@@ -166,6 +166,7 @@ export function EmailBindDialog({
             id='email'
             type='email'
             value={email}
+            maxLength={50}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={t('Enter your email')}
             disabled={loading}

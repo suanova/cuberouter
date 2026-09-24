@@ -219,7 +219,12 @@ func GetHomePageContent(c *gin.Context) {
 
 func SendEmailVerification(c *gin.Context) {
 	email := model.NormalizeEmail(c.Query("email"))
-	if err := common.Validate.Var(email, "required,email"); err != nil {
+	// Issue #91: 邮箱长度上限 50，与 User.Email validate:"max=50" 对齐
+	if err := common.Validate.Var(email, "required,email,max=50"); err != nil {
+		if strings.Contains(err.Error(), "max") {
+			common.ApiErrorI18n(c, i18n.MsgUserEmailTooLong)
+			return
+		}
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
@@ -294,7 +299,12 @@ func SendEmailVerification(c *gin.Context) {
 
 func SendPasswordResetEmail(c *gin.Context) {
 	email := model.NormalizeEmail(c.Query("email"))
-	if err := common.Validate.Var(email, "required,email"); err != nil {
+	// Issue #91: 邮箱长度上限 50，与 User.Email validate:"max=50" 对齐
+	if err := common.Validate.Var(email, "required,email,max=50"); err != nil {
+		if strings.Contains(err.Error(), "max") {
+			common.ApiErrorI18n(c, i18n.MsgUserEmailTooLong)
+			return
+		}
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}

@@ -1430,6 +1430,12 @@ func EmailBind(c *gin.Context) {
 	}
 	email := req.Email
 	email = model.NormalizeEmail(email)
+	// Issue #91: 邮箱长度上限 50，与 User.Email validate:"max=50" 对齐
+	// （验证码核验前先做长度校验，避免超长邮箱经绑定流程直接写库）
+	if len(email) > 50 {
+		common.ApiErrorI18n(c, i18n.MsgUserEmailTooLong)
+		return
+	}
 	code := req.Code
 	if !common.VerifyCodeWithKey(email, code, common.EmailVerificationPurpose) {
 		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)

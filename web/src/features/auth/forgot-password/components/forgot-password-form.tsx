@@ -104,7 +104,7 @@ export function ForgotPasswordForm({
             <FormItem>
               <FormLabel>Email</FormLabel>
               <FormControl>
-                <Input placeholder='name@example.com' {...field} />
+                <Input placeholder='name@example.com' maxLength={50} {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>

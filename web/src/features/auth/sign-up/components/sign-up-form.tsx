@@ -333,6 +333,7 @@ export function SignUpForm({
                     <Input
                       placeholder={t('name@example.com')}
                       type='email'
+                      maxLength={50}
                       {...field}
                     />
                   </FormControl>
