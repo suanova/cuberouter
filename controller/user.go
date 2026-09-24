@@ -168,14 +168,14 @@ func loginMethodFromContext(c *gin.Context) string {
 func recordLoginAudit(user *model.User, c *gin.Context) {
 	method := loginMethodFromContext(c)
 	ip := c.ClientIP()
-	extra := map[string]interface{}{
-		"login_method": method,
-		"user_agent":   c.Request.UserAgent(),
+	extra := model.AuditOther{
+		LoginMethod: method,
+		UserAgent:   c.Request.UserAgent(),
 	}
 	content := fmt.Sprintf("Logged in successfully via %s", method)
-	model.RecordLoginLog(user.Id, user.Username, content, ip, "login", map[string]interface{}{
+	model.RecordLoginLog(user.Id, user.Role, user.Username, content, ip, "login", map[string]interface{}{
 		"method": method,
-	}, extra)
+	}, extra, c)
 }
 
 // setupLogin creates a server-controlled login Session and returns the shared
@@ -476,6 +476,8 @@ func GenerateAccessToken(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+
+	recordUserSecurityAudit(c, id, "access_token.generate", map[string]interface{}{"token_ref": model.AccessTokenFingerprint(key)})
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

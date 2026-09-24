@@ -25,8 +25,7 @@ import { Button } from '@/components/ui/button'
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Spinner } from '@/components/ui/spinner'
-
-import { bindWeChat } from '../../api'
+import { bindWeChat } from '@/features/profile/api'
 
 interface WeChatBindDialogProps {
   open: boolean

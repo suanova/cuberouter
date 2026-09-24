@@ -25,8 +25,7 @@ import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
-
-import { updateUserProfile } from '../../api'
+import { updateUserProfile } from '@/features/profile/api'
 
 // ============================================================================
 // Change Password Dialog Component
@@ -102,7 +101,7 @@ export function ChangePasswordDialog({
       } else {
         toast.error(response.message || t('Failed to change password'))
       }
-    } catch (_error) {
+    } catch {
       toast.error(t('Failed to change password'))
     } finally {
       setLoading(false)

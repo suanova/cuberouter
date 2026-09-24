@@ -18,9 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback } from 'react'
 
+import type { TwoFAStatus } from '@/features/profile/types'
 import { get2FAStatus } from '@/lib/api'
-
-import type { TwoFAStatus } from '../types'
 
 // ============================================================================
 // Two-FA Hook

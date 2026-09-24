@@ -54,7 +54,8 @@ export const api = axios.create({
   baseURL: '',
   withCredentials: true,
   headers: {
-    'Cache-Control': 'no-store',
+    // no-store forbids storage; no-cache also revalidates any older cached response.
+    'Cache-Control': 'no-cache, no-store',
   },
 })
 

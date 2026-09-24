@@ -26,9 +26,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TELEGRAM_BIND_RESULT_MESSAGE } from '@/features/auth/constants'
+import { startTelegramBind } from '@/features/profile/api'
 import { getServerErrorMessageKey } from '@/lib/server-error-message'
-
-import { startTelegramBind } from '../../api'
 
 // ============================================================================
 // Telegram Bind Dialog Component

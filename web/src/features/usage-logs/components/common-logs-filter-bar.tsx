@@ -23,6 +23,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Select,
@@ -259,11 +260,14 @@ export function CommonLogsFilterBar<TData>(
       LOG_TYPE_FILTERS.map((type) => ({
         value: type.value,
         label: t(type.label),
+        deprecated: type.deprecated,
       })),
     [t]
   )
-  const logTypeLabel =
-    logTypeItems.find((type) => type.value === logType)?.label ?? t('All Types')
+  const selectedLogType = logTypeItems.find((type) => type.value === logType)
+  const deprecatedTypeDescription = t(
+    'Only used to find historical logs. New records are available in Audit Logs.'
+  )
 
   const statsBar = (
     <div className='flex flex-wrap items-center gap-2'>
@@ -345,14 +349,50 @@ export function CommonLogsFilterBar<TData>(
           })
         }}
       >
-        <SelectTrigger>
-          <SelectValue>{logTypeLabel}</SelectValue>
+        <SelectTrigger
+          aria-description={
+            selectedLogType?.deprecated ? deprecatedTypeDescription : undefined
+          }
+        >
+          <SelectValue className='min-w-0'>
+            <span className='truncate'>
+              {selectedLogType?.label ?? t('All Types')}
+            </span>
+            {selectedLogType?.deprecated && (
+              <Badge
+                variant='secondary'
+                className='h-4 px-1.5 text-[10px] font-normal'
+                title={deprecatedTypeDescription}
+              >
+                {t('Deprecated')}
+              </Badge>
+            )}
+          </SelectValue>
         </SelectTrigger>
-        <SelectContent alignItemWithTrigger={false}>
+        <SelectContent
+          alignItemWithTrigger={false}
+          className='max-w-[calc(100vw-2rem)] min-w-52'
+        >
           <SelectGroup>
             {LOG_TYPE_FILTERS.map((type) => (
-              <SelectItem key={type.value} value={type.value}>
+              <SelectItem
+                key={type.value}
+                value={type.value}
+                className='[&_[data-slot=select-item-text]]:items-center'
+                aria-description={
+                  type.deprecated ? deprecatedTypeDescription : undefined
+                }
+              >
                 {t(type.label)}
+                {type.deprecated && (
+                  <Badge
+                    variant='secondary'
+                    className='h-4 px-1.5 text-[10px] font-normal'
+                    title={deprecatedTypeDescription}
+                  >
+                    {t('Deprecated')}
+                  </Badge>
+                )}
               </SelectItem>
             ))}
           </SelectGroup>
