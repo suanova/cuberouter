@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Hash,
-  Coins,
   Layers,
   Gauge,
   Zap,
@@ -52,14 +51,6 @@ export function useModelStatCardsConfig(): StatCardConfig[] {
       icon: Hash,
       iconTone: 'info',
       getValue: (stat) => stat?.rpm ?? 0,
-    },
-    {
-      key: 'quota',
-      title: t('Total Quota'),
-      description: t('Statistical quota'),
-      icon: Coins,
-      iconTone: 'success',
-      getValue: (stat) => stat?.quota ?? 0,
     },
     {
       key: 'tokens',

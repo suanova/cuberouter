@@ -64,6 +64,13 @@ function renderQuotaCompat(rawQuota: number, digits = 4): string {
   return symbol + fixed
 }
 
+// Dashboard native quota formatting: thousands separators only, no currency.
+function renderNativeQuota(rawQuota: number): string {
+  const num = Number(rawQuota)
+  if (!Number.isFinite(num)) return '0'
+  return num.toLocaleString()
+}
+
 /**
  * Process and aggregate chart data
  */
@@ -78,8 +85,9 @@ export function processChartData(
 
   const formatInt = (value: number) =>
     Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
-  const formatQuotaValue = (value: number) => renderQuotaCompat(value, 4)
-  const formatQuotaTotal = (value: number) => renderQuotaCompat(value, 2)
+  // Model consumption charts display native quota values, no currency
+  const formatQuotaValue = (value: number) => renderNativeQuota(value)
+  const formatQuotaTotal = (value: number) => renderNativeQuota(value)
 
   const MAX_TOOLTIP_MODELS = 15
   const isOtherTooltipKey = (key: string) =>
@@ -212,9 +220,6 @@ export function processChartData(
     }
   }
 
-  const { config } = getCurrencyDisplay()
-  const quotaPerUnit = config.quotaPerUnit
-
   // Aggregate all metrics by time and model
   const timeModelMap = new Map<
     string,
@@ -312,7 +317,7 @@ export function processChartData(
     }))
     .sort((a, b) => b.value - a.value)
 
-  // Stacked bar: model quota distribution (quota -> USD)
+  // Stacked bar: model quota distribution (native quota values)
   const lineValues: Array<{
     Time: string
     Model: string
@@ -325,14 +330,11 @@ export function processChartData(
     let timeData = sortedModels.map((model) => {
       const stats = timeModelMap.get(time)?.get(model)
       const rawQuota = Number(stats?.quota) || 0
-      const usd = rawQuota ? rawQuota / quotaPerUnit : 0
-      // Match legacy frontend getQuotaWithUnit(..., 4)
-      const usage = usd ? Number(usd.toFixed(4)) : 0
       return {
         Time: time,
         Model: model,
         rawQuota,
-        Usage: usage,
+        Usage: rawQuota,
         TimeSum: 0,
       }
     })
@@ -364,14 +366,12 @@ export function processChartData(
     sortedModels.forEach((model) => {
       const stats = modelMap?.get(model)
       const rawQuota = Number(stats?.quota) || 0
-      const usd = rawQuota ? rawQuota / quotaPerUnit : 0
-      const usage = usd ? Number(usd.toFixed(4)) : 0
       timeSum += rawQuota
       const key = topAreaModels.has(model) ? model : otherLabel
       const prev = buckets.get(key) || { rawQuota: 0, usage: 0 }
       buckets.set(key, {
         rawQuota: prev.rawQuota + rawQuota,
-        usage: Number((prev.usage + usage).toFixed(4)),
+        usage: prev.usage + rawQuota,
       })
     })
     for (const [model, vals] of buckets) {
