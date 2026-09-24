@@ -23,6 +23,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
+import { isAdmin } from '@/lib/role-guards'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { exportUsers } from '../api'
 import { buildExportPayload } from '../lib/export-utils'
@@ -35,6 +37,12 @@ export function UsersPrimaryButtons() {
   const { setOpen, setCurrentRow } = useUsers()
   const search = route.useSearch()
   const [isExporting, setIsExporting] = useState(false)
+  const viewerRole = useAuthStore((state) => state.auth.user?.role)
+
+  // ops 只读访问（0fb2d5d）：隐藏 添加用户 / 导出按钮
+  if (!isAdmin(viewerRole)) {
+    return null
+  }
 
   const handleCreate = () => {
     setCurrentRow(null)

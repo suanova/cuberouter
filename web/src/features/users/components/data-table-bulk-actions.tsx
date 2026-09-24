@@ -24,6 +24,8 @@ import { toast } from 'sonner'
 
 import { DataTableBulkActions as BulkActionsToolbar } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
+import { isAdmin } from '@/lib/role-guards'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { exportUsers } from '../api'
 import { buildExportPayload } from '../lib/export-utils'
@@ -36,6 +38,12 @@ interface DataTableBulkActionsProps {
 export function DataTableBulkActions({ table }: DataTableBulkActionsProps) {
   const { t } = useTranslation()
   const [isExporting, setIsExporting] = useState(false)
+  const viewerRole = useAuthStore((state) => state.auth.user?.role)
+
+  // ops 只读访问（0fb2d5d）：隐藏批量操作（导出所选）
+  if (!isAdmin(viewerRole)) {
+    return null
+  }
 
   const handleExportSelected = async () => {
     const selectedIds = table

@@ -38,6 +38,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
+import { isAdmin as isAdminRole } from '@/lib/role-guards'
+import { useAuthStore } from '@/stores/auth-store'
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { Button } from '@/components/ui/button'
 import {
@@ -144,8 +146,10 @@ export function DataTableRowActions({ row }: DataTableRowActionsProps) {
   const isDisabled = user.status === USER_STATUS.DISABLED
   const isAdmin = user.role >= USER_ROLE.ADMIN
   const isRoot = user.role === USER_ROLE.ROOT
+  const viewerRole = useAuthStore((state) => state.auth.user?.role)
 
-  if (isUserDeleted(user)) {
+  // ops 只读访问（0fb2d5d）：不渲染行操作列（编辑/启停/升降级/重置/删除）
+  if (!isAdminRole(viewerRole) || isUserDeleted(user)) {
     return null
   }
 
