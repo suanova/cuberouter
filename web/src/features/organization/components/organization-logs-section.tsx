@@ -386,8 +386,19 @@ function LogTypeFilter(props: {
   const { t } = useTranslation()
   const ANY_TYPE = ''
 
+  // The trigger resolves its text from the items the root is given, so the list
+  // is built once here and the options are drawn from it.
+  const typeItems = [
+    { value: ANY_TYPE, label: t('All Types') },
+    ...ORGANIZATION_LOG_TYPE_FILTER_OPTIONS.map((option) => ({
+      value: option.value,
+      label: t(option.labelKey),
+    })),
+  ]
+
   return (
     <Select
+      items={typeItems}
       value={props.value === undefined ? ANY_TYPE : String(props.value)}
       onValueChange={(next) => props.onChange(next ?? ANY_TYPE)}
     >
@@ -395,10 +406,9 @@ function LogTypeFilter(props: {
         <SelectValue placeholder={t('Type')} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ANY_TYPE}>{t('All Types')}</SelectItem>
-        {ORGANIZATION_LOG_TYPE_FILTER_OPTIONS.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {t(option.labelKey)}
+        {typeItems.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
           </SelectItem>
         ))}
       </SelectContent>

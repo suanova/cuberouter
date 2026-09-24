@@ -78,8 +78,19 @@ export function OrganizationSelectFilter(props: {
 }) {
   const { t } = useTranslation()
 
+  // The trigger resolves its text from the items the root is given, so the list
+  // is built once here and the options are drawn from it.
+  const items = [
+    { value: ANY_VALUE, label: props.allLabel },
+    ...props.options.map((option) => ({
+      value: option.value,
+      label: t(option.label),
+    })),
+  ]
+
   return (
     <Select
+      items={items}
       value={props.value ?? ANY_VALUE}
       onValueChange={(next) => props.onChange(next ?? ANY_VALUE)}
     >
@@ -87,10 +98,9 @@ export function OrganizationSelectFilter(props: {
         <SelectValue placeholder={props.placeholder} />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={ANY_VALUE}>{props.allLabel}</SelectItem>
-        {props.options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {t(option.label)}
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
           </SelectItem>
         ))}
       </SelectContent>

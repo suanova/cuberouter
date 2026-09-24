@@ -349,6 +349,13 @@ function buildMemberColumns(
 ): ColumnDef<OrganizationMemberRow>[] {
   const { t } = context
 
+  // The row picker resolves its trigger text from the items the root is given,
+  // so the options are built once here rather than inline in the cell.
+  const roleItems = ORGANIZATION_ASSIGNABLE_ROLES.map((role) => ({
+    value: role,
+    label: t(organizationRoleLabelKey(role)),
+  }))
+
   return [
     {
       accessorKey: 'username',
@@ -390,6 +397,7 @@ function buildMemberColumns(
         }
         return (
           <Select
+            items={roleItems}
             value={row.original.role}
             onValueChange={(value) =>
               // The select can report a cleared value; a role is never absent,
@@ -401,9 +409,9 @@ function buildMemberColumns(
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ORGANIZATION_ASSIGNABLE_ROLES.map((role) => (
-                <SelectItem key={role} value={role}>
-                  {t(organizationRoleLabelKey(role))}
+              {roleItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectContent>

@@ -195,6 +195,11 @@ export function OrganizationInviteDialog(props: OrganizationInviteDialogProps) {
     }
   }
 
+  const roleItems = ORGANIZATION_ASSIGNABLE_ROLES.map((role) => ({
+    value: role,
+    label: t(organizationRoleLabelKey(role)),
+  }))
+
   return (
     <>
       <Dialog
@@ -262,16 +267,20 @@ export function OrganizationInviteDialog(props: OrganizationInviteDialogProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Role')}</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    items={roleItems}
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  >
                     <FormControl>
                       <SelectTrigger className='w-full'>
                         <SelectValue />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {ORGANIZATION_ASSIGNABLE_ROLES.map((role) => (
-                        <SelectItem key={role} value={role}>
-                          {t(organizationRoleLabelKey(role))}
+                      {roleItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

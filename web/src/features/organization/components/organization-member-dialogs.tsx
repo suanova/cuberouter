@@ -232,6 +232,16 @@ function TransferTargetField<TValues extends FieldValues>(props: {
 }) {
   const { t } = useTranslation()
 
+  // The trigger resolves its text from the items the root is given, so the
+  // options below are built once here and the select is drawn from them.
+  const items = [
+    { value: '', label: props.emptyOptionLabel },
+    ...props.options.map((option) => ({
+      value: String(option.value),
+      label: option.label,
+    })),
+  ]
+
   return (
     <FormField
       control={props.control}
@@ -240,6 +250,7 @@ function TransferTargetField<TValues extends FieldValues>(props: {
         <FormItem>
           <FormLabel>{t('Transfer responsible API keys to')}</FormLabel>
           <Select
+            items={items}
             value={field.value === undefined ? '' : String(field.value)}
             onValueChange={(value) =>
               field.onChange(value === '' || value === null ? undefined : Number(value))
@@ -252,10 +263,9 @@ function TransferTargetField<TValues extends FieldValues>(props: {
               </SelectTrigger>
             </FormControl>
             <SelectContent>
-              <SelectItem value=''>{props.emptyOptionLabel}</SelectItem>
-              {props.options.map((option) => (
-                <SelectItem key={option.value} value={String(option.value)}>
-                  {option.label}
+              {items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -323,6 +333,11 @@ export function OrganizationAddMemberDialog(props: {
     }
   }
 
+  const roleItems = ORGANIZATION_ASSIGNABLE_ROLES.map((role) => ({
+    value: role,
+    label: t(organizationRoleLabelKey(role)),
+  }))
+
   return (
     <Dialog
       open={props.open}
@@ -383,16 +398,20 @@ export function OrganizationAddMemberDialog(props: {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('Role')}</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  items={roleItems}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
                   <FormControl>
                     <SelectTrigger className='w-full'>
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {ORGANIZATION_ASSIGNABLE_ROLES.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {t(organizationRoleLabelKey(role))}
+                    {roleItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -839,6 +858,15 @@ export function OrganizationMemberEditDialog(props: {
     }
   }
 
+  const roleItems = ORGANIZATION_ASSIGNABLE_ROLES.map((role) => ({
+    value: role,
+    label: t(organizationRoleLabelKey(role)),
+  }))
+  const statusItems = [
+    { value: 'active', label: t('Active') },
+    { value: 'disabled', label: t('Disabled') },
+  ]
+
   return (
     <Dialog
       open
@@ -890,16 +918,20 @@ export function OrganizationMemberEditDialog(props: {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('Role')}</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  items={roleItems}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
                   <FormControl>
                     <SelectTrigger className='w-full'>
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {ORGANIZATION_ASSIGNABLE_ROLES.map((role) => (
-                      <SelectItem key={role} value={role}>
-                        {t(organizationRoleLabelKey(role))}
+                    {roleItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -915,15 +947,22 @@ export function OrganizationMemberEditDialog(props: {
             render={({ field }) => (
               <FormItem>
                 <FormLabel>{t('Status')}</FormLabel>
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  items={statusItems}
+                  value={field.value}
+                  onValueChange={field.onChange}
+                >
                   <FormControl>
                     <SelectTrigger className='w-full'>
                       <SelectValue />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value='active'>{t('Active')}</SelectItem>
-                    <SelectItem value='disabled'>{t('Disabled')}</SelectItem>
+                    {statusItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 {status === 'disabled' && (

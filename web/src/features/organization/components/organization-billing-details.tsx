@@ -282,6 +282,13 @@ export function OrganizationBillingDetails(props: OrganizationBillingDetailsProp
     }
   }
 
+  // The trigger resolves its text from the items the root is given, so the list
+  // is built once here and the options are drawn from it.
+  const monthItems = [
+    { value: ALL_MONTHS, label: t('All months') },
+    ...monthOptions.map((option) => ({ value: option, label: option })),
+  ]
+
   return (
     <DataTablePage
       table={table}
@@ -317,6 +324,7 @@ export function OrganizationBillingDetails(props: OrganizationBillingDetailsProp
             <>
               <LogsFilterField>
                 <Select
+                  items={monthItems}
                   value={monthFilter === undefined ? month : monthFilter}
                   onValueChange={(value) =>
                     setOrganizationTextFilter(
@@ -331,10 +339,9 @@ export function OrganizationBillingDetails(props: OrganizationBillingDetailsProp
                     <SelectValue placeholder={t('Month')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value={ALL_MONTHS}>{t('All months')}</SelectItem>
-                    {monthOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
+                    {monthItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
                       </SelectItem>
                     ))}
                   </SelectContent>

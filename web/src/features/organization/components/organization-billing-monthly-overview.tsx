@@ -148,6 +148,13 @@ export function OrganizationBillingMonthlyOverview(
     )
   }
 
+  // The trigger resolves its text from the items the root is given, so the list
+  // is built once here and the options are drawn from it.
+  const monthCountItems = ORGANIZATION_BILLING_MONTH_COUNTS.map((count) => ({
+    value: String(count),
+    label: t('Last {{count}} months', { count }),
+  }))
+
   return (
     <div className='flex flex-col gap-3'>
       <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
@@ -192,6 +199,7 @@ export function OrganizationBillingMonthlyOverview(
           <CardTitle>{t('Monthly cost')}</CardTitle>
           <CardAction className='flex flex-wrap items-center gap-2'>
             <Select
+              items={monthCountItems}
               value={String(months)}
               onValueChange={(value) =>
                 void navigate({
@@ -206,9 +214,9 @@ export function OrganizationBillingMonthlyOverview(
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {ORGANIZATION_BILLING_MONTH_COUNTS.map((count) => (
-                  <SelectItem key={count} value={String(count)}>
-                    {t('Last {{count}} months', { count })}
+                {monthCountItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>

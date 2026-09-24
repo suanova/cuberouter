@@ -155,6 +155,12 @@ export function PlatformOrganizationOwnerRepair(
     roster,
     props.ownerUserId
   )
+  // The trigger resolves its text from the items the root is given, so the list
+  // is built once here and the options are drawn from it.
+  const ownerItems = ownerOptions.map((option) => ({
+    value: String(option.value),
+    label: option.label,
+  }))
   const isSlugConfirmed = isOrganizationSlugConfirmed(props.slug, confirmSlug)
 
   const onSubmit = async (values: PlatformOrganizationOwnerTransferValues) => {
@@ -246,6 +252,7 @@ export function PlatformOrganizationOwnerRepair(
                   <FormLabel>{t('New owner')}</FormLabel>
                   <FormControl>
                     <Select
+                      items={ownerItems}
                       value={field.value > 0 ? String(field.value) : ''}
                       onValueChange={(value) =>
                         field.onChange(Number(value))
@@ -257,12 +264,9 @@ export function PlatformOrganizationOwnerRepair(
                         />
                       </SelectTrigger>
                       <SelectContent>
-                        {ownerOptions.map((option) => (
-                          <SelectItem
-                            key={option.value}
-                            value={String(option.value)}
-                          >
-                            {option.label}
+                        {ownerItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -144,6 +144,17 @@ export function CampaignsMutateDrawer({
   const campaignType = form.watch('type')
   const isInvitation = campaignType === CAMPAIGN_TYPE.INVITATION
 
+  // The two selects resolve their trigger text from the items the root is
+  // given, so each list is built once here and both the options and the
+  // registry are drawn from it.
+  const typeItems = Object.entries(CAMPAIGN_TYPES).map(([value, config]) => ({
+    value,
+    label: t(config.labelKey),
+  }))
+  const statusItems = Object.entries(CAMPAIGN_STATUSES).map(
+    ([value, config]) => ({ value, label: t(config.labelKey) })
+  )
+
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent className={sideDrawerContentClassName('sm:max-w-[600px]')}>
@@ -209,6 +220,7 @@ export function CampaignsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Type')}</FormLabel>
                       <Select
+                        items={typeItems}
                         onValueChange={field.onChange}
                         value={field.value}
                         disabled={isUpdate}
@@ -224,13 +236,11 @@ export function CampaignsMutateDrawer({
                         </FormControl>
                         <SelectContent alignItemWithTrigger={false}>
                           <SelectGroup>
-                            {Object.entries(CAMPAIGN_TYPES).map(
-                              ([value, config]) => (
-                                <SelectItem key={value} value={value}>
-                                  {t(config.labelKey)}
-                                </SelectItem>
-                              )
-                            )}
+                            {typeItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
@@ -251,6 +261,7 @@ export function CampaignsMutateDrawer({
                     <FormItem>
                       <FormLabel>{t('Status')}</FormLabel>
                       <Select
+                        items={statusItems}
                         onValueChange={(value) => field.onChange(Number(value))}
                         value={String(field.value)}
                       >
@@ -265,13 +276,11 @@ export function CampaignsMutateDrawer({
                         </FormControl>
                         <SelectContent alignItemWithTrigger={false}>
                           <SelectGroup>
-                            {Object.entries(CAMPAIGN_STATUSES).map(
-                              ([value, config]) => (
-                                <SelectItem key={value} value={value}>
-                                  {t(config.labelKey)}
-                                </SelectItem>
-                              )
-                            )}
+                            {statusItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label}
+                              </SelectItem>
+                            ))}
                           </SelectGroup>
                         </SelectContent>
                       </Select>

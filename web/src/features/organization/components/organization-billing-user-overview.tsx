@@ -150,6 +150,8 @@ export function OrganizationBillingUserOverview(
     )
   }
 
+  const monthItems = months.map((month) => ({ value: month, label: month }))
+
   return (
     <div className='flex flex-col gap-3'>
       <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4'>
@@ -198,6 +200,7 @@ export function OrganizationBillingUserOverview(
           </CardTitle>
           <CardAction className='flex flex-wrap items-center gap-2'>
             <Select
+              items={monthItems}
               value={range.start}
               onValueChange={(value) =>
                 setMonth('billingStartMonth', String(value))
@@ -207,14 +210,15 @@ export function OrganizationBillingUserOverview(
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {months.map((month) => (
-                  <SelectItem key={month} value={month}>
-                    {month}
+                {monthItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select
+              items={monthItems}
               value={range.end}
               onValueChange={(value) => setMonth('billingEndMonth', String(value))}
             >
@@ -222,9 +226,9 @@ export function OrganizationBillingUserOverview(
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {months.map((month) => (
-                  <SelectItem key={month} value={month}>
-                    {month}
+                {monthItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
                   </SelectItem>
                 ))}
               </SelectContent>

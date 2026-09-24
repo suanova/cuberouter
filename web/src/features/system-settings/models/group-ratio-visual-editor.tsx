@@ -236,8 +236,16 @@ function GroupNameSelect(props: GroupNameSelectProps) {
     return props.options
   }, [props.options, props.value])
 
+  // The trigger resolves its text from the items the root is given, so the list
+  // is derived from the very options below.
+  const items = useMemo(
+    () => options.map((name) => ({ value: name, label: name })),
+    [options]
+  )
+
   return (
     <Select
+      items={items}
       value={props.value === '' ? null : props.value}
       onValueChange={(v) => {
         if (typeof v === 'string' && v !== '') props.onValueChange(v)
@@ -248,9 +256,9 @@ function GroupNameSelect(props: GroupNameSelectProps) {
       </SelectTrigger>
       <SelectContent alignItemWithTrigger={false}>
         <SelectGroup>
-          {options.map((name) => (
-            <SelectItem key={name} value={name}>
-              {name}
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
             </SelectItem>
           ))}
         </SelectGroup>

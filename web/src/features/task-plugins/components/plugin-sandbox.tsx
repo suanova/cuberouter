@@ -42,6 +42,10 @@ const hooks = [
   'renderers.openai_video',
 ]
 
+// The trigger resolves its text from the items the root is given, so the list
+// is built once here and the select is drawn from it.
+const hookItems = hooks.map((item) => ({ value: item, label: item }))
+
 export function PluginSandbox(props: { pluginKey: string }) {
   const { t } = useTranslation()
   const [hook, setHook] = useState('buildSubmitRequest')
@@ -64,15 +68,19 @@ export function PluginSandbox(props: { pluginKey: string }) {
 
   return (
     <div className='flex flex-col gap-4'>
-      <Select value={hook} onValueChange={(value) => setHook(value ?? '')}>
+      <Select
+        items={hookItems}
+        value={hook}
+        onValueChange={(value) => setHook(value ?? '')}
+      >
         <SelectTrigger aria-label={t('Hook')}>
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            {hooks.map((item) => (
-              <SelectItem key={item} value={item}>
-                {item}
+            {hookItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectGroup>

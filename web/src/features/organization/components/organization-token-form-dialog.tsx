@@ -285,6 +285,24 @@ export function OrganizationTokenFormDialog(
 
   const quotaPresets = ORGANIZATION_TOKEN_QUOTA_PRESET_AMOUNTS
 
+  // Each picker resolves its trigger text from the items the root is given, so
+  // the list is built once here and is what both the options and the registry
+  // are drawn from — the two cannot drift apart.
+  const visibilityItems = Object.entries(ORGANIZATION_TOKEN_VISIBILITIES).map(
+    ([value, meta]) => ({ value, label: t(meta.labelKey) })
+  )
+  const responsibleItems = responsibleOptions.map((option) => ({
+    value: String(option.value),
+    label: option.label,
+  }))
+  const groupItems = [
+    { value: MEMBER_OPTION_NONE, label: t("The organization's group") },
+    ...props.groupOptions.map((option) => ({
+      value: option.value,
+      label: option.desc ? `${option.label} · ${option.desc}` : option.label,
+    })),
+  ]
+
   return (
     <>
       <Dialog
@@ -387,6 +405,7 @@ export function OrganizationTokenFormDialog(
                     <FormItem>
                       <FormLabel>{t('Visibility')}</FormLabel>
                       <Select
+                        items={visibilityItems}
                         value={field.value}
                         onValueChange={field.onChange}
                       >
@@ -396,13 +415,11 @@ export function OrganizationTokenFormDialog(
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Object.entries(ORGANIZATION_TOKEN_VISIBILITIES).map(
-                            ([value, meta]) => (
-                              <SelectItem key={value} value={value}>
-                                {t(meta.labelKey)}
-                              </SelectItem>
-                            )
-                          )}
+                          {visibilityItems.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                       <FormDescription>
@@ -423,6 +440,7 @@ export function OrganizationTokenFormDialog(
                     <FormItem>
                       <FormLabel>{t('Responsible user')}</FormLabel>
                       <Select
+                        items={responsibleItems}
                         value={
                           field.value === undefined ? '' : String(field.value)
                         }
@@ -443,12 +461,9 @@ export function OrganizationTokenFormDialog(
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {responsibleOptions.map((option) => (
-                            <SelectItem
-                              key={option.value}
-                              value={String(option.value)}
-                            >
-                              {option.label}
+                          {responsibleItems.map((item) => (
+                            <SelectItem key={item.value} value={item.value}>
+                              {item.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -592,6 +607,7 @@ export function OrganizationTokenFormDialog(
                 <FormItem>
                   <FormLabel>{t('Token group')}</FormLabel>
                   <Select
+                    items={groupItems}
                     value={field.value || MEMBER_OPTION_NONE}
                     onValueChange={(value) =>
                       field.onChange(
@@ -607,14 +623,9 @@ export function OrganizationTokenFormDialog(
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value={MEMBER_OPTION_NONE}>
-                        {t("The organization's group")}
-                      </SelectItem>
-                      {props.groupOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.desc
-                            ? `${option.label} · ${option.desc}`
-                            : option.label}
+                      {groupItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
                         </SelectItem>
                       ))}
                     </SelectContent>

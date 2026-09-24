@@ -104,6 +104,11 @@ export function PluginDetailSheet(props: PluginDetailSheetProps) {
     detail?.meta.description ?? props.plugin?.meta.description,
     i18n.language
   )
+  // The trigger resolves its text from the items the root is given, so the list
+  // is built once here and the select is drawn from it.
+  const compareItems = versions
+    .filter((version) => version.version !== detail?.meta.version)
+    .map((version) => ({ value: version.version, label: version.version }))
   return (
     <Sheet open={Boolean(props.plugin)} onOpenChange={props.onOpenChange}>
       <SheetContent className='w-full overflow-y-auto sm:max-w-4xl'>
@@ -192,6 +197,7 @@ export function PluginDetailSheet(props: PluginDetailSheetProps) {
             </TabsContent>
             <TabsContent value='diff' className='space-y-3'>
               <Select
+                items={compareItems}
                 value={compareVersion}
                 onValueChange={(value) => setCompareVersion(value ?? '')}
               >
@@ -200,15 +206,11 @@ export function PluginDetailSheet(props: PluginDetailSheetProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {versions
-                      .filter(
-                        (version) => version.version !== detail?.meta.version
-                      )
-                      .map((version) => (
-                        <SelectItem key={version.id} value={version.version}>
-                          {version.version}
-                        </SelectItem>
-                      ))}
+                    {compareItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
