@@ -6037,6 +6037,9 @@
     "Unsupported image URL.": "Unsupported image URL.",
     "Could not download image for local history.": "Could not download image for local history.",
     "Unsupported image download.": "Unsupported image download.",
-    "Choose a reference image.": "Choose a reference image."
+    "Choose a reference image.": "Choose a reference image.",
+    "Native Quota (tokens)": "Native Quota (tokens)",
+    "Enter the native quota in tokens": "Enter the native quota in tokens",
+    "The native quota amount this API key can consume": "The native quota amount this API key can consume"
   }
 }

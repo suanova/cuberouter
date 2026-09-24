@@ -6037,6 +6037,9 @@
     "Unsupported image URL.": "不支援此图片网址。",
     "Could not download image for local history.": "无法下载图片至本机历史。",
     "Unsupported image download.": "不支援此图片下载格式。",
-    "Choose a reference image.": "请选择参考图。"
+    "Choose a reference image.": "请选择参考图。",
+    "Native Quota (tokens)": "原生额度（tokens）",
+    "Enter the native quota in tokens": "请输入原生额度（tokens）",
+    "The native quota amount this API key can consume": "该 API Key 可消耗的原生额度"
   }
 }
