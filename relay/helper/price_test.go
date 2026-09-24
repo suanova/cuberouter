@@ -304,10 +304,12 @@ func TestModelPriceHelperPerCallVideoTablePriority(t *testing.T) {
 	assert.Equal(t, 375000, priceData.Quota)
 }
 
-// Pricing at controller/relay.go runs before ApplyReasoningModelSuffix.
-// Identity is GetBillingModelName() → OriginModelName (the suffixed client
-// name), matching main's info.OriginModelName lookup. Wildcard entries such
-// as gemini-2.5-flash-thinking-* depend on that unstripped origin form.
+// Pricing identity is resolved once in ModelPriceHelper via the candidate
+// ladder: raw name (only when it has no @ modifiers) → canonical
+// base@effort:E@thinking:S → base@thinking:S → base. Each level is looked up
+// after FormatMatchingModelName wildcard normalization. A hit on the raw
+// gemini-2.5-flash-thinking-* wildcard must keep the client origin as the
+// consume-log name.
 func TestModelPriceHelperUsesSuffixedOriginLikeMain(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -340,6 +342,22 @@ func TestModelPriceHelperUsesSuffixedOriginLikeMain(t *testing.T) {
 	assert.Equal(t, "gemini-2.5-flash-thinking-8192", suffixed.GetBillingModelName())
 	assert.Equal(t, 0.075, suffixedPrice.ModelRatio)
 
+	geminiSettings := model_setting.GetGeminiSettings()
+	oldThinking := geminiSettings.ThinkingAdapterEnabled
+	geminiSettings.ThinkingAdapterEnabled = true
+	t.Cleanup(func() { geminiSettings.ThinkingAdapterEnabled = oldThinking })
+
+	adapterOn := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-2.5-flash-thinking-8192",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	adapterOnPrice, err := ModelPriceHelper(ctx, adapterOn, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	assert.Empty(t, adapterOn.BillingModelName)
+	assert.Equal(t, "gemini-2.5-flash-thinking-8192", adapterOn.GetBillingModelName())
+	assert.Equal(t, 0.075, adapterOnPrice.ModelRatio)
+
 	base := &relaycommon.RelayInfo{
 		OriginModelName: "gemini-2.5-flash",
 		UserGroup:       "default",
@@ -350,6 +368,43 @@ func TestModelPriceHelperUsesSuffixedOriginLikeMain(t *testing.T) {
 	assert.Empty(t, base.BillingModelName)
 	assert.Equal(t, "gemini-2.5-flash", base.GetBillingModelName())
 	assert.Equal(t, 0.15, basePrice.ModelRatio)
+}
+
+func TestModelPriceHelperHonorsCustomClaudeThinkingAlias(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedRatios := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios))
+	})
+	ratios := ratio_setting.GetModelRatioCopy()
+	ratios["claude-3-7-sonnet"] = 1.5
+	ratios["claude-3-7-sonnet-thinking"] = 3.0
+	ratioJSON, err := common.Marshal(ratios)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(string(ratioJSON)))
+
+	oldSelfUse := operation_setting.SelfUseModeEnabled
+	operation_setting.SelfUseModeEnabled = false
+	t.Cleanup(func() { operation_setting.SelfUseModeEnabled = oldSelfUse })
+
+	claudeSettings := model_setting.GetClaudeSettings()
+	oldThinking := claudeSettings.ThinkingAdapterEnabled
+	claudeSettings.ThinkingAdapterEnabled = true
+	t.Cleanup(func() { claudeSettings.ThinkingAdapterEnabled = oldThinking })
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "claude-3-7-sonnet-thinking",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+	priceData, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{})
+	require.NoError(t, err)
+	assert.Empty(t, info.BillingModelName)
+	assert.Equal(t, "claude-3-7-sonnet-thinking", info.GetBillingModelName())
+	assert.Equal(t, 3.0, priceData.ModelRatio)
 }
 
 func TestModelPriceHelperNativeGeminiNoThinkingDoesNotAliasBillingModel(t *testing.T) {

@@ -44,6 +44,7 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 		router.NoRoute(
 			pluginDispatcher,
 			relayV1CompatRedirect(bareV1RoutePatterns(router.Routes())),
+			middleware.AccessTokenAudit(),
 			func(c *gin.Context) {
 				c.Set(middleware.RouteTagKey, "web")
 				c.Redirect(http.StatusMovedPermanently, fmt.Sprintf("%s%s", frontendBaseUrl, c.Request.RequestURI))

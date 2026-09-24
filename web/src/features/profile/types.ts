@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { UserPermissions } from '@/stores/auth-store'
+
 // ============================================================================
 // Profile Type Definitions
 // ============================================================================
@@ -33,6 +35,7 @@ export interface ApiResponse<T = unknown> {
  * User profile data
  */
 export interface UserProfile {
+  permissions?: UserPermissions
   /** User ID */
   id: number
   /** Username */

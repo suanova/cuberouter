@@ -94,6 +94,11 @@ export function SidebarModulesCard() {
           description: t('API usage records'),
         },
         {
+          key: 'audit',
+          title: t('Audit Logs'),
+          description: t('Login, security and access records'),
+        },
+        {
           key: 'midjourney',
           title: t('Drawing Logs'),
           description: t('Drawing task records'),
@@ -119,6 +124,11 @@ export function SidebarModulesCard() {
           key: 'personal',
           title: t('Personal Settings'),
           description: t('Personal info settings'),
+        },
+        {
+          key: 'security',
+          title: t('Security & Access'),
+          description: t('Manage your security settings and account access'),
         },
       ],
     },

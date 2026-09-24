@@ -7,8 +7,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
-	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
 )
 
@@ -170,29 +170,22 @@ func finishAdminAudit(c *gin.Context, writer *auditResponseWriter) {
 	// content 为英文兜底文本（供导出等非本地化消费者使用）。
 	content := method + " " + route
 
-	adminInfo := map[string]interface{}{
-		"admin_id":       operatorId,
-		"admin_username": operatorName,
-		"admin_role":     operatorRole,
-		"auth_method":    auditAuthMethod(c),
+	adminInfo := &model.AuditAdminInfo{
+		AdminID:       operatorId,
+		AdminUsername: operatorName,
+		AdminRole:     operatorRole,
+		AuthMethod:    auditAuthMethod(c),
 	}
-	auditInfo := map[string]interface{}{
-		"method":  method,
-		"route":   route,
-		"path":    c.Request.URL.Path,
-		"status":  status,
-		"success": success,
-	}
-	if len(routeParams) > 0 {
-		auditInfo["params"] = routeParams
+	auditInfo := &model.AuditRequestInfo{
+		Method:  method,
+		Route:   route,
+		Path:    route,
+		Status:  status,
+		Success: success,
+		Params:  routeParams,
 	}
 
-	// Add 在派发前于调用方 goroutine 完成，并发的 Wait 不会漏掉这一次。
-	adminAuditWG.Add(1)
-	gopool.Go(func() {
-		defer adminAuditWG.Done()
-		model.RecordOperationAuditLog(operatorId, content, ip, action, opParams, adminInfo, auditInfo)
-	})
+	model.RecordOperationAuditLog(operatorId, operatorRole, content, ip, action, opParams, adminInfo, auditInfo, c)
 }
 
 func auditAuthMethod(c *gin.Context) string {
@@ -218,4 +211,56 @@ func auditResponseSuccess(status int, body []byte) bool {
 		}
 	}
 	return status < 400
+}
+
+const accessTokenAuditContextKey = "access_token_request_audit"
+
+type accessTokenRequestAudit struct {
+	entry  model.AuditLog
+	writer *auditResponseWriter
+}
+
+// AccessTokenAudit also captures public reads and rejections before route-level
+// authentication (for example, rate limiting). It does not grant authentication.
+func AccessTokenAudit() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw, present := authorizationToken(c.GetHeader("Authorization"))
+		if present {
+			_, internal, _ := service.ParseDashboardAccessToken(raw)
+			if !internal {
+				user, err := model.ValidateAccessToken(raw)
+				if err == nil && user != nil && user.Id > 0 {
+					beginAccessTokenAudit(c, user, raw)
+					defer finishAccessTokenAudit(c)
+				}
+			}
+		}
+		c.Next()
+	}
+}
+
+func beginAccessTokenAudit(c *gin.Context, user *model.User, token string) {
+	if _, exists := c.Get(accessTokenAuditContextKey); exists {
+		return
+	}
+	writer := &auditResponseWriter{ResponseWriter: c.Writer, body: bytes.NewBuffer(nil), maxSize: 64 * 1024}
+	c.Writer = writer
+	c.Set(accessTokenAuditContextKey, &accessTokenRequestAudit{
+		entry:  model.AuditLog{UserId: user.Id, Username: user.Username, ActorRole: user.Role, Category: model.AuditCategoryAccessToken, AuthMethod: "access_token", TokenRef: model.AccessTokenFingerprint(token), CreatedAt: common.GetTimestamp(), EventId: common.NewRequestId()},
+		writer: writer,
+	})
+}
+
+func finishAccessTokenAudit(c *gin.Context) {
+	value, exists := c.Get(accessTokenAuditContextKey)
+	if !exists {
+		return
+	}
+	audit, ok := value.(*accessTokenRequestAudit)
+	if !ok {
+		return
+	}
+	audit.entry.Status = audit.writer.Status()
+	audit.entry.Success = auditResponseSuccess(audit.entry.Status, audit.writer.body.Bytes())
+	model.RecordAuditLog(c, audit.entry)
 }

@@ -73,7 +73,9 @@ export function SecureVerificationDialog({
     state.description ??
     (availableTabs.length
       ? 'Confirm your identity before accessing this sensitive action.'
-      : 'Enable Two-factor Authentication or Passkey in your profile settings to continue.')
+      : t(
+          'Enable Two-factor Authentication or Passkey in Security & Access to continue.'
+        ))
 
   const handleVerify = () => {
     if (!activeMethod) return
@@ -132,7 +134,7 @@ export function SecureVerificationDialog({
           </div>
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Enable Two-factor Authentication or Passkey in your profile to unlock sensitive operations.'
+              'Enable Two-factor Authentication or Passkey in Security & Access to unlock sensitive operations.'
             )}
           </p>
         </div>

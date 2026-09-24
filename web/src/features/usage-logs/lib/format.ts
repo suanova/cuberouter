@@ -389,6 +389,14 @@ export function formatDuration(
  * translatable instead of being frozen to whatever language was written to DB.
  */
 const AUDIT_TEMPLATES: Record<string, string> = {
+  'access_token.generate': 'Generated a system access token',
+  'access_token.revoke': 'Revoked the system access token',
+  'user.2fa_setup': 'Started two-factor authentication setup',
+  'user.2fa_enable': 'Enabled two-factor authentication',
+  'user.2fa_disable_self': 'Disabled two-factor authentication',
+  'user.2fa_backup_codes': 'Regenerated two-factor backup codes',
+  'user.security_verify': 'Completed security verification',
+
   login: 'Logged in successfully via {{method}}',
   // User management
   'user.create': 'Created user {{username}} (role {{role}})',
@@ -420,6 +428,9 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   // Channel
   'channel.create': 'Created channel {{name}} (type {{type}}, count {{count}})',
   'channel.update': 'Updated channel {{name}} (ID: {{id}})',
+  'channel.status_update': 'Updated channel status (ID: {{id}})',
+  'channel.status_update_batch':
+    'Batch updated channel status ({{count}}/{{total}} changed)',
   'channel.delete': 'Deleted channel {{name}} (ID: {{id}})',
   'channel.delete_batch': 'Batch deleted {{count}} channels',
   'channel.delete_disabled': 'Deleted all disabled channels ({{count}})',
