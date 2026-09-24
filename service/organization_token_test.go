@@ -1179,3 +1179,93 @@ func TestOrganizationTokenBatchDeleteIdempotencyConflict(t *testing.T) {
 
 	require.ErrorContains(t, err, "organization idempotency conflict")
 }
+
+// 过期时间已经过去的组织 Key，列表和详情都必须读成 Expired。
+//
+// token.status 是落库字段，而 model.ValidateUserToken 只在未启用 Redis 时才把过期
+// 状态写回数据库；开着 Redis 的部署里过期 Key 会一直停在 Enabled，列表于是把一把
+// 请求必然 401 的 Key 显示成可用。这里锁定读时算出来的有效状态，以及列表筛选要和
+// 它保持一致——筛选读的是数据库列，不跟着改就会出现「筛已过期一条都没有，徽标却
+// 写着 Expired」。
+func TestOrganizationTokenExpiredKeyReadsAsExpired(t *testing.T) {
+	admin, _, organization := createOrganizationTokenTestOrg(t)
+	past := common.GetTimestamp() - 3600
+	expired, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "expired-key", ExpiredTime: past})
+	require.NoError(t, err)
+	live, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "live-key", ExpiredTime: -1})
+	require.NoError(t, err)
+
+	// 有效状态是读时算出来的，落库的那一列不动。
+	var stored model.Token
+	require.NoError(t, model.DB.Where("id = ?", expired.Id).First(&stored).Error)
+	require.Equal(t, common.TokenStatusEnabled, stored.Status)
+
+	detail, err := GetOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, expired.Id)
+	require.NoError(t, err)
+	require.Equal(t, common.TokenStatusExpired, detail.Status)
+
+	tokens, total, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20})
+	require.NoError(t, err)
+	require.EqualValues(t, 2, total)
+	require.Len(t, tokens, 2)
+	statusById := map[int]int{}
+	for _, token := range tokens {
+		statusById[token.Id] = token.Status
+	}
+	require.Equal(t, common.TokenStatusExpired, statusById[expired.Id])
+	require.Equal(t, common.TokenStatusEnabled, statusById[live.Id])
+
+	expiredOnly, expiredTotal, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20, Status: common.TokenStatusExpired})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, expiredTotal)
+	require.Len(t, expiredOnly, 1)
+	require.Equal(t, expired.Id, expiredOnly[0].Id)
+
+	// 筛「启用」不能把过期的那把也算进来，否则筛选结果和徽标自相矛盾。
+	enabledOnly, enabledTotal, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20, Status: common.TokenStatusEnabled})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, enabledTotal)
+	require.Len(t, enabledOnly, 1)
+	require.Equal(t, live.Id, enabledOnly[0].Id)
+}
+
+// 手工停用的 Key 即使同时过期也读成 Disabled：停用是人的决定，不该被时间盖掉，
+// 否则管理员会看到一个自己从没设置过的状态。
+func TestOrganizationTokenDisabledOutranksExpiry(t *testing.T) {
+	admin, _, organization := createOrganizationTokenTestOrg(t)
+	past := common.GetTimestamp() - 3600
+	token, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "disabled-expired", ExpiredTime: past})
+	require.NoError(t, err)
+	_, err = UpdateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, token.Id, OrganizationTokenRequest{Name: "disabled-expired", Status: common.TokenStatusDisabled, ExpiredTime: past, UnlimitedQuota: true})
+	require.NoError(t, err)
+
+	detail, err := GetOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, token.Id)
+	require.NoError(t, err)
+	require.Equal(t, common.TokenStatusDisabled, detail.Status)
+
+	disabledOnly, disabledTotal, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20, Status: common.TokenStatusDisabled})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, disabledTotal)
+	require.Len(t, disabledOnly, 1)
+	require.Equal(t, token.Id, disabledOnly[0].Id)
+}
+
+// 未启用 Redis 的部署会把过期状态写回库，这类已经落库为 Expired 的 Key 同样要被
+// 「已过期」筛选捞到。筛选条件改成分支判定后，别把这一半漏掉。
+func TestOrganizationTokenStoredExpiredKeyStaysFilterable(t *testing.T) {
+	admin, _, organization := createOrganizationTokenTestOrg(t)
+	token, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "stored-expired", ExpiredTime: -1})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", token.Id).Update("status", common.TokenStatusExpired).Error)
+
+	expiredOnly, total, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20, Status: common.TokenStatusExpired})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, expiredOnly, 1)
+	require.Equal(t, token.Id, expiredOnly[0].Id)
+	require.Equal(t, common.TokenStatusExpired, expiredOnly[0].Status)
+
+	_, enabledTotal, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20, Status: common.TokenStatusEnabled})
+	require.NoError(t, err)
+	require.EqualValues(t, 0, enabledTotal)
+}

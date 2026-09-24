@@ -149,7 +149,7 @@ func applyOrganizationTokenListFilters(query *gorm.DB, req OrganizationTokenList
 		query = query.Where("name LIKE ? ESCAPE '!'", pattern)
 	}
 	if req.Status > 0 {
-		query = query.Where("status = ?", req.Status)
+		query = applyOrganizationTokenStatusFilter(query, req.Status)
 	}
 	visibility := strings.TrimSpace(req.Visibility)
 	if visibility != "" {
@@ -168,6 +168,24 @@ func applyOrganizationTokenListFilters(query *gorm.DB, req OrganizationTokenList
 		}
 	}
 	return query, nil
+}
+
+// 列表的 status 筛选读的是数据库列，展示用的却是读时算出来的有效状态。两者不按同一
+// 套规则翻译，就会出现「筛已过期一条都没有，徽标却写着 Expired」。这里把筛选条件按
+// organizationTokenEffectiveStatus 的判定展开，让筛选结果和徽标一致。
+func applyOrganizationTokenStatusFilter(query *gorm.DB, status int) *gorm.DB {
+	now := common.GetTimestamp()
+	switch status {
+	case common.TokenStatusExpired:
+		// 已落库的过期，或落库仍是启用但已过了期限。
+		return query.Where(model.DB.Where("status = ?", common.TokenStatusExpired).
+			Or("status = ? AND expired_time <> ? AND expired_time < ?", common.TokenStatusEnabled, -1, now))
+	case common.TokenStatusEnabled:
+		return query.Where("status = ?", common.TokenStatusEnabled).
+			Where(model.DB.Where("expired_time = ?", -1).Or("expired_time >= ?", now))
+	default:
+		return query.Where("status = ?", status)
+	}
 }
 
 func hydrateOrganizationTokenResponsibleUsers(tokens []*model.Token) error {
@@ -237,6 +255,22 @@ func hydrateOrganizationTokenAvailability(tokens []*model.Token) error {
 	return nil
 }
 
+// organizationTokenEffectiveStatus 是组织 Key 对外的有效状态。
+//
+// token.status 落在库里，而 model.ValidateUserToken 只在未启用 Redis 时才把过期状态
+// 写回数据库；开着 Redis 的部署里过期 Key 会一直停在 Enabled，列表于是把一把请求必然
+// 401 的 Key 显示成可用。是否过期读时按 ValidateUserToken 的同一套判定算出来，落库的
+// 那一列不动。停用是人的决定，优先于过期——管理员不该看到一个自己没设过的状态。
+func organizationTokenEffectiveStatus(token *model.Token) int {
+	if token == nil {
+		return 0
+	}
+	if token.Status == common.TokenStatusEnabled && token.ExpiredTime != -1 && token.ExpiredTime < common.GetTimestamp() {
+		return common.TokenStatusExpired
+	}
+	return token.Status
+}
+
 func applyOrganizationTokenAvailability(token *model.Token, blockers []model.OrganizationTokenSystemBlocker) {
 	if token == nil {
 		return
@@ -246,6 +280,7 @@ func applyOrganizationTokenAvailability(token *model.Token, blockers []model.Org
 	token.SystemDisabledReason = ""
 	token.SystemDisabledRefId = 0
 	token.SystemDisabledAt = 0
+	token.Status = organizationTokenEffectiveStatus(token)
 	if len(blockers) == 0 {
 		return
 	}
