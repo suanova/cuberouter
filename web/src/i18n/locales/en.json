@@ -1073,6 +1073,7 @@
     "Blend": "Blend",
     "Block email aliases (e.g., user+alias@domain.com)": "Block email aliases (e.g., user+alias@domain.com)",
     "Blocked keywords": "Blocked keywords",
+    "Blockers": "Blockers",
     "Blocks messages when sensitive keywords are detected.": "Blocks messages when sensitive keywords are detected.",
     "Body param": "Body param",
     "Border radius": "Border radius",

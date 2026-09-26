@@ -419,6 +419,9 @@ func migrateDB() error {
 	if err := prepareOrganizationMemberDisableSourceMigration(DB); err != nil {
 		return err
 	}
+	if err := prepareOrganizationMemberOrphanRepair(DB); err != nil {
+		return err
+	}
 	if err := migrateVideoPriceUsdToUSD(DB); err != nil {
 		return err
 	}
@@ -544,6 +547,9 @@ func migrateDBFast() error {
 		return err
 	}
 	if err := prepareOrganizationMemberDisableSourceMigration(DB); err != nil {
+		return err
+	}
+	if err := prepareOrganizationMemberOrphanRepair(DB); err != nil {
 		return err
 	}
 	if err := dropLegacyPerfUniqueIndex(); err != nil {

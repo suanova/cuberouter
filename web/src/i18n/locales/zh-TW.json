@@ -1073,6 +1073,7 @@
     "Blend": "混合",
     "Block email aliases (e.g., user+alias@domain.com)": "阻止電郵別名（例如，user+alias@domain.com）",
     "Blocked keywords": "已阻止的關鍵詞",
+    "Blockers": "阻斷項",
     "Blocks messages when sensitive keywords are detected.": "偵測到敏感關鍵詞時阻止訊息。",
     "Body param": "請求體參數",
     "Border radius": "圓角",

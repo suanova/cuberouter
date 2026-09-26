@@ -99,6 +99,17 @@ function serverErrorPayload(value: unknown): Record<string, unknown> | null {
   return value
 }
 
+/**
+ * 取出后端的响应体（拦截器把 axios error 的 `response.data` 挂在 error 上，
+ * 直接传响应体本身也认）。`code` 之外还有内容的拒绝——比如
+ * `organization_operation_blocked` 的 `message` 与 `blockers`——由调用方从这里自取。
+ */
+export function getServerErrorPayload(
+  value: unknown
+): Record<string, unknown> | null {
+  return serverErrorPayload(value)
+}
+
 export function getServerErrorMessageKey(value: unknown): string | null {
   const payload = serverErrorPayload(value)
   if (!payload || typeof payload.code !== 'string') return null

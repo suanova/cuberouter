@@ -115,9 +115,12 @@ export async function updateUser(
 
 /**
  * Delete a single user (hard delete)
+ *
+ * 拒绝原因（组织还挂着 owner / key）只有后端 message 说得清，由删除弹窗自己展示
+ * 完整说明，因此关掉拦截器的通用提示，避免同一件事弹两条。
  */
 export async function deleteUser(id: number): Promise<ApiResponse> {
-  const res = await api.delete(`/api/user/${id}/`)
+  const res = await api.delete(`/api/user/${id}/`, { skipErrorHandler: true })
   return res.data
 }
 
