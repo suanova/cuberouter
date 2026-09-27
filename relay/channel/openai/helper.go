@@ -138,21 +138,26 @@ func ProcessStreamResponse(streamResponse dto.ChatCompletionsStreamResponse, res
 }
 
 func processTokenData(relayMode int, data string, responseTextBuilder *strings.Builder, toolCount *int) error {
-	switch relayMode {
-	case relayconstant.RelayModeChatCompletions:
-		var streamResponse dto.ChatCompletionsStreamResponse
-		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
-			return err
-		}
-		return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
-	case relayconstant.RelayModeCompletions:
+	if relayMode == relayconstant.RelayModeCompletions {
 		var streamResponse dto.CompletionsStreamResponse
 		if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
 			return err
 		}
 		processCompletionsStreamResponse(streamResponse, responseTextBuilder)
+		return nil
 	}
-	return nil
+	// 其余 relayMode 的上游报文都按 chat 分块统计：降级会话(如 gemini/messages → chat)
+	// 的 RelayMode 仍是客户端协议，而这里的处理器只服务 chat 形状的上游；漏掉它们会让
+	// 上游不回 usage 时结算拿空文本估算（completion 记 0）。
+	// 解析失败只在 chat 会话里算错误，其它会话按"不是 chat 分块"静默跳过，不打断既有流。
+	var streamResponse dto.ChatCompletionsStreamResponse
+	if err := common.UnmarshalJsonStr(data, &streamResponse); err != nil {
+		if relayMode == relayconstant.RelayModeChatCompletions {
+			return err
+		}
+		return nil
+	}
+	return ProcessStreamResponse(streamResponse, responseTextBuilder, toolCount)
 }
 
 func processCompletionsStreamResponse(streamResponse dto.CompletionsStreamResponse, responseTextBuilder *strings.Builder) {

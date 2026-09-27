@@ -92,9 +92,9 @@ type ChannelOtherSettings struct {
 	// "", "allow", "safe", "strict".
 	ToolLossPolicy string `json:"tool_loss_policy,omitempty"`
 	// ModelProtocols 按模型声明上游原生支持的协议,取值 ModelProtocolChat /
-	// ModelProtocolResponses / ModelProtocolMessages。键支持精确模型名、末尾 * 的
-	// 前缀通配("claude-*")、"re:<正则>",以及兜底 "*";值为空数组表示该模型没有
-	// 文本协议。未配置或未命中即视为"不声明",调用方按现状处理。
+	// ModelProtocolResponses / ModelProtocolMessages / ModelProtocolGemini。键支持
+	// 精确模型名、末尾 * 的前缀通配("claude-*")、"re:<正则>",以及兜底 "*";值为
+	// 空数组表示该模型没有文本协议。未配置或未命中即视为"不声明",调用方按现状处理。
 	// 当前仅 AstraFlow(59)消费。
 	ModelProtocols map[string][]string `json:"model_protocols,omitempty"`
 }
@@ -124,6 +124,7 @@ const (
 	ModelProtocolChat      = "chat"
 	ModelProtocolResponses = "responses"
 	ModelProtocolMessages  = "messages"
+	ModelProtocolGemini    = "gemini"
 )
 
 const (
@@ -220,7 +221,7 @@ func (s *ChannelOtherSettings) ValidateModelProtocols() error {
 		}
 		for _, protocol := range protocols {
 			switch strings.TrimSpace(protocol) {
-			case ModelProtocolChat, ModelProtocolResponses, ModelProtocolMessages:
+			case ModelProtocolChat, ModelProtocolResponses, ModelProtocolMessages, ModelProtocolGemini:
 			default:
 				return fmt.Errorf("model_protocols[%q] has unsupported protocol %q", key, protocol)
 			}
