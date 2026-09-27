@@ -43,9 +43,9 @@ type relayChainCase struct {
 
 // TestRelayChainNonTaskModes 锁定多模态非任务链路契约：chat/responses/
 // embeddings/rerank/image 五种模式共用同一 OpenAI 直传链路——上游路径沿用客户端
-// 路径、携带 Bearer 鉴权、请求体原样转发；响应按各自协议解析：chat/embeddings/
-// image 走 chat 处理器，rerank 走 Rerank 处理器并取其原生 usage，responses
-// 走 Responses 处理器并取其原生 usage。
+// 路径、携带 Bearer 鉴权、请求体原样转发；响应按各自协议解析：chat/embeddings
+// 走 chat 处理器，image 走图片处理器并取其 Images 形状 usage，rerank 走 Rerank
+// 处理器并取其原生 usage，responses 走 Responses 处理器并取其原生 usage。
 func TestRelayChainNonTaskModes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -126,11 +126,22 @@ func TestRelayChainNonTaskModes(t *testing.T) {
 			path:             "/v1/images/generations",
 			relayMode:        relayconstant.RelayModeImagesGenerations,
 			relayFormat:      types.RelayFormatOpenAIImage,
-			model:            "gpt-image-1",
-			requestBody:      `{"model":"gpt-image-1","prompt":"a cat","n":1,"size":"1024x1024"}`,
-			upstreamBody:     `{"created":1700000000,"data":[{"url":"https://cdn.example.com/cat.png"}]}`,
-			wantPromptTokens: -1, wantCompletionTokens: -1,
+			model:            "gpt-image-2",
+			requestBody:      `{"model":"gpt-image-2","prompt":"a cat","n":1,"size":"1024x1024"}`,
+			upstreamBody:     `{"created":1700000000,"data":[{"url":"https://cdn.example.com/cat.png"}],"usage":{"input_tokens":12,"input_tokens_details":{"image_tokens":0,"text_tokens":12},"output_tokens":196,"output_tokens_details":{"image_tokens":196,"text_tokens":0},"total_tokens":208}}`,
+			wantPromptTokens: 12, wantCompletionTokens: 196,
 			wantBodyContains: `https://cdn.example.com/cat.png`,
+		},
+		{
+			name:             "image edit",
+			path:             "/v1/images/edits",
+			relayMode:        relayconstant.RelayModeImagesEdits,
+			relayFormat:      types.RelayFormatOpenAIImage,
+			model:            "gpt-image-2",
+			requestBody:      `{"model":"gpt-image-2","prompt":"make it blue","n":1}`,
+			upstreamBody:     `{"created":1700000000,"data":[{"b64_json":"aW1n"}],"usage":{"input_tokens":30,"input_tokens_details":{"image_tokens":16,"text_tokens":14},"output_tokens":229,"output_tokens_details":{"image_tokens":229,"text_tokens":0},"total_tokens":259}}`,
+			wantPromptTokens: 30, wantCompletionTokens: 229,
+			wantBodyContains: `"b64_json"`,
 		},
 		{
 			name:             "anthropic messages native passthrough",
