@@ -21,19 +21,31 @@ package controller
 
 import (
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
 
 // 图片能力由运维在模型元数据里用 text-to-image / image-to-image 标签声明，
-// 前端从 /api/pricing 的 tags 读取，这里只汇报参考图上传是否可用。
+// 前端从 /api/pricing 的 tags 读取；这里汇报上传及可选 Qwen 排队服务。
 func MediaStudioConfig(c *gin.Context) {
 	_, err := service.LoadStudioUploadConfig()
+	retentionDays := 0
+	if model.ImageStudioAuditEnabled() {
+		retentionDays = 30
+	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"upload_enabled": err == nil})
+	c.JSON(http.StatusOK, gin.H{
+		"upload_enabled":       err == nil,
+		"qwen_queue_enabled":   os.Getenv("IMAGE_STUDIO_DISPATCHER_URL") != "" && len(os.Getenv("IMAGE_STUDIO_DISPATCHER_TOKEN")) >= 32,
+		"qwen_model":           os.Getenv("IMAGE_STUDIO_CHANNEL_MODEL"),
+		"qwen_access":          model.ImageStudioGroupAllowed(c.GetString("group")),
+		"audit_retention_days": retentionDays,
+	})
 }
 
 func MediaStudioUpload(c *gin.Context) {

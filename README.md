@@ -45,6 +45,9 @@
 
 ## 🚀 Quick Start
 
+For the optional Qwen Image 2.1 workflow (official examples, editing and GPU queue),
+follow [Image Studio deployment](deploy/image-studio/DEPLOYMENT.md) after the base setup.
+
 ### Using Docker Compose (Recommended)
 
 ```bash

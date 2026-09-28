@@ -1,0 +1,17 @@
+services:
+  image-studio-dispatcher:
+    build: .
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    # One dispatcher and ONE gateway replica; create/edit share the queue.
+    # Expose only to the gateway/private network, never to end users.
+    ports:
+      - "127.0.0.1:18195:18195"
+    environment:
+      IMAGE_STUDIO_DISPATCHER_TOKEN: ${IMAGE_STUDIO_DISPATCHER_TOKEN:?Set a random secret of at least 32 characters}
+      IMAGE_STUDIO_RELAY_URL: ${IMAGE_STUDIO_RELAY_URL:?Set the private CubeRouter callback URL}
+      IMAGE_STUDIO_RELAY_TOKEN: ${IMAGE_STUDIO_RELAY_TOKEN:?Set a separate random callback secret}
+      IMAGE_STUDIO_RELAY_CONCURRENCY: ${IMAGE_STUDIO_RELAY_CONCURRENCY:-1}
