@@ -134,16 +134,11 @@ export function useUsersColumns(): ColumnDef<User>[] {
       id: 'quota',
       accessorKey: 'quota',
       header: t('Remaining/Total Quota'),
+      // 钱包额度口径（remaining = quota，total = quota + used_quota）；
+      // 订阅额度在同页「订阅余额」列展示。
       cell: ({ row }) => {
         const user = row.original
-        return (
-          <UserQuotaCell
-            used={user.subscription_used_quota || 0}
-            remaining={user.subscription_remain_quota || 0}
-            total={user.subscription_total_quota || 0}
-            unlimited={user.subscription_unlimited}
-          />
-        )
+        return <UserQuotaCell used={user.used_quota} remaining={user.quota} />
       },
       size: 300,
       minSize: 260,

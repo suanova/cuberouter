@@ -31,8 +31,6 @@ import { cn } from '@/lib/utils'
 type UserQuotaCellProps = {
   used: number
   remaining: number
-  total: number
-  unlimited?: boolean
 }
 
 function getQuotaProgressColor(percentage: number): string {
@@ -41,18 +39,17 @@ function getQuotaProgressColor(percentage: number): string {
   return '[&_[data-slot=progress-indicator]]:bg-emerald-500'
 }
 
-// Port from develop 51b3f79/#86, 2c55d2e, 9df4a57: the cell now renders the
-// effective-subscription token quota basis (remain/total/unlimited) instead
-// of the wallet quota. `total` must be the subscription total (remain is
-// clamped per subscription, so used + remaining is not the total).
+// 用户列表「剩余额度/总额度」按钱包额度展示：remaining = 钱包余额，
+// total = 钱包余额 + 已用额度。订阅额度由「订阅余额」列单独展示，
+// 不参与本列口径（钱包/组织计费站点没有订阅数据，展示订阅口径会恒为 0）。
 export function UserQuotaCell(props: UserQuotaCellProps) {
   const { t } = useTranslation()
-  const { used, remaining, total, unlimited } = props
-  const percentage = total > 0 ? (remaining / total) * 100 : 0
-  const formattedRemaining = formatQuota(remaining)
+  const total = props.used + props.remaining
+  const percentage = total > 0 ? (props.remaining / total) * 100 : 0
+  const formattedRemaining = formatQuota(props.remaining)
   const formattedTotal = formatQuota(total)
 
-  if (!unlimited && total === 0 && used === 0) {
+  if (total === 0) {
     return (
       <StatusBadge
         label={t('No Quota')}
@@ -72,7 +69,7 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
       >
         <div className='grid min-w-0 grid-cols-2 gap-x-4 text-xs'>
           <span className='min-w-0 truncate font-medium tabular-nums'>
-            {unlimited ? t('Unlimited') : formattedRemaining}
+            {formattedRemaining}
           </span>
           <span className='text-muted-foreground min-w-0 truncate text-right tabular-nums'>
             {formattedTotal}
@@ -86,10 +83,10 @@ export function UserQuotaCell(props: UserQuotaCellProps) {
       <TooltipContent>
         <div className='space-y-1 text-xs'>
           <div>
-            {t('Used:')} {formatQuota(used)}
+            {t('Used:')} {formatQuota(props.used)}
           </div>
           <div>
-            {t('Remaining:')} {unlimited ? t('Unlimited') : formattedRemaining}
+            {t('Remaining:')} {formattedRemaining}
           </div>
           <div>
             {t('Total:')} {formattedTotal}
