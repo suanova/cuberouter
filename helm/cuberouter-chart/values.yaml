@@ -196,6 +196,20 @@ redis:
     - "min-replicas-to-write 1"
     - "min-replicas-max-lag 10"
     - "save 60 10000"
+  # Pod-level security context for the redis nodes, rendered into the
+  # RedisReplication CRD as spec.podSecurityContext.
+  # Why fsGroup is required: the opstree redis image runs as uid/gid 1000, but a
+  # CSI-provisioned volume (e.g. ceph-rbd) is mounted root:root and the kubelet
+  # only rewrites its ownership when the pod declares an fsGroup. Without it the
+  # entrypoint cannot create /data/appendonlydir and the pod crash-loops with
+  # "Permission denied" — while the sentinel pods, which use emptyDir, are fine.
+  # OnRootMismatch skips the recursive chown once the volume already matches, so
+  # restarts stay cheap. Opt out with `--set redis.podSecurityContext=null` if the
+  # storage class handles ownership itself; a values-file `{}` will not clear this,
+  # because Helm deep-merges maps.
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
   persistence:
     enabled: true
     size: 1Gi
