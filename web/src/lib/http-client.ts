@@ -25,6 +25,7 @@ import {
   clearAuthentication,
   refreshAuthentication,
 } from '@/lib/auth-session'
+import { basePath, withBasePath } from '@/lib/base-path'
 import {
   getServerErrorCode,
   getServerErrorMessageKey,
@@ -50,8 +51,12 @@ declare module 'axios' {
 
 export type ApiRequestConfig = AxiosRequestConfig
 
+// baseURL carries the deployment prefix, so every call site keeps writing plain
+// root-absolute paths ('/api/...') and still reaches the server. The paths are
+// also shared with the server side of the contract, which is why the prefix is
+// applied here rather than at ~400 call sites.
 export const api = axios.create({
-  baseURL: '',
+  baseURL: basePath,
   withCredentials: true,
   headers: {
     'Cache-Control': 'no-store',
@@ -89,11 +94,14 @@ function isPlatformAdminRequest(url: string | undefined): boolean {
 }
 
 function redirectToSignIn(): void {
-  if (
-    typeof window !== 'undefined' &&
-    window.location.pathname !== '/sign-in'
-  ) {
-    window.location.replace('/sign-in')
+  if (typeof window === 'undefined') return
+  // window.location.pathname already carries the deployment prefix, so the guard
+  // has to compare against the prefixed sign-in path. Comparing against the bare
+  // '/sign-in' never matches under a prefix, and the replace below then fires on
+  // every 401 -- reloading the page in a loop instead of showing the form.
+  const signInPath = withBasePath('/sign-in')
+  if (window.location.pathname !== signInPath) {
+    window.location.replace(signInPath)
   }
 }
 

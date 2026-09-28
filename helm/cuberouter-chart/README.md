@@ -166,6 +166,50 @@ their own hostname — it is the same service, and the docs stay under `/docs/us
 kubectl -n cuberouter port-forward svc/cuberouter 3000:80  # app + docs at http://localhost:3000
 ```
 
+## Publishing under a URL prefix
+
+The app can be published under a path such as `/cuberouter` instead of a dedicated hostname.
+The Ingress strips the prefix and the app keeps serving from the root, so set `config.BASE_PATH`
+to the same path the Ingress strips:
+
+```yaml
+config:
+  BASE_PATH: /cuberouter
+```
+
+The value is a **path only** — `cuberouter`, `/cuberouter` and `/cuberouter/` are all accepted
+and normalised. A full URL (`https://host/cuberouter`) is rejected and the app falls back to the
+site root with a warning in the log. The default is empty, which is exactly the previous
+behaviour.
+
+The Ingress needs to rewrite the path for every request it forwards, including API and relay
+traffic:
+
+```yaml
+ingress:
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+  hosts: [gateway.example.com]
+  paths:
+    - path: /cuberouter(/|$)(.*)
+      pathType: ImplementationSpecific
+```
+
+Keep `config.BASE_PATH` and the Ingress `path` in sync — they are two halves of one setting, and
+the chart cannot derive one from the other.
+
+Two things deliberately stay **unprefixed**:
+
+- the readiness/liveness probes (`/api/status`) — they hit the container port directly, never
+  the Ingress;
+- `ServerAddress` — it is an origin (scheme + host + port) because WebAuthn builds its list of
+  allowed origins from it. The prefix is applied to paths by the app, so leave any path out of
+  it.
+
+Changing the prefix changes the URLs users see, so update the OAuth callback URLs registered
+with each identity provider and `SESSION_COOKIE_TRUSTED_URL` in the same release.
+
 ## Verifying the install
 
 ```sh
@@ -248,7 +292,7 @@ Computed connection strings:
 | Values group | Highlights (defaults) |
 |---|---|
 | `deployMode` | `high` (HA replica counts) \| `base` (single replica everywhere; app PDB not rendered) |
-| `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`; extend via `config.extra` |
+| `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`, `BASE_PATH` (empty = serve from the site root); extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
 | `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |

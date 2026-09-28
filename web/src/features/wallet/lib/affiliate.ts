@@ -19,11 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 // ============================================================================
 // Affiliate Functions
 // ============================================================================
+import { absoluteAppUrl } from '@/lib/base-path'
 
 /**
  * Generate affiliate registration link
  */
 export function generateAffiliateLink(affCode: string): string {
   if (typeof window === 'undefined') return ''
-  return `${window.location.origin}/sign-up?aff=${affCode}`
+  // Shared with people outside the app, so it has to be an absolute URL that
+  // already includes the deployment prefix.
+  return absoluteAppUrl(`/sign-up?aff=${affCode}`)
 }

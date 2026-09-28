@@ -39,6 +39,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStatus } from '@/hooks/use-status'
+import { basePath } from '@/lib/base-path'
 
 import {
   buildRateLimits,
@@ -746,11 +747,17 @@ function CodeSamplesSection(props: {
       (status as Record<string, unknown> | null)?.serverAddress ??
       (status?.data as Record<string, unknown> | undefined)?.server_address ??
       (status?.data as Record<string, unknown> | undefined)?.serverAddress
+    let origin = 'https://api.example.com'
     if (candidate && typeof candidate === 'string') {
-      return candidate.replace(/\/$/, '')
+      origin = candidate.replace(/\/$/, '')
+    } else if (typeof window !== 'undefined') {
+      origin = window.location.origin
     }
-    if (typeof window !== 'undefined') return window.location.origin
-    return 'https://api.example.com'
+    // Every sample below appends an app path ('/v1/...') to this base, so the
+    // deployment prefix belongs here. ServerAddress is an origin by contract --
+    // WebAuthn derives its allowed origins from it -- so the prefix comes from
+    // the deployment itself rather than from the configured value.
+    return `${origin}${basePath}`
   }, [status])
 
   const endpoints = useMemo(() => {

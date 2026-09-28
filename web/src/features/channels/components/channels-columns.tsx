@@ -47,6 +47,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { toIntlLocale } from '@/i18n/languages'
+import { withBasePath } from '@/lib/base-path'
 import {
   formatCurrencyFromUSD,
   formatQuotaWithCurrency,
@@ -851,7 +852,11 @@ export function useChannelsColumns(
                             if (!deploymentId) {
                               return
                             }
-                            const targetUrl = `/models/deployments?dFilter=${encodeURIComponent(String(deploymentId))}`
+                            // window.open bypasses the router, so the
+                            // deployment prefix has to be applied by hand.
+                            const targetUrl = withBasePath(
+                              `/models/deployments?dFilter=${encodeURIComponent(String(deploymentId))}`
+                            )
                             window.open(targetUrl, '_blank', 'noopener')
                           }}
                         />

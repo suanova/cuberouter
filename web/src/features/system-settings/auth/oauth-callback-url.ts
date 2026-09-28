@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { basePath } from '@/lib/base-path'
+
 export function resolveOAuthSiteUrl(
   serverAddress: string,
   fallback: string
@@ -24,11 +26,18 @@ export function resolveOAuthSiteUrl(
   return normalized || fallback
 }
 
+/**
+ * Callback URL an administrator registers with the identity provider, so it has
+ * to be the URL the provider will actually reach. ServerAddress is an origin by
+ * contract (WebAuthn builds its allowed origins from it), hence the deployment
+ * prefix is applied to the callback path rather than read from the configured
+ * value.
+ */
 export function buildOAuthCallbackUrl(
   serverAddress: string,
   callbackPath: string,
   fallback: string
 ): string {
   const siteUrl = resolveOAuthSiteUrl(serverAddress, fallback)
-  return `${siteUrl}/oauth/${callbackPath.replace(/^\/+/, '')}`
+  return `${siteUrl}${basePath}/oauth/${callbackPath.replace(/^\/+/, '')}`
 }

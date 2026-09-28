@@ -20,6 +20,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
+import { withBasePath } from '@/lib/base-path'
 import { parseHeaderNavModulesFromStatus } from '@/lib/nav-modules'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -96,7 +97,15 @@ export function useTopNavLinks(): TopNavLink[] {
     // when it is not configured.
     const docsHref = isAdmin ? adminDocsLink || docsLink : docsLink
     if (docsHref) {
-      links.push({ title: t('Docs'), href: docsHref, external: true })
+      // Rendered as a plain anchor (external: true), which the router does not
+      // rewrite, so the prefix is applied here. These default to the bundled
+      // docs sites ('/docs/user/', '/docs/admin/'), which are served from under
+      // the deployment prefix; an off-site URL is passed through untouched.
+      links.push({
+        title: t('Docs'),
+        href: withBasePath(docsHref),
+        external: true,
+      })
     } else {
       links.push({ title: t('Docs'), href: '/docs' })
     }

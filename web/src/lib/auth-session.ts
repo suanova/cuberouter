@@ -21,6 +21,7 @@ import axios from 'axios'
 import { t } from 'i18next'
 
 import { publishAuthSessionEvent } from '@/lib/auth-session-sync'
+import { basePath } from '@/lib/base-path'
 import { hasSessionHint } from '@/lib/session-hint'
 import {
   getAccountContextHeaders,
@@ -71,8 +72,10 @@ export class AuthRotationError extends Error {
   }
 }
 
+// Same deal as the main client: call sites write plain '/api/user/auth/...'
+// paths and the deployment prefix is applied here.
 const authClient = axios.create({
-  baseURL: '',
+  baseURL: basePath,
   withCredentials: true,
   headers: {
     'Cache-Control': 'no-store',

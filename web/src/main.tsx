@@ -29,6 +29,7 @@ import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
 import { getStatus } from '@/lib/api'
+import { basePath, withBasePath } from '@/lib/base-path'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
@@ -96,6 +97,9 @@ const queryClient = new QueryClient({
 // Create a new router instance
 const router = createRouter({
   routeTree,
+  // TanStack prefixes every route it generates with basepath; passing '/' when
+  // the app is served from the site root keeps the generated URLs unchanged.
+  basepath: basePath || '/',
   context: { queryClient },
   defaultPreload: 'intent',
   defaultPreloadStaleTime: 0,
@@ -130,7 +134,9 @@ if (!rootElement) {
       if (saved) {
         const s = JSON.parse(saved)
         if (s?.system_name) apply(s.system_name)
-        if (s?.logo) applyFaviconToDom(s.logo)
+        // status.logo is a server path, so it is resolved against the deployment
+        // prefix here -- the one place this value enters the app.
+        if (s?.logo) applyFaviconToDom(withBasePath(s.logo))
       }
     } catch {
       /* empty */
@@ -146,7 +152,7 @@ if (!rootElement) {
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(s.logo as string)
+        if (s?.logo) applyFaviconToDom(withBasePath(s.logo as string))
       })
       .catch(() => {
         /* empty */

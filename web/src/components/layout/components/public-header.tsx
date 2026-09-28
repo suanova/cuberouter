@@ -30,6 +30,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
+import { withBasePath } from '@/lib/base-path'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -189,7 +190,7 @@ export function PublicHeader(props: PublicHeaderProps) {
               className='group flex shrink-0 items-center'
             >
               <img
-                src='/head.png'
+                src={withBasePath('/head.png')}
                 alt={displaySiteName || t('CubeRouter')}
                 className='h-8 w-auto transition-all duration-300 group-hover:scale-105 dark:brightness-0 dark:invert'
               />
