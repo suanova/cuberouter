@@ -94,15 +94,28 @@ describe('withBasePath', () => {
     }
   })
 
-  test('is idempotent for a path that already carries the prefix', async () => {
-    // window.location.pathname already includes the prefix, and several callers
-    // feed it straight back into withBasePath.
-    const { basePath, withBasePath } = await loadBasePath('/g/w1')
+  test('returns an empty path unchanged', async () => {
+    const { withBasePath } = await loadBasePath('/g/w1')
 
-    expect(withBasePath(basePath)).toBe('/g/w1')
-    expect(withBasePath('/g/w1/dashboard')).toBe('/g/w1/dashboard')
-    expect(withBasePath('/g/w1')).toBe('/g/w1')
+    expect(withBasePath('')).toBe('')
   })
+
+  // The function is additive, so it must not try to recognise a path that
+  // already carries the prefix: that check cannot tell an already-prefixed path
+  // from an app-owned one that merely starts with the same segment.
+  test.each([
+    ['/api/status', '/api/api/status'],
+    ['/v1/chat/completions', '/api/v1/chat/completions'],
+    ['/static/js/index.js', '/api/static/js/index.js'],
+    ['/docs/user/', '/api/docs/user/'],
+  ])(
+    'prefixes %o to %o even though it starts with the prefix segment',
+    async (path, expected) => {
+      const { withBasePath } = await loadBasePath('/api')
+
+      expect(withBasePath(path)).toBe(expected)
+    }
+  )
 
   test('does not mistake a sibling prefix for its own', async () => {
     const { withBasePath } = await loadBasePath('/cube')
@@ -111,10 +124,41 @@ describe('withBasePath', () => {
       '/cube/cuberouter/dashboard'
     )
   })
+})
 
-  test('returns an empty path unchanged', async () => {
+describe('favicon resolution', () => {
+  afterEach(() => {
+    document.head
+      .querySelectorAll('link[rel~="icon"]')
+      .forEach((link) => link.remove())
+  })
+
+  // Mirrors main.tsx: the raw status.logo is a server path, so it is resolved
+  // against the deployment prefix on the way in and applied exactly once.
+  test('resolves a raw server logo path once', async () => {
     const { withBasePath } = await loadBasePath('/g/w1')
+    const { applyFaviconToDom } = await import('../dom-utils')
 
-    expect(withBasePath('')).toBe('')
+    applyFaviconToDom(withBasePath('/logo.png'))
+
+    const icons =
+      document.head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].href).toBe(`${window.location.origin}/g/w1/logo.png`)
+  })
+
+  // Mirrors use-system-config.ts, which hands over config.logo -- a value that
+  // has already been through withBasePath.
+  test('does not prefix an already-resolved path a second time', async () => {
+    await loadBasePath('/g/w1')
+    const { applyFaviconToDom } = await import('../dom-utils')
+
+    applyFaviconToDom('/g/w1/logo.png')
+
+    const icons =
+      document.head.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')
+    expect(icons).toHaveLength(1)
+    expect(icons[0].href).toBe(`${window.location.origin}/g/w1/logo.png`)
+    expect(icons[0].href).not.toContain('/g/w1/g/w1/')
   })
 })

@@ -187,6 +187,8 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
       logo,
       () => {
         setLoadedLogoUrl(logo)
+        // config.logo already went through withBasePath in mapStatusDataToConfig,
+        // so it is ready to use here and must not be resolved a second time.
         applyFaviconToDom(logo)
       },
       () => {

@@ -41,9 +41,12 @@ var basePath string
 // An empty value or "/" means the app is served from the site root, which is
 // the default and makes BasePath and WithBasePath no-ops.
 //
-// An unusable value (an absolute URL, a query, a line break) is rejected rather
-// than guessed at: silently accepting "https://host/prefix" would produce
-// double-prefixed URLs that are far harder to diagnose than a startup warning.
+// An unusable value is rejected rather than guessed at. Silently accepting
+// "https://host/prefix" would produce double-prefixed URLs that are far harder
+// to diagnose than a startup warning, and accepting markup has a second,
+// sharper consequence: the prefix is interpolated into the served HTML, so a
+// value containing "</script>" would break out of the inline script that
+// carries it. Only URL path characters are allowed for that reason.
 func InitBasePath() {
 	raw := strings.TrimSpace(os.Getenv("BASE_PATH"))
 	normalized, err := normalizeBasePath(raw)
@@ -57,6 +60,13 @@ func InitBasePath() {
 	basePath = normalized
 }
 
+// normalizeBasePath turns BASE_PATH into either "" (site root) or "/prefix".
+//
+// The character check is not cosmetic: the normalised value ends up verbatim in
+// the dashboard's HTML, in the Path attribute of a cookie, and in every URL the
+// SPA builds. Restricting it to the characters that can legitimately appear in a
+// path keeps all three honest -- a value carrying "<" or a space would otherwise
+// be injected into the page or silently produce URLs the browser rewrites.
 func normalizeBasePath(raw string) (string, error) {
 	if raw == "" || raw == "/" {
 		return "", nil
@@ -64,14 +74,50 @@ func normalizeBasePath(raw string) (string, error) {
 	if strings.Contains(raw, "://") || strings.HasPrefix(raw, "//") {
 		return "", fmt.Errorf("expected a URL path such as /gateway, not an absolute URL")
 	}
-	if strings.ContainsAny(raw, "?#\r\n") {
-		return "", fmt.Errorf("must not contain a query, fragment or line break")
-	}
 	trimmed := strings.Trim(raw, "/")
 	if trimmed == "" {
 		return "", nil
 	}
+	for _, segment := range strings.Split(trimmed, "/") {
+		if !isValidBasePathSegment(segment) {
+			return "", fmt.Errorf("%q is not a valid path segment; use only URL path characters such as /gateway or /tenant-1", segment)
+		}
+	}
 	return "/" + trimmed, nil
+}
+
+// isValidBasePathSegment reports whether segment can appear verbatim in a URL
+// path. The accepted set is RFC 3986 pchar -- unreserved, sub-delims, ":" and
+// "@" -- with "%" allowed only as a complete %XX escape. Everything else is
+// refused, notably "<", ">", '"', "\", whitespace and control characters.
+//
+// Empty segments are refused too, so "a//b" cannot sneak past as an ambiguous
+// prefix that a browser or proxy might collapse differently than we do.
+func isValidBasePathSegment(segment string) bool {
+	if segment == "" {
+		return false
+	}
+	for i := 0; i < len(segment); i++ {
+		c := segment[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '-', c == '.', c == '_', c == '~':
+		case c == '!', c == '$', c == '&', c == '\'', c == '(', c == ')':
+		case c == '*', c == '+', c == ',', c == ';', c == '=', c == ':', c == '@':
+		case c == '%':
+			if i+2 >= len(segment) || !isHexDigit(segment[i+1]) || !isHexDigit(segment[i+2]) {
+				return false
+			}
+			i += 2
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isHexDigit(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
 }
 
 // BasePath returns the normalised prefix, or "" when the app is served from the

@@ -29,7 +29,7 @@ import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
 import { getStatus } from '@/lib/api'
-import { basePath } from '@/lib/base-path'
+import { basePath, withBasePath } from '@/lib/base-path'
 import { installBuildMetadata } from '@/lib/build-metadata'
 import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
@@ -134,7 +134,9 @@ if (!rootElement) {
       if (saved) {
         const s = JSON.parse(saved)
         if (s?.system_name) apply(s.system_name)
-        if (s?.logo) applyFaviconToDom(s.logo)
+        // status.logo is a server path, so it is resolved against the deployment
+        // prefix here -- the one place this value enters the app.
+        if (s?.logo) applyFaviconToDom(withBasePath(s.logo))
       }
     } catch {
       /* empty */
@@ -150,7 +152,7 @@ if (!rootElement) {
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(s.logo as string)
+        if (s?.logo) applyFaviconToDom(withBasePath(s.logo as string))
       })
       .catch(() => {
         /* empty */

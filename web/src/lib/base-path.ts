@@ -57,16 +57,26 @@ const absoluteUrlPattern = /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i
  * dashboard published under a URL path prefix reaches its own assets, API and
  * routes instead of the site root.
  *
- * The path is returned unchanged when no prefix is configured, when it is an
- * absolute URL (an administrator may point status.docs_link at an external
- * site), or when it already starts with the prefix. That last case matters
- * because some callers derive paths from window.location.pathname, which
- * already carries the prefix.
+ * The path is returned unchanged when no prefix is configured, when it is empty,
+ * or when it is an absolute URL: an administrator may point status.docs_link or
+ * the logo at an external site, and prefixing those would corrupt them.
+ *
+ * This function is purely additive. It deliberately does not try to detect a
+ * path that already carries the prefix, because that check cannot tell an
+ * already-prefixed path from one that merely starts with the same segment: with
+ * BASE_PATH=/api, treating '/api/status' as done would leave the status request
+ * pointing at itself instead of '/api/api/status'. Apply it exactly once, at the
+ * point a root-relative value enters the app -- never to a value that has
+ * already been through it. A bad prefix then fails loudly instead of silently
+ * double-prefixing.
+ *
+ * Paths taken from window.location are not passed here at all: the router
+ * resolves its own hrefs against the basepath, and a path read from the address
+ * bar already includes the prefix.
  */
 export function withBasePath(path: string): string {
   if (basePath === '' || path === '') return path
   if (absoluteUrlPattern.test(path)) return path
-  if (path === basePath || path.startsWith(`${basePath}/`)) return path
   return `${basePath}${path.startsWith('/') ? '' : '/'}${path}`
 }
 

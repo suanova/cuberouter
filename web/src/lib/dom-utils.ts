@@ -16,15 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { withBasePath } from '@/lib/base-path'
-
+/**
+ * Point the document favicon at `url`.
+ *
+ * `url` must already be usable as-is: an absolute URL, or a root-relative path
+ * that includes the deployment prefix. Callers holding a path straight from the
+ * server resolve it through withBasePath first (see use-system-config.ts and
+ * main.tsx); doing it again in here would double-apply the prefix whenever the
+ * caller had already resolved it.
+ */
 export function applyFaviconToDom(url: string) {
   if (typeof document === 'undefined' || !url) return
   try {
-    // The configured logo is a server path ('/logo.png'), which is only correct
-    // on this host when the deployment prefix is included. withBasePath leaves a
-    // fully-qualified URL alone, so an off-site logo keeps working.
-    const resolved = new URL(withBasePath(url), window.location.href).href
+    // Resolve to an absolute URL purely so the dedupe check below can compare it
+    // against an existing <link>'s href, which the browser always reports as
+    // absolute. withBasePath is not applied here -- see the note above.
+    const resolved = new URL(url, window.location.href).href
     const existing =
       document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')
     if (existing.length === 1 && existing[0].href === resolved) return

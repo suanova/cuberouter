@@ -358,10 +358,20 @@ func InjectBasePath() {
 	}
 	// The SPA reads this to prefix its own API calls and router links, so it has
 	// to land ahead of the module scripts that consume it.
+	//
+	// common.InitBasePath has already refused any value containing "<", so the
+	// escaping below is belt and braces: should that validation ever be loosened,
+	// a "</script>" in the value still cannot close this element, because the
+	// HTML parser never sees a literal "<" inside the script body.
+	scriptBody := strings.NewReplacer(
+		"<", `\u003c`,
+		">", `\u003e`,
+		"&", `\u0026`,
+	).Replace(strconv.Quote(base))
 	indexPage = bytes.Replace(
 		indexPage,
 		[]byte(head),
-		[]byte(head+"\n    <script>window.__BASE_PATH__ = "+strconv.Quote(base)+";</script>"),
+		[]byte(head+"\n    <script>window.__BASE_PATH__ = "+scriptBody+";</script>"),
 		1,
 	)
 
