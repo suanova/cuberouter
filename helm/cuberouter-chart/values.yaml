@@ -152,7 +152,7 @@ postgresql:
   #         fileArchiving   (needs barmanObjectStore config below)
   backups:
     enabled: false
-    schedule: "0 2 * * 7"
+    schedule: "0 0 2 * * 0"
     method: volumeSnapshot
     # barmanObjectStore config (required when method=fileArchiving):
     # barmanObjectStore:
