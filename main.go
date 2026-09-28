@@ -203,6 +203,7 @@ func main() {
 	middleware.SetUpLogger(server)
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()
+	InjectBasePath()
 
 	// 设置路由
 	router.SetRouter(server, router.WebAssets{
@@ -337,6 +338,46 @@ func InjectGoogleAnalytics() {
 	analyticsInject := []byte(analyticsInjectBuilder.String())
 	placeholder := []byte("<!--Google Analytics-->\n")
 	indexPage = bytes.ReplaceAll(indexPage, placeholder, analyticsInject)
+}
+
+// InjectBasePath rewrites the embedded dashboard entry page so the app also
+// works when a reverse proxy publishes it under a URL path prefix (BASE_PATH).
+//
+// It runs even when no prefix is configured. The bundler emits asset references
+// relative to the document (output.assetPrefix "auto", which is what lets
+// lazily-loaded chunks and CSS url() resolve under any prefix), and a relative
+// reference on a deep link such as /dashboard/settings resolves against
+// /dashboard/ and misses. Rewriting the references into an absolute,
+// prefix-qualified form is what keeps deep links and hard reloads working.
+func InjectBasePath() {
+	base := common.BasePath()
+
+	const head = "<head>"
+	if !bytes.Contains(indexPage, []byte(head)) {
+		common.SysError("dashboard index page has no <head>; BASE_PATH was not applied to the served HTML")
+	}
+	// The SPA reads this to prefix its own API calls and router links, so it has
+	// to land ahead of the module scripts that consume it.
+	indexPage = bytes.Replace(
+		indexPage,
+		[]byte(head),
+		[]byte(head+"\n    <script>window.__BASE_PATH__ = "+strconv.Quote(base)+";</script>"),
+		1,
+	)
+
+	for _, attr := range []string{`src="`, `href="`} {
+		indexPage = bytes.ReplaceAll(
+			indexPage,
+			[]byte(attr+"static/"),
+			[]byte(attr+base+"/static/"),
+		)
+	}
+	// The template's favicon is the only root-absolute reference left in the page.
+	indexPage = bytes.ReplaceAll(
+		indexPage,
+		[]byte(`href="/logo.png"`),
+		[]byte(`href="`+base+`/logo.png"`),
+	)
 }
 
 func InitResources() error {

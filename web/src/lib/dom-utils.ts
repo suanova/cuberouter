@@ -16,16 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { withBasePath } from '@/lib/base-path'
+
 export function applyFaviconToDom(url: string) {
   if (typeof document === 'undefined' || !url) return
   try {
-    const next = new URL(url, window.location.href).href
+    // The configured logo is a server path ('/logo.png'), which is only correct
+    // on this host when the deployment prefix is included. withBasePath leaves a
+    // fully-qualified URL alone, so an off-site logo keeps working.
+    const resolved = new URL(withBasePath(url), window.location.href).href
     const existing =
       document.querySelectorAll<HTMLLinkElement>('link[rel~="icon"]')
-    if (existing.length === 1 && existing[0].href === next) return
+    if (existing.length === 1 && existing[0].href === resolved) return
     const link = document.createElement('link')
     link.rel = 'icon'
-    link.href = url
+    // Assign the resolved URL: the dedupe check above compares against it, so
+    // assigning the raw input would leave an unreachable early return and
+    // re-append the icon on every call.
+    link.href = resolved
     existing.forEach((l) => l.remove())
     document.head.appendChild(link)
   } catch {

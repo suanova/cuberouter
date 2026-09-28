@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { clearAuthentication, isAuthBundle } from '@/lib/api'
+import { absoluteAppUrl } from '@/lib/base-path'
 
 import { createOAuthFlow, logout, telegramLogin } from '../api'
 import {
@@ -211,7 +212,9 @@ export function useOAuthLogin(
       await resetSession()
       const state = await createOAuthFlow(provider.slug, 'login')
 
-      const redirectUri = `${window.location.origin}/oauth/${provider.slug}`
+      // Registered with the identity provider, so it has to be the URL the
+      // provider will actually reach: origin plus deployment prefix.
+      const redirectUri = absoluteAppUrl(`/oauth/${provider.slug}`)
       const url = new URL(provider.authorization_endpoint)
       url.searchParams.set('client_id', provider.client_id)
       url.searchParams.set('redirect_uri', redirectUri)

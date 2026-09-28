@@ -23,6 +23,7 @@ import { LanguageSwitcher } from '@/components/language-switcher'
 import { ThemeSwitch } from '@/components/theme-switch'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { withBasePath } from '@/lib/base-path'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -53,7 +54,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           className='transition-opacity hover:opacity-80'
         >
           <img
-            src='/head.png'
+            src={withBasePath('/head.png')}
             alt={systemName || t('CubeRouter')}
             className='h-10 w-auto dark:brightness-0 dark:invert sm:h-12'
           />

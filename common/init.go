@@ -48,6 +48,11 @@ func InitEnv() {
 		os.Exit(0)
 	}
 
+	// The dashboard may be published under a URL path prefix. Resolve it before
+	// anything that emits a browser-visible URL, so the served HTML and the
+	// refresh cookie's Path attribute both see the final value.
+	InitBasePath()
+
 	if os.Getenv("SESSION_SECRET") != "" {
 		ss := os.Getenv("SESSION_SECRET")
 		if ss == "random_string" {

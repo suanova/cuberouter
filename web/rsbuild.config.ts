@@ -74,6 +74,15 @@ export default defineConfig(({ envMode }) => {
       // Production optimizations
       minify: isProd,
       target: 'web',
+      // "auto" makes the rspack runtime derive __webpack_public_path__ from the URL of the
+      // script currently executing, so lazily-loaded chunks, worker URLs and CSS url()
+      // references resolve correctly whether the app is served from the site root or from a
+      // URL path prefix (BASE_PATH). It also makes the generated index.html reference assets
+      // relatively (static/js/... instead of /static/js/...); the Go server normalises those
+      // back to a base-prefixed absolute form at startup (InjectBasePath in main.go), which
+      // also protects deep-link reloads such as /dashboard/settings where a relative
+      // reference would otherwise resolve against the current directory.
+      assetPrefix: 'auto',
       distPath: {
         root: 'dist',
       },

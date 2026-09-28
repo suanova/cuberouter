@@ -19,10 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 /**
  * Application-wide constants
  */
+import { withBasePath } from '@/lib/base-path'
 
 // System Configuration Defaults
 export const DEFAULT_SYSTEM_NAME = 'CubeRouter'
-export const DEFAULT_LOGO = '/logo.png'
+// Bundled fallback logo. The server serves it from the site root, so a
+// deployment published under a URL prefix has to request it from under that
+// prefix -- resolved once here rather than at each render site.
+export const DEFAULT_LOGO = withBasePath('/logo.png')
 
 // LocalStorage Keys
 export const STORAGE_KEYS = {

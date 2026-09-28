@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { resolveServerAddress } from '@/lib/server-address'
+
 export function sendToFluent(apiKey: string, serverAddress?: string): boolean {
   if (typeof window === 'undefined') {
     return false
@@ -28,7 +30,10 @@ export function sendToFluent(apiKey: string, serverAddress?: string): boolean {
 
   const payload = {
     id: 'new-api',
-    baseUrl: serverAddress || window.location.origin,
+    // Callers pass the resolved deployment base; the fallback keeps the
+    // deployment prefix when none was supplied, so the extension reaches the
+    // API instead of the site root.
+    baseUrl: serverAddress || resolveServerAddress(),
     apiKey: `sk-${apiKey}`,
   }
 

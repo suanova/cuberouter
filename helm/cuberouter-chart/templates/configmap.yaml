@@ -10,6 +10,7 @@ data:
   NODE_TYPE: {{ .Values.config.NODE_TYPE | quote }}
   PORT: {{ .Values.config.PORT | quote }}
   TZ: {{ .Values.config.TZ | quote }}
+  BASE_PATH: {{ .Values.config.BASE_PATH | quote }}
   {{- range $key, $value := .Values.config.extra }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}

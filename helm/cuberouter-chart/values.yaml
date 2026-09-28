@@ -29,6 +29,12 @@ config:
   NODE_TYPE: master
   PORT: "3000"
   TZ: Asia/Shanghai
+  # URL path prefix, when an Ingress publishes the app under a subpath
+  # (e.g. "/cuberouter"). Path only -- never a full URL. Empty means the site
+  # root, which is the default. Must match the prefix the Ingress strips;
+  # readiness/liveness probes stay on the unprefixed /api/status. See README
+  # "Publishing under a URL prefix".
+  BASE_PATH: ""
   # Additional plain environment variables (name: value)
   extra: {}
 

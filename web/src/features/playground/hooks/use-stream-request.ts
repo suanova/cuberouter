@@ -20,6 +20,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { SSE } from 'sse.js'
 
 import { getFreshAuthHeaders } from '@/lib/api'
+import { withBasePath } from '@/lib/base-path'
 
 import { API_ENDPOINTS, ERROR_MESSAGES } from '../constants'
 import {
@@ -195,7 +196,9 @@ export function useStreamRequest() {
     controllerRef.current = createStreamRequestController({
       getHeaders: getFreshAuthHeaders,
       createSource: (payload, headers) =>
-        new SSE(API_ENDPOINTS.CHAT_COMPLETIONS, {
+        // sse.js issues its own request, so the shared axios baseURL does not
+        // apply and the deployment prefix has to be added here.
+        new SSE(withBasePath(API_ENDPOINTS.CHAT_COMPLETIONS), {
           headers,
           method: 'POST',
           payload: JSON.stringify(payload),

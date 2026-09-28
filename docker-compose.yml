@@ -55,6 +55,7 @@ services:
 #      - GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX  # Google Analytics 的测量 ID (Google Analytics Measurement ID)
 #      - UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # Umami 网站 ID (Umami Website ID)
 #      - UMAMI_SCRIPT_URL=https://analytics.umami.is/script.js  # Umami 脚本 URL，默认为官方地址 (Umami Script URL, defaults to official URL)
+#      - BASE_PATH=/cuberouter  # 反向代理把站点发布在子路径时设置，只写路径不要写完整 URL；留空为站点根路径 (URL path prefix when a reverse proxy publishes the app under a subpath; path only, empty means the site root). 健康检查仍走不带前缀的 /api/status (healthcheck stays unprefixed)
 
     depends_on:
       - redis

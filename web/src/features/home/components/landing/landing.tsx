@@ -27,14 +27,17 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { basePath, withBasePath } from '@/lib/base-path'
+
 import Globe from './globe'
 import './landing.css'
 
 // Demo base URL for the API examples: point at the deployment serving this
 // page so a copied example talks to the right tenant, not a hard-coded host.
+// It ends at the deployment prefix, since each example appends '/v1/...'.
 const DEMO_API_BASE =
   typeof window !== 'undefined'
-    ? window.location.origin
+    ? `${window.location.origin}${basePath}`
     : 'https://cube-router.com'
 
 // Syntax-highlighted API call examples (markup matches landing.css .c-* classes).
@@ -359,7 +362,11 @@ export function Landing() {
           <div className='cr-footer__grid'>
             <div>
               <div className='cr-footer__brand'>
-                <img src='/head.png' alt='CubeRouter' className='dark:brightness-0 dark:invert' />
+                <img
+                  src={withBasePath('/head.png')}
+                  alt='CubeRouter'
+                  className='dark:brightness-0 dark:invert'
+                />
               </div>
               <p className='cr-footer__desc'>{t('oneSuanova is a leading AI service provider. Through its proprietary Token-as-a-Service (TaaS) platform, it provides stable and efficient AI Token cloud services for enterprises and institutions across industries. The brand is wholly owned and operated by Suanova Technology, dedicated to building high-standard, scalable next-generation AI computing infrastructure.')}</p>
             </div>

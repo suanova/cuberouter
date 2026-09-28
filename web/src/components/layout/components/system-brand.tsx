@@ -25,6 +25,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { useStatus } from '@/hooks/use-status'
+import { withBasePath } from '@/lib/base-path'
 import { cn } from '@/lib/utils'
 
 type SystemBrandProps = {
@@ -63,7 +64,11 @@ export function SystemBrand(props: SystemBrandProps) {
           'hover:bg-accent focus-visible:ring-ring/40 focus-visible:ring-2'
         )}
       >
-        <img src='/head.png' alt={name} className='h-8 w-auto dark:brightness-0 dark:invert' />
+        <img
+          src={withBasePath('/head.png')}
+          alt={name}
+          className='h-8 w-auto dark:brightness-0 dark:invert'
+        />
       </Link>
     )
   }
@@ -77,7 +82,7 @@ export function SystemBrand(props: SystemBrandProps) {
           render={<div />}
         >
           <img
-            src='/head.png'
+            src={withBasePath('/head.png')}
             alt={name}
             className='h-8 w-auto group-data-[collapsible=icon]:hidden dark:brightness-0 dark:invert'
           />

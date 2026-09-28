@@ -296,6 +296,12 @@ func ListLoginSessions(userID int, currentSID string) ([]LoginSessionView, error
 	return views, nil
 }
 
+// WriteRefreshCookie issues the HttpOnly refresh cookie. Its Path is scoped to
+// the auth endpoints so the token is not attached to ordinary API traffic.
+// When the dashboard is published under a URL path prefix, that scope must
+// carry the prefix as well: the browser matches Path against the URL it can
+// see, and the reverse proxy strips the prefix only after the request has
+// already left the browser.
 func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	expiresAt := time.Now().Add(LoginSessionTTL)
 	if sid, _, ok := splitRefreshToken(rawToken); ok {
@@ -310,7 +316,7 @@ func WriteRefreshCookie(c *gin.Context, rawToken string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    rawToken,
-		Path:     "/api/user/auth",
+		Path:     common.WithBasePath("/api/user/auth"),
 		MaxAge:   maxAge,
 		Expires:  expiresAt,
 		HttpOnly: true,
@@ -324,7 +330,7 @@ func ClearRefreshCookie(c *gin.Context) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     RefreshCookieName,
 		Value:    "",
-		Path:     "/api/user/auth",
+		Path:     common.WithBasePath("/api/user/auth"),
 		MaxAge:   -1,
 		Expires:  time.Unix(1, 0),
 		HttpOnly: true,
