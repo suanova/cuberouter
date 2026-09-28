@@ -170,6 +170,33 @@ func TestRelayChainNonTaskModes(t *testing.T) {
 			wantPromptTokens:    3, wantCompletionTokens: 2,
 			wantBodyContains: `"type":"message"`,
 		},
+		{
+			name:             "gemini native generateContent",
+			path:             "/v1beta/models/gemini-3.8-flash:generateContent",
+			wantUpstreamPath: "/v1beta/models/gemini-3.8-flash:generateContent",
+			relayMode:        relayconstant.RelayModeGemini,
+			relayFormat:      types.RelayFormatGemini,
+			model:            "gemini-3.8-flash",
+			protocols:        map[string][]string{"gemini-*": {dto.ModelProtocolGemini}},
+			requestBody:      `{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":32}}`,
+			upstreamBody:     `{"candidates":[{"content":{"role":"model","parts":[{"text":"pong"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":6,"candidatesTokenCount":11,"thoughtsTokenCount":200,"totalTokenCount":217},"modelVersion":"gemini-3.8-flash","responseId":"resp_1"}`,
+			wantPromptTokens: 6, wantCompletionTokens: 211,
+			wantBodyContains: `"candidates"`,
+		},
+		{
+			name:                "gemini request goes to chat and comes back gemini-shaped when not declared",
+			path:                "/v1beta/models/glm-5.3-flash:generateContent",
+			wantUpstreamPath:    "/v1/chat/completions",
+			relayMode:           relayconstant.RelayModeGemini,
+			relayFormat:         types.RelayFormatGemini,
+			model:               "glm-5.3-flash",
+			protocols:           map[string][]string{"glm-*": {dto.ModelProtocolChat}},
+			requestBody:         `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`,
+			upstreamBody:        `{"id":"chatcmpl-1","object":"chat.completion","created":1700000000,"model":"glm-5.3-flash","choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}}`,
+			skipRequestEquality: true, // 链路用例直传请求体, 转换本身由 ConvertGeminiRequest 的用例锁定
+			wantPromptTokens:    5, wantCompletionTokens: 3,
+			wantBodyContains: `"candidates"`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -779,4 +806,140 @@ func TestRelayChainStreamingResponses(t *testing.T) {
 	assert.Equal(t, 4, usage.PromptTokens)
 	assert.Equal(t, 2, usage.CompletionTokens)
 	assert.Contains(t, recorder.Body.String(), "Hello")
+}
+
+// TestRelayChainStreamingNativeGemini 锁定 gemini 原生流式契约: 声明 gemini 的模型
+// 按客户端 action 打 {base}/{version}/models/{model}:streamGenerateContent 并补
+// alt=sse, 上游 SSE 原样转发给客户端, usage 取自 usageMetadata; 首块只有
+// trafficType 的空壳 usageMetadata 不得被当成计费数据。
+func TestRelayChainStreamingNativeGemini(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldStreamingTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 300
+	defer func() { constant.StreamingTimeout = oldStreamingTimeout }()
+
+	const requestBody = `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`
+	// 首块 usageMetadata 只有 trafficType(上游实测形状), 末块才带真实 token 数。
+	const upstreamBody = "" +
+		"data: " + `{"candidates":[{"content":{"role":"model","parts":[{"text":"Hel"}]}}],"usageMetadata":{"trafficType":"ON_DEMAND"},"modelVersion":"gemini-3.8-flash"}` + "\n\n" +
+		"data: " + `{"candidates":[{"content":{"role":"model","parts":[{"text":"lo"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":14,"thoughtsTokenCount":101,"totalTokenCount":120}}` + "\n\n"
+
+	var gotURI string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURI = r.URL.RequestURI()
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(upstreamBody))
+	}))
+	defer server.Close()
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/gemini-3.8-flash:streamGenerateContent", bytes.NewBufferString(requestBody))
+	context.Request.Header.Set("Content-Type", "application/json")
+	context.Request.Header.Set("Accept", "text/event-stream")
+
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    server.URL,
+			ChannelType:       constant.ChannelTypeAstraFlow,
+			ApiKey:            "sk-test",
+			UpstreamModelName: "gemini-3.8-flash",
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ModelProtocols: map[string][]string{"gemini-*": {dto.ModelProtocolGemini}},
+			},
+		},
+		RequestURLPath:  "/v1beta/models/gemini-3.8-flash:streamGenerateContent",
+		RelayFormat:     types.RelayFormatGemini,
+		RelayMode:       relayconstant.RelayModeGemini,
+		IsStream:        true,
+		OriginModelName: "gemini-3.8-flash",
+	}
+
+	respAny, err := adaptor.DoRequest(context, info, bytes.NewBufferString(requestBody))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, "/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse", gotURI)
+
+	usageAny, apiErr := adaptor.DoResponse(context, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usageAny)
+	usage, ok := usageAny.(*dto.Usage)
+	require.True(t, ok, "expected *dto.Usage, got %T", usageAny)
+	assert.Equal(t, 5, usage.PromptTokens, "prompt tokens must come from usageMetadata, not the estimator")
+	assert.Equal(t, 115, usage.CompletionTokens, "completion tokens must include candidates and thoughts")
+
+	clientBody := recorder.Body.String()
+	assert.Contains(t, clientBody, `"candidates"`, "native gemini chunks must pass through untouched")
+	assert.Contains(t, clientBody, "Hel")
+	assert.Contains(t, clientBody, "lo")
+}
+
+// TestRelayChainStreamingGeminiDowngradedToChat 锁定 gemini 降级链路的流式结算:
+// 未声明 gemini 的模型把客户端 gemini 流式请求转成 chat 发出, 上游若没回 usage
+// (它可能忽略 stream_options.include_usage), 结算必须按已中继的文本估算——
+// 上游收到的是 chat 报文, 文本统计也要按 chat 分块累积, 否则 completion 会记 0。
+func TestRelayChainStreamingGeminiDowngradedToChat(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldStreamingTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 300
+	defer func() { constant.StreamingTimeout = oldStreamingTimeout }()
+
+	const requestBody = `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`
+	// 上游分块里有正文但没有 usage(模拟忽略 include_usage 的网关)。
+	const upstreamBody = "" +
+		`data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1700000000,"model":"glm-5.3-flash","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello there"},"finish_reason":null}]}` + "\n\n" +
+		`data: {"id":"chatcmpl-s1","object":"chat.completion.chunk","created":1700000000,"model":"glm-5.3-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}` + "\n\n" +
+		`data: [DONE]` + "\n"
+
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(upstreamBody))
+	}))
+	defer server.Close()
+
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1beta/models/glm-5.3-flash:streamGenerateContent", bytes.NewBufferString(requestBody))
+	context.Request.Header.Set("Content-Type", "application/json")
+	context.Request.Header.Set("Accept", "text/event-stream")
+
+	adaptor := &Adaptor{}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    server.URL,
+			ChannelType:       constant.ChannelTypeAstraFlow,
+			ApiKey:            "sk-test",
+			UpstreamModelName: "glm-5.3-flash",
+			ChannelOtherSettings: dto.ChannelOtherSettings{
+				ModelProtocols: map[string][]string{"glm-*": {dto.ModelProtocolChat}},
+			},
+		},
+		RequestURLPath:  "/v1beta/models/glm-5.3-flash:streamGenerateContent",
+		RelayFormat:     types.RelayFormatGemini,
+		RelayMode:       relayconstant.RelayModeGemini,
+		IsStream:        true,
+		OriginModelName: "glm-5.3-flash",
+	}
+
+	respAny, err := adaptor.DoRequest(context, info, bytes.NewBufferString(requestBody))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, "/v1/chat/completions", gotPath)
+
+	usageAny, apiErr := adaptor.DoResponse(context, resp, info)
+	require.Nil(t, apiErr)
+	require.NotNil(t, usageAny)
+	usage, ok := usageAny.(*dto.Usage)
+	require.True(t, ok, "expected *dto.Usage, got %T", usageAny)
+	assert.Greater(t, usage.CompletionTokens, 0, "a downgraded gemini stream must estimate completion from the relayed chat text")
+	assert.Contains(t, recorder.Body.String(), `"candidates"`)
 }

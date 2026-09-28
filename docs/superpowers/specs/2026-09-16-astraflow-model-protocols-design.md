@@ -126,3 +126,30 @@
 - 单元测试: relaykit 匹配/校验表驱动测试;`model.Channel.ValidateSettings` 保存校验;astraflow 适配器按 4.3 矩阵的链路测试(沿用 `relay/channel/astraflow/relay_test.go` 的假上游结构,断言上游路径与请求体),含流式 responses 回归(现状会误判为"不完整流")与 4.4 的降级记忆。
 - 集成实测(本地实例 + 真实星图 key,或按需): 用 `/home/skeeey/workspace/cuberouter/astraflow.yaml` 的 base_url/key 配一个渠道,分别以 chat/messages/responses 调同一模型,确认 `claude-*` 走 chat 桥、`glm-*` 走原生 messages。
 - 构建校验: `go build ./...`、`go test ./relay/channel/astraflow/ ./model/ ./relaykit/...`、`cd relaykit && GOWORK=off go build ./...`。
+
+## 7. 2026-09-27 补充: gemini 协议(已实现)
+
+新增第四个协议值 `gemini`,语义是"上游原生提供 Gemini 协议(`/{version}/models/{model}:generateContent`)"。
+
+**基线与其他三个协议不同**: gemini 的现状基线既不是直连也不是降级,而是 `ConvertGeminiRequest` 直接 `not implemented` → 500 `convert_request_failed`(gemini 格式入站没有任何兜底)。本期把它改成与 chat/messages/responses 对称的两态:
+
+| 客户端(gemini 原生格式, action 为 `generateContent`/`streamGenerateContent`) | 上游路径 | 响应处理器 |
+|---|---|---|
+| 声明命中且含 `gemini` | `{base}/{version}/models/{上游模型名}:{action}`(流式补 `alt=sse`) | gemini 适配器(`GeminiTextGeneration*Handler`,与渠道类型 24 一致) |
+| 未命中声明 / 未配置 | `{base}/v1/chat/completions`(请求体转 chat) | openai 处理器按 `RelayFormatGemini` 转回 gemini 形状 |
+
+- 请求体透传开关打开时(全局或渠道级),上游收到的本来就是客户端原始 gemini 报文,此时**未声明也按 gemini 端点收发**(与 responses 的 `responsesDowngradedToChat` 同一条规则)。透传时也**不记降级记忆**: 报文形状改不了,记了不会生效,只会在日志里误报"已降级"。
+- URL 一律重建,客户端查询串不转发上游: gemini 客户端的 `?key=<网关令牌>` 属于网关鉴权,原样透传会把网关令牌送给上游;action 分隔符被转义成 `%3A` 时先解码再取 action(路由与请求校验用的都是解码后的路径)。
+- `action` 取自客户端路径,**只有文本生成两种 action 参与分流**;`embedContent` / `batchEmbedContents` / `countTokens` 等非文本 action 一律保持改动前的行为(沿用客户端路径 + openai 处理器,请求转换快速失败——两条路本来都不通,不能把转换后的 chat 报文发到客户端的 gemini action 路径上)。
+- 原生 gemini 流式会把 `info.DisablePing` 置为 true(与渠道类型 24 同一位置): gemini 客户端逐条 JSON 解析 SSE 事件,网关注入的 `: PING` 注释会让它解析失败。
+- `sentProtocol` 对 gemini 会话返回 `gemini`,4.4 的降级记忆因此覆盖它(继承既有签名列表的暴露面: 参数级 4xx 若含 `does not support` 等同措辞也会被记忆——与 messages/responses 相同)。
+
+实现侧顺带的两处共享修正(不在 astraflow 内,但由本特性暴露):
+
+- `relay/channel/openai/helper.go` 的 `processTokenData` 原先只认 `RelayModeChatCompletions`/`RelayModeCompletions`,降级会话(gemini/messages → chat)的文本统计因此为空——上游若不回 usage,结算会拿空文本估算,completion 记 0。现改为"非 completions 的 relayMode 都按 chat 分块统计",解析失败只在 chat 会话里算错误。实测星图会回 usage(`include_usage` 生效),该缺口对它是潜伏的,对忽略该参数的网关是实际的。
+- `responsesDowngradedToChat` 的两处透传判断与新代码共用 `bodyPassthroughEnabled`,行为不变(既有用例覆盖)。
+
+实测(`gemini-3.8-flash`,2026-09-27):gemini 原生端点 `Bearer` 与 `x-goog-api-key` 均可用;非流式与 `:streamGenerateContent?alt=sse` 都返回标准 Gemini 形状,`usageMetadata` 完整(prompt/candidates/thoughts/total),网关按 `billing-usage-gemini` 计费,消费日志 token 与上游一致;同一上游的 `/v1/messages`(400)与 `/v1/responses`(500 `not implemented`)均不可用,故声明为 `[chat, gemini]`。
+
+**未收录的拒绝签名**: 星图 gemini 端点会整体抖动——同一模型同一请求几分钟内 200/400 交替,期间所有模型一起返回 400 `Invalid param: get request mode`(实测触发过一次约 2 分钟的窗口)。这是上游瞬时故障,不是"该模型没有 gemini 协议",因此**不写进 `protocolUnsupportedMarkers`**: 否则一次抖动就会把已声明的原生 gemini 在进程内永久降级成有损 chat 转换。回归测试 `TestAstraflowKeepsNativeGeminiOnTransientRequestModeError` 锁住这条边界。
+

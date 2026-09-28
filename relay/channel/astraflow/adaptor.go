@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
+	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/common_handler"
@@ -48,6 +50,28 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	requestPath := info.RequestURLPath
 	if requestPath == "" {
 		return info.ChannelBaseUrl, nil
+	}
+	// gemini 原生格式: 文本生成 action 要么按声明直连上游 gemini 端点(与渠道类型 24
+	// 同形),要么在未声明时降级到 chat 端点(请求体已被 ConvertGeminiRequest 转成 chat)。
+	// 两类 gemini 路径都重建 URL: 客户端查询串里的 ?key=<网关令牌> 属于网关鉴权,
+	// 不得转给上游。
+	if path, action := geminiRequestPath(info); path != "" {
+		if !isGeminiTextAction(action) {
+			// 非文本 action(embedding/countTokens 等): 沿用客户端路径。
+			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, path, info.ChannelType), nil
+		}
+		if !nativeGeminiRequest(info) {
+			return fmt.Sprintf("%s/v1/chat/completions", info.ChannelBaseUrl), nil
+		}
+		geminiAction := geminiActionGenerateContent
+		if action == geminiActionStreamGenerateContent || info.IsStream {
+			// 客户端用 alt=sse 表达流式时按流式 action 发上游(与渠道类型 24 一致);
+			// 原生 gemini 流式还要关掉网关 ping——gemini 客户端会逐条 JSON 解析 SSE 事件。
+			geminiAction = geminiActionStreamGenerateContent + "?alt=sse"
+			info.DisablePing = true
+		}
+		version := model_setting.GetGeminiVersionSetting(info.UpstreamModelName)
+		return fmt.Sprintf("%s/%s/models/%s:%s", info.ChannelBaseUrl, version, upstreamModelID(info), geminiAction), nil
 	}
 	// /v1/messages (RelayFormatClaude): 声明原生支持 messages 就透传客户端路径，
 	// 否则请求体已被 ConvertClaudeRequest 转成 OpenAI 格式,必须打到 chat 端点。
@@ -127,18 +151,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 		return request, nil
 	}
 	// 其余模型: 降级为 chat 请求,响应侧由 OaiChatToResponses* 转回 Responses 形状。
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, &request)
-	if err != nil {
-		return nil, err
-	}
-	aiRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
-	if !ok {
-		return nil, fmt.Errorf("expected OpenAI chat completions request, got %T", result.Value)
-	}
-	if info.SupportStreamOptions && info.IsStream {
-		aiRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
-	}
-	return aiRequest, nil
+	return downgradeToChatRequest(c, info, &request)
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
@@ -159,6 +172,11 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	switch {
 	case nativeMessagesRequest(info):
 		return (&claude.Adaptor{}).DoResponse(c, resp, info)
+	case nativeGeminiRequest(info):
+		// 上游收到的是 gemini 原生报文: 交给 gemini 适配器按 action 选处理器。
+		// 降级会话(转成 chat 发出)不走这里——chat 报文由默认分支的 openai 处理器
+		// 按 RelayFormatGemini 转回 gemini 形状。
+		return (&gemini.Adaptor{}).DoResponse(c, resp, info)
 	case info.RelayMode == constant.RelayModeResponses:
 		if responsesDowngradedToChat(info) {
 			// 上游收到的是 chat 响应,转成 Responses 形状给客户端。
@@ -207,22 +225,27 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 	// 上游只说 OpenAI 协议: 把 Anthropic 请求体转成 OpenAI chat 请求，
 	// 由 GetRequestURL 指向 /v1/chat/completions；响应侧由 openai handler
 	// 按 RelayFormatClaude 转回 Anthropic 格式（含流式逐块转换）。
-	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
-	if err != nil {
-		return nil, err
-	}
-	aiRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
-	if !ok {
-		return nil, fmt.Errorf("expected OpenAI chat completions request, got %T", result.Value)
-	}
-	if info.SupportStreamOptions && info.IsStream {
-		aiRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
-	}
-	return a.ConvertOpenAIRequest(c, info, aiRequest)
+	return downgradeToChatRequest(c, info, request)
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
-	return nil, errors.New("not implemented")
+	if request == nil {
+		return nil, errors.New("request is nil")
+	}
+	// 声明原生支持 gemini 的模型: 请求体交给 gemini 适配器做与渠道类型 24 相同的
+	// 形状归一化后原样转发,响应由 gemini 处理器解析。
+	if useNativeProtocol(info, dto.ModelProtocolGemini) {
+		return (&gemini.Adaptor{}).ConvertGeminiRequest(c, info, request)
+	}
+	// 只有文本生成 action 参与降级: 其余 action(countTokens 等)两条路都不通, 保持
+	// 快速失败——否则转换后的 chat 报体会被发到客户端的 gemini action 路径上。
+	if _, action := geminiRequestPath(info); !isGeminiTextAction(action) {
+		return nil, errors.New("not implemented")
+	}
+	// 上游只说 OpenAI 协议: 把 gemini 请求体转成 OpenAI chat 请求，由 GetRequestURL
+	// 指向 /v1/chat/completions；响应侧由 openai 处理器按 RelayFormatGemini 转回
+	// gemini 形状（含流式逐块转换）。
+	return downgradeToChatRequest(c, info, request)
 }
 
 // upstreamModelID 返回发往上游的模型名。
@@ -234,6 +257,72 @@ func upstreamModelID(info *relaycommon.RelayInfo) string {
 		return ""
 	}
 	return info.OriginModelName
+}
+
+const (
+	geminiActionGenerateContent       = "generateContent"
+	geminiActionStreamGenerateContent = "streamGenerateContent"
+)
+
+// geminiRequestPath 返回去掉查询串的客户端 gemini 路径与其中的 action(最后一个 ':'
+// 之后的部分);非 gemini 格式返回空路径。客户端查询串只承载鉴权(?key=<网关令牌>)等
+// 传输信息,不转发给上游;分隔符可能被客户端转义成 %3A,而路由与请求校验用的是解码后
+// 的路径,这里同样解码后再取 action。
+func geminiRequestPath(info *relaycommon.RelayInfo) (path string, action string) {
+	if info == nil || info.RelayFormat != types.RelayFormatGemini || info.RequestURLPath == "" {
+		return "", ""
+	}
+	path = info.RequestURLPath
+	if idx := strings.IndexByte(path, '?'); idx >= 0 {
+		path = path[:idx]
+	}
+	if decoded, err := url.PathUnescape(path); err == nil {
+		path = decoded
+	}
+	return path, path[strings.LastIndex(path, ":")+1:]
+}
+
+// isGeminiTextAction 报告 action 是否是 gemini 文本生成。只有这两种 action 参与
+// "直传 or 转 chat"的分流,其余 action 在两条路上都不通,保持改动前的快速失败。
+func isGeminiTextAction(action string) bool {
+	return action == geminiActionGenerateContent || action == geminiActionStreamGenerateContent
+}
+
+// nativeGeminiRequest 报告本次 gemini 文本会话能否直连上游 gemini 端点: 模型声明了
+// 原生 gemini,或请求体被透传(host 不调用 ConvertGeminiRequest,上游收到的就是客户端
+// 原始 gemini 报文,只能按 gemini 端点收发)。否则按现状降级为 chat。
+func nativeGeminiRequest(info *relaycommon.RelayInfo) bool {
+	if path, action := geminiRequestPath(info); path == "" || !isGeminiTextAction(action) {
+		return false
+	}
+	return useNativeProtocol(info, dto.ModelProtocolGemini) || bodyPassthroughEnabled(info)
+}
+
+// bodyPassthroughEnabled 报告请求体是否被原样透传(全局或渠道级开关): 此时 host
+// 不会调用 ConvertXxxRequest,上游收到的是客户端原始报文。容忍 ChannelMeta 为 nil。
+func bodyPassthroughEnabled(info *relaycommon.RelayInfo) bool {
+	if model_setting.GetGlobalSettings().PassThroughRequestEnabled {
+		return true
+	}
+	return info != nil && info.ChannelMeta != nil && info.ChannelSetting.PassThroughBodyEnabled
+}
+
+// downgradeToChatRequest 把非 chat 协议的请求体转成 OpenAI chat 请求(各降级路径共用,
+// 由 GetRequestURL 指向 chat 端点)。流式请求要带上 stream_options.include_usage:
+// 否则上游不回 usage, 结算只能按已中继文本估算。
+func downgradeToChatRequest(c *gin.Context, info *relaycommon.RelayInfo, request any) (*dto.GeneralOpenAIRequest, error) {
+	result, err := service.ConvertRequest(c, info, types.RelayFormatOpenAI, request)
+	if err != nil {
+		return nil, err
+	}
+	aiRequest, ok := result.Value.(*dto.GeneralOpenAIRequest)
+	if !ok {
+		return nil, fmt.Errorf("expected OpenAI chat completions request, got %T", result.Value)
+	}
+	if info.SupportStreamOptions && info.IsStream {
+		aiRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: true}
+	}
+	return aiRequest, nil
 }
 
 // useNativeProtocol 报告本次请求能否直连上游的该协议。
@@ -276,6 +365,9 @@ const nativeProtocolBodyPeekLimit = 4 * 1024
 // (如 "unsupported parameter: temperature") 也算作协议拒绝, 让该组合在进程内
 // 被永久降级。实测: claude 模型打 /v1/responses 返回 500 "not implemented";
 // 图像模型返回 400 "The requested operation is unsupported."。
+// 不收 "Invalid param: get request mode": 星图的 gemini 端点会整体抖动——同一模型
+// 同一请求在几分钟内 200/400 交替(实测 2026-09-27,期间所有模型一起 400), 那是上游
+// 瞬时故障而非"该模型没有 gemini 协议", 收进签名会让一次抖动把原生 gemini 永久降级。
 var protocolUnsupportedMarkers = []string{
 	"not implemented",
 	"operation is unsupported",
@@ -327,6 +419,9 @@ func sentProtocol(info *relaycommon.RelayInfo) string {
 	if info.RelayFormat == types.RelayFormatClaude {
 		return dto.ModelProtocolMessages
 	}
+	if nativeGeminiRequest(info) {
+		return dto.ModelProtocolGemini
+	}
 	return dto.ModelProtocolChat
 }
 
@@ -341,6 +436,11 @@ func (a *Adaptor) detectRejectedNativeProtocol(info *relaycommon.RelayInfo, resp
 	// relay/channel/api_request.go),它命中的拒绝不构成"上游不支持该协议"的证据,
 	// 不得因此永久降级生产流量的 (渠道, 模型, 协议)。
 	if info.IsChannelTest {
+		return
+	}
+	// 请求体透传时上游收到的就是客户端原始报文,形状改不了,降级无从谈起:
+	// 记了也不会生效,只会在日志里误报"已降级"。
+	if bodyPassthroughEnabled(info) {
 		return
 	}
 	protocol := sentProtocol(info)
@@ -382,11 +482,10 @@ func responsesDowngradedToChat(info *relaycommon.RelayInfo) bool {
 	return info != nil &&
 		info.RelayFormat == types.RelayFormatOpenAIResponses &&
 		info.RelayMode == constant.RelayModeResponses &&
-		// 先于下面两个透传判断: ChannelMeta 为 nil 时 info.ChannelSetting 会 panic,
-		// 而 useNativeProtocol 容忍 nil(该情形下 responses 取现状基线 true,短路返回 false)。
+		// 先于透传判断: ChannelMeta 为 nil 时 useNativeProtocol 容忍 nil(该情形下
+		// responses 取现状基线 true,短路返回 false),bodyPassthroughEnabled 同样容忍。
 		!useNativeProtocol(info, dto.ModelProtocolResponses) &&
-		!info.ChannelSetting.PassThroughBodyEnabled &&
-		!model_setting.GetGlobalSettings().PassThroughRequestEnabled
+		!bodyPassthroughEnabled(info)
 }
 
 // Ensure compile-time interface check.

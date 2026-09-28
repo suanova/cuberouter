@@ -85,6 +85,12 @@ func TestValidateModelProtocols(t *testing.T) {
 			}},
 		},
 		{
+			name: "gemini protocol",
+			settings: ChannelOtherSettings{ModelProtocols: map[string][]string{
+				"gemini-*": {ModelProtocolGemini},
+			}},
+		},
+		{
 			name:     "unknown protocol",
 			settings: ChannelOtherSettings{ModelProtocols: map[string][]string{"*": {"chatt"}}},
 			wantErr:  "unsupported protocol",

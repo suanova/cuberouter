@@ -517,3 +517,340 @@ func TestAstraflowDowngradeWatermarkKeepsInFlightRequestsNative(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, baseURL+"/v1/messages", url, "requests in flight before the recording must keep the native protocol")
 }
+
+// newGeminiTextInfo 构造一次 gemini 原生格式的文本生成会话。
+func newGeminiTextInfo(baseURL string, channelID int, protocols map[string][]string, model string) *relaycommon.RelayInfo {
+	return &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:            channelID,
+			ChannelBaseUrl:       baseURL,
+			ChannelType:          constant.ChannelTypeAstraFlow,
+			ApiKey:               "sk-test",
+			UpstreamModelName:    model,
+			ChannelOtherSettings: dto.ChannelOtherSettings{ModelProtocols: protocols},
+		},
+		RequestURLPath:  "/v1beta/models/" + model + ":generateContent",
+		RelayFormat:     types.RelayFormatGemini,
+		RelayMode:       relayconstant.RelayModeGemini,
+		OriginModelName: model,
+	}
+}
+
+// newGeminiContext 构造一次 POST /v1beta/models/{model}:generateContent 的 gin 上下文。
+func newGeminiContext(path string) *gin.Context {
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
+	return context
+}
+
+// TestConvertGeminiRequestKeepsNativeBodyWhenDeclared 锁定: 声明原生 gemini 的模型,
+// gemini 请求体原样转发(与渠道类型 24 同样的形状归一化);未声明时返回转换后的
+// OpenAI chat 请求,由 GetRequestURL 指向 chat 端点。
+func TestConvertGeminiRequestKeepsNativeBodyWhenDeclared(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context := newGeminiContext("/v1beta/models/gemini-3.8-flash:generateContent")
+
+	newInfo := func(protocols map[string][]string) *relaycommon.RelayInfo {
+		return newGeminiTextInfo("https://api.modelverse.cn", 31, protocols, "gemini-3.8-flash")
+	}
+
+	adaptor := &Adaptor{}
+	request := &dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{{Text: "hi"}}}},
+	}
+
+	converted, err := adaptor.ConvertGeminiRequest(context, newInfo(map[string][]string{"gemini-*": {dto.ModelProtocolGemini}}), request)
+	require.NoError(t, err)
+	assert.Same(t, request, converted, "declared-native gemini must be forwarded untouched")
+
+	converted, err = adaptor.ConvertGeminiRequest(context, newInfo(map[string][]string{"gemini-*": {dto.ModelProtocolChat}}), request)
+	require.NoError(t, err)
+	_, isChatRequest := converted.(*dto.GeneralOpenAIRequest)
+	assert.True(t, isChatRequest, "an unmatched model must be downgraded to a chat request, got %T", converted)
+}
+
+// TestConvertGeminiRequestDowngradeAsksUpstreamForUsage 锁定降级链路的流式 usage 契约:
+// 转成 chat 发出的流式请求要带 stream_options.include_usage(与 messages/responses
+// 的降级一致), 否则上游不回 usage、结算只能按文本估算;非流式请求不带该字段。
+func TestConvertGeminiRequestDowngradeAsksUpstreamForUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	context := newGeminiContext("/v1beta/models/glm-5.3-flash:generateContent")
+
+	protocols := map[string][]string{"glm-*": {dto.ModelProtocolChat}}
+	newInfo := func(isStream bool) *relaycommon.RelayInfo {
+		info := newGeminiTextInfo("https://api.modelverse.cn", 32, protocols, "glm-5.3-flash")
+		info.IsStream = isStream
+		// 渠道注册在 streamSupportedChannels 里, 该能力位与是否本次流式无关:
+		// 只有两个条件同时成立才该带 include_usage, 所以这里恒为 true, 由 IsStream 区分。
+		info.SupportStreamOptions = true
+		return info
+	}
+
+	adaptor := &Adaptor{}
+	request := &dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{{Text: "hi"}}}},
+	}
+
+	converted, err := adaptor.ConvertGeminiRequest(context, newInfo(true), request)
+	require.NoError(t, err)
+	streamRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok, "expected a chat request, got %T", converted)
+	require.NotNil(t, streamRequest.StreamOptions, "a streaming downgrade must ask the upstream for usage")
+	assert.True(t, streamRequest.StreamOptions.IncludeUsage)
+
+	converted, err = adaptor.ConvertGeminiRequest(context, newInfo(false), request)
+	require.NoError(t, err)
+	plainRequest, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok, "expected a chat request, got %T", converted)
+	assert.Nil(t, plainRequest.StreamOptions, "a non-streaming request must not ask for stream usage")
+}
+
+// TestConvertGeminiRequestRejectsNonTextActions 锁定 gemini 请求转换的作用范围:
+// 只有文本生成 action 才参与"直传 or 转 chat"的分流。`countTokens` 之类的非文本
+// action 在两条路上都不通, 必须保持改动前的快速失败——否则 chat 形状的请求体会被
+// 发到客户端的 gemini action 路径上, 变成打到上游的垃圾请求。
+func TestConvertGeminiRequestRejectsNonTextActions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	request := &dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{{Text: "hi"}}}},
+	}
+
+	tests := []struct {
+		name      string
+		path      string
+		protocols map[string][]string
+	}{
+		{
+			name: "countTokens without a declaration", path: "/v1beta/models/glm-5.3-flash:countTokens",
+			protocols: map[string][]string{"glm-*": {dto.ModelProtocolChat}},
+		},
+		{
+			name: "countTokens on an unconfigured channel", path: "/v1beta/models/glm-5.3-flash:countTokens",
+		},
+		{
+			name: "unknown action", path: "/v1beta/models/gemini-3.8-flash:somethingElse",
+			protocols: map[string][]string{"gemini-*": {dto.ModelProtocolGemini}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := newGeminiTextInfo("https://api.modelverse.cn", 36, tt.protocols, "glm-5.3-flash")
+			info.RequestURLPath = tt.path
+
+			converted, err := (&Adaptor{}).ConvertGeminiRequest(newGeminiContext(tt.path), info, request)
+			require.Error(t, err, "a non-text gemini action must fail fast, got %T", converted)
+		})
+	}
+}
+
+// TestGetRequestURLDisablesPingForNativeGeminiStream 锁定 gemini 原生流式的 ping 边界:
+// gemini 客户端会逐条 JSON 解析 SSE 事件, 网关注入的 `: PING` 注释只能关掉——渠道类型
+// 24 在同一位置做了同样的事(info.DisablePing = true), 非流式与降级会话不受影响。
+func TestGetRequestURLDisablesPingForNativeGeminiStream(t *testing.T) {
+	protocols := map[string][]string{"gemini-*": {dto.ModelProtocolGemini}}
+	newInfo := func(isStream bool) *relaycommon.RelayInfo {
+		info := newGeminiTextInfo("https://api.modelverse.cn", 37, protocols, "gemini-3.8-flash")
+		info.IsStream = isStream
+		if isStream {
+			info.RequestURLPath = "/v1beta/models/gemini-3.8-flash:streamGenerateContent"
+		}
+		return info
+	}
+
+	streamInfo := newInfo(true)
+	_, err := (&Adaptor{}).GetRequestURL(streamInfo)
+	require.NoError(t, err)
+	assert.True(t, streamInfo.DisablePing, "a native gemini stream must not receive gateway ping frames")
+
+	plainInfo := newInfo(false)
+	_, err = (&Adaptor{}).GetRequestURL(plainInfo)
+	require.NoError(t, err)
+	assert.False(t, plainInfo.DisablePing)
+
+	downgraded := newGeminiTextInfo("https://api.modelverse.cn", 38, map[string][]string{"glm-*": {dto.ModelProtocolChat}}, "glm-5.3-flash")
+	_, err = (&Adaptor{}).GetRequestURL(downgraded)
+	require.NoError(t, err)
+	assert.False(t, downgraded.DisablePing, "a downgraded chat session keeps the standard stream handling")
+}
+
+// TestAstraflowKeepsProtocolWhenBodyPassthrough 锁定透传与会话降级的边界: 请求体
+// 透传时上游收到的就是客户端原始报文, 形状改不了, 降级无从谈起——此时不得把
+// (渠道, 模型, 协议) 写进降级记忆, 也不该打出"已降级"的日志。
+func TestAstraflowKeepsProtocolWhenBodyPassthrough(t *testing.T) {
+	resetNativeProtocolDowngradeMemoForTest()
+	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
+
+	gin.SetMode(gin.TestMode)
+
+	server := newRejectingUpstream(t, http.StatusInternalServerError, `{"error":{"message":"not implemented","type":"upstream_error"}}`)
+
+	info := newGeminiTextInfo(server.URL, 39, map[string][]string{"gemini-*": {dto.ModelProtocolGemini}}, "gemini-3.8-flash")
+	info.ChannelSetting.PassThroughBodyEnabled = true
+
+	respAny, err := (&Adaptor{}).DoRequest(newGeminiContext(info.RequestURLPath), info, bytes.NewBufferString(`{"contents":[]}`))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
+
+	_, downgraded := nativeProtocolDowngradeMemo.Load(nativeProtocolMemoKey(info, dto.ModelProtocolGemini))
+	assert.False(t, downgraded, "a pass-through body cannot be downgraded, so nothing may be recorded")
+}
+
+// TestGetRequestURLForGeminiTextSessions 锁定 gemini 原生格式的端点选择: 声明了
+// gemini 的模型按上游模型名重建 /{version}/models/{model}:{action}(流式补 alt=sse),
+// 未声明/未配置的模型降级到 chat 端点；embedding 等非文本 action 保持客户端路径。
+// 两类路径都不得把客户端的查询串(尤其 ?key=<网关令牌>)转发给上游。
+func TestGetRequestURLForGeminiTextSessions(t *testing.T) {
+	const baseURL = "https://api.modelverse.cn"
+	declared := map[string][]string{"gemini-*": {dto.ModelProtocolGemini}}
+
+	tests := []struct {
+		name          string
+		protocols     map[string][]string
+		path          string
+		upstreamModel string
+		isStream      bool
+		want          string
+	}{
+		{
+			name: "declared native generateContent", protocols: declared,
+			path: "/v1beta/models/gemini-3.8-flash:generateContent", upstreamModel: "gemini-3.8-flash",
+			want: baseURL + "/v1beta/models/gemini-3.8-flash:generateContent",
+		},
+		{
+			name: "declared native streamGenerateContent forces alt=sse", protocols: declared,
+			path: "/v1beta/models/gemini-3.8-flash:streamGenerateContent", upstreamModel: "gemini-3.8-flash", isStream: true,
+			want: baseURL + "/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse",
+		},
+		{
+			name: "client alt=sse upgrades generateContent to the streaming action", protocols: declared,
+			path: "/v1beta/models/gemini-3.8-flash:generateContent?alt=sse", upstreamModel: "gemini-3.8-flash", isStream: true,
+			want: baseURL + "/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse",
+		},
+		{
+			// 声明键匹配 model_mapping 之后的上游名, URL 也必须用上游名。
+			name:      "channel model mapping is applied to the upstream path",
+			protocols: map[string][]string{"google/gemini-*": {dto.ModelProtocolGemini}},
+			path:      "/v1beta/models/gemini-3.8-flash:generateContent", upstreamModel: "google/gemini-3.8-flash",
+			want: baseURL + "/v1beta/models/google/gemini-3.8-flash:generateContent",
+		},
+		{
+			name: "client auth query is never forwarded", protocols: declared,
+			path: "/v1beta/models/gemini-3.8-flash:generateContent?key=sk-client-token", upstreamModel: "gemini-3.8-flash",
+			want: baseURL + "/v1beta/models/gemini-3.8-flash:generateContent",
+		},
+		{
+			name: "non-beta client path is normalized to the configured version", protocols: declared,
+			path: "/v1/models/gemini-3.8-flash:generateContent", upstreamModel: "gemini-3.8-flash",
+			want: baseURL + "/v1beta/models/gemini-3.8-flash:generateContent",
+		},
+		{
+			// 客户端可能把分隔符转义成 %3A: 路由与请求校验用解码后的路径, 这里也必须解码,
+			// 否则原生会话会静默退化成"非文本路径", 把客户端模型名原样发给上游。
+			name: "percent-escaped action delimiter is decoded", protocols: declared,
+			path: "/v1beta/models/gemini-3.8-flash%3AgenerateContent", upstreamModel: "gemini-3.8-flash",
+			want: baseURL + "/v1beta/models/gemini-3.8-flash:generateContent",
+		},
+		{
+			name: "undeclared model downgrades to chat", protocols: map[string][]string{"gemini-*": {dto.ModelProtocolChat}},
+			path: "/v1beta/models/gemini-3.8-flash:generateContent", upstreamModel: "gemini-3.8-flash",
+			want: baseURL + "/v1/chat/completions",
+		},
+		{
+			name: "unconfigured channel downgrades to chat",
+			path: "/v1beta/models/gemini-3.8-flash:generateContent", upstreamModel: "gemini-3.8-flash",
+			want: baseURL + "/v1/chat/completions",
+		},
+		{
+			name: "embedding actions keep the client path", protocols: declared,
+			path: "/v1beta/models/gemini-embedding-001:embedContent?key=sk-client-token", upstreamModel: "gemini-embedding-001",
+			want: baseURL + "/v1beta/models/gemini-embedding-001:embedContent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := newGeminiTextInfo(baseURL, 33, tt.protocols, tt.upstreamModel)
+			info.RequestURLPath = tt.path
+			info.IsStream = tt.isStream
+
+			url, err := (&Adaptor{}).GetRequestURL(info)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, url)
+		})
+	}
+}
+
+// TestAstraflowKeepsNativeGeminiOnTransientRequestModeError 锁定 gemini 的标记范围:
+// 星图 gemini 端点的 400 "Invalid param: get request mode" 是上游整体抖动(实测同一
+// 模型同一请求几分钟内 200/400 交替, 期间所有模型一起 400), 不是"该模型没有 gemini
+// 协议"。这类瞬时故障不得写进降级记忆, 否则一次抖动就把原生 gemini 永久降级成有损转换。
+func TestAstraflowKeepsNativeGeminiOnTransientRequestModeError(t *testing.T) {
+	resetNativeProtocolDowngradeMemoForTest()
+	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
+
+	gin.SetMode(gin.TestMode)
+
+	const upstreamErrorBody = `{"error":{"message":"[trace_id: x] Invalid param: get request mode","type":"invalid_request_error"}}`
+	server := newRejectingUpstream(t, http.StatusBadRequest, upstreamErrorBody)
+
+	info := newGeminiTextInfo(server.URL, 35, map[string][]string{"gemini-*": {dto.ModelProtocolGemini}}, "gemini-3.8-flash")
+	adaptor := &Adaptor{}
+
+	respAny, err := adaptor.DoRequest(newGeminiContext(info.RequestURLPath), info, bytes.NewBufferString(`{"contents":[]}`))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
+
+	url, err := adaptor.GetRequestURL(info)
+	require.NoError(t, err)
+	assert.Equal(t, server.URL+"/v1beta/models/gemini-3.8-flash:generateContent", url, "a transient upstream failure must not downgrade a declared native protocol")
+
+	_, downgraded := nativeProtocolDowngradeMemo.Load(nativeProtocolMemoKey(info, dto.ModelProtocolGemini))
+	assert.False(t, downgraded, "a transient upstream failure must not be recorded")
+}
+
+// TestAstraflowDowngradesRejectedGeminiProtocol 锁定 gemini 的运行时兜底: 声明了原生
+// gemini 但上游用 "not implemented" 拒绝时, 该组合在进程内被记住, 后续请求改走
+// chat 转换; 探测读取的错误体同样要还原。
+func TestAstraflowDowngradesRejectedGeminiProtocol(t *testing.T) {
+	resetNativeProtocolDowngradeMemoForTest()
+	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
+
+	gin.SetMode(gin.TestMode)
+
+	const upstreamErrorBody = `{"error":{"message":"not implemented","type":"upstream_error"}}`
+	const requestBody = `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`
+	server := newRejectingUpstream(t, http.StatusInternalServerError, upstreamErrorBody)
+
+	info := newGeminiTextInfo(server.URL, 34, map[string][]string{"gemini-*": {dto.ModelProtocolGemini}}, "gemini-3.8-flash")
+	adaptor := &Adaptor{}
+
+	url, err := adaptor.GetRequestURL(info)
+	require.NoError(t, err)
+	require.Equal(t, server.URL+"/v1beta/models/gemini-3.8-flash:generateContent", url)
+
+	respAny, err := adaptor.DoRequest(newGeminiContext(info.RequestURLPath), info, bytes.NewBufferString(requestBody))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, upstreamErrorBody, string(body), "peeking must restore the response body for the caller")
+
+	url, err = adaptor.GetRequestURL(info)
+	require.NoError(t, err)
+	assert.Equal(t, server.URL+"/v1/chat/completions", url, "after a rejection the combination must downgrade to chat")
+
+	converted, err := adaptor.ConvertGeminiRequest(newGeminiContext(info.RequestURLPath), info, &dto.GeminiChatRequest{
+		Contents: []dto.GeminiChatContent{{Role: "user", Parts: []dto.GeminiPart{{Text: "hi"}}}},
+	})
+	require.NoError(t, err)
+	_, isChatRequest := converted.(*dto.GeneralOpenAIRequest)
+	assert.True(t, isChatRequest, "downgraded requests must be converted to chat, got %T", converted)
+}
