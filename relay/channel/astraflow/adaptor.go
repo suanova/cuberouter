@@ -171,6 +171,14 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			return openai.OaiResponsesStreamHandler(c, info, resp)
 		}
 		return openai.OaiResponsesHandler(c, info, resp)
+	case info.RelayMode == constant.RelayModeImagesGenerations || info.RelayMode == constant.RelayModeImagesEdits:
+		// images 的响应是 OpenAI Images 形状(usage 用 input_tokens/output_tokens,
+		// 没有 choices),chat 处理器读不到 usage 会退回估算;交给图片处理器解析,
+		// 与 openai 适配器的图片分支保持一致。
+		if info.IsStream {
+			return openai.OpenaiImageStreamHandler(c, info, resp)
+		}
+		return openai.OpenaiImageHandler(c, info, resp)
 	case info.RelayMode == constant.RelayModeRerank:
 		// rerank 的响应是 Jina/Cohere 形状(results + relevance_score),不是 OpenAI
 		// chat 报文,chat 处理器解析不出 usage;交给 Rerank 处理器解析并回写。
