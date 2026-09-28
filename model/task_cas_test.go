@@ -39,10 +39,12 @@ func TestMain(m *testing.M) {
 	if err := db.AutoMigrate(
 		&Task{},
 		&User{},
+		&UserAccountContext{},
 		&UserSession{},
 		&AuthFlow{},
 		&ExternalIdentityClaim{},
 		&Token{},
+		&OrganizationTokenSystemBlocker{},
 		&PasskeyCredential{},
 		&TwoFA{},
 		&TwoFABackupCode{},
@@ -89,7 +91,9 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM two_fa_backup_codes")
 		DB.Exec("DELETE FROM two_fas")
 		DB.Exec("DELETE FROM tokens")
+		DB.Exec("DELETE FROM organization_token_system_blockers")
 		DB.Exec("DELETE FROM user_oauth_bindings")
+		DB.Exec("DELETE FROM user_account_contexts")
 		DB.Exec("DELETE FROM users")
 		DB.Exec("DELETE FROM logs")
 		DB.Exec("DELETE FROM channels")

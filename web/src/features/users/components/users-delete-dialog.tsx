@@ -24,7 +24,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 
 import { deleteUser } from '../api'
 import { ERROR_MESSAGES } from '../constants'
-import { getUserActionMessage } from '../lib'
+import { getUserActionMessage, userDeleteFailureMessage } from '../lib'
 import { useUsers } from './users-provider'
 
 export function UsersDeleteDialog() {
@@ -45,8 +45,12 @@ export function UsersDeleteDialog() {
       } else {
         toast.error(result.message || t(ERROR_MESSAGES.DELETE_FAILED))
       }
-    } catch {
-      toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+    } catch (error) {
+      // 拒绝原因（如组织还挂着 owner / key）只有后端 message 说得清，别退化成
+      // 一句"删除失败"：这里展示后端 message ＋ code 文案 ＋ blocker token。
+      toast.error(
+        userDeleteFailureMessage(error, t) || t(ERROR_MESSAGES.DELETE_FAILED)
+      )
     } finally {
       setIsDeleting(false)
     }

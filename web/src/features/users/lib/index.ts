@@ -22,6 +22,11 @@ For commercial licensing, please contact support@quantumnous.com
 export { getUserActionMessage } from './user-actions'
 
 // ============================================================================
+// Delete Failures
+// ============================================================================
+export { userDeleteFailureMessage } from './user-delete-failure'
+
+// ============================================================================
 // Form Utilities
 // ============================================================================
 export {

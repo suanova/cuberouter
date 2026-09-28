@@ -132,6 +132,15 @@ func setupServiceTestDB(t *testing.T) {
 		&model.OrganizationAuditLog{},
 		&model.OrganizationQuotaAdjustment{},
 		&model.QuotaData{},
+		// 账号硬删（HardDeleteUserWithTx）会按 user_id 清空这些账号级活状态表，
+		// 缺一张就会让删除在事务中途以 "no such table" 失败。
+		&model.UserSession{},
+		&model.AuthFlow{},
+		&model.ExternalIdentityClaim{},
+		&model.PasskeyCredential{},
+		&model.TwoFA{},
+		&model.TwoFABackupCode{},
+		&model.UserOAuthBinding{},
 	))
 
 	t.Cleanup(func() {

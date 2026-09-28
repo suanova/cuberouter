@@ -78,6 +78,21 @@ func setupControllerOrganizationTestDB(t *testing.T) *gorm.DB {
 		&model.OrganizationBillingSession{},
 		&model.Task{},
 		&model.Midjourney{},
+		// 账号生命周期表：硬删账号会连同这些表里的行一起删除（见
+		// model.HardDeleteUserWithTx），少一张就会在断言之前报 no such table。
+		&model.UserAccountContext{},
+		&model.UserSession{},
+		&model.AuthFlow{},
+		&model.ExternalIdentityClaim{},
+		&model.PasskeyCredential{},
+		&model.TwoFA{},
+		&model.TwoFABackupCode{},
+		&model.UserOAuthBinding{},
+		// 管理审计表：DeleteUser 在删除成功后写一条 admin 审计日志（同样的组合见
+		// setupManageUserTestDB）。
+		&model.Log{},
+		&model.CasbinRule{},
+		&model.AuthzRole{},
 	))
 	return db
 }

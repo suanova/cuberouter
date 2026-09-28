@@ -131,6 +131,48 @@ func TestHardDeleteUserPublishesTombstoneAndPurgesAuthenticationData(t *testing.
 	assert.False(t, server.Exists(getUserCacheKey(user.Id)))
 }
 
+// 账号不存在时，账号级状态不能留在库里：user_account_contexts 决定请求按哪个账号
+// 计价，id 被复用后它会短暂落到新账号头上（解析虽会自愈，但那是第一次请求之后）。
+func TestHardDeleteUserPurgesAccountContext(t *testing.T) {
+	truncateTables(t)
+
+	user := User{Username: "hard-delete-context", Password: "password", AuthVersion: 1}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Create(&UserAccountContext{
+		UserId: user.Id, ContextType: "personal", ContextId: user.Id, UpdatedAt: 1,
+	}).Error)
+
+	require.NoError(t, HardDeleteUserById(user.Id))
+
+	var count int64
+	require.NoError(t, DB.Model(&UserAccountContext{}).Where("user_id = ?", user.Id).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+// token 被删掉后，指向它的 active blocker 必须一起解除：blocker 按 token_id 关联，
+// 而 token id 与 users.id 一样会被复用，留下的 active blocker 会让下一个拿到该 id
+// 的新 token 一出生就被判为不可用，且没有任何路径能解除它。
+func TestHardDeleteUserClearsTokenSystemBlockers(t *testing.T) {
+	truncateTables(t)
+
+	user := User{Username: "hard-delete-blockers", Password: "password", AuthVersion: 1}
+	require.NoError(t, DB.Create(&user).Error)
+	token := Token{UserId: user.Id, Key: "sk-hard-delete-blocker", Name: "blocked", Status: common.TokenStatusEnabled}
+	require.NoError(t, DB.Create(&token).Error)
+	blocker := OrganizationTokenSystemBlocker{
+		TokenId: token.Id, OrganizationId: 1, Reason: "member_disabled",
+		RefType: "member", RefId: user.Id, Status: OrganizationTokenBlockerStatusActive,
+	}
+	require.NoError(t, DB.Create(&blocker).Error)
+
+	require.NoError(t, HardDeleteUserById(user.Id))
+
+	var stored OrganizationTokenSystemBlocker
+	require.NoError(t, DB.First(&stored, blocker.Id).Error)
+	assert.Equal(t, OrganizationTokenBlockerStatusCleared, stored.Status)
+	assert.NotZero(t, stored.ClearedAt)
+}
+
 func TestIncrementFailedAttemptsCountsConcurrentFailures(t *testing.T) {
 	truncateTables(t)
 

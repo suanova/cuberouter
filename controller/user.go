@@ -1084,8 +1084,16 @@ func DeleteUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
 		return
 	}
-	err = model.HardDeleteUserById(id)
+	// 组织成员行与账号必须在同一事务里收口：删账号会按 user_id 连带删除其组织 key，
+	// 而成员行留在库里会被下一个复用该 user id 的账号继承或误判。
+	err = service.DeleteUserAccount(c.GetInt("id"), id, organizationAuditRequestMetadata(c))
 	if err != nil {
+		var blockedErr *service.OrganizationOperationBlockedError
+		if errors.As(err, &blockedErr) {
+			// 复用组织子系统的拒绝通路：409 + 稳定 code + blockers，前端据此本地化。
+			writeOrganizationError(c, err)
+			return
+		}
 		common.ApiError(c, err)
 		return
 	}

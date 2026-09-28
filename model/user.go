@@ -601,6 +601,9 @@ func DeleteUserById(id int) (err error) {
 	return user.Delete()
 }
 
+// HardDeleteUserById 是 HardDelete 的按 id 入口，同样只清理账号自身：需要一并收口
+// 组织成员关系的调用方必须走 service.DeleteUserAccount，直接调用本函数会让成员行
+// 残留，被下一个复用该 user id 的账号继承。
 func HardDeleteUserById(id int) error {
 	if id == 0 {
 		return errors.New("id 为空！")
@@ -1008,41 +1011,95 @@ func (user *User) Delete() error {
 	return invalidateUserCache(user.Id)
 }
 
+// HardDeletedUser 携带硬删事务提交后仍需处理的数据。发布会话 tombstone 与失效缓存
+// 都必须在提交之后进行：提交前发布会让并发请求读到尚未落库的状态。
+type HardDeletedUser struct {
+	Id          int
+	AuthVersion int64
+	Tokens      []Token
+}
+
+// Finalize 执行硬删提交后的收尾：发布 tombstone 并失效缓存。任一步失败只记日志，
+// 与拆分前的行为一致（删除已经提交，不能因为收尾失败而把错误抛给调用方）。
+func (deleted *HardDeletedUser) Finalize() error {
+	if deleted == nil || deleted.Id <= 0 {
+		return nil
+	}
+	if err := publishCommittedUserAuthVersion(deleted.Id, deleted.AuthVersion); err != nil {
+		common.SysError(fmt.Sprintf("failed to publish auth tombstone after hard deleting user %d: %v", deleted.Id, err))
+	}
+	if err := invalidateTokensCache(deleted.Tokens); err != nil {
+		common.SysError(fmt.Sprintf("failed to invalidate token cache after hard deleting user %d: %v", deleted.Id, err))
+	}
+	if err := invalidateUserCache(deleted.Id); err != nil {
+		common.SysError(fmt.Sprintf("failed to invalidate user cache after hard deleting user %d: %v", deleted.Id, err))
+	}
+	return nil
+}
+
+// HardDeleteUserWithTx 在调用方的事务里硬删除一个账号，并收口与该账号生命周期绑定的
+// 非认证数据。返回值的 Finalize 必须在事务提交后调用。
+func HardDeleteUserWithTx(tx *gorm.DB, userId int) (*HardDeletedUser, error) {
+	if tx == nil || userId <= 0 {
+		return nil, errors.New("id 为空！")
+	}
+	deleted := &HardDeletedUser{Id: userId}
+	var err error
+	deleted.AuthVersion, err = IncrementUserAuthVersionWithTx(tx, userId)
+	if err != nil {
+		return nil, err
+	}
+	if common.RedisEnabled {
+		if err := tx.Unscoped().Select("id", commonKeyCol).Where("user_id = ?", userId).Find(&deleted.Tokens).Error; err != nil {
+			return nil, err
+		}
+	}
+	// blocker 行按 token_id 关联，与缓存无关，因此单独取一次 id（不受 RedisEnabled 影响）。
+	var tokenIds []int
+	if err := tx.Model(&Token{}).Where("user_id = ?", userId).Pluck("id", &tokenIds).Error; err != nil {
+		return nil, err
+	}
+	if len(tokenIds) > 0 {
+		now := common.GetTimestamp()
+		if err := tx.Model(&OrganizationTokenSystemBlocker{}).
+			Where("token_id IN ? AND status = ?", tokenIds, OrganizationTokenBlockerStatusActive).
+			Updates(map[string]any{
+				"status":     OrganizationTokenBlockerStatusCleared,
+				"cleared_at": now,
+				"updated_at": now,
+			}).Error; err != nil {
+			return nil, err
+		}
+	}
+	// 账号上下文属于账号级活状态，随账号一起消失。
+	if err := tx.Where("user_id = ?", userId).Delete(&UserAccountContext{}).Error; err != nil {
+		return nil, err
+	}
+	if err := deleteUserAuthenticationData(tx, userId); err != nil {
+		return nil, err
+	}
+	if err := tx.Unscoped().Delete(&User{Id: userId}).Error; err != nil {
+		return nil, err
+	}
+	return deleted, nil
+}
+
+// HardDelete 在独立事务里硬删一个账号，只清理账号自身，不碰组织状态：需要一并收口
+// 组织成员关系的调用方必须走 service.DeleteUserAccount，直接调用本函数会让成员行
+// 残留，被下一个复用该 user id 的账号继承。
 func (user *User) HardDelete() error {
 	if user.Id == 0 {
 		return errors.New("id 为空！")
 	}
-	var tokens []Token
-	var deletedAuthVersion int64
-	err := DB.Transaction(func(tx *gorm.DB) error {
+	var deleted *HardDeletedUser
+	if err := DB.Transaction(func(tx *gorm.DB) error {
 		var err error
-		deletedAuthVersion, err = IncrementUserAuthVersionWithTx(tx, user.Id)
-		if err != nil {
-			return err
-		}
-		if common.RedisEnabled {
-			if err := tx.Unscoped().Select("id", commonKeyCol).Where("user_id = ?", user.Id).Find(&tokens).Error; err != nil {
-				return err
-			}
-		}
-		if err := deleteUserAuthenticationData(tx, user.Id); err != nil {
-			return err
-		}
-		return tx.Unscoped().Delete(user).Error
-	})
-	if err != nil {
+		deleted, err = HardDeleteUserWithTx(tx, user.Id)
+		return err
+	}); err != nil {
 		return err
 	}
-	if err := publishCommittedUserAuthVersion(user.Id, deletedAuthVersion); err != nil {
-		common.SysError(fmt.Sprintf("failed to publish auth tombstone after hard deleting user %d: %v", user.Id, err))
-	}
-	if err := invalidateTokensCache(tokens); err != nil {
-		common.SysError(fmt.Sprintf("failed to invalidate token cache after hard deleting user %d: %v", user.Id, err))
-	}
-	if err := invalidateUserCache(user.Id); err != nil {
-		common.SysError(fmt.Sprintf("failed to invalidate user cache after hard deleting user %d: %v", user.Id, err))
-	}
-	return nil
+	return deleted.Finalize()
 }
 
 func deleteUserAuthenticationData(tx *gorm.DB, userId int) error {
