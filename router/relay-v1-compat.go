@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 )
 
@@ -40,7 +41,9 @@ func relayV1CompatRedirect(patterns []string) gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		target := "/v1" + path
+		// BASE_PATH 已经在这里被 StripBasePath 摘掉，但浏览器仍在带前缀的 URL 上，
+		// 所以相对 Location 要把前缀补回去，否则客户端会跳到宿主上不存在该组件的路径。
+		target := common.WithBasePath("/v1" + path)
 		if c.Request.URL.RawQuery != "" {
 			target += "?" + c.Request.URL.RawQuery
 		}

@@ -215,6 +215,11 @@ func main() {
 		port = strconv.Itoa(*common.Port)
 	}
 
+	// Both listeners share one handler. Stripping BASE_PATH here, ahead of the
+	// router, is what lets the app be mounted under the prefix without the
+	// prefix reaching any route, middleware or rate limiter.
+	handler := common.StripBasePath(server)
+
 	tlsSettings, err := common.GetTLSSettings()
 	if err != nil {
 		common.FatalLog("invalid TLS configuration: " + err.Error())
@@ -223,7 +228,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: server,
+		Handler: handler,
 	}
 
 	go func() {
@@ -237,7 +242,7 @@ func main() {
 	var srvTLS *http.Server
 	var tlsReady chan struct{}
 	if tlsSettings.Enabled {
-		srvTLS, err = common.NewTLSServer(server, tlsSettings)
+		srvTLS, err = common.NewTLSServer(handler, tlsSettings)
 		if err != nil {
 			common.FatalLog("failed to create HTTPS server: " + err.Error())
 			return

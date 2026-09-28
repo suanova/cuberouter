@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,4 +151,35 @@ func TestRelayV1CompatRedirectAddsMissingV1Prefix(t *testing.T) {
 			assert.NotContains(t, recorder.Body.String(), "fallback")
 		})
 	}
+}
+
+// BASE_PATH 在 main.go 的 StripBasePath 里就被摘掉了，所以这里处理的是裸路径；但浏览器
+// 仍在带前缀的 URL 上，跳转目标必须把前缀补回去，否则客户端会被送到宿主上不属于本组件的路径。
+func TestRelayV1CompatRedirectKeepsBasePath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("BASE_PATH", "/cuberouter")
+	common.InitBasePath()
+	t.Cleanup(func() {
+		t.Setenv("BASE_PATH", "")
+		common.InitBasePath()
+	})
+
+	routeEngine := gin.New()
+	SetRelayRouter(routeEngine)
+	patterns := bareV1RoutePatterns(routeEngine.Routes())
+
+	engine := gin.New()
+	engine.NoRoute(
+		relayV1CompatRedirect(patterns),
+		func(c *gin.Context) { c.String(http.StatusOK, "fallback") },
+	)
+
+	request := httptest.NewRequest(http.MethodPost, "/chat/completions?stream=true", nil)
+	request.Header.Set("Accept", "application/json")
+	recorder := httptest.NewRecorder()
+
+	engine.ServeHTTP(recorder, request)
+
+	require.Equal(t, http.StatusTemporaryRedirect, recorder.Code)
+	assert.Equal(t, "/cuberouter/v1/chat/completions?stream=true", recorder.Header().Get("Location"))
 }
