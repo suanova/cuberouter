@@ -22,6 +22,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -88,17 +89,57 @@ func DeleteUserAccount(operatorUserId, targetUserId int, auditMetadata ...Organi
 	return nil
 }
 
-// purgeAccountOrganizationMembershipsWithTx 按组织升序逐个处理该用户的成员行。
+// accountOrganizationReferencesWithTx 列出该账号在组织库里可能还挂着的全部组织 id。
+//
+// 只按 organization_members 找组织是不够的：组织的 owner 引用（organizations.
+// owner_user_id）与组织 key 的 user_id / responsible_user_id 都能在成员行不存在时
+// 单独指向该账号——旧二进制的硬删不清理这些引用，本分支启动期的孤儿修复又会删掉
+// 成员行，SQLite 复用的 user id 让新账号直接继承它们。漏掉这些组织，等于让删除带着
+// 悬空的 owner / key 责任人放行。
+//
+// 结果去重并按组织 id 升序返回：收口要按升序逐个上锁（users → organizations →
+// organization_members），乱序会与并发的组织操作形成反向锁序。
+func accountOrganizationReferencesWithTx(tx *gorm.DB, targetUserId int) ([]int, error) {
+	var membershipOrganizationIds []int
+	if err := tx.Model(&model.OrganizationMember{}).
+		Where("user_id = ?", targetUserId).
+		Pluck("organization_id", &membershipOrganizationIds).Error; err != nil {
+		return nil, err
+	}
+	var ownershipOrganizationIds []int
+	if err := tx.Model(&model.Organization{}).
+		Where("owner_user_id = ?", targetUserId).
+		Pluck("id", &ownershipOrganizationIds).Error; err != nil {
+		return nil, err
+	}
+	var keyOrganizationIds []int
+	if err := tx.Model(&model.Token{}).
+		Where("scope_type = ? AND (user_id = ? OR responsible_user_id = ?)", model.TokenScopeOrganization, targetUserId, targetUserId).
+		Pluck("organization_id", &keyOrganizationIds).Error; err != nil {
+		return nil, err
+	}
+	merged := make(map[int]struct{}, len(membershipOrganizationIds)+len(ownershipOrganizationIds)+len(keyOrganizationIds))
+	for _, ids := range [][]int{membershipOrganizationIds, ownershipOrganizationIds, keyOrganizationIds} {
+		for _, organizationId := range ids {
+			merged[organizationId] = struct{}{}
+		}
+	}
+	organizationIds := make([]int, 0, len(merged))
+	for organizationId := range merged {
+		organizationIds = append(organizationIds, organizationId)
+	}
+	sort.Ints(organizationIds)
+	return organizationIds, nil
+}
+
+// purgeAccountOrganizationMembershipsWithTx 按组织升序逐个处理引用了该账号的组织。
 //
 // 锁序与组织子系统一致（先锁组织行，再锁成员行），并按组织 id 升序，避免与并发的
 // 组织操作形成反向锁序。
 func purgeAccountOrganizationMembershipsWithTx(tx *gorm.DB, targetUserId, operatorUserId int, auditMetadata ...OrganizationAuditRequestMetadata) (accountMembershipPurgeResult, error) {
 	result := accountMembershipPurgeResult{}
-	var organizationIds []int
-	if err := tx.Model(&model.OrganizationMember{}).
-		Where("user_id = ?", targetUserId).
-		Order("organization_id asc").
-		Pluck("organization_id", &organizationIds).Error; err != nil {
+	organizationIds, err := accountOrganizationReferencesWithTx(tx, targetUserId)
+	if err != nil {
 		return result, err
 	}
 	for _, organizationId := range organizationIds {
@@ -107,17 +148,24 @@ func purgeAccountOrganizationMembershipsWithTx(tx *gorm.DB, targetUserId, operat
 			return result, err
 		}
 		var member model.OrganizationMember
+		memberFound := true
 		if err := model.LockForUpdate(tx).
 			Where("organization_id = ? AND user_id = ?", organizationId, targetUserId).
 			First(&member).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				continue
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return result, err
 			}
-			return result, err
+			memberFound = false
 		}
+		// 判定与成员行无关：组织可能通过 owner 引用或组织 key 引用该账号，而它已经
+		// 没有成员行（历史硬删遗留、启动期孤儿修复删掉了成员行）。判定通过才算这个
+		// 组织不再挂账；没有成员行时下面三项都无事可做。
 		if err := ensureAccountMayLeaveOrganizationWithTx(tx, organization, targetUserId); err != nil {
 			result.FailedOrganizationId = organizationId
 			return result, err
+		}
+		if !memberFound {
+			continue
 		}
 		// 审计先写：recordOrganizationAudit 会按 target 补快照，此时成员行必须还在。
 		if err := recordOrganizationAudit(tx, organization, operatorUserId, organizationAuditOperatorRoleSystem, organizationAuditActionMemberAccountDeleted, "member", member.Id, member, nil, fmt.Sprintf("account_deleted:%d", targetUserId), auditMetadata...); err != nil {

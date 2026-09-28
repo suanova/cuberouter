@@ -208,6 +208,42 @@ func TestDeleteUserAccountRefusesOrganizationOwner(t *testing.T) {
 	assert.Equal(t, int64(1), userCount, "拒绝时不得动账号")
 }
 
+// 成员行不是账号在组织里的唯一引用：历史硬删只删了账号，organizations.owner_user_id
+// 留在原地，SQLite 复用 user id 之后新账号就继承了这条 owner 引用。只按成员行收口
+// 的组织清单会漏掉这种组织，让删除带着悬空 owner 放行。
+func TestDeleteUserAccountRefusesDanglingOwnerReferenceWithoutMembership(t *testing.T) {
+	setupServiceTestDB(t)
+	runDeleteUserAccountRefusesDanglingOwnerReference(t, model.DB)
+}
+
+func runDeleteUserAccountRefusesDanglingOwnerReference(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	// 与并发用例共用短后缀：createServiceTestUser 会把 username 写进 varchar(32) 的
+	// aff_code，外部库变体上放不下 36 位 UUID。
+	suffix := accountDeletionRaceSuffix()
+	operator := createServiceTestUser(t, "dangle-op-"+suffix, common.RoleRootUser)
+	target := createServiceTestUser(t, "dangle-owner-"+suffix, common.RoleCommonUser)
+	organization := createDeletionTestOrganization(t, model.OrganizationStatusActive, target.Id)
+	// 故意不建成员行：遗留库上这就是最终形态。
+	t.Cleanup(func() {
+		cleanupAccountDeletionTestRows(t, db, []int{operator.Id, target.Id}, []int{organization.Id})
+	})
+
+	err := DeleteUserAccount(operator.Id, target.Id)
+	require.Error(t, err)
+	var blocked *OrganizationOperationBlockedError
+	require.ErrorAs(t, err, &blocked)
+	assert.Contains(t, blocked.Message, organization.Name, "拒绝必须点名组织")
+	assert.Contains(t, blocked.Blockers, "active_owner", "拒绝原因必须是 owner 引用")
+
+	var userCount int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", target.Id).Count(&userCount).Error)
+	assert.Equal(t, int64(1), userCount, "拒绝时不得动账号")
+	var organizationCount int64
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Count(&organizationCount).Error)
+	assert.Equal(t, int64(1), organizationCount, "拒绝时不得动组织行")
+}
+
 // 组织已解散：owner 也不再是活概念，必须允许删除，否则"曾拥有过已解散组织"的人
 // 永远删不掉。
 func TestDeleteUserAccountPurgesDissolvedOrganizationMembership(t *testing.T) {
@@ -222,6 +258,31 @@ func TestDeleteUserAccountPurgesDissolvedOrganizationMembership(t *testing.T) {
 	var count int64
 	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+// 已解散组织里的悬空引用同样放行：解散组织的 owner 与 key 都已不是活概念，若因为
+// 一条历史遗留的 owner_user_id 就拒绝，"曾拥有过已解散组织"的账号同样删不掉。
+func TestDeleteUserAccountAllowsDanglingReferenceInDissolvedOrganization(t *testing.T) {
+	setupServiceTestDB(t)
+	runDeleteUserAccountAllowsDanglingReferenceInDissolvedOrganization(t, model.DB)
+}
+
+func runDeleteUserAccountAllowsDanglingReferenceInDissolvedOrganization(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	suffix := accountDeletionRaceSuffix()
+	operator := createServiceTestUser(t, "dangle-op-"+suffix, common.RoleRootUser)
+	target := createServiceTestUser(t, "dangle-owner-"+suffix, common.RoleCommonUser)
+	organization := createDeletionTestOrganization(t, model.OrganizationStatusDissolved, target.Id)
+	// 同样不建成员行：解散组织只留得下 organizations.owner_user_id 这条引用。
+	t.Cleanup(func() {
+		cleanupAccountDeletionTestRows(t, db, []int{operator.Id, target.Id}, []int{organization.Id})
+	})
+
+	require.NoError(t, DeleteUserAccount(operator.Id, target.Id))
+
+	var userCount int64
+	require.NoError(t, model.DB.Unscoped().Model(&model.User{}).Where("id = ?", target.Id).Count(&userCount).Error)
+	assert.Zero(t, userCount, "已解散组织的悬空引用不得挡住账号删除")
 }
 
 // 持有组织 key（无论 public 与否）都必须拒绝：删账号会按 user_id 静默删掉这些 key，
@@ -268,6 +329,49 @@ func TestDeleteUserAccountRefusesOrganizationKeyHolder(t *testing.T) {
 			assert.Equal(t, int64(1), tokenCount, "拒绝时不得删 key")
 		})
 	}
+}
+
+// 组织 key 的 responsible_user_id 也能在成员行消失后继续指向该账号（历史硬删留下的
+// key、或成员已退出组织但 key 尚未移交）。删除必须按这条 key 引用找到组织，否则
+// HardDeleteUserWithTx 会按 user_id / responsible_user_id 静默删掉这些 key。
+func TestDeleteUserAccountRefusesDanglingKeyReferenceWithoutMembership(t *testing.T) {
+	setupServiceTestDB(t)
+	runDeleteUserAccountRefusesDanglingKeyReference(t, model.DB)
+}
+
+func runDeleteUserAccountRefusesDanglingKeyReference(t *testing.T, db *gorm.DB) {
+	t.Helper()
+	suffix := accountDeletionRaceSuffix()
+	operator := createServiceTestUser(t, "dangle-op-"+suffix, common.RoleRootUser)
+	holder := createServiceTestUser(t, "dangle-holder-"+suffix, common.RoleCommonUser)
+	target := createServiceTestUser(t, "dangle-resp-"+suffix, common.RoleCommonUser)
+	organization := createDeletionTestOrganization(t, model.OrganizationStatusActive, holder.Id)
+	addDeletionTestMember(t, organization.Id, holder.Id, model.OrganizationRoleOwner, model.OrganizationMemberStatusActive)
+	// key 的持有者是 holder，责任人是 target；target 不是该组织成员，成员行收口看不到它。
+	token := model.Token{
+		UserId: holder.Id, ResponsibleUserId: target.Id, CreatorUserId: holder.Id,
+		OrganizationId: organization.Id, ScopeType: model.TokenScopeOrganization, ScopeId: organization.Id,
+		Visibility: model.TokenVisibilityPrivate, Key: "sk-dangling-key-" + common.GetUUID(), Name: "dangling org key",
+		Status: common.TokenStatusEnabled, CreatedTime: common.GetTimestamp(),
+	}
+	require.NoError(t, model.DB.Create(&token).Error)
+	t.Cleanup(func() {
+		cleanupAccountDeletionTestRows(t, db, []int{operator.Id, holder.Id, target.Id}, []int{organization.Id})
+	})
+
+	err := DeleteUserAccount(operator.Id, target.Id)
+	require.Error(t, err)
+	var blocked *OrganizationOperationBlockedError
+	require.ErrorAs(t, err, &blocked)
+	assert.Contains(t, blocked.Message, organization.Name, "拒绝必须点名组织")
+	assert.Contains(t, blocked.Blockers, "organization_keys", "拒绝原因必须是 key 引用")
+
+	var tokenCount int64
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", token.Id).Count(&tokenCount).Error)
+	assert.Equal(t, int64(1), tokenCount, "拒绝时不得删 key")
+	var userCount int64
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", target.Id).Count(&userCount).Error)
+	assert.Equal(t, int64(1), userCount, "拒绝时不得动账号")
 }
 
 // 多组织：任一组织拒绝则整请求失败，任何组织都不得被收口（I4）。
@@ -329,4 +433,15 @@ func TestDeleteUserAccountRefusalKeepsMemberTokenBlockers(t *testing.T) {
 	var stored model.OrganizationTokenSystemBlocker
 	require.NoError(t, model.DB.First(&stored, blocker.Id).Error)
 	assert.Equal(t, model.OrganizationTokenBlockerStatusActive, stored.Status, "拒绝路径不得解除 blocker")
+}
+
+// 三个悬空引用场景在真实外部库（TEST_POSTGRES_DSN / TEST_MYSQL_DSN +
+// ORGANIZATION_TEST_ALLOW_DESTRUCTIVE=1）上的变体：收口新检查的三条组织来源全部是
+// GORM 查询，方言差异（varchar 长度、大小写、锁语法）只有在真引擎上才暴露。
+func TestDeleteUserAccountDanglingReferencesExternalDatabase(t *testing.T) {
+	db, _ := setupOrganizationExternalConcurrencyDB(t)
+	migrateAccountDeletionTestSchema(t, db)
+	runDeleteUserAccountRefusesDanglingOwnerReference(t, db)
+	runDeleteUserAccountRefusesDanglingKeyReference(t, db)
+	runDeleteUserAccountAllowsDanglingReferenceInDissolvedOrganization(t, db)
 }
