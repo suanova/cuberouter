@@ -320,24 +320,17 @@ function buildOpsUserColumn(
         size: 140,
       }
     case 'quota':
-      // Effective-subscription token basis (port from develop 51b3f79/#86,
-      // 2c55d2e); the used quota moved into the tooltip. Explicit id keeps
-      // the columnId aligned with the column metadata (quota visibility
-      // settings resolve against 'quota', not the accessor key).
+      // 钱包额度口径（remaining = quota，total = quota + used_quota）；
+      // 订阅额度由 money_balance 列展示。Explicit id keeps the columnId
+      // aligned with the column metadata (quota visibility settings resolve
+      // against 'quota', not the accessor key).
       return {
         id: 'quota',
-        accessorKey: 'subscription_remain_quota',
+        accessorKey: 'quota',
         header,
         cell: ({ row }) => {
           const user = row.original
-          return (
-            <UserQuotaCell
-              used={user.subscription_used_quota || 0}
-              remaining={user.subscription_remain_quota || 0}
-              total={user.subscription_total_quota || 0}
-              unlimited={user.subscription_unlimited}
-            />
-          )
+          return <UserQuotaCell used={user.used_quota} remaining={user.quota} />
         },
         size: 160,
       }
