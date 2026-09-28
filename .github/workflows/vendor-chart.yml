@@ -1,0 +1,302 @@
+name: Vendor chart into cubestack-operator
+
+# cubestack-operator vendors this chart as assets/charts/cuberouter-<pin>.tgz and
+# //go:embed's that directory into the operator binary (its assets/assets.go), so
+# a running operator installs the chart with no chart network access. The archive
+# is committed there, and nothing refreshed it: the copy in the operator still
+# carries templates/hpa.yaml, which this repo no longer has.
+#
+# This workflow closes that loop. On a merge to main that touches the chart it
+# packages the chart exactly as ci-chart.yml packages it for Harbor, then opens —
+# or refreshes — a pull request in the operator that re-vendors the archive and
+# its pins. That PR is checked by the operator's own PR workflow, which runs
+# TestCatalogChartsAreVendored, so the guard is not duplicated here.
+#
+# The archive is packaged here rather than pulled back from Harbor: the pull would
+# have to wait on ci-chart.yml's push to land, and a plain `on: push` races it.
+# The trade is that the vendored bytes are a build of that chart version, not
+# necessarily the identical artifact Harbor holds — the version is a moving
+# `-latest` tag either way, so the two are the same content by construction.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'helm/cuberouter-chart/**'
+      # Included so a fix to this workflow re-runs it on the merge that carries it.
+      - '.github/workflows/vendor-chart.yml'
+  # Not path-filtered, so it always runs — this is how the workflow is exercised
+  # on demand. It only becomes dispatchable once it is on the default branch.
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: vendor-chart-${{ github.ref }}
+  # Not cancelled in favour of a newer run: this workflow pushes a branch and
+  # then opens a pull request for it, and a run killed between those two leaves
+  # a branch no later run would necessarily come back for.
+  cancel-in-progress: false
+
+env:
+  TARGET_REPO: suanova/cubestack-operator
+  TARGET_BRANCH: automation/vendor-cuberouter-chart
+  COMPONENT: cuberouter
+
+jobs:
+  vendor:
+    runs-on: ubuntu-latest
+    # Read-only for the GITHUB_TOKEN: it fetches this repo and nothing else.
+    # Every write below — branch, pull request — goes through the App token.
+    permissions:
+      contents: read
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      # helm is preinstalled on ubuntu-24.04 runners — no install step needed.
+      # Package the chart the way ci-chart.yml packages it for Harbor: the OCI tag
+      # is <Chart.yaml version>-latest, and that same string is what the operator
+      # pins in its catalog. Both are derived from Chart.yaml, so a version bump
+      # needs no edit here.
+      - name: Package the chart
+        id: package
+        run: |
+          set -euo pipefail
+          CHART_VERSION="$(helm show chart helm/cuberouter-chart | awk '/^version:/{print $2}')"
+          test -n "$CHART_VERSION"
+          CATALOG_VERSION="${CHART_VERSION}-latest"
+          helm package helm/cuberouter-chart \
+            --version "$CATALOG_VERSION" --app-version latest \
+            --destination "$RUNNER_TEMP"
+
+          # helm names the archive after the chart's own `name` (cuberouter-chart),
+          # so this is the packaged version asserting itself, not a guess. The
+          # operator looks the file up as <catalog name>-<pin>.tgz, which is why
+          # the copy into the repo below is a rename.
+          ARCHIVE="${RUNNER_TEMP}/cuberouter-chart-${CATALOG_VERSION}.tgz"
+          test -f "$ARCHIVE"
+          packaged_version="$(helm show chart "$ARCHIVE" | awk '/^version:/{print $2}')"
+          test "$packaged_version" = "$CATALOG_VERSION"
+          echo "catalog-version=${CATALOG_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+      # Scoped to the one repository the token has to write: the operator. The App
+      # is installed org-wide, but a token minted for everything it can see would
+      # be a needlessly large thing to hold for the length of the job.
+      - name: Create an installation token for the bot
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.SUANOVA_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.SUANOVA_BOT_APP_PRIVATE_KEY }}
+          owner: suanova
+          repositories: cubestack-operator
+      - name: Clone the target repo
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ env.TARGET_REPO }}
+          ref: main
+          path: target
+          fetch-depth: 1
+          # The same token is what the push below authenticates with (checkout
+          # keeps it configured for this path), so the branch and the pull request
+          # belong to the App rather than to the workflow's GITHUB_TOKEN — which
+          # matters for more than attribution: the operator's PR workflows run for
+          # an App's pull request and would be suppressed for a GITHUB_TOKEN one.
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Re-vendor the archive and its pins
+        working-directory: target
+        env:
+          CATALOG_VERSION: ${{ steps.package.outputs.catalog-version }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          set -euo pipefail
+          charts="assets/charts"
+          catalog="assets/components/70-${COMPONENT}.yaml"
+          vendored="${charts}/${COMPONENT}-${CATALOG_VERSION}.tgz"
+
+          # Any other archive of this component is one a version bump left behind
+          # — and an archive no component pins is exactly what
+          # TestCatalogChartsAreVendored fails on. The pattern is deliberately
+          # narrow: a component declaring a `crdsChart` keeps a second, paired
+          # archive (`<name>-crds-<version>.tgz`) beside this one, and both have
+          # to be re-vendored and bumped together. cuberouter has no crdsChart
+          # today; one added later needs handling here, not just a wider glob.
+          for stale in "${charts}/${COMPONENT}"-[0-9]*.tgz; do
+            [ "$stale" = "$vendored" ] || rm -f "$stale"
+          done
+
+          # A binary blob rewritten with no content change is unreviewable noise
+          # in the pull request, and helm makes that the default: it stamps every
+          # tar entry with the time it was packaged (chartutil/save.go), so two
+          # packages of identical source are never the same bytes. Compare the
+          # unpacked trees — that is the content — and keep the existing archive
+          # when they agree.
+          if [ -f "$vendored" ]; then
+            mkdir -p "$RUNNER_TEMP/new-chart" "$RUNNER_TEMP/old-chart"
+            tar -xzf "$ARCHIVE" -C "$RUNNER_TEMP/new-chart"
+            tar -xzf "$vendored" -C "$RUNNER_TEMP/old-chart"
+            if ( cd "$RUNNER_TEMP" && diff -ru old-chart new-chart > chart.diff ); then
+              : > "$RUNNER_TEMP/chart.diff"
+              echo "The vendored archive already holds this chart; left untouched."
+            else
+              cp "$ARCHIVE" "$vendored"
+            fi
+          else
+            cp "$ARCHIVE" "$vendored"
+          fi
+
+          # The pin is the file name — ChartArchivePath reads
+          # charts/<component name>-<pinned version>.tgz — so the two move
+          # together, never one without the other. Edited in place, never
+          # re-serialized: the catalog file is heavily commented and a YAML
+          # round-trip would flatten the whole entry into the diff.
+          python3 - "$COMPONENT" "$CATALOG_VERSION" "$catalog" "${charts}/README.md" README.md <<'PY'
+          import re
+          import sys
+
+          component, version, catalog, charts_readme, root_readme = sys.argv[1:]
+          prefix = f"| 70 | `{component}` |"
+          archive = f"{component}-{version}.tgz"
+
+
+          def rewrite_row(path, build):
+              """Replace the component's row in a markdown table, or fail loudly."""
+              with open(path) as handle:
+                  lines = handle.readlines()
+              hits = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+              if len(hits) != 1:
+                  sys.exit(f"expected one {prefix!r} row in {path}, found {len(hits)}")
+              lines[hits[0]] = build(lines[hits[0]])
+              with open(path, "w") as handle:
+                  handle.writelines(lines)
+
+
+          # Pin and version each have their own column here, so rebuild the whole
+          # row: patching fields across the `|` separators is what silently drops
+          # a column the next time one is added.
+          def charts_row(_row):
+              return (
+                  f"{prefix} `{version}` | `{archive}` | `{component}-chart` {version} "
+                  "| cubestack repo CI (OCI) |\n"
+              )
+
+
+          # The root README's component table names only the file.
+          def root_row(row):
+              updated, count = re.subn(
+                  r"`assets/charts/[^`]+`", f"`assets/charts/{archive}`", row
+              )
+              if count != 1:
+                  sys.exit(f"expected one chart path in the row of {root_readme}, found {count}")
+              return updated
+
+
+          # The pin in the catalog is what the operator resolves the file name from:
+          # the `oci:` block's version, and only that one. `defaultValues:`' children
+          # below it sit at the same two-space indent, so a file-wide search for
+          # `version:` would eventually match the wrong line.
+          with open(catalog) as handle:
+              lines = handle.readlines()
+
+
+          def indent_of(line):
+              return len(line) - len(line.lstrip(" "))
+
+
+          start = next((i for i, l in enumerate(lines) if l.rstrip("\n") == "oci:"), None)
+          if start is None:
+              sys.exit(f"no oci: block in {catalog}")
+          end = next(
+              (i for i in range(start + 1, len(lines))
+               if lines[i].strip() and indent_of(lines[i]) == 0),
+              len(lines),
+          )
+          pins = [i for i in range(start + 1, end) if lines[i].startswith("  version:")]
+          if len(pins) != 1:
+              sys.exit(f"expected one version: under oci: in {catalog}, found {len(pins)}")
+          lines[pins[0]] = f"  version: {version}\n"
+          with open(catalog, "w") as handle:
+              handle.writelines(lines)
+
+          rewrite_row(charts_readme, charts_row)
+          rewrite_row(root_readme, root_row)
+          PY
+      - name: Commit and push the branch
+        id: commit
+        working-directory: target
+        env:
+          CATALOG_VERSION: ${{ steps.package.outputs.catalog-version }}
+          # Fail rather than hang if the token is not accepted: git's fallback for
+          # a rejected credential is to prompt, and there is no one to answer.
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set -euo pipefail
+          # The App's own bot identity, so the commit is attributed to suanova-bot
+          # in the operator's history rather than to a stray address. actions/checkout
+          # does not set these, and git refuses to commit without them.
+          git config user.name 'suanova-bot[bot]'
+          git config user.email '5056565+suanova-bot[bot]@users.noreply.github.com'
+          git checkout -B "$TARGET_BRANCH"
+          # Only the paths this workflow owns: a stray file elsewhere in the
+          # checkout is not something to commit.
+          git add --all -- assets README.md
+          # Nothing staged means the archive and its pins already agree. Read the
+          # index rather than `git status`: the one state that leaves no tracked
+          # change is a version whose pin was bumped by hand while its archive went
+          # unvendored — which is precisely the breakage this workflow exists to
+          # repair, and it would show up only as a new, still-untracked file.
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --cached --stat
+          git commit -m "chore(charts): vendor ${COMPONENT} ${CATALOG_VERSION}"
+
+          # One rolling branch: a later chart change refreshes the pull request
+          # that is already open instead of stacking a stale one beside it. The
+          # lease is taken from the remote rather than from a local ref, because
+          # `ref: main` with fetch-depth 1 never fetched this branch — and it means
+          # a commit someone pushed onto the branch by hand is not silently lost.
+          target_ref="refs/heads/${TARGET_BRANCH}"
+          remote_sha="$(git ls-remote origin "$target_ref" | cut -f1)"
+          if [ -n "$remote_sha" ]; then
+            git push --force-with-lease="${target_ref}:${remote_sha}" origin "HEAD:${target_ref}"
+          else
+            git push origin "HEAD:${target_ref}"
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Open or refresh the pull request
+        if: steps.commit.outputs.changed == 'true'
+        working-directory: target
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          CATALOG_VERSION: ${{ steps.package.outputs.catalog-version }}
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list --repo "$TARGET_REPO" --head "$TARGET_BRANCH" \
+            --state open --json number --jq '.[0].number')"
+          if [ -n "$existing" ]; then
+            # The force-push above has already carried the new commit into it.
+            echo "Refreshed the open pull request #${existing}."
+            exit 0
+          fi
+
+          body="${RUNNER_TEMP}/pr-body.md"
+          printf 'The chart changed on `%s@%s`, so re-vendor it.\n\n- `assets/charts/%s-%s.tgz` — the archive, packaged from the chart at that commit\n- `assets/components/70-%s.yaml` — the `oci.version` pin, which is the file name the operator resolves\n- `assets/charts/README.md` and `README.md` — the vendored-archive tables\n\nOpened by the `suanova-bot` App from [`.github/workflows/vendor-chart.yml`](https://github.com/%s/blob/main/.github/workflows/vendor-chart.yml). The archive is `//go:embed`ed into the operator binary, so it is committed here rather than pulled at reconcile time; merging this fires `publish.yml`, which is what actually puts the new chart in front of clusters.\n' \
+            "$GITHUB_REPOSITORY" "${GITHUB_SHA:0:7}" "$COMPONENT" "$CATALOG_VERSION" \
+            "$COMPONENT" "$GITHUB_REPOSITORY" > "$body"
+
+          # Helm repacks identical content into different bytes, so a changed
+          # archive is otherwise an opaque blob to review. This is what changed.
+          if [ -s "$RUNNER_TEMP/chart.diff" ]; then
+            {
+              printf '\n<details><summary>Chart contents diff</summary>\n\n```diff\n'
+              head -100 "$RUNNER_TEMP/chart.diff"
+              printf '\n```\n\n</details>\n'
+            } >> "$body"
+          fi
+
+          gh pr create --repo "$TARGET_REPO" --base main --head "$TARGET_BRANCH" \
+            --title "chore(charts): vendor ${COMPONENT} ${CATALOG_VERSION}" \
+            --body-file "$body"
