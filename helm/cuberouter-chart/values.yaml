@@ -190,12 +190,33 @@ redis:
     tag: v7.0.15
     pullPolicy: IfNotPresent
   # Extra redis.conf parameters: list of "<key> <value>" strings, applied via CONFIG SET
-  # min-replicas-to-write / min-replicas-max-lag: master rejects writes when no
-  # replica is connected (prevents data loss during failover when persistence is on)
+  # in every deployment mode.
   redisCustomConfig:
+    - "save 60 10000"
+  # Extra redis.conf parameters applied only in deployMode: high, i.e. when the
+  # cluster actually has replicas (clusterSize > 1).
+  # min-replicas-to-write / min-replicas-max-lag: the master refuses writes while
+  # no replica is connected (prevents data loss during failover when persistence
+  # is on). deployMode: base is a single node, so no replica is ever connected
+  # and these would make the master reject every write with NOREPLICAS — which is
+  # why they are not part of redisCustomConfig above.
+  redisCustomConfigHA:
     - "min-replicas-to-write 1"
     - "min-replicas-max-lag 10"
-    - "save 60 10000"
+  # Pod-level security context for the redis nodes, rendered into the
+  # RedisReplication CRD as spec.podSecurityContext.
+  # Why fsGroup is required: the opstree redis image runs as uid/gid 1000, but a
+  # CSI-provisioned volume (e.g. ceph-rbd) is mounted root:root and the kubelet
+  # only rewrites its ownership when the pod declares an fsGroup. Without it the
+  # entrypoint cannot create /data/appendonlydir and the pod crash-loops with
+  # "Permission denied" — while the sentinel pods, which use emptyDir, are fine.
+  # OnRootMismatch skips the recursive chown once the volume already matches, so
+  # restarts stay cheap. Opt out with `--set redis.podSecurityContext=null` if the
+  # storage class handles ownership itself; a values-file `{}` will not clear this,
+  # because Helm deep-merges maps.
+  podSecurityContext:
+    fsGroup: 1000
+    fsGroupChangePolicy: OnRootMismatch
   persistence:
     enabled: true
     size: 1Gi

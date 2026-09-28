@@ -254,7 +254,7 @@ Computed connection strings:
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
 | `postgresql` | `auth.database/username`, `image` (PostgreSQL 16.14), `replicas: 2`, `storage: 20Gi`, `resources`, `backups.*`, `pgBouncer.*` |
-| `redis` | `image` (redis instances), `replicas: 2` (1 master + 1 replica), `sentinelReplicas: 3`, `sentinelImage`, `redisCustomConfig`, `persistence.*` |
+| `redis` | `image` (redis instances), `replicas: 2` (1 master + 1 replica), `sentinelReplicas: 3`, `sentinelImage`, `redisCustomConfig` / `redisCustomConfigHA`, `podSecurityContext` (`fsGroup: 1000`, [details below](#redis-opstree-redis-operator)), `persistence.*` |
 | `cloudnative-pg` | CNPG control plane (always installed), image, `resources` |
 | `redis-operator` | OpsTree control plane (always installed), image |
 
@@ -309,8 +309,22 @@ Computed connection strings:
 - Keep the release name short enough that derived service names (e.g. `<f>-redis-additional`) stay
   ≤ 63 characters (the chart fails the render with a clear message if exceeded).
 - Runtime tuning via `redis.redisCustomConfig` (list of `"<key> <value>"` pairs, applied with
-  `CONFIG SET`).
-- `redis.persistence.enabled: false` by default — enable it to survive pod restarts.
+  `CONFIG SET` in every deployment mode). `redis.redisCustomConfigHA` takes the same shape but is
+  rendered **only in `deployMode: high`** — it carries `min-replicas-to-write` /
+  `min-replicas-max-lag`, which make the master refuse writes while no replica is connected.
+  `deployMode: base` is a single node, so no replica is ever connected and applying them there
+  would reject every write with `NOREPLICAS`.
+- `redis.persistence.enabled: true` by default — Redis persists to a PVC (AOF/RDB) and survives
+  pod restarts.
+- `redis.podSecurityContext` is rendered into the CRD's `spec.podSecurityContext`, defaulting to
+  `fsGroup: 1000` + `fsGroupChangePolicy: OnRootMismatch`. The opstree redis image runs as uid/gid
+  1000, while a CSI-provisioned volume (ceph-rbd, EBS, …) is handed to the pod as `root:root`; the
+  kubelet only rewrites that ownership when the pod declares an `fsGroup`. Without it the
+  entrypoint cannot create `/data/appendonlydir` and the redis pod crash-loops on
+  `Permission denied` — the sentinel pods are unaffected because they use `emptyDir`. Opt out with
+  `--set redis.podSecurityContext=null` if your storage class handles ownership itself, or adjust
+  `fsGroup` if you run a redis image with a different GID. A values-file `{}` will not clear the
+  default: Helm deep-merges maps, so the chart's `fsGroup: 1000` survives it.
 
 ## Upgrading and rolling back
 
