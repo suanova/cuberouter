@@ -34,7 +34,11 @@ spec:
     # image is a required CRD field even when the exporter is disabled
     image: "quay.io/opstree/redis-exporter:v1.44.0"
     imagePullPolicy: IfNotPresent
-  {{- with .Values.redis.redisCustomConfig }}
+  {{- $customConfig := default list .Values.redis.redisCustomConfig }}
+  {{- if ne .Values.deployMode "base" }}
+  {{- $customConfig = concat $customConfig (default list .Values.redis.redisCustomConfigHA) }}
+  {{- end }}
+  {{- with $customConfig }}
   redisConfig:
     dynamicConfig:
       {{- range . }}
