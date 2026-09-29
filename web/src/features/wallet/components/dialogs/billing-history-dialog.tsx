@@ -45,7 +45,11 @@ import {
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { formatCurrencyFromUSD } from '@/lib/currency'
+import {
+  formatCurrencyFromUSD,
+  getCurrencyDisplay,
+  localToUsdNumber,
+} from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 
 import { useBillingHistory } from '../../hooks/use-billing-history'
@@ -181,6 +185,13 @@ export function BillingHistoryDialog({
               <div className='space-y-3'>
                 {records.map((record) => {
                   const statusConfig = getStatusConfig(record.status)
+                  // TopUp.Amount 存的是展示单位数量:CNY 模式为元,其余模式为美元
+                  // (TOKENS 下单时已折算成美元)。CNY 需先折回美元,否则展示时会被
+                  // 站点汇率再乘一次(1 元订单显示成 ¥7.3)。
+                  const amountUSD =
+                    getCurrencyDisplay().config.quotaDisplayType === 'CNY'
+                      ? localToUsdNumber(record.amount)
+                      : record.amount
                   return (
                     <div
                       key={record.id}
@@ -241,7 +252,7 @@ export function BillingHistoryDialog({
                             {t('Amount')}
                           </Label>
                           <div className='text-sm font-semibold'>
-                            {formatCurrencyFromUSD(record.amount, {
+                            {formatCurrencyFromUSD(amountUSD, {
                               digitsLarge: 2,
                               digitsSmall: 2,
                               abbreviate: false,
