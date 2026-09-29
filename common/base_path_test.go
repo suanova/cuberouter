@@ -20,6 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 package common
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -110,4 +112,142 @@ func TestWithBasePath(t *testing.T) {
 	assert.Equal(t, "/g/w1/api/status", WithBasePath("/api/status"),
 		"multi-segment prefixes are applied whole")
 	assert.Equal(t, "/g/w1/", WithBasePath("/"))
+}
+
+func TestStripBasePath(t *testing.T) {
+	t.Cleanup(func() { basePath = "" })
+
+	tests := []struct {
+		name        string
+		prefix      string
+		target      string
+		wantPath    string
+		wantRawPath string
+		wantURI     string
+	}{
+		{
+			name:     "a relay call loses the prefix",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/v1/chat/completions",
+			wantPath: "/v1/chat/completions",
+			wantURI:  "/v1/chat/completions",
+		},
+		{
+			name:     "the query string survives",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/v1/models?limit=10&after=abc",
+			wantPath: "/v1/models",
+			wantURI:  "/v1/models?limit=10&after=abc",
+		},
+		{
+			name:     "a nested prefix is removed whole",
+			prefix:   "/g/w1",
+			target:   "/g/w1/api/status",
+			wantPath: "/api/status",
+			wantURI:  "/api/status",
+		},
+		{
+			name:     "the bare prefix becomes the root route",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter",
+			wantPath: "/",
+			wantURI:  "/",
+		},
+		{
+			name:     "a trailing slash after the prefix also becomes the root route",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/",
+			wantPath: "/",
+			wantURI:  "/",
+		},
+		{
+			name:     "the dashboard's static assets lose the prefix too",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/static/js/index.js",
+			wantPath: "/static/js/index.js",
+			wantURI:  "/static/js/index.js",
+		},
+		{
+			// The boundary is the whole point: a sibling path that merely starts
+			// with the prefix's characters is not ours to rewrite.
+			name:     "a path that only starts with the prefix's characters is left alone",
+			prefix:   "/cuberouter",
+			target:   "/cuberouterfoo/v1/models",
+			wantPath: "/cuberouterfoo/v1/models",
+			wantURI:  "/cuberouterfoo/v1/models",
+		},
+		{
+			// Tolerant by design: something upstream may have stripped already,
+			// and the app must still serve that request.
+			name:     "an already root-mounted request passes through",
+			prefix:   "/cuberouter",
+			target:   "/v1/chat/completions",
+			wantPath: "/v1/chat/completions",
+			wantURI:  "/v1/chat/completions",
+		},
+		{
+			name:     "an unrelated path passes through",
+			prefix:   "/cuberouter",
+			target:   "/api/status",
+			wantPath: "/api/status",
+			wantURI:  "/api/status",
+		},
+		{
+			name:     "the root passes through",
+			prefix:   "/cuberouter",
+			target:   "/",
+			wantPath: "/",
+			wantURI:  "/",
+		},
+		{
+			name:     "with no prefix configured nothing is rewritten",
+			prefix:   "",
+			target:   "/cuberouter/v1/models",
+			wantPath: "/cuberouter/v1/models",
+			wantURI:  "/cuberouter/v1/models",
+		},
+		{
+			// %2F decodes to a slash in Path but must survive in RawPath, or the
+			// segment structure of the relay path changes under the client.
+			name:        "an escaped slash keeps its escaping",
+			prefix:      "/cuberouter",
+			target:      "/cuberouter/v1/a%2Fb",
+			wantPath:    "/v1/a/b",
+			wantRawPath: "/v1/a%2Fb",
+			wantURI:     "/v1/a%2Fb",
+		},
+		{
+			// A prefix carrying an escape is configured escaped but compared
+			// decoded, because that is the form Path is in. RawPath stays empty
+			// because the decoded path's default escaping is already the raw one.
+			name:     "a prefix containing an escape is matched decoded",
+			prefix:   "/my%20site",
+			target:   "/my%20site/api/status",
+			wantPath: "/api/status",
+			wantURI:  "/api/status",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			basePath = tt.prefix
+
+			var got *http.Request
+			handler := StripBasePath(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = r
+			}))
+
+			req := httptest.NewRequest(http.MethodPost, tt.target, nil)
+			handler.ServeHTTP(httptest.NewRecorder(), req)
+
+			require.NotNil(t, got, "the wrapped handler must be reached")
+			assert.Equal(t, tt.wantPath, got.URL.Path)
+			assert.Equal(t, tt.wantRawPath, got.URL.RawPath)
+			assert.Equal(t, tt.wantURI, got.RequestURI)
+			assert.Equal(t, http.MethodPost, got.Method, "only the path is rewritten")
+
+			assert.Equal(t, tt.target, req.RequestURI,
+				"the caller's request must not be mutated in place")
+		})
+	}
 }

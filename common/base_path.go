@@ -21,6 +21,8 @@ package common
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -28,13 +30,14 @@ import (
 // basePath is the URL path prefix the dashboard is published under, normalised
 // to either "" (served from the site root) or "/prefix" with no trailing slash.
 //
-// It comes from BASE_PATH and exists because a reverse proxy may publish this
-// server under a subpath. That proxy strips the prefix before forwarding, so
-// the HTTP server never sees it: c.Request.URL.Path is identical to a
-// root-mounted deployment, and no routing, middleware or rate-limit logic has
-// to change. Only the two things the server says to the browser are affected --
-// the HTML it serves and the Path attribute of the refresh cookie -- because
-// those are evaluated by the browser against the prefixed URL.
+// It comes from BASE_PATH and exists because this server may be published under
+// a subpath. A reverse proxy can strip the prefix before forwarding it, and
+// StripBasePath does the same in-process, so in both cases the router,
+// middleware and rate-limit logic see the root-mounted path and none of them
+// has to change. For the same reason the prefix never reaches them, the things
+// the server says to the browser are what the prefix is for -- the HTML it
+// serves and the Path attribute of the refresh cookie -- because those are
+// evaluated by the browser against the prefixed URL.
 var basePath string
 
 // InitBasePath reads and validates BASE_PATH and stores the normalised prefix.
@@ -134,4 +137,76 @@ func WithBasePath(path string) string {
 		return path
 	}
 	return basePath + path
+}
+
+// StripBasePath wraps h so a request carrying the prefix is rewritten to look
+// root-mounted before h sees it: URL.Path, URL.RawPath and RequestURI all lose
+// the prefix. The server can therefore be mounted under BASE_PATH without the
+// prefix reaching the router, the middleware or the rate limiter -- the same
+// property a stripping reverse proxy provides, which is why none of them need
+// to know the prefix exists.
+//
+// A request that is not under the prefix passes through untouched. That
+// tolerance means the deployment works whether or not something upstream also
+// strips, so the app serves /cuberouter/... and /... alike. With no prefix
+// configured this returns h unchanged.
+func StripBasePath(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		prefix := basePath
+		if prefix == "" {
+			h.ServeHTTP(w, r)
+			return
+		}
+		// Path is decoded, so it is compared against the decoded prefix;
+		// RawPath keeps the escapes and matches the configured value verbatim.
+		decodedPrefix := prefix
+		if strings.Contains(prefix, "%") {
+			decoded, err := url.PathUnescape(prefix)
+			if err != nil {
+				// normalizeBasePath admits complete escapes only, so this is
+				// unreachable; serving from the root still works.
+				h.ServeHTTP(w, r)
+				return
+			}
+			decodedPrefix = decoded
+		}
+		path, ok := prefixRemainder(decodedPrefix, r.URL.Path)
+		if !ok {
+			h.ServeHTTP(w, r)
+			return
+		}
+		// Copy before rewriting: the original request belongs to the caller,
+		// and Clone keeps Header, URL and the context intact.
+		stripped := r.Clone(r.Context())
+		stripped.URL.Path = path
+		if r.URL.RawPath != "" {
+			// An empty RawPath is valid and makes the URL re-escape Path, which
+			// is the right fallback if the escaped form does not line up.
+			stripped.URL.RawPath = ""
+			if raw, ok := prefixRemainder(prefix, r.URL.RawPath); ok {
+				stripped.URL.RawPath = raw
+			}
+		}
+		// RequestURI has to carry the escaped path, not the decoded one: a relay
+		// path such as /v1/a%2Fb must not arrive as /v1/a/b.
+		stripped.RequestURI = stripped.URL.EscapedPath()
+		if stripped.URL.RawQuery != "" {
+			stripped.RequestURI = stripped.RequestURI + "?" + stripped.URL.RawQuery
+		}
+		h.ServeHTTP(w, stripped)
+	})
+}
+
+// prefixRemainder returns the part of p below prefix, or ok=false when p is not
+// under it. The boundary check is what keeps /cuberouterfoo out of
+// /cuberouter's scope, and a bare prefix maps to "/" so the root route matches.
+func prefixRemainder(prefix, p string) (string, bool) {
+	rest, found := strings.CutPrefix(p, prefix)
+	if !found || (rest != "" && !strings.HasPrefix(rest, "/")) {
+		return "", false
+	}
+	if rest == "" {
+		return "/", true
+	}
+	return rest, true
 }
