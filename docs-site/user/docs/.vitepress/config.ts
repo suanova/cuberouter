@@ -30,6 +30,7 @@ export default defineConfig({
                 { text: '界面概览', link: '/getting-started/ui-overview' },
                 { text: '使用 API', link: '/getting-started/using-api' },
                 { text: 'Claude Code', link: '/getting-started/claude-code' },
+                { text: 'Codex', link: '/getting-started/codex' },
                 { text: 'OpenCode', link: '/getting-started/opencode' },
                 { text: 'OpenClaw', link: '/getting-started/openclaw' }
               ]
@@ -135,6 +136,7 @@ export default defineConfig({
                 { text: 'Interface Overview', link: '/en/getting-started/ui-overview' },
                 { text: 'Use the API', link: '/en/getting-started/using-api' },
                 { text: 'Claude Code', link: '/en/getting-started/claude-code' },
+                { text: 'Codex', link: '/en/getting-started/codex' },
                 { text: 'OpenCode', link: '/en/getting-started/opencode' },
                 { text: 'OpenClaw', link: '/en/getting-started/openclaw' }
               ]
@@ -240,6 +242,7 @@ export default defineConfig({
                 { text: '界面概覽', link: '/zh-Hant/getting-started/ui-overview' },
                 { text: '使用 API', link: '/zh-Hant/getting-started/using-api' },
                 { text: 'Claude Code', link: '/zh-Hant/getting-started/claude-code' },
+                { text: 'Codex', link: '/zh-Hant/getting-started/codex' },
                 { text: 'OpenCode', link: '/zh-Hant/getting-started/opencode' },
                 { text: 'OpenClaw', link: '/zh-Hant/getting-started/openclaw' }
               ]

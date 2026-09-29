@@ -89,5 +89,6 @@ The API Base URL is the current service domain. For more code examples, see [Use
 CubeRouter supports the OpenAI-compatible API and works with a wide range of tools:
 
 - [Claude Code](./claude-code.md)
+- [Codex](./codex.md)
 - [OpenCode](./opencode.md)
 - [OpenClaw](./openclaw.md)

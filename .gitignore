@@ -64,5 +64,4 @@ knowledge/.sync-artifacts/
 knowledge/.upstream-cache/
 
 # Ignore models yaml (it includes sensitive credential information)
-models.yaml
-models.test.yaml
+*.models.yaml
