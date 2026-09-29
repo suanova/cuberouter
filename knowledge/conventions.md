@@ -301,6 +301,8 @@ week (cron `0 22 * * 0,3` — Sunday & Wednesday 22:00 UTC, i.e. Monday & Thursd
 a PR merging upstream `new-api` changes. Sync state is tracked in
 `knowledge/mappings.yaml` (`sync_state` → upstream commit hash).
 
+Don't sync the `.github` directory. 
+
 When creating a sync PR, resolve conflicts in favour of cuberouter's ported
 features and fork fixes (our changes win; e.g. the channel renumbering
 AstraFlow=59, Sub2API=60, NewAPI=61, and never restore upstream's fr/ru/ja/vi

@@ -87,5 +87,6 @@ API Base URL 為當前服務域名。更多代碼示例見[使用 API](using-api
 CubeRouter 支援 OpenAI 兼容的 API，可以在多種工具中使用：
 
 - [Claude Code](claude-code.md)
+- [Codex](codex.md)
 - [OpenCode](opencode.md)
 - [OpenClaw](openclaw.md)
