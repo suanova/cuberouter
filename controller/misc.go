@@ -128,6 +128,8 @@ func GetStatus(c *gin.Context) {
 		"user_agreement_enabled":      legalSetting.UserAgreement != "",
 		"privacy_policy_enabled":      legalSetting.PrivacyPolicy != "",
 		"checkin_enabled":             operation_setting.GetCheckinSetting().Enabled,
+		// 两侧邀请奖励都为 0 时视为未启用推荐计划,前端据此隐藏邀请入口
+		"affiliate_enabled": common.QuotaForInviter > 0 || common.QuotaForInvitee > 0,
 	}
 
 	// 根据启用状态注入可选内容

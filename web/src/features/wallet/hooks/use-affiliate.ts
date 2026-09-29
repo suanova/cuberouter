@@ -30,10 +30,14 @@ import { generateAffiliateLink } from '../lib'
 // Affiliate Hook
 // ============================================================================
 
-export function useAffiliate() {
+/**
+ * @param enabled 站点是否启用了推荐计划;未启用时不请求邀请码,
+ * 避免仅打开钱包页就让服务端生成并落库 aff_code
+ */
+export function useAffiliate(enabled: boolean) {
   const [affiliateCode, setAffiliateCode] = useState<string>('')
   const [affiliateLink, setAffiliateLink] = useState<string>('')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(enabled)
   const [transferring, setTransferring] = useState(false)
   const { copyToClipboard } = useCopyToClipboard()
 
@@ -75,7 +79,7 @@ export function useAffiliate() {
 
       toast.error(response.message || i18next.t('Transfer failed'))
       return false
-    } catch (_error) {
+    } catch {
       toast.error(i18next.t('Transfer failed'))
       return false
     } finally {
@@ -84,8 +88,9 @@ export function useAffiliate() {
   }, [])
 
   useEffect(() => {
+    if (!enabled) return
     fetchAffiliateCode()
-  }, [fetchAffiliateCode])
+  }, [enabled, fetchAffiliateCode])
 
   return {
     affiliateCode,
