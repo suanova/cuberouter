@@ -175,6 +175,18 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: CRYPTO_SECRET
+            {{- if .Values.mediaStudio.enabled }}
+            - name: MEDIA_STUDIO_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: MEDIA_STUDIO_S3_ACCESS_KEY
+            - name: MEDIA_STUDIO_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: MEDIA_STUDIO_S3_SECRET_KEY
+            {{- end }}
             {{- range .Values.cubeRouter.envVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

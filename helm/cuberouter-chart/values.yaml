@@ -44,6 +44,8 @@ config:
 # create=true  : chart creates the secret; empty secrets.* values are
 #                generated (stable across upgrades via lookup).
 # create=false : point existingSecret at a pre-created secret (0.6.0 pattern).
+# The Media Studio object-store credentials are configured under mediaStudio
+# below, not here; when the chart creates the secret they are added to it.
 # ---------------------------------------------------------------------------
 secret:
   create: true
@@ -54,6 +56,40 @@ secrets:
   CRYPTO_SECRET: ""
   REDIS_PASSWORD: ""
   POSTGRES_PASSWORD: ""
+
+# ---------------------------------------------------------------------------
+# Media Studio reference-image uploads (Image to image, POST /pg/images/edits).
+# The s3 block mirrors the object-store config the server consumes:
+#
+#   Bucket / Endpoint / AccessKey / SecretKey   (region is a signing detail)
+#
+# With enabled=false none of the MEDIA_STUDIO_S3_* variables are rendered and
+# the app disables reference uploads; text-to-image keeps working.
+# endpoint/bucket/region are not secret and land in the ConfigMap. access_key
+# and secret_key go into the chart-created Secret and reach the Deployment
+# through a secretKeyRef, never as plaintext. With secret.create=false you must
+# carry the two keys in secret.existingSecret yourself, under exactly the names
+# MEDIA_STUDIO_S3_ACCESS_KEY / MEDIA_STUDIO_S3_SECRET_KEY; the values here are
+# then ignored, like every other secrets.* entry.
+# The bucket must be reachable by BOTH the browser and the image provider, and
+# needs CORS for PUT + GET with the Content-Type header. See the chart README
+# and docs/media-studio-integration.md.
+# ---------------------------------------------------------------------------
+mediaStudio:
+  enabled: false
+  s3:
+    # Origin only: scheme + host (+ port). No bucket, path, query or userinfo.
+    # HTTPS is required. The server also accepts plain HTTP for a loopback
+    # address; the chart deliberately does not -- a loopback object store is
+    # unreachable from inside a pod. Use the env vars directly for local work.
+    endpoint: ""
+    bucket: ""
+    # Signing region, e.g. us-east-1
+    region: ""
+    # Server-side credentials, restricted to the upload prefix. Never exposed
+    # to the browser and never rendered into the Deployment spec.
+    access_key: ""
+    secret_key: ""
 
 # ---------------------------------------------------------------------------
 # CubeRouter application (always installed)

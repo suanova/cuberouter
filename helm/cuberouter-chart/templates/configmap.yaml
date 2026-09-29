@@ -14,3 +14,8 @@ data:
   {{- range $key, $value := .Values.config.extra }}
   {{ $key }}: {{ $value | quote }}
   {{- end }}
+  {{- if .Values.mediaStudio.enabled }}
+  MEDIA_STUDIO_S3_ENDPOINT: {{ .Values.mediaStudio.s3.endpoint | quote }}
+  MEDIA_STUDIO_S3_BUCKET: {{ .Values.mediaStudio.s3.bucket | quote }}
+  MEDIA_STUDIO_S3_REGION: {{ .Values.mediaStudio.s3.region | quote }}
+  {{- end }}

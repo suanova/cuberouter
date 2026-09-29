@@ -48,6 +48,13 @@ Configure the CubeRouter server:
 | `MEDIA_STUDIO_S3_ACCESS_KEY` | Server-side key restricted to the upload prefix |
 | `MEDIA_STUDIO_S3_SECRET_KEY` | Corresponding secret; never sent to the browser |
 
+On Kubernetes, set these through the Helm chart instead of raw environment variables:
+`mediaStudio.enabled` plus `mediaStudio.s3.endpoint` / `.bucket` / `.region` / `.access_key` /
+`.secret_key` in `helm/cuberouter-chart/values.yaml`. The chart routes the first three into its
+ConfigMap and the two credentials into its Secret, injected via `secretKeyRef`, and refuses to render
+a malformed configuration rather than disabling uploads silently. See the chart README's
+"Media Studio reference uploads".
+
 The signer uses the existing AWS SDK dependency, path-style bucket URLs and long-lived server credentials. HTTP is accepted only for literal loopback addresses in local development. The bucket must be reachable by both the browser and the selected image provider.
 
 Each upload gets a random object key under `media-studio/uploads/{userId}/`. A PUT URL is valid for 5 minutes and binds the declared content type and exact byte length (1 byte–10 MB). PNG, JPEG and WebP are accepted. The browser supplies `Content-Type`; it supplies `Content-Length` automatically from the Blob. Do not change these signed headers at a proxy. The matching signed GET URL lasts one hour. Signed URLs are bearer capabilities: keep them out of analytics and application logs. No public bucket ACL is required.
@@ -89,6 +96,7 @@ Migration: the previous `qwen-image` name heuristic is gone and `MEDIA_STUDIO_ED
 | Template preview assets | `web/public/studio-templates/` |
 | Upload/config API | `controller/media_studio_upload.go` |
 | S3 signing and configuration validation | `service/media_studio_upload.go` |
+| Kubernetes configuration | `helm/cuberouter-chart/values.yaml` (`mediaStudio.*`) |
 | Standard generation/edit relay | `controller/playground.go`, `router/relay-router.go` |
 
 UI dependencies are the existing React, TanStack Query, React Hook Form/Zod and native IndexedDB/FileReader/fetch APIs. S3 signing uses the repository's existing AWS SigV4 signer. No new production dependencies or GPU models are required.
