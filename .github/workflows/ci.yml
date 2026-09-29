@@ -86,3 +86,50 @@ jobs:
 
       - name: Test
         run: bun run test
+
+  image-studio:
+    name: Image Studio queue, image and database contracts
+    if: github.event.action != 'closed' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: studio-ci-only
+          MYSQL_DATABASE: studio
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pstudio-ci-only"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: studio-ci-only
+          POSTGRES_DB: studio
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s --health-timeout=5s --health-retries=12
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ github.event.pull_request.base.repo.full_name }}
+          ref: ${{ github.event.action == 'closed' && github.event.pull_request.base.ref || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+      - name: Queue, admission, recovery and deployment tests
+        run: python3 -m unittest discover -s deploy/image-studio -p 'test_*.py'
+      - name: Build CPU-only dispatcher
+        run: docker build -t cuberouter-image-studio:ci deploy/image-studio
+      - name: SQLite, MySQL and PostgreSQL audit migration contracts
+        env:
+          GOWORK: 'off'
+          STUDIO_TEST_MYSQL_DSN: 'root:studio-ci-only@tcp(127.0.0.1:3306)/studio?charset=utf8mb4&parseTime=true'
+          STUDIO_TEST_POSTGRES_DSN: 'postgres://postgres:studio-ci-only@127.0.0.1:5432/studio?sslmode=disable'
+        run: |
+          mkdir -p web/dist
+          touch web/dist/index.html
+          go test ./model -run TestImageStudioDatabaseMatrix -count=1 -v

@@ -26,6 +26,10 @@ export interface StudioAsset {
 }
 export interface WorkflowConfig {
   upload_enabled: boolean
+  qwen_queue_enabled?: boolean
+  qwen_model?: string
+  qwen_access?: boolean
+  audit_retention_days?: number
 }
 /** 按运维声明的模型标签分类的可用模型：text-to-image 与 image-to-image 互不推断。 */
 export interface StudioModelCatalog {
@@ -33,6 +37,16 @@ export interface StudioModelCatalog {
   imageToImage: string[]
 }
 export interface WorkflowDraft {
+  queued?: boolean
+  user_prompt?: string
+  steps?: number
+  cfg?: number
+  seed?: number
+  annotation?: {
+    original: StudioAsset
+    strokes: import('./lib/qwen-edit').Stroke[]
+    instruction: string
+  }
   mode: 'create' | 'edit'
   model: string
   prompt: string

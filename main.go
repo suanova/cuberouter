@@ -483,6 +483,7 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
+	model.StartImageStudioAuditCleanup()
 
 	return nil
 }

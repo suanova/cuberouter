@@ -19,18 +19,20 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Sparkles } from 'lucide-react'
-
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
 
 import { getStudioModels } from './api'
+import { QwenEditor } from './components/qwen-editor'
+import { QwenExamples } from './components/qwen-examples'
 import { TemplateGallery } from './components/template-gallery'
 import { WorkflowComposer } from './components/workflow-composer'
 import { WorkflowHistory } from './components/workflow-history'
 import { WorkflowResults } from './components/workflow-results'
 import { useWorkflow } from './hooks/use-workflow'
+import { editDraft } from './lib/qwen-edit'
 import { initialDraft, templateDraft, workflowError } from './lib/workflow'
 import { localImage, referenceAsset, workflowAPI } from './workflow-api'
 import type { WorkflowDraft } from './workflow-types'
@@ -39,6 +41,10 @@ export function WorkflowStudio(props: { owner: number }) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<WorkflowDraft>({ ...initialDraft })
   const [view, setView] = useState<'templates' | 'result'>('templates')
+  const [editor, setEditor] = useState<{
+    draft: WorkflowDraft
+    draw: boolean
+  }>()
   const models = useQuery({
     queryKey: ['studio-models', props.owner],
     queryFn: getStudioModels,
@@ -53,15 +59,26 @@ export function WorkflowStudio(props: { owner: number }) {
   const catalog = models.data ?? { textToImage: [], imageToImage: [] }
   const eligible =
     draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
-  const current = {
+  const selectedModel = eligible.includes(draft.model)
+    ? draft.model
+    : (eligible[0] ?? '')
+  const queued =
+    !!config.qwen_queue_enabled && selectedModel === config.qwen_model
+  const current: WorkflowDraft = {
     ...draft,
-    model: eligible.includes(draft.model) ? draft.model : (eligible[0] ?? ''),
+    model: selectedModel,
+    queued,
+    count: queued ? 1 : draft.count,
   }
   const workflow = useWorkflow(props.owner)
   const references = useMutation({
     mutationFn: async (files: Blob[]) => {
-      if (files.length + draft.references.length > 3) {
-        throw new Error('Choose at most three reference images.')
+      if (files.length + draft.references.length > (queued ? 10 : 3)) {
+        throw new Error(
+          queued
+            ? 'Choose at most ten reference images.'
+            : 'Choose at most three reference images.'
+        )
       }
       return Promise.all(files.map(referenceAsset))
     },
@@ -73,7 +90,12 @@ export function WorkflowStudio(props: { owner: number }) {
     retry: false,
   })
   const continuation = useMutation({
-    mutationFn: async (args: { url: string; parent: string }) => {
+    mutationFn: async (args: {
+      url: string
+      parent: string
+      request: WorkflowDraft
+      draw?: boolean
+    }) => {
       const asset = await localImage(args.url)
       if (
         !['image/png', 'image/jpeg', 'image/webp'].includes(asset.mime) ||
@@ -83,17 +105,16 @@ export function WorkflowStudio(props: { owner: number }) {
       }
       return { ...args, asset }
     },
-    onSuccess: ({ asset, parent }) =>
-      setDraft({
-        ...initialDraft,
-        mode: 'edit',
-        references: [asset],
-        parent_id: parent,
-      }),
+    onSuccess: ({ asset, parent, request, draw }) => {
+      const next = editDraft(request, asset, parent)
+      if (next.queued) setEditor({ draft: next, draw: !!draw })
+      else setDraft(next)
+    },
     retry: false,
   })
   const busy =
     workflow.generation.isPending ||
+    workflow.recovering ||
     references.isPending ||
     continuation.isPending
   const errors = [
@@ -132,7 +153,45 @@ export function WorkflowStudio(props: { owner: number }) {
                 workflow.generation.mutate(structuredClone(current))
               }}
               onReset={() => setDraft({ ...initialDraft })}
+              onDraw={() => setEditor({ draft: current, draw: true })}
             />
+            {queued && !config.qwen_access && (
+              <p role='alert'>
+                {t(
+                  'Your account is not enrolled for Image Studio. Contact your administrator.'
+                )}
+              </p>
+            )}
+            {!!workflow.queueStatus && (
+              <p role='status' className='mt-3 text-sm'>
+                {workflow.queueStatus.state === 'queued'
+                  ? t('Queued · {{count}} waiting ahead', {
+                      count: workflow.queueStatus.ahead ?? 0,
+                    })
+                  : t(`Image job: ${workflow.queueStatus.state}`)}
+              </p>
+            )}
+            {workflow.pending && !workflow.generation.isPending && (
+              <div className='mt-3 space-y-2'>
+                <Button variant='outline' onClick={workflow.reconnect}>
+                  {t('Reconnect to image job')}
+                </Button>
+                {!!workflow.queueStatus &&
+                  ['failed', 'cancelled', 'expired', 'released'].includes(
+                    workflow.queueStatus.state
+                  ) && (
+                    <Button
+                      variant='outline'
+                      onClick={() => {
+                        if (workflow.pending) setDraft(workflow.pending.draft)
+                        void workflow.clearEndedRequest()
+                      }}
+                    >
+                      {t('Edit failed draft')}
+                    </Button>
+                  )}
+              </div>
+            )}
           </aside>
           <main className='min-w-0 space-y-4'>
             <nav
@@ -178,12 +237,21 @@ export function WorkflowStudio(props: { owner: number }) {
               </p>
             )}
             {view === 'templates' && (
-              <TemplateGallery
-                disabled={busy}
-                onApply={(template, fields) =>
-                  setDraft(templateDraft(template, fields, current))
-                }
-              />
+              <div className='space-y-6'>
+                {queued && (
+                  <QwenExamples
+                    draft={current}
+                    disabled={busy || !config.qwen_access}
+                    onApply={setDraft}
+                  />
+                )}
+                <TemplateGallery
+                  disabled={busy}
+                  onApply={(template, fields) =>
+                    setDraft(templateDraft(template, fields, current))
+                  }
+                />
+              </div>
             )}
             {view === 'result' && (
               // 结果与本地历史合并在同一视图：结果在上，历史列表在下。
@@ -194,8 +262,21 @@ export function WorkflowStudio(props: { owner: number }) {
                     busy={workflow.generation.isPending}
                     count={workflow.generation.variables?.count ?? 1}
                     elapsed={workflow.elapsed}
+                    queued={!!workflow.generation.variables?.queued}
                     onEdit={(asset, job) =>
-                      continuation.mutate({ url: asset.url, parent: job.id })
+                      continuation.mutate({
+                        url: asset.url,
+                        parent: job.id,
+                        request: job.request,
+                      })
+                    }
+                    onDraw={(asset, job) =>
+                      continuation.mutate({
+                        url: asset.url,
+                        parent: job.id,
+                        request: job.request,
+                        draw: true,
+                      })
                     }
                   />
                 </div>
@@ -217,6 +298,27 @@ export function WorkflowStudio(props: { owner: number }) {
             )}
           </main>
         </div>
+        {!!config.audit_retention_days && queued && (
+          <p className='text-muted-foreground text-xs'>
+            {t(
+              'The platform keeps account details, prompts, parameters and image hashes for 30 days. Generated images are kept temporarily for delivery, then released or expired after 10 minutes.'
+            )}
+          </p>
+        )}
+        {editor && (
+          <QwenEditor
+            draft={editor.draft}
+            draw={editor.draw}
+            busy={busy}
+            onClose={() => setEditor(undefined)}
+            onSubmit={(next) => {
+              setDraft(next)
+              setView('result')
+              workflow.generation.mutate(next)
+              setEditor(undefined)
+            }}
+          />
+        )}
       </div>
     </div>
   )

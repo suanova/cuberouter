@@ -34,6 +34,11 @@ export const initialDraft: WorkflowDraft = {
 }
 export const draftSchema = z
   .object({
+    queued: z.boolean().optional(),
+    user_prompt: z.string().max(16000).optional(),
+    steps: z.number().int().min(1).max(60).optional(),
+    cfg: z.number().min(0).max(10).optional(),
+    seed: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
     mode: z.enum(['create', 'edit']),
     model: z.string().min(1),
     prompt: z.string().trim().min(1).max(16000),
@@ -42,10 +47,36 @@ export const draftSchema = z
     quality: z.enum(['fast', 'standard', 'high']),
     references: z
       .array(z.object({ id: z.string(), url: z.string(), mime: z.string() }))
-      .max(3),
+      .max(10),
     parent_id: z.string().optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.queued) {
+      const [width, height] = value.size.split('x').map(Number)
+      if (
+        value.count !== 1 ||
+        width < 256 ||
+        height < 256 ||
+        width > 1664 ||
+        height > 1664 ||
+        width % 32 ||
+        height % 32 ||
+        width * height > 2097152
+      ) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['size'],
+          message:
+            'Qwen Image 2.1 requires one image, dimensions in multiples of 32 and at most 2 megapixels.',
+        })
+      }
+    } else if (value.references.length > 3) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['references'],
+        message: 'Choose at most three reference images.',
+      })
+    }
     if (value.mode === 'edit' && !value.references.length) {
       ctx.addIssue({
         code: 'custom',
@@ -56,6 +87,9 @@ export const draftSchema = z
   })
 export function workflowError(error: unknown): string {
   if (isAxiosError(error)) {
+    if (typeof error.response?.data?.error === 'string') {
+      return error.response.data.error
+    }
     const message: unknown = error.response?.data?.error?.message
     if (typeof message === 'string') return message
   }

@@ -13,6 +13,7 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
+	router.POST("/internal/image-studio/execute", controller.PrepareImageStudioRelay, middleware.Distribute(), controller.ImageStudioChannelRelay)
 	registerApiRoutes(router.Group("/api"))
 	registerApiRoutes(router.Group("/api/v1"))
 	registerApiRoutes(router.Group("/api/v2"))
@@ -27,6 +28,10 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
+	imageStudio := apiRouter.Group("/image-studio", middleware.UserAuth(), middleware.ImageStudioGroupAuth())
+	imageStudio.GET("/*path", controller.ImageStudio)
+	imageStudio.POST("/*path", middleware.UserCriticalRateLimit("image-studio-submit"), controller.ImageStudio)
+	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.ImageStudioAuditLookup)
 	studio := apiRouter.Group("/media-studio", middleware.UserAuth())
 	studio.GET("/config", controller.MediaStudioConfig)
 	studio.POST("/uploads/presign", middleware.UserCriticalRateLimit("studio-upload"), controller.MediaStudioUpload)

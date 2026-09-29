@@ -3,6 +3,7 @@ package constant
 type ContextKey string
 
 const (
+	ContextKeyImageStudio     ContextKey = "image_studio_relay"
 	ContextKeyTokenCountMeta  ContextKey = "token_count_meta"
 	ContextKeyPromptTokens    ContextKey = "prompt_tokens"
 	ContextKeyEstimatedTokens ContextKey = "estimated_tokens"
