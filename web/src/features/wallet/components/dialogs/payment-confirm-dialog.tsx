@@ -46,7 +46,6 @@ interface PaymentConfirmDialogProps {
   calculating: boolean
   processing: boolean
   discountRate?: number
-  usdExchangeRate?: number
 }
 
 export function PaymentConfirmDialog({
@@ -59,7 +58,6 @@ export function PaymentConfirmDialog({
   calculating,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
-  usdExchangeRate = 1,
 }: PaymentConfirmDialogProps) {
   const { t } = useTranslation()
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
@@ -83,8 +81,10 @@ export function PaymentConfirmDialog({
             <span className='text-muted-foreground text-sm'>
               {t('Topup Amount')}
             </span>
+            {/* 充值数量已是展示货币单位(CNY 为元、USD 为美元、TOKENS 为 token 数),
+                与服务端 getPayMoney/getTopUpQuota 的语义一致;此处只加符号,不再乘汇率。 */}
             <span className='text-lg font-semibold'>
-              {formatLocalCurrencyAmount(topupAmount * usdExchangeRate, {
+              {formatLocalCurrencyAmount(topupAmount, {
                 digitsLarge: 2,
                 digitsSmall: 2,
                 abbreviate: false,

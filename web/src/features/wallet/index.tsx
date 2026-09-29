@@ -359,7 +359,6 @@ export function Wallet(props: WalletProps) {
         calculating={calculating}
         processing={processing || waffoProcessing || pancakeProcessing}
         discountRate={getDiscountRate()}
-        usdExchangeRate={effectiveUsdExchangeRate}
       />
 
       <TransferDialog
