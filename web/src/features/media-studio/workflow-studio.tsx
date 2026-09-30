@@ -32,7 +32,7 @@ import { WorkflowHistory } from './components/workflow-history'
 import { WorkflowResults } from './components/workflow-results'
 import { useWorkflow } from './hooks/use-workflow'
 import { initialDraft, templateDraft, workflowError } from './lib/workflow'
-import { localImage, referenceAsset, workflowAPI } from './workflow-api'
+import { localImage, referenceAsset } from './workflow-api'
 import type { WorkflowDraft } from './workflow-types'
 
 export function WorkflowStudio(props: { owner: number }) {
@@ -44,12 +44,6 @@ export function WorkflowStudio(props: { owner: number }) {
     queryFn: getStudioModels,
     retry: false,
   })
-  const configuration = useQuery({
-    queryKey: ['studio-config', props.owner],
-    queryFn: workflowAPI.config,
-    retry: false,
-  })
-  const config = configuration.data ?? { upload_enabled: false }
   const catalog = models.data ?? { textToImage: [], imageToImage: [] }
   const eligible =
     draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
@@ -98,7 +92,6 @@ export function WorkflowStudio(props: { owner: number }) {
     continuation.isPending
   const errors = [
     models.error,
-    configuration.error,
     references.error,
     continuation.error,
     workflow.generation.error,
@@ -120,7 +113,6 @@ export function WorkflowStudio(props: { owner: number }) {
           <aside className='bg-card rounded-2xl border p-4'>
             <WorkflowComposer
               draft={current}
-              config={config}
               textToImageModels={catalog.textToImage}
               imageToImageModels={catalog.imageToImage}
               busy={busy}

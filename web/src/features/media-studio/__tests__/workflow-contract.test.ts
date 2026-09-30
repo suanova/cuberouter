@@ -102,6 +102,21 @@ test('image requests always carry the quality tier with the machine-native defau
     true_cfg_scale: 4,
   })
 })
+test('edit requests inline the references as base64 under "image"', () => {
+  // 编辑渠道只认 base64。单张发字符串，多张发字符串数组；原来的 images[].image_url
+  // 形状会被上游按 base64 解码，报 `Incorrect padding`。
+  const base = { ...initialDraft, mode: 'edit' as const, model: 'm', prompt: 'Cat' }
+  expect(imageRequest(base, [reference.url])).toMatchObject({
+    image: reference.url,
+  })
+  expect(imageRequest(base, [reference.url, 'data:image/png;base64,Yg=='])).toMatchObject({
+    image: [reference.url, 'data:image/png;base64,Yg=='],
+  })
+  expect(imageRequest(base, [])).not.toHaveProperty('image')
+  expect(
+    imageRequest({ ...initialDraft, model: 'm', prompt: 'Cat' }, [reference.url])
+  ).not.toHaveProperty('image')
+})
 test('counts above four are rejected', () =>
   expect(
     draftSchema.safeParse({

@@ -19,7 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import 'fake-indexeddb/auto'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
@@ -35,35 +42,31 @@ beforeEach(async () => {
   useAuthStore
     .getState()
     .auth.setUser({ id: 301, username: 'reviewer', role: 1 })
-  http.get.mockImplementation(async (path: string) =>
-    path.endsWith('/config')
-      ? { data: { upload_enabled: true } }
-      : {
-          data: {
-            success: true,
-            data: {
-              pricings: [
-                {
-                  model_name: 'image-model',
-                  tags: 'text-to-image',
-                },
-                {
-                  // 带 image-generation 端点类型但只声明 image-to-image：只支持编辑的
-                  // 模型不该出现在文生图列表里。
-                  model_name: 'edit-model',
-                  tags: 'image-to-image',
-                  supported_endpoint_types: ['image-generation'],
-                },
-                {
-                  model_name: 'chat-model',
-                  tags: 'chat',
-                  supported_endpoint_types: ['openai'],
-                },
-              ],
-            },
+  http.get.mockImplementation(async () => ({
+    data: {
+      success: true,
+      data: {
+        pricings: [
+          {
+            model_name: 'image-model',
+            tags: 'text-to-image',
           },
-        }
-  )
+          {
+            // 带 image-generation 端点类型但只声明 image-to-image：只支持编辑的
+            // 模型不该出现在文生图列表里。
+            model_name: 'edit-model',
+            tags: 'image-to-image',
+            supported_endpoint_types: ['image-generation'],
+          },
+          {
+            model_name: 'chat-model',
+            tags: 'chat',
+            supported_endpoint_types: ['openai'],
+          },
+        ],
+      },
+    },
+  }))
   http.post.mockResolvedValue({
     data: { created: 7, data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
     headers: { 'x-request-id': 'req-1' },
@@ -112,6 +115,44 @@ test('standard channel generation saves actual bytes locally and reloads history
   page()
   fireEvent.click(screen.getByRole('button', { name: 'Result' }))
   await screen.findByRole('button', { name: 'Open creation: A cat' })
+})
+test('a reference attached in the composer reaches the relay as inline base64', async () => {
+  // 图生图的成败全在这条契约上：参考图必须以 data URL 原样进 `image` 字段，且整个
+  // 提交过程不碰对象存储。上传功能没有配置也不影响（见 workflow-ui.test.tsx）。
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  // 「Image to image」在模版图库的筛选条里也有一个同名按钮，必须限定在写作台的
+  // 模式切换组里点，否则拿到的是图库的筛选。
+  fireEvent.click(
+    within(screen.getByLabelText('Creation mode')).getByRole('button', {
+      name: 'Image to image',
+    })
+  )
+  fireEvent.change(screen.getByLabelText('Upload reference images'), {
+    target: {
+      files: [new File(['PNG'], 'reference.png', { type: 'image/png' })],
+    },
+  })
+  await screen.findByAltText('Reference image')
+  fireEvent.change(screen.getByLabelText('Describe your changes'), {
+    target: { value: 'Blue coat' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByAltText('Generated image')
+  expect(http.post).toHaveBeenCalledTimes(1)
+  expect(http.post).toHaveBeenCalledWith(
+    '/pg/images/edits',
+    expect.objectContaining({
+      model: 'edit-model',
+      prompt: 'Blue coat',
+      // data URL 前缀之外是 FileReader 对 'PNG' 的 base64 编码。
+      image: 'data:image/png;base64,UE5H',
+    }),
+    expect.anything()
+  )
+  expect(
+    http.post.mock.calls.some(([path]) => String(path).includes('presign'))
+  ).toBe(false)
 })
 test('continuing from a generated image preserves the original and switches to reference editing', async () => {
   page()

@@ -120,8 +120,9 @@ helm install cuberouter ./helm/cuberouter-chart -n cuberouter \
 ### 2. Using an existing secret (0.6.0 pattern)
 
 To manage all credentials yourself, set `secret.create=false` and point
-`secret.existingSecret` at a pre-created secret carrying **all** six keys (see
-[Secrets and credentials](#secrets-and-credentials)). The chart still creates the
+`secret.existingSecret` at a pre-created secret carrying **all six keys** (see
+[Secrets and credentials](#secrets-and-credentials)), plus the two Media Studio keys if you enable
+reference uploads. The chart still creates the
 operator-managed stores, so `SQL_DSN` / `REDIS_CONN_STRING` must target the services the
 chart renders (`<fullname>-postgres-rw:5432`, `<fullname>-redis-master:6379`) with the
 passwords you set.
@@ -134,11 +135,76 @@ kubectl create secret generic cuberouter-secret -n cuberouter \
   --from-literal=CRYPTO_SECRET='...' \
   --from-literal=REDIS_PASSWORD='pass' \
   --from-literal=POSTGRES_PASSWORD='pass'
+  # add these two only when mediaStudio.enabled is true:
+  #   --from-literal=MEDIA_STUDIO_S3_ACCESS_KEY='...' \
+  #   --from-literal=MEDIA_STUDIO_S3_SECRET_KEY='...'
 
 helm install cuberouter ./helm/cuberouter-chart -n cuberouter --create-namespace \
   --set secret.create=false \
   --set secret.existingSecret=cuberouter-secret
 ```
+
+### 3. Media Studio reference uploads
+
+Media Studio's **Image to image** mode lets a user attach reference images. The browser asks the app
+for a presigned URL, uploads the bytes straight to your bucket, and the image provider fetches them
+back through a second signed URL — the object store is never proxied through CubeRouter. Without a
+bucket configured, text-to-image keeps working and the reference picker reports that uploads are not
+configured.
+
+```yaml
+# media-studio.yaml
+mediaStudio:
+  enabled: true
+  s3:
+    endpoint: https://objects.example.com   # origin only, HTTPS
+    bucket: cuberouter-media
+    region: us-east-1
+    access_key: "..."
+    secret_key: "..."
+
+# ...or keep the credentials out of the values file entirely:
+#   secret.create=false + secret.existingSecret, carrying
+#   MEDIA_STUDIO_S3_ACCESS_KEY / MEDIA_STUDIO_S3_SECRET_KEY
+```
+
+```sh
+helm upgrade --install cuberouter ./helm/cuberouter-chart -n cuberouter \
+  --create-namespace -f media-studio.yaml
+```
+
+The `s3` block is not secret except for `access_key` / `secret_key`: the first three land in the
+ConfigMap, the credentials in the app Secret and reach the container through a `secretKeyRef`, so
+they never appear in the Deployment spec.
+
+> Pass the credentials with `-f` or `--set-file`, not `--set`: Helm splits `--set` values on commas,
+> and a real S3 secret key is base64-ish and may contain one. Use `--set-string` if it has no comma.
+> Do not commit a values file that carries these two keys.
+
+On the bucket side:
+
+- Grant the server key only `PutObject` and `GetObject` under the upload prefix
+  (`media-studio/uploads/`). No bucket listing, no `ListBucket`, no public ACL.
+- Configure CORS for the exact CubeRouter frontend origin, methods `PUT` and `GET`, and the
+  `Content-Type` request header.
+- Configure lifecycle deletion for `media-studio/uploads/` — a signed URL expiring does **not**
+  delete the object.
+- The bucket must be reachable by **both** the browser and the image provider. An internal-only
+  endpoint will sign URLs that neither can fetch.
+
+Two details worth knowing:
+
+- **Rotating a credential needs a restart.** The first enable changes the Deployment and rolls the
+  pods, but a later rotation only changes the Secret, and `secretKeyRef` env vars are read once at
+  container start. Run `kubectl rollout restart deployment/<fullname>` after rotating.
+- **A misconfiguration fails at install time.** The chart checks the settings before rendering, so
+  `helm install` stops instead of silently disabling uploads. Two deliberate divergences from the
+  server's own validator: the chart rejects plain `http` even for the loopback addresses the server
+  accepts (use env vars directly for local development), and it tolerates a trailing `/` on the
+  endpoint, which the server also accepts.
+
+Full background, including the model-metadata labels that place a model in the Text-to-image or
+Image-to-image list: [`docs/media-studio-integration.md`](../../docs/media-studio-integration.md).
 
 ## Accessing the app
 
@@ -240,6 +306,14 @@ curl -i http://localhost:3000/api/status
 | `CRYPTO_SECRET` | app crypto secret | random (32 chars) |
 | `REDIS_PASSWORD` | Redis password | random (24 chars) |
 | `POSTGRES_PASSWORD` | PostgreSQL app role password | random (24 chars) |
+| `MEDIA_STUDIO_S3_ACCESS_KEY` | Media Studio reference-upload object-store key | `mediaStudio.s3.access_key`; only when `mediaStudio.enabled` |
+| `MEDIA_STUDIO_S3_SECRET_KEY` | its secret | `mediaStudio.s3.secret_key`; only when `mediaStudio.enabled` |
+
+The last two keys appear only when `mediaStudio.enabled` is true, and they are **excepted from the
+resolution order below**: they are operator-supplied, never generated, and never read back from the
+cluster. Generating one would mint a credential the object store rejects, and reading one back would
+quietly resurrect a credential you just removed — both leave `GET /api/media-studio/config` reporting
+`upload_enabled=true` while every upload 403s. Fail the render instead.
 
 Resolution order per key:
 
@@ -255,7 +329,8 @@ Resolution order per key:
 > `[a-z0-9-]+` for the same reason.
 
 To fully manage the secret yourself (the 0.6.0 production pattern), set `secret.create=false` and
-point `secret.existingSecret` at a pre-created secret that carries the same six keys — see the
+point `secret.existingSecret` at a pre-created secret that carries the same six keys — plus
+`MEDIA_STUDIO_S3_ACCESS_KEY` / `MEDIA_STUDIO_S3_SECRET_KEY` if you enable reference uploads — see the
 [existing secret example](#2-using-an-existing-secret-060-pattern).
 
 ## Resource names and endpoints
@@ -294,6 +369,7 @@ Computed connection strings:
 | `deployMode` | `high` (HA replica counts) \| `base` (single replica everywhere; app PDB not rendered) |
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`, `BASE_PATH` (empty = serve from the site root); extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
+| `mediaStudio` | `enabled: false`; `s3.endpoint` / `s3.bucket` / `s3.region` (ConfigMap) and `s3.access_key` / `s3.secret_key` (Secret) for Image-to-image reference uploads |
 | `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
@@ -434,3 +510,9 @@ containing quotes or spaces is rejected):
 ```sh
 helm/validate-chart.sh
 ```
+
+It additionally covers the `mediaStudio` block: that a default render emits no `MEDIA_STUDIO_S3_*`,
+that an enabled render puts the settings in the ConfigMap and the credentials in the Secret (and
+nowhere else in the manifest), that a pre-created secret still renders with `secret.create=false`,
+and that a malformed endpoint, bucket, region, missing credential or conflicting `config.extra` entry
+fails the render.

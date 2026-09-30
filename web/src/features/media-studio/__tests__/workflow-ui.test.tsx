@@ -25,12 +25,8 @@ import { expect, test, vi } from 'vitest'
 import { TemplateGallery } from '../components/template-gallery'
 import { WorkflowComposer } from '../components/workflow-composer'
 import { initialDraft } from '../lib/workflow'
-import type { WorkflowConfig } from '../workflow-types'
 
-const config: WorkflowConfig = {
-  upload_enabled: true,
-}
-function Composer(props: { generate: () => void; config?: WorkflowConfig }) {
+function Composer(props: { generate: () => void }) {
   const [draft, setDraft] = useState({
     ...initialDraft,
     model: 'image-model',
@@ -41,7 +37,6 @@ function Composer(props: { generate: () => void; config?: WorkflowConfig }) {
       draft={draft}
       textToImageModels={['image-model']}
       imageToImageModels={['image-edit']}
-      config={props.config ?? config}
       busy={false}
       loading={false}
       onChange={setDraft}
@@ -89,14 +84,16 @@ test('switching modes picks a model from the list the new mode allows', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Text to image' }))
   expect(screen.getByLabelText('Model')).toHaveValue('image-model')
 })
-test('unconfigured uploads explain disabled editing while text-to-image stays available', () => {
-  render(<Composer generate={vi.fn()} config={{ upload_enabled: false }} />)
+test('reference images can be attached without any upload service configured', () => {
+  // 参考图以 base64 内联下发，不再经过对象存储，编辑模式因此与 S3 是否配置无关：
+  // 原先那条「未配置上传」的提示与门禁必须彻底消失，否则没配 S3 的部署图生图不可用。
+  render(<Composer generate={vi.fn()} />)
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
   fireEvent.click(screen.getByRole('button', { name: 'Image to image' }))
   expect(
-    screen.getByText('Reference uploads are not configured.')
-  ).toBeInTheDocument()
-  expect(screen.getByLabelText('Upload reference images')).toBeDisabled()
+    screen.queryByText('Reference uploads are not configured.')
+  ).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Upload reference images')).toBeEnabled()
 })
 test('animal template browsing does not submit a generation', () => {
   const apply = vi.fn()

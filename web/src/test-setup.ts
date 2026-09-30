@@ -96,3 +96,13 @@ Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
   configurable: true,
   value: () => undefined,
 })
+
+// jsdom 没装 canvas 包，getContext 一律返回 null 并往虚拟控制台打一条 "Not implemented"。
+// 参考图的缩放与重编码正是靠这条降级路径（见 lib/reference-image.ts），这里把它固定
+// 下来：行为不随 jsdom 版本变化，也不再刷屏。需要测真实编码阶梯的用例用 spyOn 把它换成
+// 可控的假画布。
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  writable: true,
+  value: () => null,
+})

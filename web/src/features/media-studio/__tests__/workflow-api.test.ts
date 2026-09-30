@@ -20,13 +20,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { beforeEach, afterEach, expect, test, vi } from 'vitest'
 
 import { initialDraft } from '../lib/workflow'
+import { normalizeReferences } from '../lib/reference-image'
 import { workflowAPI } from '../workflow-api'
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
 vi.mock('@/lib/api', () => ({ api: http }))
-const nativeFetch = globalThis.fetch
-const upload = 'https://objects.example/upload?X-Amz-Signature=upload-signature'
-const download = 'https://objects.example/upload?X-Amz-Signature=read-signature'
+// 归一化的真实行为依赖 canvas，这里只在模块边界上换成 spy：没有单独指定的用例仍然跑
+// 真实实现（jsdom 下就是原样返回，正是部署到无 canvas 环境的降级路径）。
+vi.mock('../lib/reference-image', { spy: true })
 const reference = {
   id: 'photo',
   url: 'data:image/png;base64,iVBORw0KGgoAAAAB',
@@ -41,50 +42,25 @@ const draft = {
 }
 beforeEach(() => {
   vi.clearAllMocks()
-  http.post.mockImplementation(async (path: string) =>
-    path.endsWith('/presign')
-      ? {
-          data: {
-            upload_url: upload,
-            image_url: download,
-            headers: { 'Content-Type': 'image/png' },
-          },
-        }
-      : {
-          data: { data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
-          headers: { 'x-request-id': 'request-1' },
-        }
-  )
+  http.post.mockResolvedValue({
+    data: { data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
+    headers: { 'x-request-id': 'request-1' },
+  })
 })
 afterEach(() => vi.unstubAllGlobals())
-test('reference uploads use signed PUT without dashboard credentials and edits use the existing relay', async () => {
-  const fetcher = vi.fn(
-    async (input: RequestInfo | URL, options?: RequestInit) =>
-      String(input).startsWith('data:')
-        ? nativeFetch(input, options)
-        : new Response('', { status: 200 })
-  )
+test('edits send the reference inline as base64 without an object-store round trip', async () => {
+  // 编辑渠道只认内联 base64：参考图在 draft 里本来就是 data URL，原样下发即可。
+  // presign → PUT → provider GET 整条链路退出请求路径，浏览器一次 fetch 都不该发。
+  const fetcher = vi.fn()
   vi.stubGlobal('fetch', fetcher)
   const { job } = await workflowAPI.generate(draft)
-  expect(http.post.mock.calls[0]).toEqual([
-    '/api/media-studio/uploads/presign',
-    { content_type: 'image/png', size: 12 },
-    { skipErrorHandler: true },
-  ])
-  expect(fetcher).toHaveBeenCalledWith(
-    upload,
-    expect.objectContaining({
-      method: 'PUT',
-      headers: { 'Content-Type': 'image/png' },
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-    })
-  )
-  expect(http.post).toHaveBeenLastCalledWith(
+  expect(fetcher).not.toHaveBeenCalled()
+  expect(http.post).toHaveBeenCalledTimes(1)
+  expect(http.post).toHaveBeenCalledWith(
     '/pg/images/edits',
     expect.objectContaining({
       model: 'image-edit',
-      images: [{ image_url: download }],
+      image: reference.url,
     }),
     expect.anything()
   )
@@ -92,19 +68,36 @@ test('reference uploads use signed PUT without dashboard credentials and edits u
   expect(JSON.stringify(job)).not.toContain('X-Amz-Signature')
   expect(job.request_id).toBe('request-1')
 })
-test('failed upload prevents a billable image edit request', async () => {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (input: RequestInfo | URL, options?: RequestInit) =>
-      String(input).startsWith('data:')
-        ? nativeFetch(input, options)
-        : new Response('', { status: 403 })
-    )
+test('several references are sent as an array of base64 strings', async () => {
+  const second = { ...reference, id: 'photo-2', url: 'data:image/png;base64,YQ==' }
+  await workflowAPI.generate({ ...draft, references: [reference, second] })
+  expect(http.post).toHaveBeenCalledWith(
+    '/pg/images/edits',
+    expect.objectContaining({ image: [reference.url, second.url] }),
+    expect.anything()
   )
-  await expect(workflowAPI.generate(draft)).rejects.toThrow(
-    'No generation was submitted'
+})
+test('text-to-image requests never carry a reference field', async () => {
+  await workflowAPI.generate({ ...initialDraft, model: 'image', prompt: 'Cat' })
+  expect(http.post.mock.calls[0][1]).not.toHaveProperty('image')
+})
+test('an edit sends the normalized reference while the saved job keeps the uploaded bytes', async () => {
+  // 归一化只作用于下发的那一份：draft 与本地历史留的仍是用户原始字节，「原图对照」
+  // 面板、下载和历史都不受影响。
+  const normalized = 'data:image/webp;base64,UklGRg=='
+  vi.mocked(normalizeReferences).mockResolvedValue([normalized])
+  const { job } = await workflowAPI.generate(draft)
+  expect(http.post).toHaveBeenCalledWith(
+    '/pg/images/edits',
+    expect.objectContaining({ image: normalized }),
+    expect.anything()
   )
-  expect(http.post).toHaveBeenCalledTimes(1)
+  expect(job.request.references[0].url).toBe(reference.url)
+})
+test('text-to-image requests never normalize a reference', async () => {
+  // 文生图没有参考图，不必白跑一次解码与编码。
+  await workflowAPI.generate({ ...initialDraft, model: 'image', prompt: 'Cat' })
+  expect(normalizeReferences).not.toHaveBeenCalled()
 })
 test('a provider URL blocked by CORS remains visible with a local-persistence warning', async () => {
   http.post.mockResolvedValue({
@@ -188,39 +181,25 @@ test('a non-secure origin without crypto.randomUUID still returns renderable ima
   expect(output.job.images[0].id).toBeTruthy()
   expect(output.warning).toBeUndefined()
 })
-test('a non-secure origin can upload a reference and inline a downloaded result', async () => {
+test('a non-secure origin can inline a reference and a downloaded result', async () => {
   const webcrypto = globalThis.crypto
   vi.stubGlobal('crypto', {
     getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
   })
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL, options?: RequestInit) => {
-      if (String(input) === 'https://provider.example/result.png') {
-        // 直接给出带媒体类型的 blob：各运行时把 Response 头映射到 blob.type 的行为并不一致，
-        // 这里要验证的是「下载到的 png 能被内联」，不是运行时的头解析。
-        return {
-          ok: true,
-          blob: async () => new Blob(['PNG'], { type: 'image/png' }),
-        }
+    vi.fn(async () => {
+      // 直接给出带媒体类型的 blob：各运行时把 Response 头映射到 blob.type 的行为并不一致，
+      // 这里要验证的是「下载到的 png 能被内联」，不是运行时的头解析。
+      return {
+        ok: true,
+        blob: async () => new Blob(['PNG'], { type: 'image/png' }),
       }
-      if (String(input).startsWith('data:')) {
-        return nativeFetch(input, options)
-      }
-      return new Response('', { status: 200 })
     })
   )
-  http.post.mockImplementation(async (path: string) =>
-    path.endsWith('/presign')
-      ? {
-          data: {
-            upload_url: upload,
-            image_url: download,
-            headers: { 'Content-Type': 'image/png' },
-          },
-        }
-      : { data: { data: [{ url: 'https://provider.example/result.png' }] } }
-  )
+  http.post.mockResolvedValue({
+    data: { data: [{ url: 'https://provider.example/result.png' }] },
+  })
   const output = await workflowAPI.generate(draft)
   expect(output.warning).toBeUndefined()
   expect(output.job.images[0].url).toMatch(/^data:image\/png;base64,/)

@@ -83,6 +83,68 @@ Usage: {{ include "cuberouter.assertDSNSafe" (dict "value" $pw "label" "secrets.
 {{- end -}}
 
 {{/*
+Fail the render when Media Studio reference uploads are enabled but their S3
+settings are incomplete or malformed.
+
+Mirrors StudioUploadConfig.Validate() in service/media_studio_upload.go: the
+app treats an invalid configuration exactly like an absent one (it reports
+upload_enabled=false and only reference uploads stop working), so a typo would
+otherwise degrade silently at runtime instead of stopping the release.
+
+The two credentials are only required when the chart owns the secret. A
+secret.create=false release carries them in the pre-created secret named by
+secret.existingSecret, so empty mediaStudio.s3 entries are legitimate there.
+
+Usage: {{- include "cuberouter.assertMediaStudioS3" . -}}
+*/}}
+{{- define "cuberouter.assertMediaStudioS3" -}}
+{{- if .Values.mediaStudio.enabled -}}
+{{- $s3 := default (dict) .Values.mediaStudio.s3 -}}
+{{- $endpoint := get $s3 "endpoint" | default "" | toString -}}
+{{- $bucket := get $s3 "bucket" | default "" | toString -}}
+{{- $region := get $s3 "region" | default "" | toString -}}
+
+{{- if not $endpoint -}}
+{{- fail "mediaStudio.s3.endpoint is required when mediaStudio.enabled=true" -}}
+{{- else if not (regexMatch "^https://[^/?#@\\s]+/?$" $endpoint) -}}
+{{- fail (printf "mediaStudio.s3.endpoint must be an https origin without a bucket, path, query or credentials; got %q" $endpoint) -}}
+{{- end -}}
+
+{{- if not $bucket -}}
+{{- fail "mediaStudio.s3.bucket is required when mediaStudio.enabled=true" -}}
+{{- else if not (regexMatch "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$" $bucket) -}}
+{{- fail (printf "mediaStudio.s3.bucket must be a lowercase bucket name of 3-63 characters; got %q" $bucket) -}}
+{{- else if or (contains ".." $bucket) (regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$" $bucket) -}}
+{{- fail (printf "mediaStudio.s3.bucket must not contain a dot segment or look like an IP address; got %q" $bucket) -}}
+{{- end -}}
+
+{{- if not $region -}}
+{{- fail "mediaStudio.s3.region is required when mediaStudio.enabled=true" -}}
+{{- else if not (regexMatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" $region) -}}
+{{- fail (printf "mediaStudio.s3.region is not a valid signing region; got %q" $region) -}}
+{{- end -}}
+
+{{- if .Values.secret.create -}}
+{{- if not (get $s3 "access_key" | default "" | toString) -}}
+{{- fail "mediaStudio.s3.access_key is required when mediaStudio.enabled=true and secret.create=true (set secret.create=false to keep the credentials in secret.existingSecret instead)" -}}
+{{- end -}}
+{{- if not (get $s3 "secret_key" | default "" | toString) -}}
+{{- fail "mediaStudio.s3.secret_key is required when mediaStudio.enabled=true and secret.create=true (set secret.create=false to keep the credentials in secret.existingSecret instead)" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* config.extra is injected through the same ConfigMap envFrom, so a
+     hand-rolled MEDIA_STUDIO_S3_* entry would either duplicate a key the
+     mediaStudio block already renders or bypass its validation. */}}
+{{- range $key, $value := (default (dict) .Values.config.extra) -}}
+{{- if hasPrefix "MEDIA_STUDIO_S3_" $key -}}
+{{- fail (printf "config.extra.%s conflicts with the mediaStudio block; configure it under mediaStudio.s3 instead" $key) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 App secret name (created or pre-existing).
 */}}
 {{- define "cuberouter.secretName" -}}
