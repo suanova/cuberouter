@@ -60,6 +60,7 @@ const (
 	ChannelTypeSub2API        = 60
 	ChannelTypeNewAPI         = 61
 	ChannelTypeTaskPlugin     = 62
+	ChannelTypeImageEdit      = 63
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -127,6 +128,8 @@ var ChannelBaseURLs = []string{
 	"https://api.modelverse.cn",                 //59
 	"",                                          //60
 	"",                                          //61
+	"",                                          //62
+	"",                                          //63
 }
 
 func GetChannelBaseURL(channelType int) string {
@@ -196,6 +199,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
 	ChannelTypeTaskPlugin:     "Task Plugin",
+	ChannelTypeImageEdit:      "Image Edit (Base64)",
 }
 
 func GetChannelTypeName(channelType int) string {

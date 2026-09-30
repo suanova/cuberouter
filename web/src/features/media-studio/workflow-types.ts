@@ -24,9 +24,6 @@ export interface StudioAsset {
   url: string
   mime: string
 }
-export interface WorkflowConfig {
-  upload_enabled: boolean
-}
 /** 按运维声明的模型标签分类的可用模型：text-to-image 与 image-to-image 互不推断。 */
 export interface StudioModelCatalog {
   textToImage: string[]

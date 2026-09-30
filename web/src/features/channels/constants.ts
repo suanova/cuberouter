@@ -27,6 +27,10 @@ export const CHANNEL_TYPE_NEW_API = 61
 // Upstream assigns Task Plugin = 61, but 61 is taken by New API in this fork; remapped to 62 (must match backend constant.ChannelTypeTaskPlugin).
 export const CHANNEL_TYPE_TASK_PLUGIN = 62
 
+// Fork-local type with no upstream equivalent: image editing channels that only accept the
+// reference image inline as base64 (must match backend constant.ChannelTypeImageEdit).
+export const CHANNEL_TYPE_IMAGE_EDIT = 63
+
 export const CHANNEL_TYPES = {
   0: 'Unknown',
   1: 'OpenAI',
@@ -90,12 +94,13 @@ export const CHANNEL_TYPES = {
   61: 'New API',
   // Upstream assigns Task Plugin = 61; remapped to 62 (see CHANNEL_TYPE_TASK_PLUGIN).
   62: 'Task Plugin',
+  63: 'Image Edit (Base64)',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
-  1, 14, 33, 24, 43, 3, 41, 48, 61, 58, 62, 42, 34, 20, 4, 40, 27, 25, 17, 26, 15,
-  46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 60, 22, 21, 44, 2,
-  5, 36, 50, 51, 52, 53, 54, 55, 56, 59,
+  1, 14, 33, 24, 43, 3, 41, 48, 61, 58, 62, 63, 42, 34, 20, 4, 40, 27, 25, 17, 26,
+  15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 60, 22, 21, 44,
+  2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 59,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {

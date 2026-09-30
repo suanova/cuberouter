@@ -76,7 +76,13 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 				}
 			}
 
-			logger.LogDebug(c, "image request body: %s", jsonData)
+			// 参考图以 base64 内联时请求体可达数 MB（图片编辑渠道），
+			// 整段打进日志既没有排查价值，也会撑爆日志后端。
+			if len(jsonData) <= 4096 {
+				logger.LogDebug(c, "image request body: %s", jsonData)
+			} else {
+				logger.LogDebug(c, "image request body: %d bytes (omitted)", len(jsonData))
+			}
 			body, closer, err := relaycommon.NewOutboundJSONBody(jsonData)
 			if err != nil {
 				return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())

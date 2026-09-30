@@ -21,13 +21,9 @@ import { api } from '@/lib/api'
 
 import { GENERATION_TIMEOUT_MS } from './constants'
 import { extractImages, type ImageResponseBody } from './lib/image-response'
+import { normalizeReferences } from './lib/reference-image'
 import { imageRequest } from './lib/workflow'
-import type {
-  StudioAsset,
-  WorkflowConfig,
-  WorkflowDraft,
-  WorkflowJob,
-} from './workflow-types'
+import type { StudioAsset, WorkflowDraft, WorkflowJob } from './workflow-types'
 
 /**
  * 本地图片与生成记录的标识。不要直接用 crypto.randomUUID()：该 API 只在安全上下文
@@ -149,53 +145,20 @@ export async function localImage(url: string): Promise<StudioAsset> {
     url: await blobDataURL(blob),
   }
 }
-async function uploadReference(asset: StudioAsset): Promise<string> {
-  const file = await (await fetch(asset.url)).blob()
-  if (
-    file.size <= 0 ||
-    file.size > 10 * 1024 * 1024 ||
-    !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)
-  ) {
-    throw new Error('Upload PNG, JPEG or WebP files of at most 10 MB each.')
-  }
-  const { data } = await api.post<{
-    upload_url: string
-    image_url: string
-    headers: Record<string, string>
-  }>(
-    '/api/media-studio/uploads/presign',
-    { content_type: file.type, size: file.size },
-    { skipErrorHandler: true }
-  )
-  const response = await fetch(data.upload_url, {
-    method: 'PUT',
-    headers: data.headers,
-    body: file,
-    credentials: 'omit',
-    referrerPolicy: 'no-referrer',
-  })
-  if (!response.ok) {
-    throw new Error('Reference upload failed. No generation was submitted.')
-  }
-  return data.image_url
-}
 export const workflowAPI = {
-  config: async (): Promise<WorkflowConfig> =>
-    (await api.get('/api/media-studio/config', { skipErrorHandler: true }))
-      .data,
   generate: async (
     draft: WorkflowDraft
   ): Promise<{ job: WorkflowJob; warning?: string }> => {
     const started = Date.now()
-    const images = []
-    if (draft.mode === 'edit') {
-      for (const asset of draft.references) {
-        images.push(await uploadReference(asset))
-      }
-    }
+    // 参考图在这里才缩到长边 1024 并重编码：draft 与本地历史留着用户原始字节，所以
+    // 「原图对照」、下载和历史都不受影响，同一份原始字节每次下发的编码结果也一致。
+    const referenceURLs =
+      draft.mode === 'edit'
+        ? await normalizeReferences(draft.references.map((asset) => asset.url))
+        : []
     const response = await api.post<ImageResponseBody>(
       `/pg/images/${draft.mode === 'edit' ? 'edits' : 'generations'}`,
-      imageRequest(draft, images),
+      imageRequest(draft, referenceURLs),
       { timeout: GENERATION_TIMEOUT_MS, skipErrorHandler: true }
     )
     const output = extractImages(response.data)

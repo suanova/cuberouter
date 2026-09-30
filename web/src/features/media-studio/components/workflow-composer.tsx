@@ -29,11 +29,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { QUALITY_OPTIONS } from '../constants'
 import { draftSchema } from '../lib/workflow'
 import type { Quality } from '../types'
-import type { WorkflowConfig, WorkflowDraft } from '../workflow-types'
+import type { WorkflowDraft } from '../workflow-types'
 
 export function WorkflowComposer(props: {
   draft: WorkflowDraft
-  config: WorkflowConfig
   textToImageModels: string[]
   imageToImageModels: string[]
   busy: boolean
@@ -54,8 +53,7 @@ export function WorkflowComposer(props: {
     props.onChange({ ...props.draft, ...patch })
   const valid =
     draftSchema.safeParse(props.draft).success &&
-    models.includes(props.draft.model) &&
-    (!editing || props.config.upload_enabled)
+    models.includes(props.draft.model)
   return (
     <form
       className='space-y-4'
@@ -115,11 +113,6 @@ export function WorkflowComposer(props: {
       </label>
       {editing && (
         <section className='space-y-2' aria-label={t('Reference images')}>
-          {!props.config.upload_enabled && (
-            <p role='status' className='text-muted-foreground text-xs'>
-              {t('Reference uploads are not configured.')}
-            </p>
-          )}
           {!models.length && (
             <p role='status' className='text-muted-foreground text-xs'>
               {t('No channel is configured for image editing.')}
@@ -159,9 +152,7 @@ export function WorkflowComposer(props: {
               accept='image/png,image/jpeg,image/webp'
               multiple
               disabled={
-                props.busy ||
-                !props.config.upload_enabled ||
-                props.draft.references.length >= 3
+                props.busy || props.draft.references.length >= 3
               }
               onChange={(event) => {
                 props.onUpload([...(event.target.files ?? [])])

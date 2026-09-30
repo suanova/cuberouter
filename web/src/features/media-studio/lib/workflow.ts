@@ -83,7 +83,7 @@ export function templateDraft(
 }
 export function imageRequest(
   draft: WorkflowDraft,
-  imageURLs: string[] = []
+  referenceURLs: string[] = []
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model: draft.model,
@@ -97,8 +97,11 @@ export function imageRequest(
     seed: DEFAULT_PARAMS.seed,
     true_cfg_scale: DEFAULT_PARAMS.cfg,
   }
-  if (draft.mode === 'edit') {
-    body.images = imageURLs.map((image_url) => ({ image_url }))
+  if (draft.mode === 'edit' && referenceURLs.length) {
+    // 编辑渠道只认内联 base64：参考图在 draft 里本来就是 data URL，直接下发，
+    // 多张时用数组。下发网址会被上游按 base64 解码，报 Incorrect padding。
+    body.image =
+      referenceURLs.length === 1 ? referenceURLs[0] : referenceURLs
   }
   return body
 }
