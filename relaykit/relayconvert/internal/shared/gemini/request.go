@@ -106,14 +106,15 @@ func ApplyThinkingConfig(geminiRequest *dto.GeminiChatRequest, info convmeta.Met
 	// modifier, read portable effort metadata without running the capability
 	// renderer or rewriting provider-native controls.
 	if !crossProtocol && suffix.IsEmpty() {
-		native, err := reasoning.FromGemini(geminiRequest)
-		if err != nil {
-			return err
-		}
 		if info != nil {
-			if effort := reasoning.EffectiveEffort(native); effort != "" {
-				info.SetReasoningEffort(string(effort))
+			effort := ""
+			if config := geminiRequest.GenerationConfig.ThinkingConfig; config != nil {
+				effort = config.ThinkingLevel
+				if effort == "" && config.ThinkingBudget != nil {
+					effort = string(reasoning.EffortFromBudget(*config.ThinkingBudget))
+				}
 			}
+			info.SetReasoningEffort(effort)
 		}
 		return nil
 	}

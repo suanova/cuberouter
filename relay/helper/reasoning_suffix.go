@@ -106,6 +106,9 @@ func ApplyReasoningModelSuffix(c *gin.Context, info *relaycommon.RelayInfo, outb
 	if info.Request != nil {
 		info.Request.SetModelName(info.UpstreamModelName)
 	}
+	if selected.hasThinking {
+		info.SetReasoningEffort(string(reasoning.EffectiveEffort(selected.intent)))
+	}
 	for i := range diagnostics {
 		diagnostics[i].From = info.RelayFormat
 	}
