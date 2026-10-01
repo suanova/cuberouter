@@ -16,6 +16,21 @@ export default defineConfig(({ envMode }) => {
     'http://localhost:3000'
 
   const isProd = envMode === 'production'
+
+  // Deployment prefix, read from the same BASE_PATH the Go server reads so the
+  // build and the runtime agree on one contract. Baking it in emits absolute
+  // /cuberouter/static/... references and gives the SPA a prefix to fall back on
+  // when nothing injects window.__BASE_PATH__ (a static host, or a server that
+  // predates the injection). Left empty -- the default -- the build stays
+  // prefix-agnostic and is served correctly under any prefix by InjectBasePath.
+  const trimmedBasePath = (process.env.BASE_PATH ?? '')
+    .trim()
+    .replaceAll(/^\/+|\/+$/g, '')
+  // Only production bakes the prefix; `bun run dev` keeps serving from the root.
+  const compiledBasePath =
+    isProd && trimmedBasePath ? `/${trimmedBasePath}` : ''
+  const builtBase = compiledBasePath === '' ? '/' : `${compiledBasePath}/`
+
   const devProxy = Object.fromEntries(
     (['/api', '/v1', '/mj', '/pg', '/swagger'] as const).map((key) => [
       key,
@@ -64,10 +79,16 @@ export default defineConfig(({ envMode }) => {
     },
     html: {
       template: './index.html',
+      // The one hand-written absolute reference in the template: the favicon is
+      // copied from public/ verbatim, so it is not rewritten by assetPrefix.
+      templateParameters: { appBasePath: compiledBasePath },
     },
     server: {
       host: '0.0.0.0',
       strictPort: false,
+      // server.base is Vite's `base`: it prefixes the emitted asset URLs and
+      // surfaces to the app as import.meta.env.BASE_URL.
+      base: builtBase,
       proxy: devProxy,
     },
     output: {
@@ -82,7 +103,11 @@ export default defineConfig(({ envMode }) => {
       // back to a base-prefixed absolute form at startup (InjectBasePath in main.go), which
       // also protects deep-link reloads such as /dashboard/settings where a relative
       // reference would otherwise resolve against the current directory.
-      assetPrefix: 'auto',
+      //
+      // A build run with BASE_PATH set instead pins the prefix outright: the emitted
+      // references become absolute (/cuberouter/static/...) so the output is correct even
+      // on a host that never touches the HTML.
+      assetPrefix: compiledBasePath === '' ? 'auto' : builtBase,
       distPath: {
         root: 'dist',
       },
