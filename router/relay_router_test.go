@@ -138,3 +138,26 @@ func setupRelayRouterTestDB(t *testing.T) {
 		}
 	})
 }
+
+// TestPgVideoRoutesRegisterWithoutConflict 保护多媒体 studio 视频 tab 的会话鉴权
+// 入口注册：/pg/video 是独立路由组（AllowTaskPluginChannel 标记必须先于组级
+// Distribute 生效，因此不能嵌套进 /pg 组），提交与查询两条路由缺一不可。
+func TestPgVideoRoutesRegisterWithoutConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+
+	require.NotPanics(t, func() {
+		SetRelayRouter(engine)
+	})
+
+	var pgVideoPaths []string
+	for _, r := range engine.Routes() {
+		if strings.HasPrefix(r.Path, "/pg/video") {
+			pgVideoPaths = append(pgVideoPaths, r.Method+" "+r.Path)
+		}
+	}
+	require.ElementsMatch(t, []string{
+		"POST /pg/video/generations",
+		"GET /pg/video/generations/:task_id",
+	}, pgVideoPaths)
+}

@@ -84,12 +84,20 @@ describe('getStudioModels', () => {
         },
         { model_name: 'chat-model', tags: 'chat' },
         { model_name: 'qwen-image-2512', tags: 'text-to-image' },
+        // 视频标签与图片标签互不推断：只声明 text-to-video 的模型
+        // 只能进文生视频列表，不能混进任何图片列表。
+        { model_name: 'viduq3-pro', tags: 'text-to-video' },
+        { model_name: 'kling-v2', tags: 'image-to-video,text-to-video' },
+        // 只支持图生视频的模型绝不能出现在文生视频列表里。
+        { model_name: 'i2v-only-model', tags: 'image-to-video' },
       ])
     )
 
     await expect(getStudioModels()).resolves.toEqual({
       textToImage: ['both-modes-model', 'case-tag-model', 'qwen-image-2512'],
       imageToImage: ['both-modes-model', 'qwen-image-edit-2511'],
+      textToVideo: ['kling-v2', 'viduq3-pro'],
+      imageToVideo: ['i2v-only-model', 'kling-v2'],
     })
     expect(get).toHaveBeenCalledWith('/api/pricing')
   })
@@ -104,6 +112,8 @@ describe('getStudioModels', () => {
     await expect(getStudioModels()).resolves.toEqual({
       textToImage: [],
       imageToImage: [],
+      textToVideo: [],
+      imageToVideo: [],
     })
   })
 
@@ -113,6 +123,8 @@ describe('getStudioModels', () => {
     await expect(getStudioModels()).resolves.toEqual({
       textToImage: [],
       imageToImage: [],
+      textToVideo: [],
+      imageToVideo: [],
     })
   })
 })

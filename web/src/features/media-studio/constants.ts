@@ -21,15 +21,30 @@ import type { AspectRatio, Quality, StudioParams } from './types'
 
 export const API_ENDPOINTS = {
   IMAGES_GENERATIONS: '/pg/images/generations',
+  VIDEO_GENERATIONS: '/pg/video/generations',
   PRICING: '/api/pricing',
 } as const
 
 /**
- * 模型元数据标签：由运维在「模型元数据」页声明模型的图片能力。Media Studio 据此
+ * 模型元数据标签：由运维在「模型元数据」页声明模型的生成能力。Media Studio 据此
  * 分类模型，不再按模型名或端点类型猜测——名字分不清生成与编辑。
  */
 export const STUDIO_TAG_TEXT_TO_IMAGE = 'text-to-image'
 export const STUDIO_TAG_IMAGE_TO_IMAGE = 'image-to-image'
+export const STUDIO_TAG_TEXT_TO_VIDEO = 'text-to-video'
+export const STUDIO_TAG_IMAGE_TO_VIDEO = 'image-to-video'
+
+/**
+ * 视频时长选项（秒）。各供应商支持的档位不同（如 Kling 5/10、Vidu 5/10），
+ * 这里取公共交集；不支持时由上游按 400 报错提示。
+ */
+export const VIDEO_DURATION_OPTIONS = [5, 10] as const
+
+/** 视频分辨率选项，统一任务体字段 size（如 "720p"）。 */
+export const VIDEO_RESOLUTION_OPTIONS = ['360p', '540p', '720p', '1080p'] as const
+
+export const VIDEO_DEFAULT_DURATION = 5
+export const VIDEO_DEFAULT_RESOLUTION = '720p'
 
 /**
  * Aspect ratios and their native output dimensions (px),
@@ -87,3 +102,6 @@ export const DEFAULT_PARAMS: StudioParams = {
 
 // 同步生成阻塞 40 秒 ~ 5 分钟，超时放宽到 10 分钟
 export const GENERATION_TIMEOUT_MS = 10 * 60 * 1000
+
+// 视频任务异步轮询间隔：上游状态更新通常在 10 ~ 60 秒，5 秒是负载与时效的折中。
+export const VIDEO_POLL_INTERVAL_MS = 5 * 1000
