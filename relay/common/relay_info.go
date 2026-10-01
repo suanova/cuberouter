@@ -564,6 +564,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		reqId = common.NewRequestId()
 	}
 	reasoningEffort := reasoningEffortFromRequest(request)
+	originModelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
 	// 账号作用域与扣费主体默认落回个人：没有经过组织鉴权的请求（老的令牌、Playground）
 	// 不应该被当成组织请求，否则计费会去查一个不存在的组织。
@@ -599,7 +600,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		UserQuota:  common.GetContextKeyInt(c, constant.ContextKeyUserQuota),
 		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
 
-		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
+		OriginModelName: originModelName,
 
 		TokenId:        common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
