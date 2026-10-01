@@ -1,5 +1,18 @@
 # Upstream Sync Changelog
 
+## 2026-10-01 — 9 commits from new-api#main
+
+| SHA | Intent | Type | Risk |
+|-----|--------|------|------|
+| `32c261923a97` | Return a plugin-specific 503 error message naming the claiming task plugin (and pointing to disabling/overriding it) when a plugin-claimed model has no enabled channel, instead of the generic 'no available channel' text | bugfix | medium |
+| `3a9f41ee85cc` | Temporarily disables the Claude POST /v1/messages/count_tokens endpoint by commenting out its route registration (with TODO to re-enable), and removes the test asserting its registration. | breaking | high |
+| `7c044d7c5c2d` | Rebuild model-name post-processing around an explicit trailing @key:value modifier syntax (thinking/effort/temperature/topp) with a canonical billing-identity ladder, while narrowing legacy thinking/effort alias parsing to whitelisted model families and dropping the OpenRouter '*-thinking' alias. | breaking | high |
+| `6b659fd61c50` | Stop implicitly remapping reasoning effort / thinking suffixes during relay: when a model is flagged to preserve its thinking suffix, adaptors and format converters now pass the user's original reasoning intent through unchanged instead of silently rewriting it. | bugfix | medium |
+| `d5803532bdcc` | Adds a documentation guideline to AGENTS.md requiring new built-in model prices to be defined as self-contained billing expressions in setting/billing_setting/builtin_billing.go (real USD per million tokens), rather than in legacy ratio tables, while preserving admin overrides and only migrating legacy prices on explicit request. | internal | low |
+| `eb99ab1b4034` | Add built-in expression-based billing defaults for the new gpt-6-astra model and expose the effective billing mode/expression settings (including non-persisted built-in defaults) via the options API. | feature | medium |
+| `2cf177ac487e` | Performance optimization: common.DeepCopy now bulk-copies json.RawMessage fields via bytes.Clone (through a copier TypeConverter) instead of per-byte reflection, speeding up request deep copies while preserving independent storage; adds extensive clone regression tests. | refactor | medium |
+| `49ec46966825` | Generalize OpenAI chat capability rules (max_completion_tokens, temperature/top_p/logprobs stripping) from the literal 'gpt-5' prefix to all gpt-<n> models with n >= 5, so gpt-6 and later generations stop being rejected with 400s and channel tests pass. | bugfix | medium |
+| `9a8674425c5a` | Prevent redundant schema migrations on restart by upgrading the SQLite GORM driver and adding a migration dialector that normalizes equivalent MySQL decimal defaults and PostgreSQL CHAR metadata during schema comparison | bugfix | medium |
 ## 2026-09-14 — 9 commits from new-api#main
 
 | SHA | Intent | Type | Risk |
