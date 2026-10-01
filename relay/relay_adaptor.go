@@ -41,6 +41,7 @@ import (
 	taskastraflow "github.com/QuantumNous/new-api/relay/channel/task/astraflow"
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	jspluginadaptor "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
+	tasksglang "github.com/QuantumNous/new-api/relay/channel/task/sglang"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
@@ -207,6 +208,8 @@ func forkTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 		return &taskdoubao.TaskAdaptor{}
 	case constant.ChannelTypeAstraFlow:
 		return &taskastraflow.TaskAdaptor{}
+	case constant.ChannelTypeSGLang:
+		return &tasksglang.TaskAdaptor{}
 	}
 	return nil
 }
