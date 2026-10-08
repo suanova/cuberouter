@@ -13,9 +13,11 @@ import (
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -287,4 +289,36 @@ func TestOaiStreamHandler_NormalEmptyStreamDoesNotSettle(t *testing.T) {
 	require.NotNil(t, usage)
 	assert.Equal(t, 100, usage.PromptTokens, "正常路径仍按请求期估算返回 usage")
 	assert.Equal(t, int64(0), consumeLogCount(t), "正常结束由调用方结算，handler 不写消费日志")
+}
+
+// 异常结束的部分结算只能产生一条性能样本，且必须记为失败（客户端看到的是错误）。
+// 否则同一次中断会被成功/失败各记一次，"成功率"面板被稀释、请求计数翻倍。
+func TestOaiStreamHandler_AbnormalEndRecordsSingleFailureSample(t *testing.T) {
+	setupOpenAIStreamSettleDB(t)
+	user := createOpenAIStreamSettleUser(t, 1_000_000)
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 1
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	const modelName = "perf-sample-settle-test"
+	const groupName = "perf-sample-group"
+	c, resp, info := newAbnormalSettleStreamTest(t, &oneChunkThenBlockReader{data: abnormalSettleContentChunk}, user)
+	info.OriginModelName = modelName
+	info.UsingGroup = groupName
+
+	_, apiErr := OaiStreamHandler(c, info, resp)
+	require.NotNil(t, apiErr)
+	service.WaitForBackgroundWork()
+
+	result, err := perfmetrics.Query(perfmetrics.QueryParams{Model: modelName, Group: groupName, Hours: 1})
+	require.NoError(t, err)
+	require.Len(t, result.Groups, 1, "应恰好有一个 group 的样本")
+
+	var requests int64
+	for _, point := range result.Groups[0].Series {
+		requests += point.RequestCount
+	}
+	assert.Equal(t, int64(1), requests, "一次请求只应产生一条样本")
+	assert.Zero(t, result.Groups[0].SuccessRate, "异常结束必须记为失败样本")
 }

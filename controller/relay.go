@@ -258,7 +258,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
 	}
-	if newAPIError != nil {
+	// 异常结束但已部分结算的流不在这里采样：样本已由结算路径记过一次（失败），
+	// 再记会让同一次中断被计成两次请求。
+	if newAPIError != nil && !relayInfo.AbnormalStreamSettled {
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})

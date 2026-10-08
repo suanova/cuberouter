@@ -69,7 +69,7 @@ func setupOpenAIStreamSettleDB(t *testing.T) {
 	// 生产在 main.go 启动时调用它初始化；测试里必须显式初始化，否则 tokenizer 为 nil。
 	service.InitTokenEncoders()
 	require.NoError(t, model.DB.AutoMigrate(
-		&model.User{}, &model.Token{}, &model.Channel{}, &model.Log{}, &model.QuotaData{},
+		&model.User{}, &model.Token{}, &model.Channel{}, &model.Log{}, &model.QuotaData{}, &model.PerfMetric{},
 	))
 
 	t.Cleanup(func() {

@@ -543,6 +543,13 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Other:            other,
 	}))
 	goBackgroundWork(func() {
+		// 异常结束但已部分结算的流由这里记一次失败样本（客户端看到的是错误，
+		// 且 token 数不计入吞吐指标）；controller 的错误出口会因同一标记跳过，
+		// 保证一次请求只采一条样本。
+		if relayInfo.AbnormalStreamSettled {
+			perfmetrics.RecordRelaySample(relayInfo, false, 0)
+			return
+		}
 		perfmetrics.RecordRelaySample(relayInfo, true, int64(summary.CompletionTokens))
 	})
 }
