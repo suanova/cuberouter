@@ -470,12 +470,25 @@ type pollResponse struct {
 
 // contentURL 由轮询请求地址推导取片端点；ResultURL 写入该值后由网关
 // /v1/videos/{task_id}/content 代理回传 MP4（浏览器无需直连上游内网）。
+//
+// 注意：这里的地址是**服务端**回源定位符（内网可达），不是给客户端的。
+// 面向客户端的地址由 GatewayContentURL 提供。
 func contentURL(resp *http.Response, task *model.Task) string {
 	if resp == nil || resp.Request == nil || resp.Request.URL == nil {
 		return ""
 	}
 	return fmt.Sprintf("%s://%s/v1/videos/%s/content",
 		resp.Request.URL.Scheme, resp.Request.URL.Host, url.PathEscape(task.GetUpstreamTaskID()))
+}
+
+// GatewayContentURL 实现 relaychannel.TaskGatewayContentProvider：SGLang 取片端点
+// 只在集群内可达，客户端必须经网关回传，因此下发带 capability 签名的网关地址，
+// 而不是 ResultURL 里的内网地址。
+func (a *TaskAdaptor) GatewayContentURL(task *model.Task) (string, error) {
+	if task == nil || task.Status != model.TaskStatusSuccess {
+		return "", nil
+	}
+	return service.BuildTaskVideoContentURL(task.TaskID)
 }
 
 // ParseTaskResult 解析轮询响应为统一任务状态。

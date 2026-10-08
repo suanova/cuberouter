@@ -117,6 +117,17 @@ type TaskContentRequestProvider interface {
 	BuildContentRequest(task *model.Task, artifactKey string, clientRequest TaskArtifactClientRequest) (*TaskContentRequest, error)
 }
 
+// TaskGatewayContentProvider 由「结果地址客户端不可达、必须由网关回传字节」的任务
+// 适配器实现：它给出面向客户端的 capability URL，替代 ResultURL。
+//
+// 未实现该接口的适配器按既有约定返回可直接抓取的结果地址（公网 CDN 等），
+// 调用方应原样使用 ResultURL。
+type TaskGatewayContentProvider interface {
+	// GatewayContentURL 返回成功任务面向客户端的取片地址；任务未完成或不适用
+	// 时返回空串，由调用方回退到 ResultURL。
+	GatewayContentURL(task *model.Task) (string, error)
+}
+
 type TaskUsageFactsProvider interface {
 	ExtractUsageFacts(c *gin.Context, info *relaycommon.RelayInfo) map[string]any
 }

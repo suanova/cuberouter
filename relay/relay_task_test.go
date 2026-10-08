@@ -3,6 +3,8 @@ package relay
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -14,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -26,6 +29,119 @@ func TestTaskModel2DtoNormalizesLegacyAction(t *testing.T) {
 
 	assert.Equal(t, constant.TaskActionFirstTailToVideo, dtoTask.Action)
 	assert.Equal(t, "firstTailGenerate", task.Action)
+}
+
+// cubeStackTaskPlatform 是 CubeStack 渠道（type 64）任务落库时的 platform 值。
+// fork 的 Go 任务适配器按渠道类型数字串解析（relay_adaptor.go forkTaskAdaptor），
+// 所以这里必须用 strconv 而不是任何人工命名的常量。
+func cubeStackTaskPlatform() constant.TaskPlatform {
+	return constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeCubeStack))
+}
+
+// pinGatewayResultURLFixtures 固定 capability 签发所需的密钥与网关基址。
+func pinGatewayResultURLFixtures(t *testing.T) {
+	t.Helper()
+	previousSecret := common.CryptoSecret
+	previousPublicAddress := system_setting.TaskPublicAddress
+	previousServerAddress := system_setting.ServerAddress
+	common.CryptoSecret = "relay-task-dto-test-secret"
+	system_setting.TaskPublicAddress = "https://gateway.example/cuberouter"
+	system_setting.ServerAddress = "https://fallback.invalid"
+	t.Cleanup(func() {
+		common.CryptoSecret = previousSecret
+		system_setting.TaskPublicAddress = previousPublicAddress
+		system_setting.ServerAddress = previousServerAddress
+	})
+}
+
+func TestTaskModel2DtoPublishesGatewayContentURLForCubeStack(t *testing.T) {
+	pinGatewayResultURLFixtures(t)
+	task := &model.Task{
+		TaskID:   "task-gateway-content",
+		Platform: cubeStackTaskPlatform(),
+		Status:   model.TaskStatusSuccess,
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "http://minimax-h3-sglang.default.svc:30000/v1/videos/upstream-1/content",
+		},
+	}
+
+	dtoTask := TaskModel2Dto(task)
+
+	parsed, err := url.Parse(dtoTask.ResultURL)
+	require.NoError(t, err)
+	assert.Equal(t, "gateway.example", parsed.Host)
+	assert.Equal(t, "/cuberouter/v1/videos/task-gateway-content/content", parsed.Path)
+	// 客户端拿到的是 capability 签名，而不是集群内地址。
+	assert.True(t, service.VerifyTaskArtifactAccess(
+		parsed.Query().Get(service.TaskArtifactAccessQueryParameter),
+		task.TaskID,
+		service.TaskVideoArtifactKey,
+	))
+	assert.NotContains(t, dtoTask.ResultURL, ".svc:30000")
+	// 服务端回源定位符保持不变：ResultURL 的两种语义不允许互相覆盖。
+	assert.Equal(t, task.PrivateData.ResultURL, task.GetResultURL())
+}
+
+func TestTaskModel2DtoFallsBackToStoredResultURL(t *testing.T) {
+	const stored = "https://cdn.example/provider-video.mp4"
+
+	tests := []struct {
+		name     string
+		platform constant.TaskPlatform
+		status   model.TaskStatus
+		secret   string
+		baseURL  string
+	}{
+		{
+			name:     "platform without a gateway content adaptor",
+			platform: constant.TaskPlatform("platform-without-gateway-content"),
+			status:   model.TaskStatusSuccess,
+			secret:   "relay-task-dto-test-secret",
+			baseURL:  "https://gateway.example",
+		},
+		{
+			name:     "cube stack task still running",
+			platform: cubeStackTaskPlatform(),
+			status:   model.TaskStatusQueued,
+			secret:   "relay-task-dto-test-secret",
+			baseURL:  "https://gateway.example",
+		},
+		{
+			name:     "cube stack without a stable crypto secret",
+			platform: cubeStackTaskPlatform(),
+			status:   model.TaskStatusSuccess,
+			secret:   "",
+			baseURL:  "https://gateway.example",
+		},
+		{
+			name:     "cube stack without a usable base address",
+			platform: cubeStackTaskPlatform(),
+			status:   model.TaskStatusSuccess,
+			secret:   "relay-task-dto-test-secret",
+			baseURL:  "not-a-url",
+		},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			previousSecret := common.CryptoSecret
+			previousPublicAddress := system_setting.TaskPublicAddress
+			common.CryptoSecret = testCase.secret
+			system_setting.TaskPublicAddress = testCase.baseURL
+			t.Cleanup(func() {
+				common.CryptoSecret = previousSecret
+				system_setting.TaskPublicAddress = previousPublicAddress
+			})
+
+			task := &model.Task{
+				TaskID:      "task-fallback",
+				Platform:    testCase.platform,
+				Status:      testCase.status,
+				PrivateData: model.TaskPrivateData{ResultURL: stored},
+			}
+
+			assert.Equal(t, stored, TaskModel2Dto(task).ResultURL)
+		})
+	}
 }
 
 const mappingOrderSubmitPlugin = `

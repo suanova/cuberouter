@@ -15,10 +15,14 @@ import (
 
 const (
 	TaskArtifactAccessQueryParameter = "access"
-	taskArtifactAccessVersion        = "v1"
-	taskArtifactAccessLength         = 43
-	maxTaskArtifactTaskIDLength      = 191
-	maxTaskArtifactKeyLength         = 128
+	// TaskVideoArtifactKey is the artifact key a legacy video content
+	// capability is bound to. /v1/videos/{task_id}/content has no artifact
+	// path segment, so the binding is fixed rather than read from the route.
+	TaskVideoArtifactKey        = "video"
+	taskArtifactAccessVersion   = "v1"
+	taskArtifactAccessLength    = 43
+	maxTaskArtifactTaskIDLength = 191
+	maxTaskArtifactKeyLength    = 128
 )
 
 var ErrTaskArtifactAccessInvalid = errors.New("task artifact access is invalid")
@@ -96,6 +100,37 @@ func ValidateTaskArtifactBaseURL(raw string) error {
 // TaskPublicAddress wins when configured; ServerAddress is the only fallback.
 // Request Host headers are intentionally not involved.
 func BuildTaskArtifactContentURL(taskID, artifactKey string) (string, error) {
+	return buildTaskContentURL(
+		taskID,
+		artifactKey,
+		fmt.Sprintf("/v1/tasks/%s/artifacts/%s/content", taskID, artifactKey),
+		fmt.Sprintf(
+			"/v1/tasks/%s/artifacts/%s/content",
+			url.PathEscape(taskID),
+			url.PathEscape(artifactKey),
+		),
+	)
+}
+
+// BuildTaskVideoContentURL returns the capability URL for the gateway's
+// /v1/videos/{task_id}/content endpoint. The capability is bound to
+// TaskVideoArtifactKey, matching what TokenOrVideoContentAccessAuth verifies.
+// It is the client-facing URL for tasks whose upstream result address the
+// caller cannot reach.
+func BuildTaskVideoContentURL(taskID string) (string, error) {
+	return buildTaskContentURL(
+		taskID,
+		TaskVideoArtifactKey,
+		fmt.Sprintf("/v1/videos/%s/content", taskID),
+		fmt.Sprintf("/v1/videos/%s/content", url.PathEscape(taskID)),
+	)
+}
+
+// buildTaskContentURL assembles an absolute capability URL from the configured
+// public base address, preserving any path prefix it carries. The caller
+// supplies the unescaped and escaped path suffixes because the two differ per
+// route shape.
+func buildTaskContentURL(taskID, artifactKey, suffixPath, escapedSuffixPath string) (string, error) {
 	taskID = strings.TrimSpace(taskID)
 	artifactKey = strings.TrimSpace(artifactKey)
 	if taskID == "" || len(taskID) > maxTaskArtifactTaskIDLength ||
@@ -120,14 +155,10 @@ func BuildTaskArtifactContentURL(taskID, artifactKey string) (string, error) {
 		return "", err
 	}
 
+	// EscapedPath must be read before Path is replaced, since it is derived
+	// from Path.
 	basePath := strings.TrimRight(baseURL.Path, "/")
 	escapedBasePath := strings.TrimRight(baseURL.EscapedPath(), "/")
-	suffixPath := fmt.Sprintf("/v1/tasks/%s/artifacts/%s/content", taskID, artifactKey)
-	escapedSuffixPath := fmt.Sprintf(
-		"/v1/tasks/%s/artifacts/%s/content",
-		url.PathEscape(taskID),
-		url.PathEscape(artifactKey),
-	)
 	baseURL.Path = basePath + suffixPath
 	baseURL.RawPath = escapedBasePath + escapedSuffixPath
 	query := baseURL.Query()
