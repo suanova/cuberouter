@@ -101,11 +101,12 @@ func SettleAbnormalStreamEnd(c *gin.Context, info *relaycommon.RelayInfo, usage 
 - 消费日志（type=2）必定落库：`quota > 0` 是"部分结算"，`quota == 0` 是"无证据、全额已退"。
 - `other.stream_status`：既有 `status=error` + `end_reason`；新增 `partial_settled=true` 标识部分结算路径。
 - `admin_info.local_count_tokens=true`：`ResponseText2Usage` 既有标记，表示 usage 来自本地估算。
+- `other.settle_failed=true`：**结算提交失败**（资金来源未提交，controller 的退款 defer 会把预扣全额退回，即这笔钱没收到）时标记，日志内容同时追加"结算失败，额度未实际扣减"。这是对 `PostTextConsumeQuota` 既有行为的补标记（它一直如此：`service/text_quota.go` 里 settle 错误只记日志、随后仍无条件写 quota 日志），正常路径与异常路径共享——对账据此排除"日志有额度但没收到钱"的行。
 - 估算口径不保证严格 ≥ 上游（断连后上游可能继续生成、缓存 token 我们看不到），只能保证**不再全额退还**。
 
 ## 7. 测试
 
-- **service 层**：`SettleAbnormalStreamEnd` 的证据选择——nil/空 usage 时按 prompt 估算兜底、`CountToken` 关闭时为 0（等价现状）、标记位与 `other.stream_status.partial_settled` 落库。复用仓库既有 DB fixture 模式。
+- **service 层**：`SettleAbnormalStreamEnd` 的证据选择——nil/空 usage 时按 prompt 估算兜底、`CountToken` 关闭时为 0（等价现状）、标记位与 `other.stream_status.partial_settled` 落库；结算提交失败时消费日志带 `other.settle_failed` 与"结算失败"文案，成功时不得带（正反两个用例）。复用仓库既有 DB fixture 模式。
 - **handler 层**：复用 `relay/channel/openai/relay_openai_stream_test.go`、`relay/channel/openai/relay_responses_billing_test.go` 的 harness，构造 `client_gone` / 空闲超时 / 不完整 EOF，断言：错误仍带 SkipRetry、消费日志落库且 quota 符合预期、0 分片也能收 prompt 估算。
 - **回归**：守卫错误的 SkipRetry 属性（防 I2 回退）；正常结束路径的 usage 不变（抽函数后行为等价）。
 - 全部使用 `testify` require/assert，表驱动，不写覆盖率型测试（AGENTS.md 后端测试质量）。
