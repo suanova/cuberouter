@@ -1547,21 +1547,20 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int, count int) {
 	//}
 }
 
-func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) {
+// updateUserQuotaUsedQuotaAndRequestCount 一次 UPDATE 提交用户余额 / 已用额度 /
+// 请求数三件套。错误由调用方处理：批量路径据此回填缓冲重试（丢一轮即永久幻影）。
+func updateUserQuotaUsedQuotaAndRequestCount(id int, quota int, usedQuota int, requestCount int) error {
 	if quota == 0 && usedQuota == 0 && requestCount == 0 {
-		return
+		return nil
 	}
 
-	err := DB.Model(&User{}).Where("id = ?", id).Updates(
+	return DB.Model(&User{}).Where("id = ?", id).Updates(
 		map[string]interface{}{
 			"quota":         gorm.Expr("quota + ?", quota),
 			"used_quota":    gorm.Expr("used_quota + ?", usedQuota),
 			"request_count": gorm.Expr("request_count + ?", requestCount),
 		},
 	).Error
-	if err != nil {
-		common.SysLog("failed to batch update user quota, used quota and request count: " + err.Error())
-	}
 }
 
 func updateUserUsedQuota(id int, quota int) {
@@ -1591,30 +1590,26 @@ func UpdateUserTokens(id int, promptTokens int, completionTokens int, cacheToken
 		addNewRecord(BatchUpdateTypeTotalCacheTokens, id, cacheTokens)
 		return
 	}
-	updateUserTotalPromptTokens(id, int64(promptTokens))
-	updateUserTotalCompletionTokens(id, int64(completionTokens))
-	updateUserTotalCacheTokens(id, int64(cacheTokens))
-}
-
-func updateUserTotalPromptTokens(id int, tokens int64) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("total_prompt_tokens", gorm.Expr("total_prompt_tokens + ?", tokens)).Error
-	if err != nil {
-		common.SysLog("failed to update user total prompt tokens: " + err.Error())
+	updateUserTotalPromptTokensErr := updateUserTotalPromptTokens(id, int64(promptTokens))
+	updateUserTotalCompletionTokensErr := updateUserTotalCompletionTokens(id, int64(completionTokens))
+	updateUserTotalCacheTokensErr := updateUserTotalCacheTokens(id, int64(cacheTokens))
+	for _, err := range []error{updateUserTotalPromptTokensErr, updateUserTotalCompletionTokensErr, updateUserTotalCacheTokensErr} {
+		if err != nil {
+			common.SysLog("failed to update user token statistics: " + err.Error())
+		}
 	}
 }
 
-func updateUserTotalCompletionTokens(id int, tokens int64) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("total_completion_tokens", gorm.Expr("total_completion_tokens + ?", tokens)).Error
-	if err != nil {
-		common.SysLog("failed to update user total completion tokens: " + err.Error())
-	}
+func updateUserTotalPromptTokens(id int, tokens int64) error {
+	return DB.Model(&User{}).Where("id = ?", id).Update("total_prompt_tokens", gorm.Expr("total_prompt_tokens + ?", tokens)).Error
 }
 
-func updateUserTotalCacheTokens(id int, tokens int64) {
-	err := DB.Model(&User{}).Where("id = ?", id).Update("total_cache_tokens", gorm.Expr("total_cache_tokens + ?", tokens)).Error
-	if err != nil {
-		common.SysLog("failed to update user total cache tokens: " + err.Error())
-	}
+func updateUserTotalCompletionTokens(id int, tokens int64) error {
+	return DB.Model(&User{}).Where("id = ?", id).Update("total_completion_tokens", gorm.Expr("total_completion_tokens + ?", tokens)).Error
+}
+
+func updateUserTotalCacheTokens(id int, tokens int64) error {
+	return DB.Model(&User{}).Where("id = ?", id).Update("total_cache_tokens", gorm.Expr("total_cache_tokens + ?", tokens)).Error
 }
 
 // GetUsernameById gets username from Redis first, falls back to DB if needed
