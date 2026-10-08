@@ -45,25 +45,40 @@ describe('buildOAuthCallbackUrl under a URL prefix', () => {
     )
   })
 
-  it('puts the prefix on the callback path, not on ServerAddress', async () => {
+  // The provider is given the URL the server will build, and the server composes
+  // it from ServerAddress alone -- it has no notion of BASE_PATH. So the prefix
+  // has to be part of the configured value; adding it here again would produce
+  // .../cuberouter/cuberouter/oauth/... and a redirect_uri that never matches.
+  it('does not add the prefix to the configured ServerAddress', async () => {
     const { buildOAuthCallbackUrl } = await loadModule('/cuberouter')
     expect(buildOAuthCallbackUrl(SERVER_ADDRESS, '/callback/github', '')).toBe(
-      'https://api.example.com/cuberouter/oauth/callback/github'
+      'https://api.example.com/oauth/callback/github'
     )
   })
 
-  it('handles a multi-segment prefix', async () => {
-    const { buildOAuthCallbackUrl } = await loadModule('/g/w1')
-    expect(buildOAuthCallbackUrl(SERVER_ADDRESS, 'callback/github', '')).toBe(
-      'https://api.example.com/g/w1/oauth/callback/github'
-    )
+  it('keeps a prefix that the configured ServerAddress carries', async () => {
+    const { buildOAuthCallbackUrl } = await loadModule('/cuberouter')
+    expect(
+      buildOAuthCallbackUrl(
+        `${SERVER_ADDRESS}/cuberouter`,
+        '/callback/github',
+        ''
+      )
+    ).toBe('https://api.example.com/cuberouter/oauth/callback/github')
   })
 
   it('normalizes a trailing slash on ServerAddress', async () => {
     const { buildOAuthCallbackUrl } = await loadModule('/cuberouter')
     expect(
       buildOAuthCallbackUrl(`${SERVER_ADDRESS}/`, '/callback/github', '')
-    ).toBe('https://api.example.com/cuberouter/oauth/callback/github')
+    ).toBe('https://api.example.com/oauth/callback/github')
+  })
+
+  it('trims the leading slashes off the callback path', async () => {
+    const { buildOAuthCallbackUrl } = await loadModule(undefined)
+    expect(buildOAuthCallbackUrl(SERVER_ADDRESS, 'callback/github', '')).toBe(
+      'https://api.example.com/oauth/callback/github'
+    )
   })
 
   it('falls back to the provided default when ServerAddress is empty', async () => {

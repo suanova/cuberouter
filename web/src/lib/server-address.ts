@@ -24,18 +24,21 @@ import { basePath } from '@/lib/base-path'
  * ServerAddress when there is one, this site otherwise. Either way it ends at
  * the deployment prefix, so callers append '/v1/...' directly.
  *
- * ServerAddress is an origin -- scheme, host and port, no path. WebAuthn builds
- * its list of allowed origins from it, and a path there is invalid, so the
- * prefix has to come from the deployment itself rather than from the configured
- * value. Getting this wrong is silent: the link simply points at the site root.
+ * A configured ServerAddress is the complete public base and may already carry
+ * the deployment prefix -- the same value the server uses to build capability,
+ * OAuth redirect and task URLs, none of which know about BASE_PATH. It is
+ * therefore used as-is; the prefix is only added to the fallback, where the
+ * origin comes from window.location and carries no path. Adding it to a
+ * configured value doubles the prefix (.../cuberouter/cuberouter/v1/...) for
+ * every deployment that publishes under one.
  */
 export function resolveServerAddress(
   configured?: unknown,
   fallback = ''
 ): string {
   const trimmed =
-    typeof configured === 'string' ? configured.replace(/\/+$/, '') : ''
-  if (trimmed) return `${trimmed}${basePath}`
+    typeof configured === 'string' ? configured.trim().replace(/\/+$/, '') : ''
+  if (trimmed) return trimmed
   if (typeof window === 'undefined') return fallback
   return `${window.location.origin}${basePath}`
 }
