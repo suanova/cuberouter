@@ -69,6 +69,22 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
 		playgroundRouter.POST("/images/edits", controller.PlaygroundImage)
 	}
+
+	// 多媒体 studio 视频 tab 的会话鉴权入口（/pg/video/*）。与 /pg 组相同的登录会话 +
+	// Distribute，但请求体是统一任务体：Task Plugin（62 类）渠道按渠道自身的
+	// task_plugin_key 参与选择，而该值选渠道前不可知，所以 AllowTaskPluginChannel
+	// 必须排在 Distribute 之前，这里单独成组而不是嵌套进 /pg（子组中间件后于父组
+	// 中间件执行，嵌套会导致标记晚于渠道选择生效）。
+	playgroundVideoRouter := router.Group("/pg/video")
+	playgroundVideoRouter.Use(middleware.RouteTag("relay"))
+	playgroundVideoRouter.Use(middleware.RelayCapacity())
+	playgroundVideoRouter.Use(middleware.SystemPerformanceCheck())
+	playgroundVideoRouter.Use(middleware.AllowTaskPluginChannel())
+	playgroundVideoRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	{
+		playgroundVideoRouter.POST("/generations", controller.PlaygroundVideo)
+		playgroundVideoRouter.GET("/generations/:task_id", controller.PlaygroundVideoFetch)
+	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.RelayCapacity())

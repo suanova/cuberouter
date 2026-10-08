@@ -2,11 +2,15 @@ package middleware
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -146,4 +150,49 @@ export const protocols = {openai_responses: {
   renderFinal: function() { return {output: []}; },
 }};
 `, key, key, channelType)
+}
+
+// TestGetModelRequestPgVideoGenerations 保护多媒体 studio 视频 tab 会话入口的
+// 渠道路由契约：POST /pg/video/generations 从统一任务体取模型参与渠道选择；
+// GET /pg/video/generations/:task_id 按 task_id 查询，不做模型渠道选择（回归时
+// 轮询会拿到 "Model name is required" 400，视频结果永远查不出来）。
+func TestGetModelRequestPgVideoGenerations(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newContext := func(method, target, body string) *gin.Context {
+		request := httptest.NewRequest(method, target, strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = request
+		return c
+	}
+
+	t.Run("submit reads the model from the unified task body", func(t *testing.T) {
+		c := newContext(http.MethodPost, "/pg/video/generations", `{"model":"viduq3-pro","prompt":"a cat"}`)
+
+		modelRequest, shouldSelectChannel, err := getModelRequest(c)
+		require.NoError(t, err)
+		require.True(t, shouldSelectChannel)
+		assert.Equal(t, "viduq3-pro", modelRequest.Model)
+		assert.Equal(t, relayconstant.RelayModeVideoSubmit, c.GetInt("relay_mode"))
+	})
+
+	t.Run("fetch by task id skips channel selection", func(t *testing.T) {
+		c := newContext(http.MethodGet, "/pg/video/generations/task-123", "")
+
+		_, shouldSelectChannel, err := getModelRequest(c)
+		require.NoError(t, err)
+		assert.False(t, shouldSelectChannel)
+		assert.Equal(t, relayconstant.RelayModeVideoFetchByID, c.GetInt("relay_mode"))
+	})
+
+	t.Run("the v1 video submit path keeps the same behavior", func(t *testing.T) {
+		c := newContext(http.MethodPost, "/v1/video/generations", `{"model":"kling-v2","prompt":"a cat"}`)
+
+		modelRequest, shouldSelectChannel, err := getModelRequest(c)
+		require.NoError(t, err)
+		require.True(t, shouldSelectChannel)
+		assert.Equal(t, "kling-v2", modelRequest.Model)
+		assert.Equal(t, relayconstant.RelayModeVideoSubmit, c.GetInt("relay_mode"))
+	})
 }

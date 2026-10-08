@@ -23,7 +23,9 @@ import {
   API_ENDPOINTS,
   GENERATION_TIMEOUT_MS,
   STUDIO_TAG_IMAGE_TO_IMAGE,
+  STUDIO_TAG_IMAGE_TO_VIDEO,
   STUDIO_TAG_TEXT_TO_IMAGE,
+  STUDIO_TAG_TEXT_TO_VIDEO,
 } from './constants'
 import { extractImages, type ImageResponseBody } from './lib/image-response'
 import type { GenerationRequestBody } from './lib/request-builder'
@@ -58,8 +60,9 @@ function parseModelTags(value: unknown): string[] {
 /**
  * 拉取当前用户可用、并按运维声明的模型标签分类的模型名。
  * text-to-image 进文生图列表，image-to-image 进图生图列表，两者互不推断：
- * 只支持编辑的模型绝不会出现在文生图列表里。supported_endpoint_types 不参与
- * 分类——按模型名推断的端点类型曾把 qwen-image-edit-* 误列成文生图模型。
+ * 只支持编辑的模型绝不会出现在文生图列表里。text-to-video / image-to-video
+ * 同理进视频列表。supported_endpoint_types 不参与分类——按模型名推断的端点
+ * 类型曾把 qwen-image-edit-* 误列成文生图模型。
  */
 export async function getStudioModels(): Promise<StudioModelCatalog> {
   const res = await api.get<PricingResponseData>(API_ENDPOINTS.PRICING)
@@ -72,6 +75,8 @@ export async function getStudioModels(): Promise<StudioModelCatalog> {
 
   const textToImage = new Set<string>()
   const imageToImage = new Set<string>()
+  const textToVideo = new Set<string>()
+  const imageToVideo = new Set<string>()
   for (const item of pricings) {
     if (!item || typeof item.model_name !== 'string' || item.model_name === '') {
       continue
@@ -83,11 +88,19 @@ export async function getStudioModels(): Promise<StudioModelCatalog> {
     if (tags.includes(STUDIO_TAG_IMAGE_TO_IMAGE)) {
       imageToImage.add(item.model_name)
     }
+    if (tags.includes(STUDIO_TAG_TEXT_TO_VIDEO)) {
+      textToVideo.add(item.model_name)
+    }
+    if (tags.includes(STUDIO_TAG_IMAGE_TO_VIDEO)) {
+      imageToVideo.add(item.model_name)
+    }
   }
 
   return {
     textToImage: [...textToImage].sort((a, b) => a.localeCompare(b)),
     imageToImage: [...imageToImage].sort((a, b) => a.localeCompare(b)),
+    textToVideo: [...textToVideo].sort((a, b) => a.localeCompare(b)),
+    imageToVideo: [...imageToVideo].sort((a, b) => a.localeCompare(b)),
   }
 }
 

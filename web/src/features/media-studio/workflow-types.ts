@@ -24,10 +24,12 @@ export interface StudioAsset {
   url: string
   mime: string
 }
-/** 按运维声明的模型标签分类的可用模型：text-to-image 与 image-to-image 互不推断。 */
+/** 按运维声明的模型标签分类的可用模型：文生图/图生图与文生视频/图生视频互不推断。 */
 export interface StudioModelCatalog {
   textToImage: string[]
   imageToImage: string[]
+  textToVideo: string[]
+  imageToVideo: string[]
 }
 export interface WorkflowDraft {
   mode: 'create' | 'edit'

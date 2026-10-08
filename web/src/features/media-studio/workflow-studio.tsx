@@ -18,7 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { Sparkles } from 'lucide-react'
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -44,7 +43,12 @@ export function WorkflowStudio(props: { owner: number }) {
     queryFn: getStudioModels,
     retry: false,
   })
-  const catalog = models.data ?? { textToImage: [], imageToImage: [] }
+  const catalog = models.data ?? {
+    textToImage: [],
+    imageToImage: [],
+    textToVideo: [],
+    imageToVideo: [],
+  }
   const eligible =
     draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
   const current = {
@@ -98,118 +102,105 @@ export function WorkflowStudio(props: { owner: number }) {
     workflow.deletion.error,
   ].filter(Boolean)
   return (
-    <div className='min-h-0 flex-1 overflow-y-auto'>
-      <div className='mx-auto flex w-full max-w-[1500px] flex-col gap-6 p-4 sm:p-6'>
-        <header className='flex items-center gap-3'>
-          <Sparkles className='text-primary size-6' aria-hidden='true' />
-          <div>
-            <h1 className='text-xl font-semibold'>{t('Media Studio')}</h1>
-            <p className='text-muted-foreground text-xs'>
-              {t('Create, refine and keep every version.')}
-            </p>
-          </div>
-        </header>
-        <div className='grid items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)]'>
-          <aside className='bg-card rounded-2xl border p-4'>
-            <WorkflowComposer
-              draft={current}
-              textToImageModels={catalog.textToImage}
-              imageToImageModels={catalog.imageToImage}
-              busy={busy}
-              loading={models.isPending}
-              onChange={setDraft}
-              onUpload={(files) => references.mutate(files)}
-              onGenerate={() => {
-                setView('result')
-                workflow.generation.mutate(structuredClone(current))
-              }}
-              onReset={() => setDraft({ ...initialDraft })}
-            />
-          </aside>
-          <main className='min-w-0 space-y-4'>
-            <nav
-              className='flex flex-wrap gap-1 border-b pb-3'
-              aria-label={t('Studio views')}
+    <div className='grid items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)]'>
+      <aside className='bg-card rounded-2xl border p-4'>
+        <WorkflowComposer
+          draft={current}
+          textToImageModels={catalog.textToImage}
+          imageToImageModels={catalog.imageToImage}
+          busy={busy}
+          loading={models.isPending}
+          onChange={setDraft}
+          onUpload={(files) => references.mutate(files)}
+          onGenerate={() => {
+            setView('result')
+            workflow.generation.mutate(structuredClone(current))
+          }}
+          onReset={() => setDraft({ ...initialDraft })}
+        />
+      </aside>
+      <main className='min-w-0 space-y-4'>
+        <nav
+          className='flex flex-wrap gap-1 border-b pb-3'
+          aria-label={t('Studio views')}
+        >
+          {(
+            [
+              { id: 'templates', label: 'Template gallery' },
+              { id: 'result', label: 'Result' },
+            ] as const
+          ).map((item) => (
+            <Button
+              key={item.id}
+              size='sm'
+              variant={view === item.id ? 'secondary' : 'ghost'}
+              aria-pressed={view === item.id}
+              onClick={() => setView(item.id)}
             >
-              {(
-                [
-                  { id: 'templates', label: 'Template gallery' },
-                  { id: 'result', label: 'Result' },
-                ] as const
-              ).map((item) => (
-                <Button
-                  key={item.id}
-                  size='sm'
-                  variant={view === item.id ? 'secondary' : 'ghost'}
-                  aria-pressed={view === item.id}
-                  onClick={() => setView(item.id)}
-                >
-                  {t(item.label)}
-                </Button>
-              ))}
-            </nav>
-            {errors.map((error) => (
-              <p
-                key={workflowError(error)}
-                role='alert'
-                className='text-destructive text-sm'
-              >
-                {t(workflowError(error))}
-              </p>
-            ))}
-            {!!workflow.warning && (
-              <p role='status' className='text-muted-foreground text-sm'>
-                {t(workflow.warning)}
-              </p>
+              {t(item.label)}
+            </Button>
+          ))}
+        </nav>
+        {errors.map((error) => (
+          <p
+            key={workflowError(error)}
+            role='alert'
+            className='text-destructive text-sm'
+          >
+            {t(workflowError(error))}
+          </p>
+        ))}
+        {!!workflow.warning && (
+          <p role='status' className='text-muted-foreground text-sm'>
+            {t(workflow.warning)}
+          </p>
+        )}
+        {workflow.history.isError && (
+          <p role='status' className='text-muted-foreground text-sm'>
+            {t(
+              'Local history storage is unavailable. Download images to keep them.'
             )}
-            {workflow.history.isError && (
-              <p role='status' className='text-muted-foreground text-sm'>
-                {t(
-                  'Local history storage is unavailable. Download images to keep them.'
-                )}
-              </p>
-            )}
-            {view === 'templates' && (
-              <TemplateGallery
-                disabled={busy}
-                onApply={(template, fields) =>
-                  setDraft(templateDraft(template, fields, current))
+          </p>
+        )}
+        {view === 'templates' && (
+          <TemplateGallery
+            disabled={busy}
+            onApply={(template, fields) =>
+              setDraft(templateDraft(template, fields, current))
+            }
+          />
+        )}
+        {view === 'result' && (
+          // 结果与本地历史合并在同一视图：结果在上，历史列表在下。
+          <div className='space-y-4'>
+            <div className='bg-card rounded-2xl border p-4'>
+              <WorkflowResults
+                job={workflow.selected}
+                busy={workflow.generation.isPending}
+                count={workflow.generation.variables?.count ?? 1}
+                elapsed={workflow.elapsed}
+                onEdit={(asset, job) =>
+                  continuation.mutate({ url: asset.url, parent: job.id })
                 }
               />
-            )}
-            {view === 'result' && (
-              // 结果与本地历史合并在同一视图：结果在上，历史列表在下。
-              <div className='space-y-4'>
-                <div className='bg-card rounded-2xl border p-4'>
-                  <WorkflowResults
-                    job={workflow.selected}
-                    busy={workflow.generation.isPending}
-                    count={workflow.generation.variables?.count ?? 1}
-                    elapsed={workflow.elapsed}
-                    onEdit={(asset, job) =>
-                      continuation.mutate({ url: asset.url, parent: job.id })
-                    }
-                  />
-                </div>
-                <div className='bg-card rounded-2xl border p-4'>
-                  <WorkflowHistory
-                    jobs={workflow.history.data ?? []}
-                    selected={workflow.selected?.id}
-                    busy={busy}
-                    onSelect={workflow.select}
-                    onDelete={(id) => workflow.deletion.mutate(id)}
-                  />
-                </div>
-                <p className='text-muted-foreground text-xs'>
-                  {t(
-                    'History is stored in this browser for this account, up to 50 creations or 100 MB. It does not sync across devices and may be cleared by your browser. Download important images.'
-                  )}
-                </p>
-              </div>
-            )}
-          </main>
-        </div>
-      </div>
+            </div>
+            <div className='bg-card rounded-2xl border p-4'>
+              <WorkflowHistory
+                jobs={workflow.history.data ?? []}
+                selected={workflow.selected?.id}
+                busy={busy}
+                onSelect={workflow.select}
+                onDelete={(id) => workflow.deletion.mutate(id)}
+              />
+            </div>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'History is stored in this browser for this account, up to 50 creations or 100 MB. It does not sync across devices and may be cleared by your browser. Download important images.'
+              )}
+            </p>
+          </div>
+        )}
+      </main>
     </div>
   )
 }

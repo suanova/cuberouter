@@ -461,7 +461,9 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			modelRequest.Model = getTaskOriginModelName(c)
 		}
 		c.Set("relay_mode", relayMode)
-	} else if strings.Contains(c.Request.URL.Path, "/v1/video/generations") {
+	} else if strings.Contains(c.Request.URL.Path, "/v1/video/generations") || strings.Contains(c.Request.URL.Path, "/pg/video/generations") {
+		// /pg/video/generations 是多媒体 studio 视频 tab 的会话鉴权入口，
+		// 请求体同样是统一任务体：POST 从 body 取模型提交，GET 按 task_id 查询、不选渠道。
 		relayMode := relayconstant.RelayModeUnknown
 		if c.Request.Method == http.MethodPost {
 			req, err := getModelFromRequest(c)

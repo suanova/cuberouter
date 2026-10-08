@@ -31,7 +31,7 @@ import type { StudioAsset, WorkflowDraft, WorkflowJob } from './workflow-types'
  * 会让造 id 的每一步抛 TypeError，成功生成的图片反而报错显示不出来。
  * crypto.getRandomValues 在非安全上下文同样可用，故作为替代。
  */
-function newId(): string {
+export function newId(): string {
   if (typeof crypto?.randomUUID === 'function') {
     return crypto.randomUUID()
   }
