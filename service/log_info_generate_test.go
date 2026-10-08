@@ -49,3 +49,34 @@ func TestGenerateTextOtherInfoNoPluginMarkers(t *testing.T) {
 	_, ok = other["plugin_tool_calls"]
 	assert.False(t, ok)
 }
+
+// TestGenerateTextOtherInfoMarksAbnormalStreamSettle 锁定对账标记：异常结束但
+// 仍结算的请求，消费日志的 stream_status 必须带 partial_settled，普通流式不写。
+func TestGenerateTextOtherInfoMarksAbnormalStreamSettle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx, _ := gin.CreateTestContext(nil)
+
+	abnormal := testRelayInfo()
+	abnormal.IsStream = true
+	abnormal.StreamStatus = relaycommon.NewStreamStatus()
+	abnormal.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, nil)
+	abnormal.AbnormalStreamSettled = true
+
+	other := GenerateTextOtherInfo(ctx, abnormal, 1, 1, 1, 0, 1, 0, 1)
+	streamStatus, ok := other["stream_status"].(map[string]interface{})
+	require.True(t, ok, "stream_status 应存在")
+	assert.Equal(t, "error", streamStatus["status"])
+	assert.Equal(t, "client_gone", streamStatus["end_reason"])
+	assert.Equal(t, true, streamStatus["partial_settled"])
+
+	normal := testRelayInfo()
+	normal.IsStream = true
+	normal.StreamStatus = relaycommon.NewStreamStatus()
+	normal.StreamStatus.SetEndReason(relaycommon.StreamEndReasonDone, nil)
+
+	normalOther := GenerateTextOtherInfo(ctx, normal, 1, 1, 1, 0, 1, 0, 1)
+	normalStatus, ok := normalOther["stream_status"].(map[string]interface{})
+	require.True(t, ok, "stream_status 应存在")
+	_, hasPartial := normalStatus["partial_settled"]
+	assert.False(t, hasPartial, "正常结束不应带 partial_settled")
+}

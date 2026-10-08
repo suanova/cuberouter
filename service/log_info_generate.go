@@ -163,6 +163,9 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]inter
 		"status":     status,
 		"end_reason": string(ss.EndReason),
 	}
+	if relayInfo.AbnormalStreamSettled {
+		streamInfo["partial_settled"] = true
+	}
 	if ss.EndError != nil {
 		streamInfo["end_error"] = ss.EndError.Error()
 	}
