@@ -65,6 +65,9 @@ func setupOpenAIStreamSettleDB(t *testing.T) {
 
 	require.NoError(t, model.InitDB())
 	model.LOG_DB = model.DB
+	// 异常结束的部分结算会走 CountTextToken（OpenAI 系模型用 tiktoken 精确数），
+	// 生产在 main.go 启动时调用它初始化；测试里必须显式初始化，否则 tokenizer 为 nil。
+	service.InitTokenEncoders()
 	require.NoError(t, model.DB.AutoMigrate(
 		&model.User{}, &model.Token{}, &model.Channel{}, &model.Log{}, &model.QuotaData{},
 	))
