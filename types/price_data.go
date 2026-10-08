@@ -38,7 +38,7 @@ type PreConsumeDetail struct {
 	EstimatedPromptTokens int     `json:"estimated_prompt_tokens"` // 请求前本地估算的 prompt tokens（CountToken 关闭时为 0）
 	FloorTokens           int     `json:"floor_tokens"`            // 后台 PreConsumedQuota 保底设置
 	RequestMaxTokens      int     `json:"request_max_tokens"`      // 请求携带的 max_tokens（0=未携带）
-	PreConsumedTokens     int     `json:"pre_consumed_tokens"`     // max(估算, 保底) + max_tokens
+	PreConsumedTokens     int     `json:"pre_consumed_tokens"`     // max(估算, 保底) + max_tokens（未携带时按 defaultPreConsumeMaxTokens 兜底）
 	ModelRatio            float64 `json:"model_ratio"`             // 模型倍率
 	GroupRatio            float64 `json:"group_ratio"`             // 分组倍率
 	UsePrice              bool    `json:"use_price"`               // true=按次计费（quota = 单价 × QuotaPerUnit × 分组倍率）
