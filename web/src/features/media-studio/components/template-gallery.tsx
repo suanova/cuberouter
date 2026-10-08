@@ -28,6 +28,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { withBasePath } from '@/lib/base-path'
 
 import catalog from '../catalog.json'
 import type { StudioTemplate } from '../workflow-types'
@@ -84,7 +85,7 @@ export function TemplateGallery(props: {
             }}
           >
             <img
-              src={item.preview}
+              src={withBasePath(item.preview)}
               alt={t(item.title)}
               className='h-full w-full object-cover transition-transform duration-300 group-hover:scale-105'
               loading='lazy'
@@ -122,7 +123,7 @@ export function TemplateGallery(props: {
             <div className='grid gap-5 sm:grid-cols-2'>
               <div className='space-y-2'>
                 <img
-                  src={selected.preview}
+                  src={withBasePath(selected.preview)}
                   alt={t('Template example')}
                   className='w-full rounded-xl'
                 />
@@ -132,7 +133,7 @@ export function TemplateGallery(props: {
                       {t('Example reference image')}
                     </summary>
                     <img
-                      src={selected.before}
+                      src={withBasePath(selected.before)}
                       alt={t('Before editing')}
                       className='mt-2 w-full rounded-xl'
                     />
