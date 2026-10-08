@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 package sglang
 
 // ChannelName 与 Web 端渠道类型名称保持一致。
-const ChannelName = "SGLang"
+const ChannelName = "CubeStack"
 
 // ModelList 是渠道测试等流程使用的参考模型列表；实际可用模型由渠道
 // 模型列表决定（SGLang 服务以 --served-model-name 暴露的任意模型名）。

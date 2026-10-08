@@ -95,7 +95,7 @@ export const CHANNEL_TYPES = {
   // Upstream assigns Task Plugin = 61; remapped to 62 (see CHANNEL_TYPE_TASK_PLUGIN).
   62: 'Task Plugin',
   63: 'Image Edit (Base64)',
-  64: 'SGLang',
+  64: 'CubeStack',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [

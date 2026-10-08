@@ -202,7 +202,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeNewAPI:         "New API",
 	ChannelTypeTaskPlugin:     "Task Plugin",
 	ChannelTypeImageEdit:      "Image Edit (Base64)",
-	ChannelTypeSGLang:         "SGLang",
+	ChannelTypeSGLang:         "CubeStack",
 }
 
 func GetChannelTypeName(channelType int) string {
