@@ -52,6 +52,7 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { splitAllowedPorts } from './allowed-ports'
 
 const ssrfSchema = z.object({
   fetch_setting: z.object({
@@ -76,7 +77,7 @@ type NormalizedSSRFValues = {
   'fetch_setting.ip_filter_mode': boolean
   'fetch_setting.domain_list': string[]
   'fetch_setting.ip_list': string[]
-  'fetch_setting.allowed_ports': number[]
+  'fetch_setting.allowed_ports': string[]
   'fetch_setting.apply_ip_filter_for_domain': boolean
 }
 
@@ -88,7 +89,7 @@ type SSRFSectionProps = {
     'fetch_setting.ip_filter_mode': boolean
     'fetch_setting.domain_list': string[]
     'fetch_setting.ip_list': string[]
-    'fetch_setting.allowed_ports': number[]
+    'fetch_setting.allowed_ports': string[]
     'fetch_setting.apply_ip_filter_for_domain': boolean
   }
 }
@@ -98,12 +99,6 @@ const splitLines = (value: string) =>
     .split('\n')
     .map((entry) => entry.trim())
     .filter(Boolean)
-
-const parsePorts = (value: string) =>
-  value
-    .split(',')
-    .map((item) => Number.parseInt(item.trim(), 10))
-    .filter((port) => Number.isFinite(port))
 
 const buildFormDefaults = (
   defaults: SSRFSectionProps['defaultValues']
@@ -132,6 +127,8 @@ const normalizeDefaults = (
   'fetch_setting.ip_filter_mode': defaults['fetch_setting.ip_filter_mode'],
   'fetch_setting.domain_list': defaults['fetch_setting.domain_list'],
   'fetch_setting.ip_list': defaults['fetch_setting.ip_list'],
+  // 不在这里把旧行里的数字数组（历史写入的 [80,443]）规整成字符串：保持原样，
+  // 让它与表单产出的字符串数组比较为「有改动」，保存时顺带把旧行改写掉。
   'fetch_setting.allowed_ports': defaults['fetch_setting.allowed_ports'],
   'fetch_setting.apply_ip_filter_for_domain':
     defaults['fetch_setting.apply_ip_filter_for_domain'],
@@ -145,7 +142,9 @@ const normalizeFormValues = (values: SSRFFormValues): NormalizedSSRFValues => ({
   'fetch_setting.ip_filter_mode': values.fetch_setting.ip_filter_mode,
   'fetch_setting.domain_list': splitLines(values.fetch_setting.domain_list),
   'fetch_setting.ip_list': splitLines(values.fetch_setting.ip_list),
-  'fetch_setting.allowed_ports': parsePorts(values.fetch_setting.allowed_ports),
+  'fetch_setting.allowed_ports': splitAllowedPorts(
+    values.fetch_setting.allowed_ports
+  ),
   'fetch_setting.apply_ip_filter_for_domain':
     values.fetch_setting.apply_ip_filter_for_domain,
 })
