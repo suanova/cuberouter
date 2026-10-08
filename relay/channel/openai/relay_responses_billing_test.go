@@ -7,12 +7,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -264,4 +267,59 @@ func TestOaiResponsesStreamHandlerDoesNotCountPartialImageEvent(t *testing.T) {
 	)
 
 	assert.Equal(t, 0, info.ResponsesUsageInfo.BuiltInTools[dto.BuildInToolImageGeneration].CallCount)
+}
+
+// 未收到 response.completed 就 EOF（不完整流）时不再全额免单：
+// 按已收文本估算部分结算，日志标记 partial_settled。
+func TestOaiResponsesStreamHandler_IncompleteStreamSettlesPartialUsage(t *testing.T) {
+	setupOpenAIStreamSettleDB(t)
+	user := createOpenAIStreamSettleUser(t, 1_000_000)
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	body := strings.Join([]string{
+		`data: {"type":"response.output_text.delta","delta":"partial output"}`,
+		``,
+	}, "\n")
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Set(common.RequestIdKey, "responses-incomplete-settle-test")
+	info := &relaycommon.RelayInfo{
+		UserId:          user.Id,
+		IsStream:        true,
+		DisablePing:     true,
+		OriginModelName: "gpt-5.1",
+		ChannelMeta:     &relaycommon.ChannelMeta{UpstreamModelName: "gpt-5.1"},
+		PriceData: hosttypes.PriceData{
+			ModelRatio:      1,
+			CompletionRatio: 1,
+			GroupRatioInfo:  hosttypes.GroupRatioInfo{GroupRatio: 1},
+		},
+	}
+	// ChannelId 是 ChannelMeta 上的提升字段，字面量里不能直接赋值。
+	info.ChannelId = 1
+	info.SetEstimatePromptTokens(100)
+	info.StartTime = time.Now()
+	info.FirstResponseTime = info.StartTime
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+	}
+
+	usage, apiErr := OaiResponsesStreamHandler(c, info, resp)
+
+	require.NotNil(t, apiErr)
+	assert.Equal(t, types.ErrorCodeStreamIncomplete, apiErr.GetErrorCode())
+	assert.True(t, types.IsSkipRetryError(apiErr))
+	assert.Nil(t, usage)
+
+	entry := latestConsumeLog(t)
+	assert.Equal(t, 100, entry.PromptTokens)
+	assert.Greater(t, entry.Quota, 0)
+	assert.Contains(t, entry.Other, "partial_settled")
+	assert.Contains(t, entry.Other, "eof")
 }

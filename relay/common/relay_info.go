@@ -215,6 +215,11 @@ type RelayInfo struct {
 
 	StreamStatus *StreamStatus
 
+	// AbnormalStreamSettled 表示本次流式请求异常结束（超时/断连/扫描器错误/
+	// 不完整流）但仍按已掌握用量走了结算。消费日志据此在 stream_status 里标
+	// partial_settled，供对账区分"异常结束但已计费"与正常成功。
+	AbnormalStreamSettled bool
+
 	// convOptions caches the converter settings snapshot (see ConvOptions).
 	convOptions *convmeta.Options
 

@@ -139,35 +139,38 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	})
 
 	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
-	// 不产出合成 usage 计费，返回对应错误并跳过计费与消费日志。
+	// 上游通常已开工并按上游口径计费，按已掌握用量部分结算（宁多收不漏收）后返回错误。
 	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
+		service.SettleAbnormalStreamEnd(c, info, responsesStreamTailUsage(info, usage, responseTextBuilder.String()))
 		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
 			st.EndReason == relaycommon.StreamEndReasonPingFail
 		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
 	}
-	// 未收到 response.completed 就 EOF：视为不完整流，不按成功计费。
+	// 未收到 response.completed 就 EOF：视为不完整流，按已掌握用量部分结算。
 	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF && !sawCompleted {
+		service.SettleAbnormalStreamEnd(c, info, responsesStreamTailUsage(info, usage, responseTextBuilder.String()))
 		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
 	}
 
-	if usage.CompletionTokens == 0 {
-		// 计算输出文本的 token 数量
-		tempStr := responseTextBuilder.String()
-		if len(tempStr) > 0 {
-			// 非正常结束，使用输出文本的 token 数量
-			completionTokens := service.CountTextToken(tempStr, info.UpstreamModelName)
-			usage.CompletionTokens = completionTokens
-		}
-	}
+	return responsesStreamTailUsage(info, usage, responseTextBuilder.String()), nil
+}
 
+// responsesStreamTailUsage 用已收文本补齐上游没在 completed 事件里给出的 usage：
+// 输出文本估算 completion、请求期估算补 prompt，并同步 BillingUsage 快照。
+// 正常结束与异常结束（部分结算）共用，保证两条路径口径一致。
+func responsesStreamTailUsage(info *relaycommon.RelayInfo, usage *dto.Usage, responseText string) *dto.Usage {
+	if usage == nil {
+		usage = &dto.Usage{}
+	}
+	if usage.CompletionTokens == 0 && responseText != "" {
+		usage.CompletionTokens = service.CountTextToken(responseText, info.UpstreamModelName)
+	}
 	if usage.PromptTokens == 0 && usage.CompletionTokens != 0 {
 		usage.PromptTokens = info.GetEstimatePromptTokens()
 	}
-
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
 	if usage.BillingUsage != nil {
 		usage.BillingUsage = dto.CloneBillingUsageWithEstimatedCompletion(usage.BillingUsage, usage.CompletionTokens)
 	}
-
-	return usage, nil
+	return usage
 }
