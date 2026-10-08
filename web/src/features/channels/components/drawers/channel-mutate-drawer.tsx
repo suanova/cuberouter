@@ -144,7 +144,6 @@ import {
   CHANNEL_STATUS_LABELS,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_TASK_PLUGIN,
-  CHANNEL_TYPE_CUBE_STACK,
   channelTypeOptionsForTaskPluginBind,
   CHANNEL_TYPE_WARNINGS,
   ERROR_MESSAGES,
@@ -158,9 +157,11 @@ import { useChannelMutateForm } from '../../hooks/use-channel-mutate-form'
 import {
   CHANNEL_FORM_DEFAULT_VALUES,
   CHANNEL_TYPE_ADVANCED_CUSTOM,
+  type ModelFetchBlockReason,
   channelFormSchema,
   channelsQueryKeys,
   getAdvancedCustomStats,
+  resolveModelFetchBlock,
   transformChannelToFormDefaults,
   type ChannelFormValues,
   deduplicateKeys,
@@ -609,6 +610,14 @@ function ChannelEditorNav(props: {
       </div>
     </aside>
   )
+}
+
+// 「Fetch from Upstream」被拦下时的提示文案，与 resolveModelFetchBlock 的
+// 拒绝原因一一对应。
+const MODEL_FETCH_BLOCK_MESSAGES: Record<ModelFetchBlockReason, string> = {
+  unsupported_type: 'This channel type does not support fetching models',
+  missing_permission: "You don't have necessary permission",
+  missing_key: 'Please enter API key first',
 }
 
 export function ChannelMutateDrawer({
@@ -1450,30 +1459,15 @@ export function ChannelMutateDrawer({
 
   // Handle fetching models from upstream
   const handleFetchModels = useCallback(async () => {
-    const type = form.getValues('type')
-
-    if (!MODEL_FETCHABLE_TYPES.has(type)) {
-      toast.error(t('This channel type does not support fetching models'))
+    const blockReason = resolveModelFetchBlock({
+      type: form.getValues('type'),
+      isEditing,
+      canEditSensitive,
+      apiKey: form.getValues('key'),
+    })
+    if (blockReason) {
+      toast.error(t(MODEL_FETCH_BLOCK_MESSAGES[blockReason]))
       return
-    }
-
-    if (!isEditing && !canEditSensitive) {
-      toast.error(t("You don't have necessary permission"))
-      return
-    }
-
-    // Advanced Custom may use a model discovery route with no authentication;
-    // CubeStack (SGLang) local deployments commonly run without auth too.
-    if (
-      !isEditing &&
-      type !== CHANNEL_TYPE_ADVANCED_CUSTOM &&
-      type !== CHANNEL_TYPE_CUBE_STACK
-    ) {
-      const key = form.getValues('key')
-      if (!key?.trim()) {
-        toast.error(t('Please enter API key first'))
-        return
-      }
     }
 
     setFetchModelsDialogOpen(true)
