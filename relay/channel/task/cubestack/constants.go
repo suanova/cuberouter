@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,15 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Re-export all library functions
-export * from './channel-actions'
-export * from './channel-field-update'
-export * from './channel-model-fetch'
-export * from './advanced-custom'
-export * from './channel-form-errors'
-export * from './channel-form'
-export * from './channel-type-config'
-export * from './channel-utils'
-export * from './multi-key-utils'
-export * from './model-mapping-validation'
-export * from './model-categories'
+package cubestack
+
+// ChannelName 与 Web 端渠道类型名称保持一致。
+const ChannelName = "CubeStack"
+
+// ModelList 是渠道测试等流程使用的参考模型列表；实际可用模型由渠道
+// 模型列表决定（SGLang 服务以 --served-model-name 暴露的任意模型名）。
+var ModelList = []string{
+	"MiniMax-H3",
+}

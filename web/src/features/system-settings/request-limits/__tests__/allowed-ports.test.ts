@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,15 +17,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Re-export all library functions
-export * from './channel-actions'
-export * from './channel-field-update'
-export * from './channel-model-fetch'
-export * from './advanced-custom'
-export * from './channel-form-errors'
-export * from './channel-form'
-export * from './channel-type-config'
-export * from './channel-utils'
-export * from './multi-key-utils'
-export * from './model-mapping-validation'
-export * from './model-categories'
+import assert from 'node:assert/strict'
+import { describe, test } from 'vitest'
+
+import { splitAllowedPorts } from '../allowed-ports'
+
+describe('SSRF allowed ports', () => {
+  test('serializes as a JSON string array so the backend []string field can decode it', () => {
+    assert.equal(
+      JSON.stringify(splitAllowedPorts('80,443,30000')),
+      '["80","443","30000"]'
+    )
+  })
+
+  test('keeps port range tokens that the backend expands into a span', () => {
+    assert.deepEqual(splitAllowedPorts('80, 8000-9000'), ['80', '8000-9000'])
+  })
+
+  test('drops the blank entries a trailing or doubled comma produces', () => {
+    assert.deepEqual(splitAllowedPorts('80, ,443,'), ['80', '443'])
+  })
+})

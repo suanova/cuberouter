@@ -393,7 +393,7 @@ func updateOptionMap(key string, value string) (err error) {
 				newVal = "TOKENS"
 			}
 			if cfg := config.GlobalConfig.Get("general_setting"); cfg != nil {
-				_ = config.UpdateConfigFromMap(cfg, map[string]string{"quota_display_type": newVal})
+				_ = config.UpdateConfigFromMap("general_setting", cfg, map[string]string{"quota_display_type": newVal})
 			}
 		case "DisplayTokenStatEnabled":
 			common.DisplayTokenStatEnabled = boolValue
@@ -743,7 +743,7 @@ func handleConfigUpdate(key, value string) bool {
 	configMap := map[string]string{
 		configKey: value,
 	}
-	config.UpdateConfigFromMap(cfg, configMap)
+	config.UpdateConfigFromMap(configName, cfg, configMap)
 
 	// 特定配置的后处理
 	if configName == "performance_setting" {

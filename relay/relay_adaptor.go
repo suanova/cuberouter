@@ -39,6 +39,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/sub2api"
 	"github.com/QuantumNous/new-api/relay/channel/submodel"
 	taskastraflow "github.com/QuantumNous/new-api/relay/channel/task/astraflow"
+	taskcubestack "github.com/QuantumNous/new-api/relay/channel/task/cubestack"
 	taskdoubao "github.com/QuantumNous/new-api/relay/channel/task/doubao"
 	jspluginadaptor "github.com/QuantumNous/new-api/relay/channel/task/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
@@ -207,6 +208,8 @@ func forkTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 		return &taskdoubao.TaskAdaptor{}
 	case constant.ChannelTypeAstraFlow:
 		return &taskastraflow.TaskAdaptor{}
+	case constant.ChannelTypeCubeStack:
+		return &taskcubestack.TaskAdaptor{}
 	}
 	return nil
 }

@@ -47,8 +47,10 @@ func taskPluginProtocolHandlers(protocol, operation string) ([]gin.HandlerFunc, 
 	case "openai_video.content":
 		// fork 原 video-router 对 /v1/videos/:task_id/content 使用 TokenOrUserAuth，
 		// 允许 dashboard 会话身份（session / PAT）与 relay API 令牌访问视频内容，
-		// 这里沿用该行为以保留本地功能。
-		return []gin.HandlerFunc{middleware.RouteTag("relay"), middleware.TokenOrUserAuth(), controller.VideoProxy}, nil
+		// 这里沿用该行为并额外接受 ?access= capability 签名：客户端播放器
+		// （dashboard 的 <video> 标签、credentials:'omit' 的 blob 下载）不带任何
+		// 凭证，只有 capability 能覆盖这种取片方式。
+		return []gin.HandlerFunc{middleware.RouteTag("relay"), middleware.TokenOrVideoContentAccessAuth("task_id"), controller.VideoProxy}, nil
 	default:
 		return nil, fmt.Errorf("host protocol registry operation %s.%s has no handler", protocol, operation)
 	}

@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -16,15 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Re-export all library functions
-export * from './channel-actions'
-export * from './channel-field-update'
-export * from './channel-model-fetch'
-export * from './advanced-custom'
-export * from './channel-form-errors'
-export * from './channel-form'
-export * from './channel-type-config'
-export * from './channel-utils'
-export * from './multi-key-utils'
-export * from './model-mapping-validation'
-export * from './model-categories'
+// 端口列表写进 fetch_setting.allowed_ports 时必须保持字符串形态：后端把它解码进
+// Go 的 []string（FetchSetting.AllowedPorts），数字数组会被 json.Unmarshal 拒绝，
+// 而配置加载器会静默保留默认值 —— 界面上显示的允许端口因此从不生效。
+// 同时不能把端口段（"8000-9000"）解析成起始端口，它由 common/ssrf_protection.go
+// 的 parsePortRanges 展开成整个区间。
+export const splitAllowedPorts = (value: string): string[] =>
+  value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)

@@ -39,7 +39,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useStatus } from '@/hooks/use-status'
-import { basePath } from '@/lib/base-path'
+import { resolveServerAddress } from '@/lib/server-address'
 
 import {
   buildRateLimits,
@@ -444,7 +444,7 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `curl ${url} \\`,
       `  -H "Authorization: Bearer $${ctx.apiKeyEnv}" \\`,
       `  -H "Content-Type: application/json" \\`,
-      `  -d '${body.replace(/\n/g, '\n     ')}'`,
+      `  -d '${body.replaceAll('\n', '\n     ')}'`,
       '',
       '# Poll task status (returns the video URL when completed):',
       `# curl ${ctx.baseUrl}/v1/video/generations/<task_id> \\`,
@@ -747,17 +747,11 @@ function CodeSamplesSection(props: {
       (status as Record<string, unknown> | null)?.serverAddress ??
       (status?.data as Record<string, unknown> | undefined)?.server_address ??
       (status?.data as Record<string, unknown> | undefined)?.serverAddress
-    let origin = 'https://api.example.com'
-    if (candidate && typeof candidate === 'string') {
-      origin = candidate.replace(/\/$/, '')
-    } else if (typeof window !== 'undefined') {
-      origin = window.location.origin
-    }
-    // Every sample below appends an app path ('/v1/...') to this base, so the
-    // deployment prefix belongs here. ServerAddress is an origin by contract --
-    // WebAuthn derives its allowed origins from it -- so the prefix comes from
-    // the deployment itself rather than from the configured value.
-    return `${origin}${basePath}`
+    // Every sample below appends an app path ('/v1/...') to this base.
+    // resolveServerAddress owns the rule for getting there: a configured
+    // ServerAddress is already the complete public base, prefix included, while
+    // the fallback origin comes from window.location and needs the prefix added.
+    return resolveServerAddress(candidate, 'https://api.example.com')
   }, [status])
 
   const endpoints = useMemo(() => {

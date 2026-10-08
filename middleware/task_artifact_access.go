@@ -169,51 +169,103 @@ func popTaskArtifactAccessQuery(request *http.Request) (string, bool, bool) {
 	return rawAccess, true, invalid
 }
 
+// taskArtifactAccessOutcome is the result of evaluating a content request's
+// route-bound capability.
+type taskArtifactAccessOutcome int
+
+const (
+	// taskArtifactAccessAbsent means the request carried no access query at
+	// all; the caller picks the fallback identity.
+	taskArtifactAccessAbsent taskArtifactAccessOutcome = iota
+	// taskArtifactAccessGranted means the capability verified and the request
+	// was admitted under the anonymous capability limiter. The caller must
+	// invoke the returned release once the request is done.
+	taskArtifactAccessGranted
+	// taskArtifactAccessDenied means a capability was present but rejected.
+	// The rejection response has already been written.
+	taskArtifactAccessDenied
+)
+
+// evaluateTaskArtifactAccess verifies a route-bound capability before any
+// database read, then applies the anonymous concurrency limiter. It writes the
+// rejection response itself when it returns taskArtifactAccessDenied, and
+// returns a non-nil release for taskArtifactAccessGranted.
+func evaluateTaskArtifactAccess(c *gin.Context, taskID, artifactKey string) (taskArtifactAccessOutcome, func()) {
+	rawAccess := c.GetString(taskArtifactAccessRawContextKey)
+	present := c.GetBool(taskArtifactAccessPresentContextKey)
+	invalid := c.GetBool(taskArtifactAccessInvalidContextKey)
+	if queryAccess, queryPresent, queryInvalid := popTaskArtifactAccessQuery(c.Request); queryPresent {
+		present = true
+		if rawAccess == "" {
+			rawAccess = queryAccess
+		}
+		invalid = invalid || queryInvalid
+	}
+	if !present {
+		return taskArtifactAccessAbsent, nil
+	}
+
+	c.Header("Cache-Control", "private, no-store")
+
+	ip := c.ClientIP()
+	if ip == "" {
+		ip = "unknown"
+	}
+	if invalid || !service.VerifyTaskArtifactAccess(rawAccess, taskID, artifactKey) {
+		if !taskArtifactAnonymousLimiter.invalidAttempt(time.Now(), ip) {
+			writeTaskArtifactAccessLimited(c)
+			return taskArtifactAccessDenied, nil
+		}
+		WriteTaskArtifactAccessNotFound(c)
+		return taskArtifactAccessDenied, nil
+	}
+
+	release, ok := taskArtifactAnonymousLimiter.acquire(ip, taskID, artifactKey)
+	if !ok {
+		writeTaskArtifactAccessLimited(c)
+		return taskArtifactAccessDenied, nil
+	}
+
+	c.Set(TaskArtifactAccessContextKey, true)
+	return taskArtifactAccessGranted, release
+}
+
 // TokenOrTaskArtifactAccessAuth accepts the normal relay API Bearer token or a
 // route-bound capability. Capabilities are verified before any database read.
 func TokenOrTaskArtifactAccessAuth(taskParam, artifactParam string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Cache-Control", "private, no-store")
 
-		rawAccess := c.GetString(taskArtifactAccessRawContextKey)
-		present := c.GetBool(taskArtifactAccessPresentContextKey)
-		invalid := c.GetBool(taskArtifactAccessInvalidContextKey)
-		if queryAccess, queryPresent, queryInvalid := popTaskArtifactAccessQuery(c.Request); queryPresent {
-			present = true
-			if rawAccess == "" {
-				rawAccess = queryAccess
-			}
-			invalid = invalid || queryInvalid
-		}
-		if !present {
+		outcome, release := evaluateTaskArtifactAccess(c, c.Param(taskParam), c.Param(artifactParam))
+		switch outcome {
+		case taskArtifactAccessAbsent:
 			TokenAuth()(c)
-			return
+		case taskArtifactAccessGranted:
+			defer release()
+			c.Next()
 		}
+	}
+}
 
-		taskID := c.Param(taskParam)
-		artifactKey := c.Param(artifactParam)
-		ip := c.ClientIP()
-		if ip == "" {
-			ip = "unknown"
+// TokenOrVideoContentAccessAuth accepts a route-bound video capability, a
+// dashboard session, or a relay API token. /v1/videos/{task_id}/content has no
+// artifact path segment, so the capability is bound to the fixed
+// service.TaskVideoArtifactKey.
+//
+// A valid capability is verified before any database read, which is what lets
+// credential-less players (the dashboard's <video> tag and its blob download)
+// fetch content without a session. Requests without an access query keep the
+// pre-existing dashboard/token behaviour.
+func TokenOrVideoContentAccessAuth(taskParam string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		outcome, release := evaluateTaskArtifactAccess(c, c.Param(taskParam), service.TaskVideoArtifactKey)
+		switch outcome {
+		case taskArtifactAccessAbsent:
+			TokenOrUserAuth()(c)
+		case taskArtifactAccessGranted:
+			defer release()
+			c.Next()
 		}
-		if invalid || !service.VerifyTaskArtifactAccess(rawAccess, taskID, artifactKey) {
-			if !taskArtifactAnonymousLimiter.invalidAttempt(time.Now(), ip) {
-				writeTaskArtifactAccessLimited(c)
-				return
-			}
-			writeTaskArtifactAccessNotFound(c)
-			return
-		}
-
-		release, ok := taskArtifactAnonymousLimiter.acquire(ip, taskID, artifactKey)
-		if !ok {
-			writeTaskArtifactAccessLimited(c)
-			return
-		}
-		defer release()
-
-		c.Set(TaskArtifactAccessContextKey, true)
-		c.Next()
 	}
 }
 
@@ -221,7 +273,11 @@ func IsTaskArtifactAccess(c *gin.Context) bool {
 	return c != nil && c.GetBool(TaskArtifactAccessContextKey)
 }
 
-func writeTaskArtifactAccessNotFound(c *gin.Context) {
+// WriteTaskArtifactAccessNotFound writes the neutral not-found response shared
+// by every rejected or unresolved capability request. Controllers that serve a
+// capability-authenticated lookup must reuse it so that a malformed task id and
+// a genuinely missing task stay indistinguishable.
+func WriteTaskArtifactAccessNotFound(c *gin.Context) {
 	c.Header("Cache-Control", "private, no-store")
 	c.AbortWithStatusJSON(http.StatusNotFound, gin.H{
 		"error": gin.H{

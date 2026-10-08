@@ -28,16 +28,18 @@ export function resolveOAuthSiteUrl(
 
 /**
  * Callback URL an administrator registers with the identity provider, so it has
- * to be the URL the provider will actually reach. ServerAddress is an origin by
- * contract (WebAuthn builds its allowed origins from it), hence the deployment
- * prefix is applied to the callback path rather than read from the configured
- * value.
+ * to be the URL the provider will actually reach. The server composes that URL
+ * from ServerAddress and nothing else -- oauth/oidc.go has no notion of
+ * BASE_PATH -- so a deployment published under a prefix must carry it in the
+ * configured value; adding it here as well would double it. The prefix still
+ * applies to the fallback, which is this site's own address.
  */
 export function buildOAuthCallbackUrl(
   serverAddress: string,
   callbackPath: string,
   fallback: string
 ): string {
-  const siteUrl = resolveOAuthSiteUrl(serverAddress, fallback)
-  return `${siteUrl}${basePath}/oauth/${callbackPath.replace(/^\/+/, '')}`
+  const configured = serverAddress.trim().replace(/\/+$/, '')
+  const siteUrl = configured || `${fallback}${basePath}`
+  return `${siteUrl}/oauth/${callbackPath.replace(/^\/+/, '')}`
 }

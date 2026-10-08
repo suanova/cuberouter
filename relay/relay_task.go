@@ -663,6 +663,33 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 	}
 }
 
+// clientFacingResultURL 返回下发给客户端的结果地址。实现
+// channel.TaskGatewayContentProvider 的渠道（结果地址客户端不可达）下发带
+// capability 签名的网关地址；其余渠道沿用 ResultURL——按约定那里存的就是客户端
+// 可直接抓取的地址。
+//
+// 只用于构造客户端响应（任务列表与视频查询）；服务端回源仍读
+// task.GetResultURL()，两者语义不同，不要混用。
+func clientFacingResultURL(task *model.Task) string {
+	if task == nil {
+		return ""
+	}
+	stored := task.GetResultURL()
+	adaptor := GetTaskAdaptor(task.Platform)
+	if adaptor == nil {
+		return stored
+	}
+	provider, ok := adaptor.(channel.TaskGatewayContentProvider)
+	if !ok {
+		return stored
+	}
+	gatewayURL, err := provider.GatewayContentURL(task)
+	if err != nil || gatewayURL == "" {
+		return stored
+	}
+	return gatewayURL
+}
+
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 	return &dto.TaskDto{
 		ID:         task.ID,
@@ -677,7 +704,7 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Action:     constant.NormalizeTaskAction(task.Action),
 		Status:     string(task.Status),
 		FailReason: task.FailReason,
-		ResultURL:  task.GetResultURL(),
+		ResultURL:  clientFacingResultURL(task),
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -57,7 +58,7 @@ func (cm *ConfigManager) LoadFromDB(options map[string]string) error {
 
 		// 如果找到配置项，则更新配置
 		if len(configMap) > 0 {
-			if err := updateConfigFromMap(config, configMap); err != nil {
+			if err := updateConfigFromMap(name, config, configMap); err != nil {
 				common.SysError("failed to update config " + name + ": " + err.Error())
 				continue
 			}
@@ -161,8 +162,18 @@ func configToMap(config interface{}) (map[string]string, error) {
 	return result, nil
 }
 
-// 辅助函数：从map更新配置对象
-func updateConfigFromMap(config interface{}, configMap map[string]string) error {
+// reportConfigOptionError 记录单个配置项解析失败。一个解析失败的值会被静默丢弃
+// （字段保留原值），调用方无从察觉，所以这里必须留下痕迹。
+// 只写模块名、键名与原始错误，不写值本身：这些配置里含 client secret / token
+// 一类的敏感字段（见 controller.GetOptions 对敏感键的过滤），而 json / strconv
+// 的报错本身已经说明了值的形状问题。
+func reportConfigOptionError(configName, key string, err error) {
+	common.SysError(fmt.Sprintf("failed to parse config %s.%s: %v", configName, key, err))
+}
+
+// 辅助函数：从map更新配置对象。
+// configName 是配置模块名（如 "fetch_setting"），仅用于解析失败时定位到具体配置项。
+func updateConfigFromMap(configName string, config interface{}, configMap map[string]string) error {
 	val := reflect.ValueOf(config)
 	if val.Kind() != reflect.Ptr {
 		return nil
@@ -206,6 +217,7 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 		case reflect.Bool:
 			boolValue, err := strconv.ParseBool(strValue)
 			if err != nil {
+				reportConfigOptionError(configName, key, err)
 				continue
 			}
 			field.SetBool(boolValue)
@@ -215,6 +227,7 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 				// 兼容 float 格式的字符串（如 "2.000000"）
 				floatValue, fErr := strconv.ParseFloat(strValue, 64)
 				if fErr != nil {
+					reportConfigOptionError(configName, key, err)
 					continue
 				}
 				intValue = int64(floatValue)
@@ -226,6 +239,7 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 				// 兼容 float 格式的字符串
 				floatValue, fErr := strconv.ParseFloat(strValue, 64)
 				if fErr != nil || floatValue < 0 {
+					reportConfigOptionError(configName, key, err)
 					continue
 				}
 				uintValue = uint64(floatValue)
@@ -234,6 +248,7 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 		case reflect.Float32, reflect.Float64:
 			floatValue, err := strconv.ParseFloat(strValue, 64)
 			if err != nil {
+				reportConfigOptionError(configName, key, err)
 				continue
 			}
 			field.SetFloat(floatValue)
@@ -247,8 +262,9 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 					field.Set(reflect.New(field.Type().Elem()))
 				}
 				// 反序列化到指针指向的值
-				err := json.Unmarshal([]byte(strValue), field.Interface())
+				err := common.UnmarshalJsonStr(strValue, field.Interface())
 				if err != nil {
+					reportConfigOptionError(configName, key, err)
 					continue
 				}
 			}
@@ -257,13 +273,26 @@ func updateConfigFromMap(config interface{}, configMap map[string]string) error 
 			// absent from the new JSON). Allocate a fresh map so removed keys
 			// are properly cleared.
 			fresh := reflect.New(field.Type())
-			if err := json.Unmarshal([]byte(strValue), fresh.Interface()); err != nil {
+			if err := common.UnmarshalJsonStr(strValue, fresh.Interface()); err != nil {
+				reportConfigOptionError(configName, key, err)
 				continue
 			}
 			field.Set(fresh.Elem())
-		case reflect.Slice, reflect.Struct:
-			err := json.Unmarshal([]byte(strValue), field.Addr().Interface())
+		case reflect.Slice:
+			// 与 Map 同理，但要防止的是失败时的部分写入：encoding/json 在解码
+			// 元素前就先把目标切片加长，某一元素解码失败时原切片已经被改坏
+			// （[80,443] 解进 []string{"80"} 会得到 []string{"80",""}）。
+			// 所以先解进新值，成功才替换；成功路径的语义与原先一致（整体替换）。
+			fresh := reflect.New(field.Type())
+			if err := common.UnmarshalJsonStr(strValue, fresh.Interface()); err != nil {
+				reportConfigOptionError(configName, key, err)
+				continue
+			}
+			field.Set(fresh.Elem())
+		case reflect.Struct:
+			err := common.UnmarshalJsonStr(strValue, field.Addr().Interface())
 			if err != nil {
+				reportConfigOptionError(configName, key, err)
 				continue
 			}
 		}
@@ -277,9 +306,10 @@ func ConfigToMap(config interface{}) (map[string]string, error) {
 	return configToMap(config)
 }
 
-// UpdateConfigFromMap 从map更新配置对象（导出函数）
-func UpdateConfigFromMap(config interface{}, configMap map[string]string) error {
-	return updateConfigFromMap(config, configMap)
+// UpdateConfigFromMap 从map更新配置对象（导出函数）。
+// configName 是配置模块名，仅用于解析失败时把日志定位到具体配置项。
+func UpdateConfigFromMap(configName string, config interface{}, configMap map[string]string) error {
+	return updateConfigFromMap(configName, config, configMap)
 }
 
 // ExportAllConfigs 导出所有已注册的配置为扁平结构
