@@ -222,7 +222,10 @@ func TestModelPriceHelperRequestBillingRatiosOnlyApplyToFixedPrice(t *testing.T)
 		{
 			name:         "ratio price ignores request billing ratios",
 			model:        "ratio-image-price",
-			wantQuota:    15000,
+			// ratio 15、prompt 1000；客户端未带 max_tokens → 补全份额按 8192 兜底
+			// 且乘 completionRatio(1)：(1000 + 8192) × 15 = 137880。
+			// 请求侧 BillingRatios(n=3) 依旧不参与倍率（只有按次定价才叠加）。
+			wantQuota:    137880,
 			wantUsePrice: false,
 		},
 	}
@@ -396,4 +399,89 @@ func TestModelPriceHelperNativeGeminiNoThinkingDoesNotAliasBillingModel(t *testi
 	assert.Equal(t, "gemini-3-pro", info.GetBillingModelName())
 	assert.Equal(t, 1.25, priceData.ModelRatio)
 	assert.NotEqual(t, 37.5, priceData.ModelRatio)
+}
+
+// 估价下限完整性（preconsume-risk-analysis.md §10）：缺省 max_tokens 时补全份额按
+// 8192 兜底，且补全份额必须乘 completionRatio——否则高 CR 模型的单笔估价可远低于
+// 实际成本，"Σ估价 ≤ 余额"的准门封不住"Σ实际"。
+func TestModelPriceHelperRatioPreConsumeCompletionFloor(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedModelRatios := ratio_setting.ModelRatio2JSONString()
+	savedCompletionRatios := ratio_setting.CompletionRatio2JSONString()
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
+		require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(savedCompletionRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"est-floor-model":2}`))
+	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{"est-floor-model":4}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"free":0}`))
+
+	const promptTokens = 1000
+	cases := []struct {
+		name      string
+		group     string
+		maxTokens int
+		expected  int
+	}{
+		// 缺省 max_tokens：(1000 + 8192×4) × 2 = 67536。
+		{"omitted max_tokens falls back to 8192 completion tokens", "default", 0, 67536},
+		// 显式 max_tokens：(1000 + 100×4) × 2 = 2800。
+		{"explicit max_tokens is scaled by completion ratio", "default", 100, 2800},
+		{"free group stays zero", "free", 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			ctx.Set("group", tc.group)
+
+			info := &relaycommon.RelayInfo{
+				OriginModelName: "est-floor-model",
+				UserGroup:       tc.group,
+				UsingGroup:      tc.group,
+				RequestHeaders:  map[string]string{"Content-Type": "application/json"},
+			}
+
+			priceData, err := ModelPriceHelper(ctx, info, promptTokens, &types.TokenCountMeta{MaxTokens: tc.maxTokens})
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, priceData.QuotaToPreConsume)
+		})
+	}
+}
+
+// 补全份额进估价后仍走饱和转换：超上界的估价必须以 QuotaClamp 拒绝，不得静默回绕。
+func TestModelPriceHelperRatioPreConsumeOverflowIsRejected(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	savedModelRatios := ratio_setting.ModelRatio2JSONString()
+	savedGroupRatios := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatios))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatios))
+	})
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"est-overflow-model":1000000000}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Set("group", "default")
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "est-overflow-model",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	_, err := ModelPriceHelper(ctx, info, 1000, &types.TokenCountMeta{MaxTokens: 8192})
+
+	var clamp *common.QuotaClamp
+	require.ErrorAs(t, err, &clamp)
+	require.Equal(t, common.QuotaClampOverflow, clamp.Kind)
 }
