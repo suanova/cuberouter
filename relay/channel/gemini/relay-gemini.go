@@ -217,9 +217,15 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		}
 	})
 
+	abnormalEnd := info.StreamStatus != nil && !info.StreamStatus.IsNormalEnd()
 	if !hasBillableUsageMetadata {
 		if info.ReceivedResponseCount > 0 {
 			usage = service.ResponseText2Usage(c, responseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
+		} else if abnormalEnd {
+			// 零分片但流异常结束（客户端断开 / 空闲超时 / 扫描器错误）：上游通常
+			// 已收到请求并计费，至少按 prompt 估算收取（宁多收不漏收）。
+			// 正常结束的空响应（合法空候选）不在此列。
+			usage = service.ResponseText2Usage(c, "", info.UpstreamModelName, info.GetEstimatePromptTokens())
 		} else {
 			usage = &dto.Usage{}
 		}
@@ -236,7 +242,9 @@ func geminiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if streamErr != nil {
 		return usage, types.NewOpenAIError(streamErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if info.StreamStatus != nil && !info.StreamStatus.IsNormalEnd() {
+	if abnormalEnd {
+		// 异常结束但仍会结算（上游元数据或本地估算）：标记消费日志供对账区分。
+		info.AbnormalStreamSettled = true
 		logger.LogWarn(c, fmt.Sprintf("Gemini stream ended unexpectedly: %s", info.StreamStatus.Summary()))
 	}
 
