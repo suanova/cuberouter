@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -143,6 +144,7 @@ import {
   CHANNEL_STATUS_LABELS,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_TASK_PLUGIN,
+  CHANNEL_TYPE_CUBE_STACK,
   channelTypeOptionsForTaskPluginBind,
   CHANNEL_TYPE_WARNINGS,
   ERROR_MESSAGES,
@@ -1460,8 +1462,13 @@ export function ChannelMutateDrawer({
       return
     }
 
-    // Advanced Custom may use a model discovery route with no authentication.
-    if (!isEditing && type !== CHANNEL_TYPE_ADVANCED_CUSTOM) {
+    // Advanced Custom may use a model discovery route with no authentication;
+    // CubeStack (SGLang) local deployments commonly run without auth too.
+    if (
+      !isEditing &&
+      type !== CHANNEL_TYPE_ADVANCED_CUSTOM &&
+      type !== CHANNEL_TYPE_CUBE_STACK
+    ) {
       const key = form.getValues('key')
       if (!key?.trim()) {
         toast.error(t('Please enter API key first'))

@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -30,6 +31,10 @@ export const CHANNEL_TYPE_TASK_PLUGIN = 62
 // Fork-local type with no upstream equivalent: image editing channels that only accept the
 // reference image inline as base64 (must match backend constant.ChannelTypeImageEdit).
 export const CHANNEL_TYPE_IMAGE_EDIT = 63
+
+// Fork-local type with no upstream equivalent: CubeStack (SGLang Diffusion) video channels
+// (must match backend constant.ChannelTypeCubeStack).
+export const CHANNEL_TYPE_CUBE_STACK = 64
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -415,7 +420,7 @@ export const FIELD_DESCRIPTIONS = {
 
 export const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 17, 20, 23, 24, 25, 26, 27, 31, 34, 35, 40, 42, 43, 47, 48, 57, 58,
-  59, 60, 61,
+  59, 60, 61, CHANNEL_TYPE_CUBE_STACK,
 ])
 
 // Upstream's 59 (Sub2API) is remapped to 60 in this fork; CHANNEL_TYPE_NEW_API is 61.
