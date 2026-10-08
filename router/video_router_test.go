@@ -130,7 +130,10 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 		wantStatus    int
 	}{
 		{name: "missing credential rejected", wantStatus: http.StatusUnauthorized},
-		{name: "access rejected", query: "?access=not-a-video-credential", wantStatus: http.StatusUnauthorized},
+		// 无效 capability 走掩码 404，而不是 401：该路由同时接受能力签名，
+		// 若非法签名与「任务/产物不存在」可区分，就成了探测任务是否存在的接口。
+		// 这里任务其实存在，响应仍必须与不存在时一致。
+		{name: "invalid access masked as not found", query: "?access=not-a-video-credential", wantStatus: http.StatusNotFound},
 		{name: "bearer accepted", authorization: "Bearer sk-jimengfetch", wantStatus: http.StatusOK},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -145,8 +148,13 @@ func TestGetOpenAIVideoRouteRendersJimengTask(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			engine.ServeHTTP(recorder, request)
 			assert.Equal(t, testCase.wantStatus, recorder.Code, recorder.Body.String())
-			if testCase.wantStatus == http.StatusOK {
+			switch testCase.wantStatus {
+			case http.StatusOK:
 				assert.Equal(t, "data", recorder.Body.String())
+			case http.StatusNotFound:
+				// 不得回显任务身份或上游地址。
+				assert.Contains(t, recorder.Body.String(), "artifact_not_found")
+				assert.NotContains(t, recorder.Body.String(), "jimeng")
 			}
 		})
 	}
