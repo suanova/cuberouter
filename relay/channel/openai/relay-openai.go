@@ -217,20 +217,7 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 	})
 
-	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
-	// 不产出合成 usage 计费，返回对应错误并跳过计费与消费日志。
-	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
-		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
-			st.EndReason == relaycommon.StreamEndReasonPingFail
-		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
-	}
-	// 干净 EOF 但未收到完整结束响应（无 [DONE] / finish_reason）：视为不完整流。
-	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF &&
-		!lastOpenAIStreamResponseFinished(lastStreamData) {
-		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
-	}
-
-	// 处理最后的响应
+	// 处理最后的响应；异常结束时错误只记日志，usage 仍要取到最后一份证据
 	shouldSendLastResp := true
 	if err := handleLastResponse(lastStreamData, &responseId, &createAt, &systemFingerprint, &model, &usage,
 		&containStreamUsage, info, &shouldSendLastResp); err != nil {
@@ -260,18 +247,34 @@ func OaiStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Re
 		}
 	}
 
-	if info.RelayFormat == types.RelayFormatOpenAI {
-		if shouldSendLastResp {
-			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
-		}
-	}
-
 	if !containStreamUsage {
 		usage = service.ResponseText2Usage(c, responseTextBuilder.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		usage.CompletionTokens += toolCount * 7
 	}
 
 	applyUsagePostProcessing(info, usage, common.StringToByteSlice(usageFrame))
+
+	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
+	// 上游通常已开工并按上游口径计费，这里按已掌握用量部分结算（宁多收不漏收），
+	// 再返回错误；结算后 controller 的退款 defer 不再退款。
+	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
+		service.SettleAbnormalStreamEnd(c, info, usage)
+		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
+			st.EndReason == relaycommon.StreamEndReasonPingFail
+		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
+	}
+	// 干净 EOF 但未收到完整结束响应（无 [DONE] / finish_reason）：视为不完整流。
+	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF &&
+		!lastOpenAIStreamResponseFinished(lastStreamData) {
+		service.SettleAbnormalStreamEnd(c, info, usage)
+		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
+	}
+
+	if info.RelayFormat == types.RelayFormatOpenAI {
+		if shouldSendLastResp {
+			_ = sendStreamData(c, info, lastStreamData, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent)
+		}
+	}
 
 	for _, name := range streamFunctionCallNames {
 		info.CountBillableToolCall(dto.BuildInCallFunctionCall, name)
