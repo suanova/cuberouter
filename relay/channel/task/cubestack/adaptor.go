@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-// Package sglang 为 SGLang Diffusion（sglang serve）的 OpenAI 兼容视频
+// Package cubestack 为 SGLang Diffusion（sglang serve）的 OpenAI 兼容视频
 // API 提供任务适配器：POST /v1/videos 提交，GET /v1/videos/{id} 轮询，
 // GET /v1/videos/{id}/content 取片。
 //
@@ -31,7 +31,7 @@ For commercial licensing, please contact support@quantumnous.com
 // H3 的时长上限是 15 秒，远小于网关通用的 MaxTaskDurationSeconds；
 // 预扣费按请求时长计费，因此 4..15 的边界在请求校验阶段直接拒绝
 // （400），而不是提交后被上游拒绝再退款。
-package sglang
+package cubestack
 
 import (
 	"fmt"

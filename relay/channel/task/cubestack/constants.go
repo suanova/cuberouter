@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-package sglang
+package cubestack
 
 // ChannelName 与 Web 端渠道类型名称保持一致。
 const ChannelName = "CubeStack"
