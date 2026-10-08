@@ -39,13 +39,30 @@ function normalizeBasePath(raw: string | undefined): string {
 }
 
 /**
- * Deployment prefix, resolved once at startup from the value the server
- * injected into the entry HTML. Empty string means the app is served from the
- * site root, which is the default for local development and every existing
- * deployment.
+ * Prefix compiled into this bundle by the build, from the BASE_PATH it was run
+ * with (rsbuild's server.base, surfaced as import.meta.env.BASE_URL). Empty for
+ * a prefix-agnostic build, which is what an unprefixed `bun run build` produces.
+ * It is the fallback for a page that no server rewrites -- dist served by a
+ * static host, or by a server build that predates the injection.
+ */
+const compiledBasePath =
+  typeof import.meta.env.BASE_URL === 'string'
+    ? import.meta.env.BASE_URL
+    : undefined
+
+/**
+ * Deployment prefix: the injected value when a server provided one, otherwise
+ * the one compiled into the build. Empty means the app is served from the site
+ * root, the default for local development and every existing deployment.
+ *
+ * The server's value wins even when it is empty, because the server is what
+ * decides which paths will reach the API: a build pinned to /cuberouter and
+ * deployed against a server that reports the site root has to follow the server,
+ * or its requests would land under a prefix nothing is listening on.
  */
 export const basePath: string = normalizeBasePath(
-  typeof window === 'undefined' ? undefined : window.__BASE_PATH__
+  (typeof window === 'undefined' ? undefined : window.__BASE_PATH__) ??
+    compiledBasePath
 )
 
 // A URL that carries its own origin: scheme-qualified (https:, data:, blob:) or

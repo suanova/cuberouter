@@ -251,3 +251,138 @@ func TestStripBasePath(t *testing.T) {
 		})
 	}
 }
+
+func TestStripBasePathKeepsThePrefixOnRedirects(t *testing.T) {
+	t.Cleanup(func() { basePath = "" })
+
+	tests := []struct {
+		name     string
+		prefix   string
+		target   string
+		location string
+		want     string
+	}{
+		{
+			// The regression this guards: gin's trailing-slash redirect is built
+			// from the stripped path, so the browser used to be sent to
+			// /api/channel/ and out of the prefix.
+			name:     "a trailing-slash redirect keeps the prefix",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/api/channel?p=1",
+			location: "/api/channel/?p=1",
+			want:     "/cuberouter/api/channel/?p=1",
+		},
+		{
+			name:     "a nested prefix is re-applied whole",
+			prefix:   "/g/w1",
+			target:   "/g/w1/api/channel",
+			location: "/api/channel/",
+			want:     "/g/w1/api/channel/",
+		},
+		{
+			name:     "the root is rewritten to the prefixed root",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/api/channel",
+			location: "/",
+			want:     "/cuberouter/",
+		},
+		{
+			// The docs router calls WithBasePath itself; doubling it would 404.
+			name:     "an already prefixed location is left alone",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/docs/user",
+			location: "/cuberouter/docs/user/",
+			want:     "/cuberouter/docs/user/",
+		},
+		{
+			name:     "another origin is not ours to rewrite",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/api/oauth/state",
+			location: "https://auth.example.com/callback",
+			want:     "https://auth.example.com/callback",
+		},
+		{
+			// Protocol-relative URLs carry a host, so prefixing would corrupt them.
+			name:     "a protocol-relative location is left alone",
+			prefix:   "/cuberouter",
+			target:   "/cuberouter/api/oauth/state",
+			location: "//cdn.example.com/logo.png",
+			want:     "//cdn.example.com/logo.png",
+		},
+		{
+			// The browser asked at the root, so a root-relative location is right.
+			name:     "a request that arrived without the prefix is untouched",
+			prefix:   "/cuberouter",
+			target:   "/api/channel",
+			location: "/api/channel/",
+			want:     "/api/channel/",
+		},
+		{
+			name:     "with no prefix configured nothing is rewritten",
+			prefix:   "",
+			target:   "/api/channel",
+			location: "/api/channel/",
+			want:     "/api/channel/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			basePath = tt.prefix
+
+			handler := StripBasePath(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Redirect(w, r, tt.location, http.StatusMovedPermanently)
+			}))
+
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, tt.target, nil))
+
+			require.Equal(t, http.StatusMovedPermanently, recorder.Code)
+			assert.Equal(t, tt.want, recorder.Header().Get("Location"))
+		})
+	}
+}
+
+// gin type-asserts Flush, Hijack and CloseNotify on the writer it is handed, and
+// a missing one panics -- which would take SSE streaming down with it. The
+// redirect rewriting must not cost those interfaces.
+func TestStripBasePathWriterKeepsOptionalInterfaces(t *testing.T) {
+	t.Cleanup(func() { basePath = "" })
+	basePath = "/cuberouter"
+
+	var flusher http.Flusher
+	var hijacker http.Hijacker
+	var closeNotifier http.CloseNotifier
+
+	handler := StripBasePath(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		flusher, _ = w.(http.Flusher)
+		hijacker, _ = w.(http.Hijacker)
+		closeNotifier, _ = w.(http.CloseNotifier)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/cuberouter/api/status", nil))
+
+	assert.NotNil(t, flusher, "gin flushes SSE streams through http.Flusher")
+	assert.NotNil(t, hijacker, "websockets and upgrades go through http.Hijacker")
+	assert.NotNil(t, closeNotifier, "gin polls request cancellation through http.CloseNotifier")
+}
+
+// A flushed stream writes its status before the body, so the wrapper must pass
+// the flush through instead of swallowing it.
+func TestStripBasePathWriterForwardsFlush(t *testing.T) {
+	t.Cleanup(func() { basePath = "" })
+	basePath = "/cuberouter"
+
+	recorder := httptest.NewRecorder()
+	handler := StripBasePath(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte("data: hello\n\n"))
+		require.NoError(t, err)
+		require.Implements(t, (*http.Flusher)(nil), w)
+		w.(http.Flusher).Flush()
+	}))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/cuberouter/api/status", nil))
+
+	assert.True(t, recorder.Flushed, "the stream must actually reach the client")
+	assert.Equal(t, "data: hello\n\n", recorder.Body.String())
+}

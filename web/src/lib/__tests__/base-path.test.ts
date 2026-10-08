@@ -20,11 +20,14 @@ For commercial licensing, please contact support@quantumnous.com
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 // The prefix is read once at module load, exactly as it is in the browser, so
-// each case has to re-import the module against its own window global.
+// each case has to re-import the module against its own window global and its
+// own compiled-in import.meta.env.BASE_URL.
 async function loadBasePath(
-  injected?: string
+  injected?: string,
+  compiled?: string
 ): Promise<typeof import('../base-path')> {
   vi.resetModules()
+  vi.stubEnv('BASE_URL', compiled ?? '')
   if (injected === undefined) {
     delete window.__BASE_PATH__
   } else {
@@ -35,6 +38,7 @@ async function loadBasePath(
 
 afterEach(() => {
   delete window.__BASE_PATH__
+  vi.unstubAllEnvs()
 })
 
 describe('deployment prefix resolution', () => {
@@ -61,6 +65,46 @@ describe('deployment prefix resolution', () => {
     const { basePath } = await loadBasePath(injected)
 
     expect(basePath).toBe(expected)
+  })
+})
+
+// A build run with BASE_PATH set pins the prefix into the bundle via
+// import.meta.env.BASE_URL, so the page still reaches its own API when no server
+// injected a value -- dist on a static host, or a server without the injection.
+describe('compiled-in prefix', () => {
+  test('falls back to the compiled prefix when the server injects nothing', async () => {
+    const { basePath, withBasePath } = await loadBasePath(
+      undefined,
+      '/cuberouter/'
+    )
+
+    expect(basePath).toBe('/cuberouter')
+    expect(withBasePath('/api/channel')).toBe('/cuberouter/api/channel')
+  })
+
+  test('prefers the server-injected prefix over the compiled one', async () => {
+    const { basePath, withBasePath } = await loadBasePath(
+      '/g/w1',
+      '/cuberouter/'
+    )
+
+    expect(basePath).toBe('/g/w1')
+    expect(withBasePath('/api/channel')).toBe('/g/w1/api/channel')
+  })
+
+  // The server is authoritative about which paths reach the API, so a server
+  // reporting the site root has to win over a prefix pinned at build time.
+  test('follows a server that reports the site root over the compiled prefix', async () => {
+    const { basePath, withBasePath } = await loadBasePath('', '/cuberouter/')
+
+    expect(basePath).toBe('')
+    expect(withBasePath('/api/channel')).toBe('/api/channel')
+  })
+
+  test('serves from the site root when the build ran without a prefix', async () => {
+    const { basePath } = await loadBasePath(undefined, '/')
+
+    expect(basePath).toBe('')
   })
 })
 

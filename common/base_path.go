@@ -20,7 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 package common
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -193,8 +195,87 @@ func StripBasePath(h http.Handler) http.Handler {
 		if stripped.URL.RawQuery != "" {
 			stripped.RequestURI = stripped.RequestURI + "?" + stripped.URL.RawQuery
 		}
-		h.ServeHTTP(w, stripped)
+		// Only a stripped request can produce a Location the browser would
+		// resolve against the wrong root; see locationPrefixWriter.
+		h.ServeHTTP(&locationPrefixWriter{ResponseWriter: w, prefix: prefix}, stripped)
 	})
+}
+
+// locationPrefixWriter re-applies the deployment prefix to the redirect
+// Locations the wrapped handler writes.
+//
+// The handler sees a root-mounted request, so a redirect it builds -- gin's
+// trailing-slash redirect is the one that bites, turning /api/channel into
+// /api/channel/ -- is correct for the router and wrong for the browser, which
+// resolves it against the origin root and leaves the prefix behind. A stripping
+// reverse proxy normally repairs this on the way out; stripping in-process means
+// there is no proxy left to do it, so it happens here instead.
+//
+// It implements the optional interfaces gin asserts on without checking --
+// Flush, Hijack, CloseNotify -- because the assertion panics when they are
+// missing, which would take SSE streaming down with it. Unwrap covers the rest,
+// letting http.ResponseController find anything else the caller asks for.
+type locationPrefixWriter struct {
+	http.ResponseWriter
+	prefix string
+}
+
+func (w *locationPrefixWriter) WriteHeader(status int) {
+	if status >= http.StatusMultipleChoices && status < http.StatusBadRequest {
+		if location := w.Header().Get("Location"); location != "" {
+			w.Header().Set("Location", prefixLocation(w.prefix, location))
+		}
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+// prefixLocation prefixes a Location that points at this deployment, leaving
+// anything the browser must resolve elsewhere exactly as the handler wrote it.
+func prefixLocation(prefix, location string) string {
+	// An absolute or protocol-relative URL belongs to another origin, and a
+	// location outside the prefix is one the handler deliberately aimed at the
+	// site root; neither is ours to rewrite.
+	if !strings.HasPrefix(location, "/") || strings.HasPrefix(location, "//") {
+		return location
+	}
+	// Handlers such as the docs router call WithBasePath themselves, so the
+	// prefix may already be there. This check cannot be exact -- a path that
+	// merely starts with the prefix's characters is indistinguishable from a
+	// prefixed one -- but on the way out it fails closed: the worst case leaves
+	// the value the handler chose rather than doubling the prefix.
+	if location == prefix || strings.HasPrefix(location, prefix+"/") {
+		return location
+	}
+	return prefix + location
+}
+
+func (w *locationPrefixWriter) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
+
+func (w *locationPrefixWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (w *locationPrefixWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := w.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+// CloseNotify satisfies the deprecated interface gin still asserts on.
+//
+//nolint:staticcheck // required by gin's direct type assertion
+func (w *locationPrefixWriter) CloseNotify() <-chan bool {
+	if notifier, ok := w.ResponseWriter.(http.CloseNotifier); ok {
+		return notifier.CloseNotify()
+	}
+	// Nothing can report a closure here, so hand back a channel that never
+	// fires rather than a nil one the caller would block on.
+	return make(chan bool)
 }
 
 // prefixRemainder returns the part of p below prefix, or ok=false when p is not
