@@ -243,6 +243,20 @@ func TestValidateRequestAndSetAction_DurationBounds(t *testing.T) {
 			Duration: 5,
 			Metadata: map[string]interface{}{"duration": 600},
 		}, true},
+		// 非正值同样越界。effectiveDuration 会原样采用 metadata.duration（含 0 与
+		// 负数），区间判断先比 > 0 因而放过它；BuildRequestBody 再把它换成默认 5
+		// 秒，而计费侧把非正值当作"未提供"、改用顶层 duration —— 用户按 15 秒付费
+		// 而上游只出 5 秒。显式给值就必须落在档位内。
+		{"metadata duration zero", relaycommon.TaskSubmitReq{
+			Prompt:   "p",
+			Duration: 15,
+			Metadata: map[string]interface{}{"duration": 0},
+		}, true},
+		{"metadata duration negative", relaycommon.TaskSubmitReq{
+			Prompt:   "p",
+			Duration: 15,
+			Metadata: map[string]interface{}{"duration": -5},
+		}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

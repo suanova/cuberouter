@@ -221,7 +221,13 @@ func (a *TaskAdaptor) validateH3Bounds(c *gin.Context) *taskdto.TaskError {
 		return service.TaskErrorWrapper(err, "invalid_request", http.StatusBadRequest)
 	}
 
-	if seconds := effectiveDuration(meta, req); seconds > 0 && (seconds < minDurationSeconds || seconds > maxDurationSeconds) {
+	// metadata.duration 一旦显式给出，BuildRequestBody 与计费侧都会优先采用它，
+	// 因此它就必须落在档位内。0 与负数尤其要拦：BuildRequestBody 会把非正值换成
+	// 默认时长，而计费侧把它当作"未提供"、改用顶层 duration —— 顶层给 15 秒时
+	// 用户按 15 秒付费、上游只渲染 5 秒。未提供 metadata 时才退回顶层值，顶层值
+	// 仍按 > 0 才算提供（缺省由两侧各自填默认档位）。
+	seconds := effectiveDuration(meta, req)
+	if (meta.Duration != nil || seconds > 0) && (seconds < minDurationSeconds || seconds > maxDurationSeconds) {
 		return service.TaskErrorWrapper(
 			fmt.Errorf("duration must be between %d and %d seconds for MiniMax H3", minDurationSeconds, maxDurationSeconds),
 			"invalid_duration", http.StatusBadRequest)
