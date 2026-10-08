@@ -96,20 +96,24 @@ func batchUpdate() {
 			continue
 		}
 		for key, value := range store {
+			var err error
 			switch i {
 			case BatchUpdateTypeTokenQuota:
-				err := increaseTokenQuota(key, value)
-				if err != nil {
-					common.SysLog("failed to batch update token quota: " + err.Error())
-				}
+				err = increaseTokenQuota(key, value)
 			case BatchUpdateTypeChannelUsedQuota:
-				updateChannelUsedQuota(key, value)
+				err = updateChannelUsedQuota(key, value)
 			case BatchUpdateTypeTotalPromptTokens:
-				updateUserTotalPromptTokens(key, int64(value))
+				err = updateUserTotalPromptTokens(key, int64(value))
 			case BatchUpdateTypeTotalCompletionTokens:
-				updateUserTotalCompletionTokens(key, int64(value))
+				err = updateUserTotalCompletionTokens(key, int64(value))
 			case BatchUpdateTypeTotalCacheTokens:
-				updateUserTotalCacheTokens(key, int64(value))
+				err = updateUserTotalCacheTokens(key, int64(value))
+			}
+			if err != nil {
+				// 落库失败只丢这一条：把增量塞回缓冲、下个周期重试。丢一轮就是永久
+				// 幻影——DB 从此偏高，之后每次水合都把丢掉的扣减复活成可用余额。
+				common.SysError(fmt.Sprintf("failed to batch update (type=%d id=%d delta=%d, will retry): %s", i, key, value, err.Error()))
+				addNewRecord(i, key, value)
 			}
 		}
 	}
@@ -129,7 +133,22 @@ func batchUpdate() {
 		userIDs[key] = struct{}{}
 	}
 	for key := range userIDs {
-		updateUserQuotaUsedQuotaAndRequestCount(key, userQuotaStore[key], usedQuotaStore[key], requestCountStore[key])
+		quota, usedQuota, requestCount := userQuotaStore[key], usedQuotaStore[key], requestCountStore[key]
+		if err := updateUserQuotaUsedQuotaAndRequestCount(key, quota, usedQuota, requestCount); err != nil {
+			// 用户三件套是合并成一条 UPDATE 写的，失败时三个分量一起回填（零增量跳过，
+			// 避免往缓冲里塞无意义的 0 条目）。
+			common.SysError(fmt.Sprintf("failed to batch update user quota (id=%d quota=%d used_quota=%d request_count=%d, will retry): %s",
+				key, quota, usedQuota, requestCount, err.Error()))
+			if quota != 0 {
+				addNewRecord(BatchUpdateTypeUserQuota, key, quota)
+			}
+			if usedQuota != 0 {
+				addNewRecord(BatchUpdateTypeUsedQuota, key, usedQuota)
+			}
+			if requestCount != 0 {
+				addNewRecord(BatchUpdateTypeRequestCount, key, requestCount)
+			}
+		}
 	}
 	common.SysLog("batch update finished")
 }
