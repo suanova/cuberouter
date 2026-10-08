@@ -294,22 +294,24 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, streamErr
 	}
 
-	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
-	// 不产出合成 usage 计费，返回对应错误并跳过计费与消费日志。
-	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
-		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
-			st.EndReason == relaycommon.StreamEndReasonPingFail
-		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
-	}
-	// 未收到 response.completed 就 EOF：上游在完整结束前断开，视为不完整流。
-	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF && !sawCompleted {
-		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
-	}
-
 	usage := state.Usage()
 	if usage == nil || usage.TotalTokens == 0 {
 		usage = service.ResponseText2Usage(c, state.UsageText(), info.UpstreamModelName, info.GetEstimatePromptTokens())
 		state.SetUsage(usage)
+	}
+
+	// 流式扫描异常（空闲超时 / 扫描器错误 / 客户端断开 / panic / ping 失败）：
+	// 上游通常已开工并按上游口径计费，按已掌握用量部分结算（宁多收不漏收）后返回错误。
+	if st := info.StreamStatus; st != nil && !st.IsNormalEnd() {
+		service.SettleAbnormalStreamEnd(c, info, usage)
+		clientDisconnected := st.EndReason == relaycommon.StreamEndReasonClientGone ||
+			st.EndReason == relaycommon.StreamEndReasonPingFail
+		return returnOpenAIStreamError(c, info, openAIStreamResultError(st), clientDisconnected)
+	}
+	// 未收到 response.completed 就 EOF：上游在完整结束前断开，按已掌握用量部分结算。
+	if st := info.StreamStatus; st != nil && st.EndReason == relaycommon.StreamEndReasonEOF && !sawCompleted {
+		service.SettleAbnormalStreamEnd(c, info, usage)
+		return returnOpenAIStreamError(c, info, incompleteOpenAIStreamError(), false)
 	}
 
 	if info.RelayFormat == types.RelayFormatClaude && info.ClaudeConvertInfo != nil {

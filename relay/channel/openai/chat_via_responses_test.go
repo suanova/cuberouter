@@ -6,12 +6,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -269,6 +271,7 @@ func TestOaiChatToResponsesStreamHandlerConvertsSSEOrderAndUsage(t *testing.T) {
 }
 
 func TestOaiResponsesToChatStreamHandler_EOFFromPartialStreamReturnsIncomplete(t *testing.T) {
+	setupOpenAIStreamSettleDB(t)
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
 	t.Cleanup(func() { gin.SetMode(oldMode) })
@@ -291,6 +294,46 @@ func TestOaiResponsesToChatStreamHandler_EOFFromPartialStreamReturnsIncomplete(t
 	require.NotNil(t, err, "EOF 未完成应返回错误")
 	assert.Equal(t, types.ErrorCodeStreamIncomplete, err.GetErrorCode())
 	assert.Nil(t, usage, "EOF 未完成不应返回 usage")
+}
+
+// 响应流在 completed 之前 EOF：按已收文本估算部分结算，日志带 partial_settled。
+func TestOaiResponsesToChatStreamHandler_IncompleteStreamSettlesPartialUsage(t *testing.T) {
+	setupOpenAIStreamSettleDB(t)
+	user := createOpenAIStreamSettleUser(t, 1_000_000)
+
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	body := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_1","model":"gpt-test","created_at":1710000000}}`,
+		`data: {"type":"response.output_text.delta","delta":"partial output"}`,
+		``,
+	}, "\n")
+
+	c, _, resp, info := newResponsesChatTestContext(t, body, true)
+	info.UserId = user.Id
+	info.ChannelId = 1
+	info.StartTime = time.Now()
+	info.FirstResponseTime = info.StartTime
+	info.SetEstimatePromptTokens(100)
+	info.PriceData = hosttypes.PriceData{
+		ModelRatio:      1,
+		CompletionRatio: 1,
+		GroupRatioInfo:  hosttypes.GroupRatioInfo{GroupRatio: 1},
+	}
+
+	usage, err := OaiResponsesToChatStreamHandler(c, info, resp)
+
+	require.NotNil(t, err)
+	assert.Equal(t, types.ErrorCodeStreamIncomplete, err.GetErrorCode())
+	assert.True(t, types.IsSkipRetryError(err))
+	assert.Nil(t, usage)
+
+	entry := latestConsumeLog(t)
+	assert.Equal(t, 100, entry.PromptTokens)
+	assert.Greater(t, entry.Quota, 0)
+	assert.Contains(t, entry.Other, "partial_settled")
 }
 
 func requireOrderedSubstrings(t *testing.T, s string, parts ...string) {
