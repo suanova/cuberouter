@@ -168,3 +168,36 @@ func TestVideoProxyWithoutCapabilityReportsTaskStatus(t *testing.T) {
 	assert.Contains(t, recorder.Body.String(), string(model.TaskStatusQueued))
 	assert.NotContains(t, recorder.Body.String(), "artifact_not_found")
 }
+
+// 查询失败不是"任务不存在"。把两者都写成 404 会让调用方以为是自己传错了 id，
+// 而真正的服务端故障（库不通、SQL 失败）在监控上只表现为一片 404 —— 上游
+// main 分支此处返回 500 server_error，能力鉴权改造把非 capability 身份一并
+// 卷进了 404 掩码，属于回归。掩码只对"只有签名、没有身份"的 capability 请求成立。
+func TestVideoProxyQueryFailureKeepsServerErrorForIdentifiedCallers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupGenericTaskTest(t)
+	// 删表是最直接、跨方言无关的注入方式：任何查询都会带错误返回。
+	require.NoError(t, model.DB.Migrator().DropTable(&model.Task{}))
+
+	relayRecorder := httptest.NewRecorder()
+	relayContext, _ := gin.CreateTestContext(relayRecorder)
+	authenticateControllerTestUser(relayContext, 7)
+	relayContext.Params = gin.Params{{Key: "task_id", Value: "task_generic"}}
+	relayContext.Request = httptest.NewRequest(http.MethodGet, "/v1/videos/task_generic/content", nil)
+
+	VideoProxy(relayContext)
+
+	require.Equal(t, http.StatusInternalServerError, relayRecorder.Code)
+	assert.Contains(t, relayRecorder.Body.String(), "server_error")
+	assert.Contains(t, relayRecorder.Body.String(), "Failed to query task")
+	assert.NotContains(t, relayRecorder.Body.String(), "artifact_not_found")
+	// 数据库错误文本本身不得回显给调用方。
+	assert.NotContains(t, relayRecorder.Body.String(), "no such table")
+
+	// capability 请求保持掩码：与「任务不存在」不可区分，且不暴露服务端故障。
+	capabilityContext, capabilityRecorder := newCapabilityVideoProxyContext("task_generic")
+	VideoProxy(capabilityContext)
+
+	require.Equal(t, http.StatusNotFound, capabilityRecorder.Code)
+	assert.Contains(t, capabilityRecorder.Body.String(), "artifact_not_found")
+}

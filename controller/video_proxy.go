@@ -71,7 +71,15 @@ func VideoProxy(c *gin.Context) {
 	task, exists, err := resolveVideoProxyTask(c, taskID, capabilityAuth)
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to query task %s: %s", taskID, err.Error()))
-		writeVideoProxyTaskNotFound(c, "Failed to query task")
+		if capabilityAuth {
+			// 查询失败也走与「任务不存在」相同的 404：capability 调用方只有签名，
+			// 不该能区分"服务端查库出错"与"任务确实没有"。
+			middleware.WriteTaskArtifactAccessNotFound(c)
+			return
+		}
+		// 有身份的调用方（relay 令牌 / dashboard 会话）必须能看出这是服务端故障，
+		// 而不是自己传错了 task id；错误详情只进日志，不回显给调用方。
+		videoProxyError(c, http.StatusInternalServerError, "server_error", "Failed to query task")
 		return
 	}
 	if !exists || task == nil {
