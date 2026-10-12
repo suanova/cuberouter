@@ -22,6 +22,9 @@
   --><a href="https://goreportcard.com/report/github.com/suanova/cuberouter">
     <img src="https://goreportcard.com/badge/github.com/suanova/cuberouter" alt="GoReportCard">
   </a>
+  <a href="https://deepwiki.com/suanova/cuberouter" target="_blank">
+    <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg"/>
+  </a>
 </p>
 
 <p align="center">

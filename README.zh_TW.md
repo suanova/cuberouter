@@ -23,6 +23,9 @@
   <a href="https://atomgit.com/suanova/cuberouter" target="_blank">
     <img alt="AtomGit G-Star" src="https://atomgit.com/suanova/cuberouter/star/badge.svg"/>
   </a>
+  <a href="https://deepwiki.com/suanova/cuberouter" target="_blank">
+    <img alt="Ask DeepWiki" src="https://deepwiki.com/badge.svg"/>
+  </a>
 </p>
 
 <p align="center">
