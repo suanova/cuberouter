@@ -48,6 +48,9 @@ interface StatusApiResponse {
     usd_exchange_rate?: number
     custom_currency_symbol?: string
     custom_currency_exchange_rate?: number
+    site_counterpart_enabled?: boolean
+    site_counterpart_url?: string
+    site_counterpart_label?: string
   }
 }
 
@@ -102,6 +105,9 @@ export function mapStatusDataToConfig(
     demoSiteEnabled: data.demo_site_enabled,
     displayTokenStatEnabled: data.display_token_stat_enabled,
     currency,
+    siteCounterpartEnabled: data.site_counterpart_enabled,
+    siteCounterpartUrl: data.site_counterpart_url,
+    siteCounterpartLabel: data.site_counterpart_label,
   }
 }
 

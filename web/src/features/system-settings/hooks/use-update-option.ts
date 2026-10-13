@@ -38,6 +38,9 @@ const STATUS_RELATED_KEYS = new Set([
   'general_setting.custom_currency_exchange_rate',
   'general_setting.docs_link',
   'general_setting.admin_docs_link',
+  'site.counterpart_enabled',
+  'site.counterpart_url',
+  'site.counterpart_label',
   'oidc.display_name',
 ])
 

@@ -31,6 +31,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
@@ -39,6 +40,8 @@ import {
   SettingsForm,
   SettingsFormGrid,
   SettingsFormGridItem,
+  SettingsSwitchContent,
+  SettingsSwitchItem,
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
@@ -61,6 +64,11 @@ const _systemInfoSchema = z.object({
   general_setting: z.object({
     docs_link: z.string(),
     admin_docs_link: z.string(),
+  }),
+  site: z.object({
+    counterpart_enabled: z.string(),
+    counterpart_url: z.string(),
+    counterpart_label: z.string(),
   }),
 })
 
@@ -97,6 +105,13 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
         defaultValues.general_setting?.admin_docs_link
       ),
     },
+    site: {
+      counterpart_enabled: normalizeValue(
+        defaultValues.site?.counterpart_enabled
+      ),
+      counterpart_url: normalizeValue(defaultValues.site?.counterpart_url),
+      counterpart_label: normalizeValue(defaultValues.site?.counterpart_label),
+    },
   }
 
   const systemInfoSchemaWithI18n = z.object({
@@ -121,6 +136,11 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     general_setting: z.object({
       docs_link: z.string(),
       admin_docs_link: z.string(),
+    }),
+    site: z.object({
+      counterpart_enabled: z.string(),
+      counterpart_url: z.string(),
+      counterpart_label: z.string(),
     }),
   })
 
@@ -273,6 +293,72 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('Link to the admin documentation site')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='site.counterpart_enabled'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel>{t('Site Switcher')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Show the site switcher entry in the page header so visitors can jump to the counterpart site'
+                        )}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value === 'true'}
+                        onCheckedChange={(checked) =>
+                          field.onChange(checked ? 'true' : 'false')
+                        }
+                      />
+                    </FormControl>
+                  </SettingsSwitchItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='site.counterpart_url'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Counterpart Site URL')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('https://other.example.com')}
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Root URL of the counterpart site, e.g. https://cuberouter.com. The entry appears only when the site switcher is on and this URL is a valid absolute URL.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='site.counterpart_label'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Counterpart Site Label')}</FormLabel>
+                    <FormControl>
+                      <Input placeholder={t('Hong Kong · International')} {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Label shown on the site switcher for the counterpart site'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
