@@ -21,31 +21,29 @@ import { Globe } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { isValidCounterpartUrl } from '@/lib/counterpart-url'
 
 /**
  * 站点区域切换入口：跳转到对端站点（如 cuberouter.cn <-> cuberouter.com）。
  * 开关、对端地址与文案来自后台设置（site.counterpart_enabled / site.counterpart_url /
- * site.counterpart_label），开关关闭、地址留空或地址非法时整块不渲染。
- * 跨域跳转在新标签页打开，并保留当前路径、查询与 hash。
+ * site.counterpart_label），开关关闭、地址留空或不是绝对 HTTP(S) 地址时整块不渲染。
+ * 跨域跳转在新标签页打开，并保留当前路径与 hash。
  */
 export function SiteRegionSwitcher() {
   const { t } = useTranslation()
   const { siteCounterpartEnabled, siteCounterpartUrl, siteCounterpartLabel } =
     useSystemConfig()
 
-  if (!siteCounterpartEnabled || !siteCounterpartUrl) return null
-
-  let href: string
-  try {
-    const url = new URL(siteCounterpartUrl)
-    url.pathname = window.location.pathname
-    url.search = window.location.search
-    url.hash = window.location.hash
-    href = url.toString()
-  } catch {
-    // 对端地址配置非法时不渲染，避免生成坏链接
+  if (!siteCounterpartEnabled || !isValidCounterpartUrl(siteCounterpartUrl)) {
     return null
   }
+
+  // 刻意不带查询串：重置口令、OAuth code 一类的凭据都走 query，
+  // 而它们在对端站点（独立部署、独立数据库）本就无效，没有理由带到另一个域上去。
+  const url = new URL(siteCounterpartUrl)
+  url.pathname = window.location.pathname
+  url.hash = window.location.hash
+  const href = url.toString()
 
   const label = siteCounterpartLabel?.trim() || t('Another site')
 

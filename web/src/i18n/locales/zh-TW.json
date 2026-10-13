@@ -2138,6 +2138,7 @@
     "Enter a value and press Enter": "輸入值並按 Enter 鍵",
     "Enter amount in {{currency}}": "輸入金額（{{currency}}）",
     "Enter amount in tokens": "輸入額度（Token）",
+    "Enter an absolute HTTP(S) URL, or leave it empty": "請輸入絕對 HTTP(S) 位址，或留空",
     "Enter announcement content (supports Markdown & HTML)": "輸入公告內容（支援 Markdown 和 HTML）",
     "Enter announcement content (supports Markdown/HTML)": "輸入公告內容（支援 Markdown/HTML）",
     "Enter API Key": "請輸入 API Key",

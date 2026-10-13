@@ -2138,6 +2138,7 @@
     "Enter a value and press Enter": "Enter a value and press Enter",
     "Enter amount in {{currency}}": "Enter amount in {{currency}}",
     "Enter amount in tokens": "Enter amount in tokens",
+    "Enter an absolute HTTP(S) URL, or leave it empty": "Enter an absolute HTTP(S) URL, or leave it empty",
     "Enter announcement content (supports Markdown & HTML)": "Enter announcement content (supports Markdown & HTML)",
     "Enter announcement content (supports Markdown/HTML)": "Enter announcement content (supports Markdown/HTML)",
     "Enter API Key": "Enter API Key",

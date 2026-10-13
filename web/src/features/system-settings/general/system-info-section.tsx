@@ -33,6 +33,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { isValidCounterpartUrl } from '@/lib/counterpart-url'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
@@ -48,6 +49,11 @@ import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 import { isValidTaskPublicAddress } from './task-public-address'
+
+// 留空表示未配置对端站点；一旦填写就必须是绝对 HTTP(S) 地址，
+// 否则页头的切换入口不会渲染（判定规则见 lib/counterpart-url.ts）。
+const isCounterpartUrlOrEmpty = (value: string) =>
+  value === '' || isValidCounterpartUrl(value)
 
 const _systemInfoSchema = z.object({
   SystemName: z.string().min(1),
@@ -67,7 +73,7 @@ const _systemInfoSchema = z.object({
   }),
   site: z.object({
     counterpart_enabled: z.string(),
-    counterpart_url: z.string(),
+    counterpart_url: z.string().refine(isCounterpartUrlOrEmpty),
     counterpart_label: z.string(),
   }),
 })
@@ -139,7 +145,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     }),
     site: z.object({
       counterpart_enabled: z.string(),
-      counterpart_url: z.string(),
+      counterpart_url: z.string().refine(isCounterpartUrlOrEmpty, {
+        error: () => t('Enter an absolute HTTP(S) URL, or leave it empty'),
+      }),
       counterpart_label: z.string(),
     }),
   })
@@ -353,7 +361,10 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                   <FormItem>
                     <FormLabel>{t('Counterpart Site Label')}</FormLabel>
                     <FormControl>
-                      <Input placeholder={t('Hong Kong · International')} {...field} />
+                      <Input
+                        placeholder={t('Hong Kong · International')}
+                        {...field}
+                      />
                     </FormControl>
                     <FormDescription>
                       {t(
