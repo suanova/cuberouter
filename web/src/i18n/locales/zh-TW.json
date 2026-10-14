@@ -351,7 +351,7 @@
     "The member charged the most in this range.": "該時間範圍內被扣費最多的成員。",
     "The member loses access immediately. Leave the transfer target empty to move their public API keys to the owner and delete their private ones.": "該成員將立即失去存取權限。移交目標留空，則其公開 API Key 會移交給所有者，私有 Key 會被刪除。",
     "The member responsible for this key is disabled.": "該 Key 的使用者已被停用。",
-    "The member this key belongs to. Only the owner or an administrator may change it.": "該 Key 的使用者。只有所有者或管理員可以修改。",
+    "The member this key belongs to. Only an organization owner or administrator can change the holder.": "該 Key 的使用者。只有組織所有者或管理員可以更換使用者。",
     "The member who created this key. The owner never changes.": "建立該 Key 的成員，所有者不會變更。",
     "The most expensive month in this range.": "該時間範圍內支出最高的月份。",
     "The name must be unique across all organizations.": "名稱在所有組織中必須唯一。",

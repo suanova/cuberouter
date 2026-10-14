@@ -351,7 +351,7 @@
     "The member charged the most in this range.": "The member charged the most in this range.",
     "The member loses access immediately. Leave the transfer target empty to move their public API keys to the owner and delete their private ones.": "The member loses access immediately. Leave the transfer target empty to move their public API keys to the owner and delete their private ones.",
     "The member responsible for this key is disabled.": "The member responsible for this key is disabled.",
-    "The member this key belongs to. Only the owner or an administrator may change it.": "The member this key belongs to. Only the owner or an administrator may change it.",
+    "The member this key belongs to. Only an organization owner or administrator can change the holder.": "The member this key belongs to. Only an organization owner or administrator can change the holder.",
     "The member who created this key. The owner never changes.": "The member who created this key. The owner never changes.",
     "The most expensive month in this range.": "The most expensive month in this range.",
     "The name must be unique across all organizations.": "The name must be unique across all organizations.",

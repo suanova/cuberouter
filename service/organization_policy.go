@@ -461,9 +461,10 @@ func applyTokenResourcePolicy(input OrganizationPolicyInput, decision Organizati
 	isPublic := input.Resource.Visibility == model.TokenVisibilityPublic
 	isPrivate := !isPublic
 	// 使用者（isResponsible）与创建者都能看到自己的 Key；而管理权只属于创建者——
-	// 转交只转移使用，不转移控制。
+	// 转交只转移使用，不转移控制。管理权同样受 token 查看能力约束：禁用组织会摘掉
+	// 该能力，创建者分支不能把它恢复成可写。
 	canView := decision.HasCapability(OrganizationCapabilityViewOrganizationTokens) && (canViewAll || (isPrivate && (isResponsible || isCreator)) || isPublic)
-	canManage := canManageAll || (!decision.ReadOnly && isCreator && input.Resource.Visibility != model.TokenVisibilityPublic)
+	canManage := canManageAll || (!decision.ReadOnly && decision.HasCapability(OrganizationCapabilityViewOrganizationTokens) && isCreator && input.Resource.Visibility != model.TokenVisibilityPublic)
 	capabilities := dedupeCapabilities(decision.Capabilities...)
 	if canView {
 		capabilities = capabilities.with(OrganizationCapabilityViewResource)

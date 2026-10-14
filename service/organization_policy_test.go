@@ -281,6 +281,19 @@ func TestEvaluateOrganizationPolicyResourceVisibility(t *testing.T) {
 		require.True(t, decision.HasCapability(OrganizationCapabilityManageResource))
 	})
 
+	t.Run("disabled organization management mode cannot manage even a token the actor created", func(t *testing.T) {
+		t.Parallel()
+		input := baseOrganizationPolicyInput(29, common.RoleAdminUser, model.OrganizationRoleOwner, OrganizationAccessModeManagement)
+		input.Organization.Status = model.OrganizationStatusDisabled
+		input.Resource = OrganizationPolicyResource{Type: OrganizationPolicyResourceToken, OwnerUserId: 29, ResponsibleUserId: 29, Visibility: model.TokenVisibilityPrivate}
+
+		decision := EvaluateOrganizationPolicy(input)
+
+		require.True(t, decision.Allowed)
+		require.False(t, decision.HasCapability(OrganizationCapabilityViewResource))
+		require.False(t, decision.HasCapability(OrganizationCapabilityManageResource))
+	})
+
 	t.Run("member cannot view another member private token", func(t *testing.T) {
 		t.Parallel()
 		input := baseOrganizationPolicyInput(22, common.RoleCommonUser, model.OrganizationRoleMember, OrganizationAccessModeWorkspace)
