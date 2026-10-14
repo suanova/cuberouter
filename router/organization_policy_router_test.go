@@ -162,7 +162,7 @@ func TestOrganizationAccountContextTokenDeleteRouteUsesWorkspaceResourcePolicy(t
 	organization, err := service.CreateOrganization(owner.Id, service.CreateOrganizationRequest{Name: "Router Token Delete Org"})
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: member.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive}).Error)
-	token := model.Token{UserId: member.Id, Key: common.GetUUID(), Name: "router-member-private", Status: common.TokenStatusEnabled, ScopeType: model.TokenScopeOrganization, ScopeId: organization.Id, OrganizationId: organization.Id, ResponsibleUserId: member.Id, Visibility: model.TokenVisibilityPrivate}
+	token := model.Token{UserId: member.Id, Key: common.GetUUID(), Name: "router-member-private", Status: common.TokenStatusEnabled, ScopeType: model.TokenScopeOrganization, ScopeId: organization.Id, OrganizationId: organization.Id, CreatorUserId: member.Id, ResponsibleUserId: member.Id, Visibility: model.TokenVisibilityPrivate}
 	require.NoError(t, model.DB.Create(&token).Error)
 
 	trustedMode := ""
