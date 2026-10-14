@@ -28,6 +28,8 @@ tiktoken_cache
 .claude
 .cursor
 .codegraph
+.superpowers
+.requirements
 
 electron/node_modules
 electron/dist
