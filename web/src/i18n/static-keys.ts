@@ -671,7 +671,7 @@ export const STATIC_I18N_KEYS = [
   'The mail server rejected the invitation recipient.',
   'The member loses access immediately. Leave the transfer target empty to move their public API keys to the owner and delete their private ones.',
   'The member responsible for this key is disabled.',
-  'The member this key belongs to. Only they, and an administrator, may change it.',
+  'The member this key belongs to. Only the owner or an administrator may change it.',
   'The organization does not have enough quota for this request.',
   'The organization is settling another request. Try again in a moment.',
   'The recipient joins this organization by following the link in the email. The link expires on its own.',

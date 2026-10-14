@@ -531,9 +531,9 @@ flowchart TD
 | `scope_type` | personal/organization。 |
 | `scope_id` | personal=user_id，organization=organization_id。 |
 | `organization_id` | 组织 id。 |
-| `creator_user_id` | 创建者。 |
-| `responsible_user_id` | 当前责任人。private Key 责任人可为任意 active 成员；public Key 责任人必须是组织 owner 或 admin。 |
-| `visibility` | private/public。private：仅责任人可见；public：组织内成员可见。member 只能创建/担任 private Key 责任人。 |
+| `creator_user_id` | 创建者（owner），持有该 Key 的管理权限，转交不影响。 |
+| `responsible_user_id` | 当前使用者（原责任人）。private Key 使用者可为任意 active 成员；public Key 使用者必须是组织 owner 或 admin。 |
+| `visibility` | private/public。private：仅使用者和创建者可见；public：组织内成员可见。member 只能创建/担任 private Key 使用者。 |
 | `transfer_reason` | 最近转交原因。 |
 | `disabled_by_system` | 是否存在系统禁用。 |
 | `system_disabled_reason` | 派生主原因。 |

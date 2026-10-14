@@ -486,7 +486,7 @@ export function OrganizationTokenFormDialog(
                       </Select>
                       <FormDescription>
                         {t(
-                          'The member this key belongs to. Only they, and an administrator, may change it.'
+                          'The member this key belongs to. Only the owner or an administrator may change it.'
                         )}
                       </FormDescription>
                       <FormMessage />

@@ -257,10 +257,22 @@ func TestOrganizationPolicyAccessModeCapabilities(t *testing.T) {
 func TestEvaluateOrganizationPolicyResourceVisibility(t *testing.T) {
 	t.Parallel()
 
-	t.Run("member can view and manage own private token", func(t *testing.T) {
+	t.Run("member can view but not manage a private token they only use", func(t *testing.T) {
 		t.Parallel()
 		input := baseOrganizationPolicyInput(21, common.RoleCommonUser, model.OrganizationRoleMember, OrganizationAccessModeWorkspace)
-		input.Resource = OrganizationPolicyResource{Type: OrganizationPolicyResourceToken, ResponsibleUserId: 21, Visibility: model.TokenVisibilityPrivate}
+		input.Resource = OrganizationPolicyResource{Type: OrganizationPolicyResourceToken, OwnerUserId: 26, ResponsibleUserId: 21, Visibility: model.TokenVisibilityPrivate}
+
+		decision := EvaluateOrganizationPolicy(input)
+
+		require.True(t, decision.Allowed)
+		require.True(t, decision.HasCapability(OrganizationCapabilityViewResource))
+		require.False(t, decision.HasCapability(OrganizationCapabilityManageResource))
+	})
+
+	t.Run("member can view and manage a private token they created, even after handing it over", func(t *testing.T) {
+		t.Parallel()
+		input := baseOrganizationPolicyInput(27, common.RoleCommonUser, model.OrganizationRoleMember, OrganizationAccessModeWorkspace)
+		input.Resource = OrganizationPolicyResource{Type: OrganizationPolicyResourceToken, OwnerUserId: 27, ResponsibleUserId: 28, Visibility: model.TokenVisibilityPrivate}
 
 		decision := EvaluateOrganizationPolicy(input)
 

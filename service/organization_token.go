@@ -111,7 +111,7 @@ func ListOrganizationTokens(operatorUserId, organizationId int, accessMode strin
 	}
 	query := model.DB.Model(&model.Token{}).Where("scope_type = ? AND organization_id = ?", model.TokenScopeOrganization, organizationId)
 	if !actor.Capabilities.CanViewOrganizationWideData {
-		query = query.Where("(responsible_user_id = ? AND visibility <> ?) OR visibility = ?", operatorUserId, model.TokenVisibilityPublic, model.TokenVisibilityPublic)
+		query = query.Where("(visibility <> ? AND (responsible_user_id = ? OR creator_user_id = ?)) OR visibility = ?", model.TokenVisibilityPublic, operatorUserId, operatorUserId, model.TokenVisibilityPublic)
 	} else if req.ResponsibleUserId > 0 {
 		query = query.Where("responsible_user_id = ?", req.ResponsibleUserId)
 	}
@@ -746,7 +746,7 @@ func UpdateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 		}
 		affectedKey = token.Key
 		if !actor.Capabilities.CanManageAllTokens {
-			if token.ResponsibleUserId != operatorUserId || token.Visibility == model.TokenVisibilityPublic {
+			if !organizationPolicyCanManageTokenResource(actor, token) {
 				return errors.New("permission denied")
 			}
 			if req.ResponsibleUserId != 0 && req.ResponsibleUserId != token.ResponsibleUserId {
@@ -939,7 +939,7 @@ func BatchDeleteOrganizationTokens(operatorUserId, organizationId int, accessMod
 		}
 		query = query.Where("scope_type = ? AND organization_id = ? AND id IN ?", model.TokenScopeOrganization, organizationId, ids)
 		if !actor.Capabilities.CanManageAllTokens {
-			query = query.Where("responsible_user_id = ? AND visibility = ?", operatorUserId, model.TokenVisibilityPrivate)
+			query = query.Where("creator_user_id = ? AND visibility = ?", operatorUserId, model.TokenVisibilityPrivate)
 		}
 		var tokens []model.Token
 		if err := query.Find(&tokens).Error; err != nil {

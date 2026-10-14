@@ -168,6 +168,7 @@ describe('getOrganizationTokenActionFlags', () => {
   const key = {
     responsible_user_id: 7,
     user_id: 7,
+    creator_user_id: 7,
     visibility: 'private',
     key: 'sk-abcdefghijklmnop',
   }
@@ -192,54 +193,63 @@ describe('getOrganizationTokenActionFlags', () => {
     ).toBe(true)
   })
 
-  test('a member reaches the keys they are responsible for', () => {
+  test('a member may manage the keys they created', () => {
     expect(getOrganizationTokenActionFlags(key, member)).toEqual({
       canEdit: true,
       canDelete: true,
       canCopy: true,
     })
+    expect(
+      getOrganizationTokenActionFlags({ ...key, responsible_user_id: 99 }, member)
+    ).toEqual({ canEdit: true, canDelete: true, canCopy: true })
+  })
+
+  test('a member who only uses a key may copy it but not change it', () => {
+    expect(
+      getOrganizationTokenActionFlags({ ...key, creator_user_id: 99 }, member)
+    ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
   })
 
   test('a member may copy a public key but not change it', () => {
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, visibility: 'public' },
+        { ...key, visibility: 'public', creator_user_id: 99 },
         member
       )
     ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
   })
 
-  test('a member may not touch a key held by someone else', () => {
+  test('a member may not touch a key created and held by someone else', () => {
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 99 },
+        { ...key, responsible_user_id: 99, creator_user_id: 99 },
         member
       )
     ).toEqual({ canEdit: false, canDelete: false, canCopy: false })
   })
 
-  test('a key with no owner belongs to nobody, not to user zero', () => {
+  test('a key with no creator belongs to nobody, not to user zero', () => {
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 0, user_id: 0 },
+        { ...key, responsible_user_id: 0, user_id: 0, creator_user_id: 0 },
         member
       )
     ).toEqual({ canEdit: false, canDelete: false, canCopy: false })
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 0, user_id: 0 },
+        { ...key, responsible_user_id: 0, user_id: 0, creator_user_id: 0 },
         manager
       )
     ).toEqual({ canEdit: true, canDelete: true, canCopy: true })
   })
 
-  test('falling back to the owner column still counts as responsibility', () => {
+  test('the responsible-id fallback still counts for use, not for control', () => {
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 0, user_id: 7 },
+        { ...key, responsible_user_id: 0, user_id: 7, creator_user_id: 99 },
         member
-      ).canEdit
-    ).toBe(true)
+      )
+    ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
   })
 
   test('read-only keeps copy, which is a read', () => {

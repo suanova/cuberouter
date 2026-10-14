@@ -211,20 +211,20 @@ export interface OrganizationTokenActionContext {
  * What the caller may do with one key, mirroring the checks in
  * `service/organization_token.go`.
  *
- * A plain member holds no organization-wide authority, so they reach only the
- * keys they are responsible for — and a key they published is excluded even
- * from that, because publishing it was the act of giving up control. Copying is
- * a read: it survives `readOnly`, and a public key is copyable by anyone who can
- * see it.
+ * A plain member holds no organization-wide authority, so they may change only
+ * the keys they created — being the member a key is handed to grants its use,
+ * never its control, and a key they published is excluded even from that,
+ * because publishing it was the act of giving up control. Copying is a read: it
+ * survives `readOnly`, and a public key is copyable by anyone who can see it.
  *
- * A responsible id of zero is treated as "nobody", never as a match: the field
- * is absent on a row that never went through the organization token path, and
+ * A creator id of zero is treated as "nobody", never as a match: the field is
+ * absent on a row that never went through the organization token path, and
  * reading that as ownership would hand out authority over it.
  */
 export function getOrganizationTokenActionFlags(
   token: Pick<
     OrganizationTokenRow,
-    'responsible_user_id' | 'user_id' | 'visibility' | 'key'
+    'responsible_user_id' | 'user_id' | 'creator_user_id' | 'visibility' | 'key'
   >,
   context: OrganizationTokenActionContext
 ): OrganizationTokenActionFlags {
@@ -232,6 +232,8 @@ export function getOrganizationTokenActionFlags(
   const responsibleUserId = token.responsible_user_id || token.user_id || 0
   const isResponsible =
     responsibleUserId > 0 && responsibleUserId === context.currentUserId
+  const creatorUserId = token.creator_user_id ?? 0
+  const isCreator = creatorUserId > 0 && creatorUserId === context.currentUserId
   const isPublic = token.visibility === 'public'
 
   if (context.canManageAllTokens) {
@@ -243,9 +245,9 @@ export function getOrganizationTokenActionFlags(
   }
 
   return {
-    canEdit: !context.readOnly && isResponsible && !isPublic,
-    canDelete: !context.readOnly && isResponsible && !isPublic,
-    canCopy: hasKey && (isResponsible || isPublic),
+    canEdit: !context.readOnly && isCreator && !isPublic,
+    canDelete: !context.readOnly && isCreator && !isPublic,
+    canCopy: hasKey && (isResponsible || isCreator || isPublic),
   }
 }
 
