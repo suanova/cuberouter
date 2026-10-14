@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/convmeta"
@@ -14,6 +15,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// CubeStack 文本侧要保留 stream_options: 否则流式 chat 会把客户端的 stream_options
+// 剥掉,降级路径也拿不到 include_usage,上游不回 usage 时结算只能按中继文本估算。
+func TestCubeStackSupportsStreamOptions(t *testing.T) {
+	assert.True(t, streamSupportedChannels[constant.ChannelTypeCubeStack])
+}
 
 func TestRelayInfoGetFinalRequestRelayFormatPrefersExplicitFinal(t *testing.T) {
 	info := &RelayInfo{

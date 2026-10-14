@@ -502,11 +502,17 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		return fmt.Errorf("New API channel base URL cannot be empty")
 	}
 
-	// AstraFlow 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游 base URL，
-	// 拒绝明文上游，避免凭证被明文传输（CWE-319）。
+	// AstraFlow / CubeStack 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游
+	// base URL，拒绝明文上游，避免凭证被明文传输（CWE-319）。运行时 GetRequestURL
+	// 会再拦一次，这里只是让配置错误在创建/编辑时就暴露，文案带渠道名便于定位。
 	if channel.Type == constant.ChannelTypeAstraFlow {
 		if err := common.ValidateHTTPSChannelBaseURL(channel.GetBaseURL(), security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
 			return fmt.Errorf("AstraFlow: %w", err)
+		}
+	}
+	if channel.Type == constant.ChannelTypeCubeStack {
+		if err := common.ValidateHTTPSChannelBaseURL(channel.GetBaseURL(), security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
+			return fmt.Errorf("CubeStack: %w", err)
 		}
 	}
 

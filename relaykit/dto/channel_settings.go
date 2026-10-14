@@ -95,7 +95,7 @@ type ChannelOtherSettings struct {
 	// ModelProtocolResponses / ModelProtocolMessages / ModelProtocolGemini。键支持
 	// 精确模型名、末尾 * 的前缀通配("claude-*")、"re:<正则>",以及兜底 "*";值为
 	// 空数组表示该模型没有文本协议。未配置或未命中即视为"不声明",调用方按现状处理。
-	// 当前仅 AstraFlow(59)消费。
+	// 当前由 AstraFlow(59) 与 CubeStack(64) 消费。
 	ModelProtocols map[string][]string `json:"model_protocols,omitempty"`
 }
 

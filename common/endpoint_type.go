@@ -1,6 +1,10 @@
 package common
 
-import "github.com/QuantumNous/new-api/constant"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/constant"
+)
 
 // GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
@@ -59,6 +63,19 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 			constant.EndpointTypeAnthropic,
 			constant.EndpointTypeGemini,
 			constant.EndpointTypeOpenAIAlphaSearch,
+		}
+	case constant.ChannelTypeCubeStack:
+		// CubeStack 的文本侧原生支持 chat / responses / messages 三种端点
+		// （见 relay/channel/cubestack）；视频模型由任务适配器承载
+		// （relay/channel/task/cubestack 的 /v1/videos*），标为 openai-video。
+		if strings.Contains(strings.ToLower(modelName), "minimax-h3") {
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
+		} else {
+			endpointTypes = []constant.EndpointType{
+				constant.EndpointTypeOpenAI,
+				constant.EndpointTypeOpenAIResponse,
+				constant.EndpointTypeAnthropic,
+			}
 		}
 	case constant.ChannelTypeCodex:
 		endpointTypes = []constant.EndpointType{

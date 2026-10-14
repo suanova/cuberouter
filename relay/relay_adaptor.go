@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/codex"
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/coze"
+	"github.com/QuantumNous/new-api/relay/channel/cubestack"
 	"github.com/QuantumNous/new-api/relay/channel/deepseek"
 	"github.com/QuantumNous/new-api/relay/channel/dify"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
@@ -132,6 +133,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &newapi.Adaptor{}
 	case constant.APITypeImageEdit:
 		return &imageedit.Adaptor{}
+	case constant.APITypeCubeStack:
+		return &cubestack.Adaptor{}
 	}
 	return nil
 }

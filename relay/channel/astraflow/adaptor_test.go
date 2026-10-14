@@ -21,12 +21,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func resetNativeProtocolDowngradeMemoForTest() {
-	nativeProtocolDowngradeMemo.Range(func(key, _ any) bool {
-		nativeProtocolDowngradeMemo.Delete(key)
-		return true
-	})
-}
+// 降级记忆由 protocolroute 持有, 进程级共享、只能在那个包内清空。本文件的用例靠
+// "每个用例用互不相同的渠道 ID" 保持隔离: 要断言"没有被降级"的用例, 用的都是只有
+// 它自己会碰的渠道 ID, 因此不需要(也无法)清空那张表。
 
 // newNativeMessagesInfo 构造一次声明原生支持 messages 的 glm-5.3 会话。
 func newNativeMessagesInfo(baseURL string, channelID int) *relaycommon.RelayInfo {
@@ -277,9 +274,6 @@ func TestSetupRequestHeaderSendsClaudeHeadersOnNativeMessages(t *testing.T) {
 // 支持 messages,但上游用 "not implemented" 明确拒绝时,该组合在进程内被记住,
 // 后续请求不再直连,改为降级转换;且探测读取的错误体必须被还原,不影响调用方解析。
 func TestAstraflowDowngradesRejectedNativeProtocol(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
 	const upstreamErrorBody = `{"error":{"message":"not implemented","type":"upstream_error"}}`
@@ -342,9 +336,6 @@ func TestAstraflowDowngradesRejectedNativeProtocol(t *testing.T) {
 // 合成请求(header 透传同样对测试请求短路, relay/channel/api_request.go), 它命中的
 // "not implemented" 不构成生产流量的证据, 不得把 (渠道, 模型, 协议) 永久降级。
 func TestAstraflowChannelTestDoesNotDowngradeProtocol(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
 	server := newRejectingUpstream(t, http.StatusInternalServerError, `{"error":{"message":"not implemented","type":"upstream_error"}}`)
@@ -362,9 +353,6 @@ func TestAstraflowChannelTestDoesNotDowngradeProtocol(t *testing.T) {
 	url, err := adaptor.GetRequestURL(info)
 	require.NoError(t, err)
 	assert.Equal(t, server.URL+"/v1/messages", url, "a channel test must not downgrade production traffic")
-
-	_, downgraded := nativeProtocolDowngradeMemo.Load(nativeProtocolMemoKey(info, dto.ModelProtocolMessages))
-	assert.False(t, downgraded, "a channel test must not record a downgrade")
 }
 
 // TestAstraflowStreamingChatAsksUpstreamForUsage 锁定流式 usage 契约: 渠道类型 59
@@ -425,9 +413,6 @@ func TestAstraflowStreamingChatAsksUpstreamForUsage(t *testing.T) {
 // 的普通 4xx("unsupported parameter: temperature")不是协议拒绝, 不得让该组合被
 // 永久降级, 后续请求仍直连原生端点。
 func TestAstraflowKeepsNativeProtocolOnUnrelatedUpstreamError(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
 	const upstreamErrorBody = `{"error":{"message":"unsupported parameter: temperature","type":"invalid_request_error"}}`
@@ -454,14 +439,13 @@ func TestAstraflowKeepsNativeProtocolOnUnrelatedUpstreamError(t *testing.T) {
 // TestAstraflowRestoresAndMemoizesLargeErrorBody 锁定超大错误体的处理: 超过窥探上限
 // 的响应体读完后必须逐字节完整, 且命中签名时仍要记入降级记忆。
 func TestAstraflowRestoresAndMemoizesLargeErrorBody(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
+	// 窥探上限是 4KB(见 protocolroute), 错误体必须超过它才能覆盖"前缀重放 + 余量"这条路径。
+	const peekLimit = 4 * 1024
 	upstreamErrorBody := `{"error":{"message":"not implemented","detail":"` +
-		strings.Repeat("x", nativeProtocolBodyPeekLimit) + `"}}`
-	require.Greater(t, len(upstreamErrorBody), nativeProtocolBodyPeekLimit, "fixture must exceed the peek limit")
+		strings.Repeat("x", peekLimit) + `"}}`
+	require.Greater(t, len(upstreamErrorBody), peekLimit, "fixture must exceed the peek limit")
 
 	server := newRejectingUpstream(t, http.StatusInternalServerError, upstreamErrorBody)
 
@@ -491,31 +475,33 @@ func TestAstraflowRestoresAndMemoizesLargeErrorBody(t *testing.T) {
 // 只对"记录之后才开始"的请求生效; 记录之前(已在途)的请求保持它发出时的原生决定,
 // 否则它的原生响应会被降级后的处理器按 chat 解析。
 func TestAstraflowDowngradeWatermarkKeepsInFlightRequestsNative(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
-	const baseURL = "https://api.modelverse.cn"
+	server := newRejectingUpstream(t, http.StatusNotImplemented, `{"error":{"message":"not implemented","type":"upstream_error"}}`)
+
+	info := newNativeMessagesInfo(server.URL, 23)
 	adaptor := &Adaptor{}
 
-	info := newNativeMessagesInfo(baseURL, 23)
 	url, err := adaptor.GetRequestURL(info)
 	require.NoError(t, err)
-	require.Equal(t, baseURL+"/v1/messages", url)
+	require.Equal(t, server.URL+"/v1/messages", url)
 
-	// 模拟另一个请求刚刚因协议拒绝写入记忆。
-	nativeProtocolDowngradeMemo.Store(nativeProtocolMemoKey(info, dto.ModelProtocolMessages), time.Now())
+	// 真实播种: 让同一个 (渠道, 模型, 协议) 撞一次上游的协议拒绝, 记录时刻即本次 DoRequest 的时刻。
+	respAny, err := adaptor.DoRequest(newMessagesContext(), info, bytes.NewBufferString(`{"model":"glm-5.3"}`))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
 
 	info.StartTime = time.Now().Add(time.Second) // 记录之后才开始
 	url, err = adaptor.GetRequestURL(info)
 	require.NoError(t, err)
-	assert.Equal(t, baseURL+"/v1/chat/completions", url, "requests started after the recording must downgrade")
+	assert.Equal(t, server.URL+"/v1/chat/completions", url, "requests started after the recording must downgrade")
 
 	info.StartTime = time.Now().Add(-time.Second) // 记录之前就已发出
 	url, err = adaptor.GetRequestURL(info)
 	require.NoError(t, err)
-	assert.Equal(t, baseURL+"/v1/messages", url, "requests in flight before the recording must keep the native protocol")
+	assert.Equal(t, server.URL+"/v1/messages", url, "requests in flight before the recording must keep the native protocol")
 }
 
 // newGeminiTextInfo 构造一次 gemini 原生格式的文本生成会话。
@@ -678,9 +664,6 @@ func TestGetRequestURLDisablesPingForNativeGeminiStream(t *testing.T) {
 // 透传时上游收到的就是客户端原始报文, 形状改不了, 降级无从谈起——此时不得把
 // (渠道, 模型, 协议) 写进降级记忆, 也不该打出"已降级"的日志。
 func TestAstraflowKeepsProtocolWhenBodyPassthrough(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
 	server := newRejectingUpstream(t, http.StatusInternalServerError, `{"error":{"message":"not implemented","type":"upstream_error"}}`)
@@ -694,8 +677,18 @@ func TestAstraflowKeepsProtocolWhenBodyPassthrough(t *testing.T) {
 	require.True(t, ok, "expected *http.Response, got %T", respAny)
 	defer func() { _ = resp.Body.Close() }()
 
-	_, downgraded := nativeProtocolDowngradeMemo.Load(nativeProtocolMemoKey(info, dto.ModelProtocolGemini))
-	assert.False(t, downgraded, "a pass-through body cannot be downgraded, so nothing may be recorded")
+	url, err := (&Adaptor{}).GetRequestURL(info)
+	require.NoError(t, err)
+	require.Equal(t, server.URL+"/v1beta/models/gemini-3.8-flash:generateContent", url,
+		"a pass-through body keeps the native gemini endpoint")
+
+	// 关掉透传再问一次: 此时能否直连就只剩"有没有被记进降级记忆"这一个变量, 所以这条
+	// 断言才是"没有被记录"的真实证据——透传本身会无条件直连原生端点, 单看前一条看不出来。
+	info.ChannelSetting.PassThroughBodyEnabled = false
+	url, err = (&Adaptor{}).GetRequestURL(info)
+	require.NoError(t, err)
+	assert.Equal(t, server.URL+"/v1beta/models/gemini-3.8-flash:generateContent", url,
+		"a pass-through rejection must not be recorded, or the next request downgrades")
 }
 
 // TestGetRequestURLForGeminiTextSessions 锁定 gemini 原生格式的端点选择: 声明了
@@ -788,9 +781,6 @@ func TestGetRequestURLForGeminiTextSessions(t *testing.T) {
 // 模型同一请求几分钟内 200/400 交替, 期间所有模型一起 400), 不是"该模型没有 gemini
 // 协议"。这类瞬时故障不得写进降级记忆, 否则一次抖动就把原生 gemini 永久降级成有损转换。
 func TestAstraflowKeepsNativeGeminiOnTransientRequestModeError(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
 	const upstreamErrorBody = `{"error":{"message":"[trace_id: x] Invalid param: get request mode","type":"invalid_request_error"}}`
@@ -808,18 +798,12 @@ func TestAstraflowKeepsNativeGeminiOnTransientRequestModeError(t *testing.T) {
 	url, err := adaptor.GetRequestURL(info)
 	require.NoError(t, err)
 	assert.Equal(t, server.URL+"/v1beta/models/gemini-3.8-flash:generateContent", url, "a transient upstream failure must not downgrade a declared native protocol")
-
-	_, downgraded := nativeProtocolDowngradeMemo.Load(nativeProtocolMemoKey(info, dto.ModelProtocolGemini))
-	assert.False(t, downgraded, "a transient upstream failure must not be recorded")
 }
 
 // TestAstraflowDowngradesRejectedGeminiProtocol 锁定 gemini 的运行时兜底: 声明了原生
 // gemini 但上游用 "not implemented" 拒绝时, 该组合在进程内被记住, 后续请求改走
 // chat 转换; 探测读取的错误体同样要还原。
 func TestAstraflowDowngradesRejectedGeminiProtocol(t *testing.T) {
-	resetNativeProtocolDowngradeMemoForTest()
-	t.Cleanup(resetNativeProtocolDowngradeMemoForTest)
-
 	gin.SetMode(gin.TestMode)
 
 	const upstreamErrorBody = `{"error":{"message":"not implemented","type":"upstream_error"}}`
