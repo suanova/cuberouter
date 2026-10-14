@@ -303,10 +303,11 @@ func TestCubeStackDowngradesRejectedProtocol(t *testing.T) {
 	assert.Equal(t, server.URL+"/v1/chat/completions", url, "after a rejection the combination must downgrade to chat")
 }
 
-// TestGetRequestURLRejectsCleartextUpstream 锁定发送前防线：安全开关开启时，
-// 非回环的明文上游在 GetRequestURL 阶段即被拒绝，Bearer 凭证不会发出（CWE-319）。
-// 其余用例使用 httptest 回环地址，不受影响。
-func TestGetRequestURLRejectsCleartextUpstream(t *testing.T) {
+// TestGetRequestURLAcceptsCleartextUpstream 锁定本渠道对明文上游的豁免：全局安全
+// 开关(默认开启)要求渠道 base URL 用 https 或回环地址，但内网 SGLang·vLLM 的 base
+// URL 就是 http://<内网IP>:port，回环豁免覆盖不到。本渠道不做该校验，明文上游照常
+// 可用；AstraFlow 等渠道仍受全局开关约束（见 astraflow 的同名用例）。
+func TestGetRequestURLAcceptsCleartextUpstream(t *testing.T) {
 	old := security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL
 	security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = true
 	defer func() { security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = old }()
@@ -315,7 +316,7 @@ func TestGetRequestURLRejectsCleartextUpstream(t *testing.T) {
 
 	info := &relaycommon.RelayInfo{
 		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelBaseUrl:    "http://upstream.example.com",
+			ChannelBaseUrl:    "http://10.0.0.7:5001",
 			ChannelType:       constant.ChannelTypeCubeStack,
 			ApiKey:            "sk-test",
 			UpstreamModelName: "qwen38-27b",
@@ -323,8 +324,9 @@ func TestGetRequestURLRejectsCleartextUpstream(t *testing.T) {
 		RequestURLPath: "/v1/chat/completions",
 	}
 
-	_, err := (&Adaptor{}).GetRequestURL(info)
-	require.ErrorContains(t, err, "must use HTTPS")
+	url, err := (&Adaptor{}).GetRequestURL(info)
+	require.NoError(t, err, "a private-network cleartext upstream must stay usable")
+	assert.Equal(t, "http://10.0.0.7:5001/v1/chat/completions", url)
 }
 
 // runRelayChain 执行一次完整链路：DoRequest 打向假上游并断言请求契约，

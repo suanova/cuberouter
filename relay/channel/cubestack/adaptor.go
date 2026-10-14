@@ -52,6 +52,10 @@ var policy = protocolroute.Policy{
 	// 基线同样吃降级记忆: 上面三条全是"上游应该原生支持"的推断(零配置即用),
 	// 一旦上游明确回"不支持该协议",推断即被证伪,该组合转 chat 发出。
 	DowngradeUndeclared: true,
+	// 本渠道的上游就是本地/内网的 SGLang·vLLM, base URL 常为明文 http://<IP>:port;
+	// 回环豁免覆盖不到内网地址, 而"防止渠道 key 明文出网"对本就无鉴权的本地上游
+	// 并不成立, 故不做传输安全校验(security_setting 的全局开关对该渠道不生效)。
+	AllowCleartextUpstream: true,
 }
 
 type Adaptor struct {

@@ -52,6 +52,12 @@ type Policy struct {
 	// SkipEmptyBearer 为真时,渠道 key 为空就不发 Authorization 头
 	// (上游无鉴权,如本地 SGLang/vLLM)。
 	SkipEmptyBearer bool
+	// AllowCleartextUpstream 为真时跳过上游 base URL 的传输安全校验,明文 http 上游
+	// 照常放行(安全设置 security_setting.require_https_channel_base_url 对该渠道不再
+	// 生效)。给面向本地/内网 SGLang·vLLM 的渠道用——那类上游的 base URL 就是
+	// http://<内网IP>:port,回环豁免覆盖不到,而校验的意义(防止渠道 key 明文出网)
+	// 对通常无鉴权的本地上游并不成立。默认 false 即保持校验。
+	AllowCleartextUpstream bool
 }
 
 // useNativeProtocol 报告本次请求能否直连上游的该协议。

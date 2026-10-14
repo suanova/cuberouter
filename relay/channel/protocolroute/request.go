@@ -52,9 +52,12 @@ func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		return "", fmt.Errorf("%s: channel base url is empty", p.ChannelLabel)
 	}
 	// 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游，拒绝明文上游
-	// （https 或回环地址除外），避免凭证被明文传输（CWE-319）。
-	if err := common.ValidateHTTPSChannelBaseURL(info.ChannelBaseUrl, security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
-		return "", fmt.Errorf("%s: %w", p.ChannelLabel, err)
+	// （https 或回环地址除外），避免凭证被明文传输（CWE-319）。面向本地/内网上游的
+	// 渠道可用 AllowCleartextUpstream 豁免，见该字段。
+	if !p.AllowCleartextUpstream {
+		if err := common.ValidateHTTPSChannelBaseURL(info.ChannelBaseUrl, security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
+			return "", fmt.Errorf("%s: %w", p.ChannelLabel, err)
+		}
 	}
 	requestPath := info.RequestURLPath
 	if requestPath == "" {
