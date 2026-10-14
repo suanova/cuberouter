@@ -150,6 +150,7 @@ export {
   organizationTokenErrorText,
   organizationTokenFullKey,
   organizationTokenKeyPreview,
+  organizationTokenOwnerName,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS,

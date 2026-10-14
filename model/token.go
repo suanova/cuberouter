@@ -49,6 +49,8 @@ type Token struct {
 	SystemDisabledAt     int64  `json:"system_disabled_at" gorm:"bigint;default:0"`
 	PreviousStatus       int    `json:"previous_status" gorm:"default:0"`
 
+	CreatorUsername        string   `json:"creator_username,omitempty" gorm:"-"`
+	CreatorDisplayName     string   `json:"creator_display_name,omitempty" gorm:"-"`
 	ResponsibleUsername    string   `json:"responsible_username,omitempty" gorm:"-"`
 	ResponsibleDisplayName string   `json:"responsible_display_name,omitempty" gorm:"-"`
 	ResponsibleEmail       string   `json:"-" gorm:"-"`

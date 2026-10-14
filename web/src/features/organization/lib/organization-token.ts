@@ -172,6 +172,22 @@ export function organizationTokenFullKey(
 }
 
 // ============================================================================
+// Row labels
+// ============================================================================
+
+/**
+ * Who created the key, as the Owner column shows it.
+ *
+ * Resolution mirrors the responsible column — username first, display name
+ * second — because both columns name the same kind of person in one table.
+ */
+export function organizationTokenOwnerName(
+  token: Pick<OrganizationTokenRow, 'creator_username' | 'creator_display_name'>
+): string {
+  return token.creator_username || token.creator_display_name || '-'
+}
+
+// ============================================================================
 // Per-row authority
 // ============================================================================
 

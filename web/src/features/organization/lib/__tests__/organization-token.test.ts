@@ -26,11 +26,33 @@ import {
   organizationTokenErrorText,
   organizationTokenFullKey,
   organizationTokenKeyPreview,
+  organizationTokenOwnerName,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS,
   ORGANIZATION_TOKEN_STATUS_FILTER_OPTIONS,
 } from '../organization-token'
+
+describe('organizationTokenOwnerName', () => {
+  test('prefers the creator username over the display name', () => {
+    expect(
+      organizationTokenOwnerName({
+        creator_username: 'alice',
+        creator_display_name: 'Alice',
+      })
+    ).toBe('alice')
+  })
+
+  test('falls back to the display name when the username is absent', () => {
+    expect(organizationTokenOwnerName({ creator_display_name: 'Alice' })).toBe(
+      'Alice'
+    )
+  })
+
+  test('a row with no creator name reads as absent rather than blank', () => {
+    expect(organizationTokenOwnerName({})).toBe('-')
+  })
+})
 
 describe('organizationTokenStatusMeta', () => {
   test('names the four states a key can be stored in', () => {

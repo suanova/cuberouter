@@ -63,6 +63,7 @@ import {
   organizationTokenErrorText,
   organizationTokenFormSchema,
   organizationTokenFullKey,
+  organizationTokenOwnerName,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS,
   ORGANIZATION_TOKEN_FORM_DEFAULT_VALUES,
@@ -394,7 +395,21 @@ export function OrganizationTokenFormDialog(
                     </FormItem>
                   )}
                 />
-              ) : null}
+              ) : (
+                <div className='space-y-2'>
+                  <div className='text-sm leading-none font-medium'>
+                    {t('Owner')}
+                  </div>
+                  <div className='text-muted-foreground text-sm'>
+                    {organizationTokenOwnerName(editing)}
+                  </div>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'The member who created this key. The owner never changes.'
+                    )}
+                  </p>
+                </div>
+              )}
             </div>
 
             {props.canManageAllTokens ? (

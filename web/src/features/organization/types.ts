@@ -361,6 +361,8 @@ export interface OrganizationTokenRow {
   system_disabled_ref_id?: number
   system_disabled_at?: number
   previous_status?: number
+  creator_username?: string
+  creator_display_name?: string
   responsible_username?: string
   responsible_display_name?: string
   /** Why the key is currently force-disabled, if anything disabled it. */

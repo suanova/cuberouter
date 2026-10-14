@@ -272,6 +272,31 @@ func TestOrganizationTokenListIncludesResponsibleUsernameButNotEmail(t *testing.
 	require.Empty(t, tokens[0].ResponsibleEmail)
 }
 
+func TestOrganizationTokenListHydratesCreatorNameSeparateFromResponsible(t *testing.T) {
+	admin, member, organization := createOrganizationTokenTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", admin.Id).Updates(map[string]any{
+		"username":     "key-creator",
+		"display_name": "Key Creator",
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", member.Id).Updates(map[string]any{
+		"username":     "key-responsible",
+		"display_name": "Key Responsible",
+	}).Error)
+	_, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "handover-key", ExpiredTime: -1, ResponsibleUserId: member.Id})
+	require.NoError(t, err)
+
+	tokens, total, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20})
+
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, tokens, 1)
+	require.Equal(t, admin.Id, tokens[0].CreatorUserId)
+	require.Equal(t, "key-creator", tokens[0].CreatorUsername)
+	require.Equal(t, "Key Creator", tokens[0].CreatorDisplayName)
+	require.Equal(t, "key-responsible", tokens[0].ResponsibleUsername)
+	require.Equal(t, "Key Responsible", tokens[0].ResponsibleDisplayName)
+}
+
 func TestOrganizationTokenCreateSetsScopeFieldsAndPersonalIsolation(t *testing.T) {
 	admin, member, organization := createOrganizationTokenTestOrg(t)
 

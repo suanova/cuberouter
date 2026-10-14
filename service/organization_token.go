@@ -130,7 +130,7 @@ func ListOrganizationTokens(operatorUserId, organizationId int, accessMode strin
 	for _, token := range tokens {
 		model.NormalizeTokenScope(token)
 	}
-	if err := hydrateOrganizationTokenResponsibleUsers(tokens); err != nil {
+	if err := hydrateOrganizationTokenUserNames(tokens); err != nil {
 		return nil, 0, err
 	}
 	if err := hydrateOrganizationTokenAvailability(tokens); err != nil {
@@ -188,24 +188,31 @@ func applyOrganizationTokenStatusFilter(query *gorm.DB, status int) *gorm.DB {
 	}
 }
 
-func hydrateOrganizationTokenResponsibleUsers(tokens []*model.Token) error {
+// hydrateOrganizationTokenUserNames 用一次用户查询补全责任人与创建者的用户名/显示名，
+// 两者常常是同一人。
+func hydrateOrganizationTokenUserNames(tokens []*model.Token) error {
 	if len(tokens) == 0 {
 		return nil
 	}
-	responsibleUserIds := make([]int, 0, len(tokens))
+	userIds := make([]int, 0, len(tokens)*2)
 	seen := map[int]bool{}
 	for _, token := range tokens {
-		if token == nil || token.ResponsibleUserId <= 0 || seen[token.ResponsibleUserId] {
+		if token == nil {
 			continue
 		}
-		seen[token.ResponsibleUserId] = true
-		responsibleUserIds = append(responsibleUserIds, token.ResponsibleUserId)
+		for _, userId := range []int{token.ResponsibleUserId, token.CreatorUserId} {
+			if userId <= 0 || seen[userId] {
+				continue
+			}
+			seen[userId] = true
+			userIds = append(userIds, userId)
+		}
 	}
-	if len(responsibleUserIds) == 0 {
+	if len(userIds) == 0 {
 		return nil
 	}
 	var users []model.User
-	if err := model.DB.Select("id", "username", "display_name").Where("id IN ?", responsibleUserIds).Find(&users).Error; err != nil {
+	if err := model.DB.Select("id", "username", "display_name").Where("id IN ?", userIds).Find(&users).Error; err != nil {
 		return err
 	}
 	userById := make(map[int]model.User, len(users))
@@ -213,12 +220,14 @@ func hydrateOrganizationTokenResponsibleUsers(tokens []*model.Token) error {
 		userById[user.Id] = user
 	}
 	for _, token := range tokens {
-		user, ok := userById[token.ResponsibleUserId]
-		if !ok {
-			continue
+		if user, ok := userById[token.ResponsibleUserId]; ok {
+			token.ResponsibleUsername = user.Username
+			token.ResponsibleDisplayName = user.DisplayName
 		}
-		token.ResponsibleUsername = user.Username
-		token.ResponsibleDisplayName = user.DisplayName
+		if user, ok := userById[token.CreatorUserId]; ok {
+			token.CreatorUsername = user.Username
+			token.CreatorDisplayName = user.DisplayName
+		}
 	}
 	return nil
 }

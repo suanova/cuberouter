@@ -55,6 +55,7 @@ import {
   buildOrganizationTokenStatusPayload,
   getOrganizationTokenActionFlags,
   organizationTokenErrorText,
+  organizationTokenOwnerName,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_STATUS,
@@ -515,6 +516,17 @@ function buildTokenColumns(
           {row.original.responsible_username ||
             row.original.responsible_display_name ||
             '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'creator_user_id',
+      header: t('Owner'),
+      enableSorting: false,
+      size: 140,
+      cell: ({ row }) => (
+        <span className='truncate font-medium'>
+          {organizationTokenOwnerName(row.original)}
         </span>
       ),
     },
