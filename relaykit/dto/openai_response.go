@@ -239,6 +239,12 @@ type Usage struct {
 	InputTokens            int                `json:"input_tokens"`
 	OutputTokens           int                `json:"output_tokens"`
 	InputTokensDetails     *InputTokenDetails `json:"input_tokens_details"`
+	// OutputTokensDetails is the OpenAI-native output breakdown
+	// (output_tokens_details), returned by the Images API and the Responses API.
+	// Billing reads the canonical CompletionTokenDetails (notably ImageTokens ->
+	// the img_o expression variable), so image relay paths must map this field —
+	// see normalizeOpenAIUsage.
+	OutputTokensDetails *OutputTokenDetails `json:"output_tokens_details,omitempty"`
 
 	// claude cache 1h
 	ClaudeCacheCreation5mTokens int `json:"claude_cache_creation_5_m_tokens"`
