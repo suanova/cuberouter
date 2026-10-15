@@ -32,5 +32,5 @@ const (
 // 展示汇率只影响界面显示，阈值不随其变化；QuotaPerUnit 在调用时参与换算，
 // 避免包初始化顺序踩到 QuotaPerUnit 的加载时机。
 func PlaygroundOrgFallbackThreshold() int {
-	return int(playgroundOrgFallbackThresholdCNY / playgroundOrgFallbackUSD2CNY * common.QuotaPerUnit)
+	return common.QuotaFromFloat(playgroundOrgFallbackThresholdCNY / playgroundOrgFallbackUSD2CNY * common.QuotaPerUnit)
 }
