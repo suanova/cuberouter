@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
@@ -219,6 +220,9 @@ func UpdateOption(c *gin.Context) {
 			expression := expressions[modelName]
 			if plugin, ok := generation.GetByModel(modelName); ok {
 				err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)
+			} else if schema, ok := billingexpr.LookupTaskUsageSchema(modelName); ok {
+				// Go 任务适配器注册的计费事实 schema（如星图 kling 家族）。
+				err = billing_setting.SmokeTestTaskExprWithFacts(expression, schema)
 			} else if target, resolved := model.ResolveTaskModelAlias(generation, modelName); resolved {
 				if plugin, ok := generation.Get(target.PluginKey); ok {
 					err = billing_setting.SmokeTestTaskExpr(expression, plugin.Meta.UsageSchema)

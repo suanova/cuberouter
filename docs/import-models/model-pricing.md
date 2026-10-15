@@ -148,7 +148,7 @@ tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)
 | `cc` | 缓存写入(5m) | 缓存写入 (5m) |
 | `cc1h` | 缓存写入(1h) | 缓存写入 (1h) |
 | `img` / `ai` / `ao` / `img_o` | 图片输入 / 音频输入 / 音频输出 / 图片输出 | 对应中文标签 |
-| `u("key")` | task 插件计费事实(见 expr.md Task Usage 节) | — |
+| `u("key")` | task 计费事实(插件 schema 或 Go 适配器注册,见 expr.md Task Usage 节) | — |
 
 ### 条件构建规则
 

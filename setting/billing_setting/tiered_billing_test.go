@@ -5,9 +5,10 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -102,4 +103,24 @@ func TestSmokeTestExprRejectsTaskUsageWithoutSchema(t *testing.T) {
 	assert.ErrorContains(t, err, "no task plugin usage schema")
 
 	require.NoError(t, SmokeTestExpr(`tier("base", p * 2 + c * 8)`))
+}
+
+// TestSmokeTestTaskExprWithFactsValidatesGoAdaptorSchema 锁定 Go 任务适配器的
+// 事实 schema 校验路径：已声明键通过并跑冒烟向量，未声明键被拒绝；插件 schema
+// 的转换入口与之等价（同一核心）。
+func TestSmokeTestTaskExprWithFactsValidatesGoAdaptorSchema(t *testing.T) {
+	schema := map[string]billingexpr.UsageFieldSchema{
+		"seconds": {Type: "number", Unit: "second"},
+		"mode":    {Enum: []string{"std", "pro"}},
+		"sound":   {Enum: []string{"on", "off"}},
+	}
+
+	require.NoError(t, SmokeTestTaskExprWithFacts(
+		`u("mode") == "pro" ? (u("sound") == "on" ? tier("pro_sound", u("seconds") * 0.8) : tier("pro", u("seconds") * 0.6)) : tier("std", u("seconds") * 0.4)`,
+		schema))
+	require.ErrorContains(t, SmokeTestTaskExprWithFacts(`tier("base", u("clips") * 0.1)`, schema), "not declared")
+
+	// 插件 schema 走同一个核心：转换后再校验。
+	pluginSchema := map[string]jsplugin.UsageFieldSchema{"seconds": {Type: "number", Unit: "second"}}
+	require.NoError(t, SmokeTestTaskExpr(`tier("base", u("seconds") * 0.4)`, pluginSchema))
 }

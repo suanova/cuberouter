@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -150,6 +151,19 @@ var (
 	klingAspectRatios = map[string]bool{"16:9": true, "9:16": true, "1:1": true}
 	klingTypes        = map[string]bool{klingTypeT2V: true, klingTypeI2V: true, klingTypeMotion: true}
 )
+
+// init 注册 kling 家族的计费事实 schema：表达式保存时按此校验 u() 键并生成
+// 冒烟测试向量（setting/billing_setting.SmokeTestTaskExprWithFacts）。事实的
+// 实际取值由 deriveKlingRequest 推导，两者的键集合必须一致。
+func init() {
+	billingexpr.RegisterTaskUsageSchema(isKlingModel, map[string]billingexpr.UsageFieldSchema{
+		"seconds":   {Type: "number", Unit: "second"},
+		"mode":      {Type: "string", Enum: []string{klingModeStd, klingModePro, "4k"}},
+		"sound":     {Type: "string", Enum: []string{klingSoundOn, klingSoundOff}},
+		"variant":   {Type: "string", Enum: []string{klingTypeT2V, klingTypeI2V, klingTypeMotion}},
+		"reference": {Type: "string", Enum: []string{klingRefYes, klingRefNo}},
+	})
+}
 
 type submitResponseBody struct {
 	Output struct {

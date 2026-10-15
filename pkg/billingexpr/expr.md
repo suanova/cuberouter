@@ -149,6 +149,9 @@ The usage-log UI treats `request_rules` as the authoritative rule list and rende
 Task plugins can expose validated, provider-specific billing facts through
 `meta.usageSchema`. Expressions read those facts with `u("key")`. A literal key
 must be declared by the plugin schema before the expression can be saved.
+Go task adaptors declare their facts the same way through
+`RegisterTaskUsageSchema` (model matcher + schema, registered in `init`); when a
+plugin also claims the same model, the plugin schema wins.
 Numeric facts are finite, non-negative values in the declared canonical unit
 (`second`, `count`, `token`, or `credit`); enum facts are exact strings from the
 declared value list. The schema description is display-only metadata and never
