@@ -17,6 +17,9 @@ const (
 	EndpointTypeEmbeddings            EndpointType = "embeddings"
 	EndpointTypeOpenAIVideo           EndpointType = "openai-video"
 	EndpointTypeArkVideo              EndpointType = "ark-video"
+	// EndpointTypeVideoGeneration 是任务插件渠道（62）的通用任务视频端点
+	// /v1/video/generations。
+	EndpointTypeVideoGeneration EndpointType = "video-generation"
 )
 
 // Finish reasons shared by the OpenAI-compatible response formats.

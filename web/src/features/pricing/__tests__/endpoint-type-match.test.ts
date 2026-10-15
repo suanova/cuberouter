@@ -54,6 +54,25 @@ describe('endpoint type filter matching', () => {
     )
   })
 
+  test('the merged Video value matches the task-plugin video endpoint', () => {
+    // 任务插件渠道（62）的模型带 video-generation 端点类型（minimax-h3-a
+    // 这类），Video 过滤必须覆盖它，否则视频模型选"视频"筛不出来。
+    assert.equal(
+      matchesEndpointType(
+        modelWithEndpoints([ENDPOINT_TYPES.VIDEO_GENERATION]),
+        ENDPOINT_TYPES.VIDEO
+      ),
+      true
+    )
+    assert.equal(
+      matchesEndpointType(
+        modelWithEndpoints([ENDPOINT_TYPES.VIDEO_GENERATION]),
+        ENDPOINT_TYPES.OPENAI
+      ),
+      false
+    )
+  })
+
   test('concrete values keep matching only themselves', () => {
     assert.equal(
       matchesEndpointType(

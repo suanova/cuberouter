@@ -75,7 +75,7 @@ const LANG_HIGHLIGHT: Record<Lang, BundledLanguage> = {
   javascript: 'javascript',
 }
 
-type SampleContext = {
+export type SampleContext = {
   baseUrl: string
   apiKeyEnv: string
   modelName: string
@@ -710,7 +710,9 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
   ].join('\n')
 }
 
-function buildSample(
+/** 按端点类型生成示例代码;导出供 __tests__ 断言各端点形状。 */
+// eslint-disable-next-line react-refresh/only-export-components -- 纯函数导出供单测断言,不影响组件刷新
+export function buildSample(
   lang: Lang,
   endpointType: string,
   ctx: SampleContext
@@ -721,7 +723,9 @@ function buildSample(
     return buildEmbeddingSample(lang, ctx)
   }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
-  if (endpointType === 'per-second-video') {
+  // 按秒计费视频与任务插件渠道的通用任务端点（video-generation）共享同一套
+  // 提交 / 轮询 / 取片形状，示例里的路径取端点默认路径（/v1/video/generations）。
+  if (endpointType === 'per-second-video' || endpointType === 'video-generation') {
     return buildPerSecondVideoSample(lang, ctx)
   }
   if (endpointType === 'openai-video' || endpointType === 'ark-video') {

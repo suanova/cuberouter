@@ -30,6 +30,20 @@ func TestDoubaoVideoChannelRegistration(t *testing.T) {
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo}, endpointTypes)
 }
 
+// TestTaskPluginChannelRegistration 锁定任务插件渠道（62）的端点类型映射：客户端
+// 入口是通用任务端点 /v1/video/generations，端点类型必须是 video-generation
+// （默认路径 /v1/video/generations）。此前 62 类落到 default 分支被标注为 openai，
+// 定价页把 minimax-h3-a 等任务视频模型的端点显示成 Chat、代码示例也按聊天渲染。
+func TestTaskPluginChannelRegistration(t *testing.T) {
+	endpointTypes := GetEndpointTypesByChannelType(constant.ChannelTypeTaskPlugin, "minimax-h3-a")
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeVideoGeneration}, endpointTypes)
+
+	info, ok := GetDefaultEndpointInfo(constant.EndpointTypeVideoGeneration)
+	require.True(t, ok)
+	assert.Equal(t, "/v1/video/generations", info.Path)
+	assert.Equal(t, "POST", info.Method)
+}
+
 // TestAstraFlowMultiModelEndpointTypes 锁定 AstraFlow 渠道（59）的多模态端点
 // 类型映射契约：视频模型（Seedance）走 Ark 风格任务端点（ark-video）；普通
 // 文本/响应模型暴露 OpenAI 与 OpenAI 响应端点；response-only 模型只暴露响应
