@@ -9,7 +9,9 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -121,7 +123,7 @@ func setupRelayRouterTestDB(t *testing.T) {
 	require.NoError(t, os.Setenv("SQL_DSN", "local"))
 	require.NoError(t, model.InitDB())
 	model.LOG_DB = model.DB
-	require.NoError(t, model.DB.AutoMigrate(&model.User{}, &model.Token{}, &model.Ability{}))
+	require.NoError(t, model.DB.AutoMigrate(&model.User{}, &model.Token{}, &model.Ability{}, &model.Organization{}, &model.OrganizationMember{}, &model.UserSubscription{}, &model.UserSession{}))
 
 	t.Cleanup(func() {
 		if sqlDB, err := model.DB.DB(); err == nil {
@@ -160,4 +162,85 @@ func TestPgVideoRoutesRegisterWithoutConflict(t *testing.T) {
 		"POST /pg/video/generations",
 		"GET /pg/video/generations/:task_id",
 	}, pgVideoPaths)
+}
+
+// seedPlaygroundOrgFallbackFixture 造一个「钱包耗尽 + 组织可用」的会话用户，
+// 返回其登录 access token 与组织分组名。
+func seedPlaygroundOrgFallbackFixture(t *testing.T, userGroup, orgGroup string, userQuota, orgQuota int) string {
+	t.Helper()
+	user := model.User{
+		Username:    "pg-fb-" + userGroup,
+		DisplayName: "pg-fb-" + userGroup,
+		Status:      common.UserStatusEnabled,
+		Group:       userGroup,
+		Quota:       userQuota,
+		AuthVersion: 1,
+		AffCode:     "pgfb-" + userGroup,
+	}
+	require.NoError(t, model.DB.Create(&user).Error)
+	organization := &model.Organization{
+		Name:        "org-" + orgGroup,
+		Slug:        "org-" + orgGroup,
+		Group:       orgGroup,
+		Status:      model.OrganizationStatusActive,
+		Quota:       orgQuota,
+		OwnerUserId: user.Id,
+		CreatedBy:   user.Id,
+	}
+	require.NoError(t, model.DB.Create(organization).Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{
+		OrganizationId: organization.Id,
+		UserId:         user.Id,
+		Role:           model.OrganizationRoleOwner,
+		Status:         model.OrganizationMemberStatusActive,
+	}).Error)
+	bundle, err := service.CreateLoginSession(user.Id, "test", "", "")
+	require.NoError(t, err)
+	return bundle.AccessToken
+}
+
+func postPlaygroundChatCompletion(t *testing.T, engine *gin.Engine, accessToken string) *httptest.ResponseRecorder {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/pg/chat/completions", strings.NewReader(`{"model":"pg-fb-model","messages":[{"role":"user","content":"hi"}]}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+accessToken)
+	engine.ServeHTTP(recorder, request)
+	return recorder
+}
+
+// TestPlaygroundOrganizationFallbackSwitchesGroupBeforeDistribute 用真实中间件链
+// 验证顺序：会话鉴权通过后、渠道选择之前，钱包耗尽用户的 usingGroup 已切到组织
+// 分组（Distribute 的「无可用渠道」报错里带的就是这个分组名）。
+// 顺序若错（兜底在 UserAuth 前拿不到用户、在 Distribute 后才生效），报错里只会
+// 出现个人分组。
+func TestPlaygroundOrganizationFallbackSwitchesGroupBeforeDistribute(t *testing.T) {
+	// 断言对象是 Distribute 经 i18n.T 渲染的报错文本，而 i18n bundle 只在
+	// main.go 初始化，测试须自行初始化（sync.Once，与 controller 测试同规）。
+	require.NoError(t, i18n.Init())
+	setupRelayRouterTestDB(t)
+	accessToken := seedPlaygroundOrgFallbackFixture(t, "pg-fb-user", "pg-fb-org", 0, 100000)
+
+	engine := gin.New()
+	SetRelayRouter(engine)
+	recorder := postPlaygroundChatCompletion(t, engine, accessToken)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "pg-fb-org")
+	assert.NotContains(t, recorder.Body.String(), "pg-fb-user")
+}
+
+func TestPlaygroundOrganizationFallbackKeepsPersonalGroupAboveThreshold(t *testing.T) {
+	// 同上：报错文本由 i18n.T 渲染，bundle 需先初始化。
+	require.NoError(t, i18n.Init())
+	setupRelayRouterTestDB(t)
+	accessToken := seedPlaygroundOrgFallbackFixture(t, "pg-fb-user", "pg-fb-org", 1000000, 100000)
+
+	engine := gin.New()
+	SetRelayRouter(engine)
+	recorder := postPlaygroundChatCompletion(t, engine, accessToken)
+
+	require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.Contains(t, recorder.Body.String(), "pg-fb-user")
+	assert.NotContains(t, recorder.Body.String(), "pg-fb-org")
 }
