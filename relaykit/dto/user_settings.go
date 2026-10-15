@@ -16,6 +16,7 @@ type UserSetting struct {
 	SidebarModules                   string  `json:"sidebar_modules,omitempty"`                      // SidebarModules 左侧边栏模块配置
 	BillingPreference                string  `json:"billing_preference,omitempty"`                   // BillingPreference 扣费策略（订阅/钱包）
 	Language                         string  `json:"language,omitempty"`                             // Language 用户语言偏好 (zh, en)
+	PlaygroundLastOrganizationId     int     `json:"playground_last_organization_id,omitempty"`      // PlaygroundLastOrganizationId 游乐场组织额度兜底最近一次选中的组织（仅服务端写入）
 }
 
 var (
