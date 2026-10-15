@@ -31,6 +31,7 @@ var (
 	VideoGenerationModels = []string{
 		"seedance",
 		"sora",
+		"kling",
 	}
 )
 
