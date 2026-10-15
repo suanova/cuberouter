@@ -153,15 +153,25 @@ var (
 )
 
 // init 注册 kling 家族的计费事实 schema：表达式保存时按此校验 u() 键并生成
-// 冒烟测试向量（setting/billing_setting.SmokeTestTaskExprWithFacts）。事实的
-// 实际取值由 deriveKlingRequest 推导，两者的键集合必须一致。
+// 冒烟测试向量（setting/billing_setting.SmokeTestTaskExprWithFacts）。按子系列
+// 分开注册——非 omni 运行时只产生 variant，omni 只产生 reference——schema 的键
+// 集合必须与 deriveKlingRequest 的推导一致，否则会放行运行时不存在的 u() 键
+// （求值为 0/空字符串导致静默错档）。两个 schema 的冒烟组合数（54/36）均在 64
+// 上限内，全部枚举值参与校验。
 func init() {
-	billingexpr.RegisterTaskUsageSchema(isKlingModel, map[string]billingexpr.UsageFieldSchema{
+	billingexpr.RegisterTaskUsageSchema(isKlingOmniModel, map[string]billingexpr.UsageFieldSchema{
 		"seconds":   {Type: "number", Unit: "second"},
 		"mode":      {Type: "string", Enum: []string{klingModeStd, klingModePro, "4k"}},
 		"sound":     {Type: "string", Enum: []string{klingSoundOn, klingSoundOff}},
-		"variant":   {Type: "string", Enum: []string{klingTypeT2V, klingTypeI2V, klingTypeMotion}},
 		"reference": {Type: "string", Enum: []string{klingRefYes, klingRefNo}},
+	})
+	billingexpr.RegisterTaskUsageSchema(func(model string) bool {
+		return isKlingModel(model) && !isKlingOmniModel(model)
+	}, map[string]billingexpr.UsageFieldSchema{
+		"seconds": {Type: "number", Unit: "second"},
+		"mode":    {Type: "string", Enum: []string{klingModeStd, klingModePro, "4k"}},
+		"sound":   {Type: "string", Enum: []string{klingSoundOn, klingSoundOff}},
+		"variant": {Type: "string", Enum: []string{klingTypeT2V, klingTypeI2V, klingTypeMotion}},
 	})
 }
 
@@ -621,6 +631,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 // isKlingModel 判断模型是否属于 kling 家族（kling-v3 / kling-v3-omni）。
 func isKlingModel(model string) bool {
 	return strings.HasPrefix(strings.ToLower(model), "kling")
+}
+
+// isKlingOmniModel 判断模型是否属于 kling omni 子系列（事实集合与非 omni 不同）。
+func isKlingOmniModel(model string) bool {
+	return isKlingModel(model) && strings.Contains(strings.ToLower(model), "omni")
 }
 
 // convertKlingRequestPayload 把统一任务请求成形为 kling 方言提交体。

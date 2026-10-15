@@ -293,14 +293,23 @@ func TestSeedanceKeepsArkShape(t *testing.T) {
 // 保证测试引用的 dto 类型可用（IntValue/BoolValue 在成形结构中被使用）。
 var _ = dto.IntValue(0)
 
-// TestKlingUsageSchemaRegistered 锁定 init 注册契约：kling 家族模型拥有注册的
-// 计费事实 schema（表达式保存时可声明 u() 键），非 kling 模型不受影响。
+// TestKlingUsageSchemaRegistered 锁定 init 注册契约：按子系列注册各自运行时
+// 真实产生的事实——非 omni 有 variant 无 reference、omni 有 reference 无
+// variant（schema 放行运行时不存在的 u() 键会导致静默错档）；非 kling 不命中。
 func TestKlingUsageSchemaRegistered(t *testing.T) {
-	schema, ok := billingexpr.LookupTaskUsageSchema("kling-v3")
+	v3, ok := billingexpr.LookupTaskUsageSchema("kling-v3")
 	require.True(t, ok)
-	for _, key := range []string{"seconds", "mode", "sound", "variant", "reference"} {
-		require.Contains(t, schema, key)
+	for _, key := range []string{"seconds", "mode", "sound", "variant"} {
+		require.Contains(t, v3, key)
 	}
+	require.NotContains(t, v3, "reference", "非 omni 运行时不产生 reference 事实")
+
+	omni, ok := billingexpr.LookupTaskUsageSchema("kling-v3-omni")
+	require.True(t, ok)
+	for _, key := range []string{"seconds", "mode", "sound", "reference"} {
+		require.Contains(t, omni, key)
+	}
+	require.NotContains(t, omni, "variant", "omni 运行时不产生 variant 事实")
 
 	_, ok = billingexpr.LookupTaskUsageSchema("doubao-seedance-2-5-260628")
 	require.False(t, ok)

@@ -124,3 +124,24 @@ func TestSmokeTestTaskExprWithFactsValidatesGoAdaptorSchema(t *testing.T) {
 	pluginSchema := map[string]jsplugin.UsageFieldSchema{"seconds": {Type: "number", Unit: "second"}}
 	require.NoError(t, SmokeTestTaskExpr(`tier("base", u("seconds") * 0.4)`, pluginSchema))
 }
+
+// TestSmokeTestTaskExprWithFactsCoversAllEnumValues 锁定枚举覆盖契约：组合数不超
+// 64 上限的 schema，每个枚举值都必须进入冒烟向量——否则"仅某一档分支为负/非法"
+// 的表达式会通过保存校验，运行时按该档静默错价（CodeRabbit #148 指出的 kling
+// 场景：5 字段 schema 裁剪后 pro/i2v 无覆盖）。kling 拆分为两个 schema 后组合数
+// 为 54/36，全枚举覆盖。
+func TestSmokeTestTaskExprWithFactsCoversAllEnumValues(t *testing.T) {
+	schema := map[string]billingexpr.UsageFieldSchema{
+		"seconds": {Type: "number", Unit: "second"},
+		"mode":    {Enum: []string{"std", "pro", "4k"}},
+		"sound":   {Enum: []string{"on", "off"}},
+		"variant": {Enum: []string{"t2v", "i2v", "motion_control"}},
+	}
+
+	require.ErrorContains(t,
+		SmokeTestTaskExprWithFacts(`u("mode") == "pro" ? -1 : 0`, schema),
+		"result must be finite and non-negative")
+	require.ErrorContains(t,
+		SmokeTestTaskExprWithFacts(`u("variant") == "i2v" ? -1 : 0`, schema),
+		"result must be finite and non-negative")
+}
