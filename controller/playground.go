@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -75,6 +76,14 @@ func preparePlaygroundContext(c *gin.Context, relayFormat types.RelayFormat) (*r
 		return nil, types.NewError(errors.New("暂不支持使用 access token"), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
 	}
 
+	// 组织作用域（兜底中间件已切换，或视频轮询从任务行还原）在上游链路已写全：
+	// 个人临时 token 会把作用域覆盖回个人，这里直接返回。
+	// 不重复 userCache.WriteContext：它会写 user_group，把中间件覆写的组织分组改回
+	// 个人分组（model/user_cache.go WriteContext）；用户上下文 UserAuth 已写入。
+	if common.GetContextKeyString(c, constant.ContextKeyBillingAccountType) == model.AccountContextTypeOrganization {
+		return nil, nil
+	}
+
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, nil, nil)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -131,9 +140,36 @@ func PlaygroundVideoFetch(c *gin.Context) {
 		}
 	}()
 
+	preparePlaygroundVideoFetchScope(c)
 	if _, newAPIError = preparePlaygroundContext(c, types.RelayFormatTask); newAPIError != nil {
 		return
 	}
 
 	RelayTaskFetch(c)
+}
+
+// preparePlaygroundVideoFetchScope 在视频轮询前把任务归属者的计费作用域还原到上下文。
+//
+// /pg/video 的提交可能由组织额度兜底承担（billing_account_type=organization），
+// 而任务查询按上下文作用域隔离（AsyncTaskScopeFromContext）；轮询若固定用个人
+// 作用域会查不到任务。这里按 task_id + 调用者归属无作用域加载任务，命中则把任务
+// 行上的作用域写回上下文；不属于调用者或加载失败时保持现状（后续查询自然 not-found）。
+func preparePlaygroundVideoFetchScope(c *gin.Context) {
+	task, exist, err := model.GetByTaskIdAndUser(c.Param("task_id"), c.GetInt("id"))
+	if err != nil {
+		common.SysLog(fmt.Sprintf("playground video fetch: load task failed (taskId=%s): %s", c.Param("task_id"), err.Error()))
+		return
+	}
+	if !exist || task == nil {
+		return
+	}
+	model.NormalizeTaskBillingScope(task)
+	common.SetContextKey(c, constant.ContextKeyScopeType, task.ScopeType)
+	common.SetContextKey(c, constant.ContextKeyScopeId, task.ScopeId)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountType, task.BillingAccountType)
+	common.SetContextKey(c, constant.ContextKeyBillingAccountId, task.BillingAccountId)
+	common.SetContextKey(c, constant.ContextKeyOrganizationId, task.OrganizationId)
+	common.SetContextKey(c, constant.ContextKeyActorUserId, task.ActorUserId)
+	common.SetContextKey(c, constant.ContextKeyCreatorUserId, task.CreatorUserId)
+	common.SetContextKey(c, constant.ContextKeyResponsibleUserId, task.ResponsibleUserId)
 }

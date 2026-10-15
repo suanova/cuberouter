@@ -482,6 +482,22 @@ func GetByOnlyTaskId(taskId string) (*Task, bool, error) {
 	return task, exist, err
 }
 
+// GetByTaskIdAndUser 按 task_id 与归属用户加载任务（无作用域过滤）。
+// 仅供会话鉴权入口（游乐场视频轮询）在归属校验后还原任务作用域使用；
+// task_id 历史上不保证全局唯一，因此必须同时限定 user_id。
+func GetByTaskIdAndUser(taskId string, userId int) (*Task, bool, error) {
+	if taskId == "" || userId <= 0 {
+		return nil, false, nil
+	}
+	var task *Task
+	err := DB.Where("task_id = ? AND user_id = ?", taskId, userId).First(&task).Error
+	exist, err := RecordExist(err)
+	if err != nil {
+		return nil, false, err
+	}
+	return task, exist, err
+}
+
 // GetUniqueByOnlyTaskId resolves a public task identifier only when exactly one
 // row owns it. Historical task identifiers were not globally unique, so
 // capability-based reads must fail closed instead of selecting an arbitrary
