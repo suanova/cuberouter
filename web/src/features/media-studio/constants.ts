@@ -41,7 +41,12 @@ export const STUDIO_TAG_IMAGE_TO_VIDEO = 'image-to-video'
 export const VIDEO_DURATION_OPTIONS = [5, 10] as const
 
 /** 视频分辨率选项，统一任务体字段 size（如 "720p"）。 */
-export const VIDEO_RESOLUTION_OPTIONS = ['360p', '540p', '720p', '1080p'] as const
+export const VIDEO_RESOLUTION_OPTIONS = [
+  '360p',
+  '540p',
+  '720p',
+  '1080p',
+] as const
 
 export const VIDEO_DEFAULT_DURATION = 5
 export const VIDEO_DEFAULT_RESOLUTION = '720p'
@@ -85,6 +90,10 @@ export function qualitySteps(quality: Quality): number {
     return QUALITY_OPTIONS[1].steps
   }
   return option.steps
+}
+
+export function qwenQualitySteps(quality: Quality): number {
+  return quality === 'standard' ? 40 : qualitySteps(quality)
 }
 
 export const LIMITS = {

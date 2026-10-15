@@ -18,7 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ImageIcon } from 'lucide-react'
-
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -42,6 +41,8 @@ export function WorkflowResults(props: {
   count: number
   elapsed: number
   onEdit: (asset: StudioAsset, job: WorkflowJob) => void
+  onDraw?: (asset: StudioAsset, job: WorkflowJob) => void
+  queued?: boolean
 }) {
   const { t } = useTranslation()
   const job = props.job
@@ -61,7 +62,9 @@ export function WorkflowResults(props: {
         </p>
         <p className='text-muted-foreground max-w-sm text-xs'>
           {t(
-            'Generation is synchronous and usually takes 40 seconds to 5 minutes. Keep this page open.'
+            props.queued
+              ? 'Your image request is queued on the server. Refreshing reconnects without generating twice.'
+              : 'Generation is synchronous and usually takes 40 seconds to 5 minutes. Keep this page open.'
           )}
         </p>
       </div>
@@ -115,6 +118,16 @@ export function WorkflowResults(props: {
                 >
                   {t('Continue editing')}
                 </Button>
+                {job.request.queued && (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    disabled={props.busy}
+                    onClick={() => props.onDraw?.(asset, job)}
+                  >
+                    {t('Edit with colored strokes')}
+                  </Button>
+                )}
               </div>
             </article>
           ))}
@@ -136,6 +149,17 @@ export function WorkflowResults(props: {
             </div>
           </details>
         )}
+        <details>
+          <summary>{t('View submitted prompt and references')}</summary>
+          <p className='text-sm whitespace-pre-wrap'>{job.request.prompt}</p>
+          {job.request.annotation && (
+            <img
+              src={job.request.references[0].url}
+              alt={t('Annotated image sent to the model')}
+              className='max-h-80'
+            />
+          )}
+        </details>
       </div>
     )
   }

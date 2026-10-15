@@ -76,6 +76,25 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelRequest.Model}), types.ErrorCode(kind))
 				return
 			}
+			usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+			selected, selectedGroup, release, handled, poolErr := reserveConfiguredImageChannel(c, modelRequest.Model, usingGroup, channel.Id)
+			if handled {
+				if poolErr != nil {
+					if common.GetContextKeyBool(c, constant.ContextKeyImageStudio) && errors.Is(poolErr, ErrImageChannelBusy) {
+						c.Set("image_studio_pool_busy", true)
+						c.Abort()
+						return
+					}
+					abortWithOpenAiMessage(c, 503, "image_channel_pool_unavailable")
+					return
+				}
+				channel = selected
+				defer release()
+				c.Set("image_channel_reserved", true)
+				if usingGroup == "auto" {
+					common.SetContextKey(c, constant.ContextKeyAutoGroup, selectedGroup)
+				}
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping
@@ -124,7 +143,25 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				selected, selectedGroup, release, handled, poolErr := reserveConfiguredImageChannel(c, modelRequest.Model, usingGroup, 0)
+				if handled {
+					if poolErr != nil {
+						if common.GetContextKeyBool(c, constant.ContextKeyImageStudio) && errors.Is(poolErr, ErrImageChannelBusy) {
+							c.Set("image_studio_pool_busy", true)
+							c.Abort()
+							return
+						}
+						abortWithOpenAiMessage(c, 503, "image_channel_pool_unavailable")
+						return
+					}
+					channel, selectGroup = selected, selectedGroup
+					defer release()
+					c.Set("image_channel_reserved", true)
+					if usingGroup == "auto" {
+						common.SetContextKey(c, constant.ContextKeyAutoGroup, selectGroup)
+					}
+				}
+				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); channel == nil && found {
 					affinityUsable := false
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					affinitySatisfied := false
@@ -616,6 +653,9 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 				)
 			}
 		}
+	}
+	if channel.Type == constant.ChannelTypeImageModeration {
+		return types.NewError(errors.New("moderation channels are private"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 	common.SetContextKey(c, constant.ContextKeyChannelId, channel.Id)
 	common.SetContextKey(c, constant.ContextKeyChannelName, channel.Name)

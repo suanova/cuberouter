@@ -645,6 +645,9 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		info.RelayMode = c.GetInt("relay_mode")
 	}
 
+	if common.GetContextKeyBool(c, constant.ContextKeyImageStudio) && c.GetInt("token_id") == 0 {
+		info.IsPlayground = true
+	}
 	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
 		info.IsPlayground = true
 		info.RequestURLPath = strings.TrimPrefix(info.RequestURLPath, "/pg")

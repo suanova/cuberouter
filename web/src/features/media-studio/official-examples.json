@@ -1,0 +1,199 @@
+{
+  "source": "https://qwen.ai/blog?id=qwen-image-2.1",
+  "credit": "Qwen Team · Qwen-Image-2.1 · 2026-09-20",
+  "examples": [
+    {
+      "id": "group",
+      "title": "Six-person group photo",
+      "count": 6,
+      "description": "Combine six portraits into one group photo.",
+      "preview": "example-15.png",
+      "inputs": [
+        {
+          "asset": "example-15.png",
+          "label": "Reference 1",
+          "crop": [1, 1, 182, 256]
+        },
+        {
+          "asset": "example-15.png",
+          "label": "Reference 2",
+          "crop": [1, 259, 182, 182]
+        },
+        {
+          "asset": "example-15.png",
+          "label": "Reference 3",
+          "crop": [1, 443, 182, 274]
+        },
+        {
+          "asset": "example-15.png",
+          "label": "Reference 4",
+          "crop": [1, 719, 182, 274]
+        },
+        {
+          "asset": "example-15.png",
+          "label": "Reference 5",
+          "crop": [1, 995, 182, 273]
+        },
+        {
+          "asset": "example-15.png",
+          "label": "Reference 6",
+          "crop": [1, 1270, 182, 182]
+        }
+      ],
+      "prompt": "Combine the six people from images 1 to 6 into a natural indoor group photo. Show each person once, preserving their facial features. Match lighting, proportions and perspective.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "outfit",
+      "title": "Five-image outfit",
+      "count": 5,
+      "description": "Combine a model, coat, shoes, bag and hat.",
+      "preview": "example-16.png",
+      "inputs": [
+        {
+          "asset": "example-16.png",
+          "label": "Reference 1",
+          "crop": [1, 1, 271, 359]
+        },
+        {
+          "asset": "example-16.png",
+          "label": "Reference 2",
+          "crop": [1, 362, 271, 271]
+        },
+        {
+          "asset": "example-16.png",
+          "label": "Reference 3",
+          "crop": [1, 635, 271, 271]
+        },
+        {
+          "asset": "example-16.png",
+          "label": "Reference 4",
+          "crop": [1, 908, 271, 271]
+        },
+        {
+          "asset": "example-16.png",
+          "label": "Reference 5",
+          "crop": [1, 1181, 271, 271]
+        }
+      ],
+      "prompt": "Use the model and street from image 1. Dress the model in the pink coat from image 2, silver shoes from image 3, bag from image 4 and hat from image 5. Preserve the same face and natural full-body proportions.",
+      "width": 1024,
+      "height": 1536
+    },
+    {
+      "id": "interior",
+      "title": "Ten-image interior",
+      "count": 10,
+      "description": "Arrange the room and nine furnishing references.",
+      "preview": "example-17.png",
+      "inputs": [
+        {
+          "asset": "example-17.png",
+          "label": "Reference 1",
+          "crop": [1, 1, 303, 302]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 2",
+          "crop": [1, 305, 303, 228]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 3",
+          "crop": [1, 535, 303, 227]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 4",
+          "crop": [1, 764, 303, 228]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 5",
+          "crop": [1, 994, 303, 228]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 6",
+          "crop": [1, 1224, 303, 228]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 7",
+          "crop": [306, 1, 303, 404]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 8",
+          "crop": [306, 407, 303, 431]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 9",
+          "crop": [306, 840, 303, 305]
+        },
+        {
+          "asset": "example-17.png",
+          "label": "Reference 10",
+          "crop": [306, 1147, 303, 305]
+        }
+      ],
+      "prompt": "Use the empty room from image 1 and integrate the furniture and decorations from images 2 to 10: counter and stools, clock and vase, cushions, sofa, plant, coffee table, rocking chair and footrest, blue armchair and rug. Arrange them with clear walkways, natural proportions and consistent lighting.",
+      "width": 1536,
+      "height": 1024
+    },
+    {
+      "id": "circles",
+      "title": "Edit three colored regions",
+      "count": 1,
+      "description": "Remove the blue-marked watch, darken the red-marked hair and replace the green-marked clothes.",
+      "preview": "example-19.png",
+      "inputs": [
+        {
+          "asset": "example-18.png",
+          "label": "Reference 1"
+        }
+      ],
+      "prompt": "Remove the metal watch in the blue outline. Change the hair in the red outline to black. Replace the green-marked clothing with grey short-sleeved linen pajamas. Remove all colored marks and preserve everything else.",
+      "width": 672,
+      "height": 640
+    },
+    {
+      "id": "paint",
+      "title": "Paint a location for a diver",
+      "count": 1,
+      "description": "Add an object where the white strokes appear.",
+      "preview": "example-21.png",
+      "inputs": [
+        {
+          "asset": "example-20.png",
+          "label": "Reference 1"
+        }
+      ],
+      "prompt": "Add one diver swimming underwater in the white-marked region on the right. Remove the white strokes. Preserve the shark and underwater setting with consistent lighting and perspective.",
+      "width": 1120,
+      "height": 736
+    },
+    {
+      "id": "mask",
+      "title": "Original plus separate mask",
+      "count": 2,
+      "description": "Provide the original and a separate black-and-white reference mask.",
+      "preview": "example-24.png",
+      "inputs": [
+        {
+          "asset": "example-22.png",
+          "label": "Reference 1"
+        },
+        {
+          "asset": "example-23.png",
+          "label": "Reference 2"
+        }
+      ],
+      "prompt": "Edit image 1: generate a cowboy wearing a cowboy hat and sitting on horseback inside the white area of the mask in image 2. Black represents the remaining background. Preserve the warm lighting and photographic style. Output the finished photo, not the mask.",
+      "width": 512,
+      "height": 800
+    }
+  ]
+}

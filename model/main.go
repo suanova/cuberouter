@@ -356,6 +356,10 @@ func migrateDB() error {
 	}
 
 	err := DB.AutoMigrate(
+		&ImageStudioAudit{},
+		&ImageAPIPolicy{},
+		&ImageModerationPolicy{},
+		&ImageModerationLease{},
 		&Channel{},
 		&Token{},
 		&User{},
@@ -470,6 +474,10 @@ func migrateDBFast() error {
 		model interface{}
 		name  string
 	}{
+		{&ImageStudioAudit{}, "ImageStudioAudit"},
+		{&ImageAPIPolicy{}, "ImageAPIPolicy"},
+		{&ImageModerationPolicy{}, "ImageModerationPolicy"},
+		{&ImageModerationLease{}, "ImageModerationLease"},
 		{&Channel{}, "Channel"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},

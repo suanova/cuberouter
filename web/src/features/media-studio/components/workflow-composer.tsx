@@ -26,13 +26,14 @@ import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 
-import { QUALITY_OPTIONS } from '../constants'
+import { QUALITY_OPTIONS, qwenQualitySteps } from '../constants'
 import { draftSchema } from '../lib/workflow'
 import type { Quality } from '../types'
-import type { WorkflowDraft } from '../workflow-types'
+import type { WorkflowConfig, WorkflowDraft } from '../workflow-types'
 
 export function WorkflowComposer(props: {
   draft: WorkflowDraft
+  config?: WorkflowConfig
   textToImageModels: string[]
   imageToImageModels: string[]
   busy: boolean
@@ -41,9 +42,11 @@ export function WorkflowComposer(props: {
   onUpload: (files: File[]) => void
   onGenerate: () => void
   onReset: () => void
+  onDraw?: () => void
 }) {
   const { t } = useTranslation()
   const editing = props.draft.mode === 'edit'
+  const referenceLimit = props.draft.queued ? 10 : 3
   const models = editing ? props.imageToImageModels : props.textToImageModels
   const form = useForm<WorkflowDraft>({
     values: props.draft,
@@ -53,7 +56,8 @@ export function WorkflowComposer(props: {
     props.onChange({ ...props.draft, ...patch })
   const valid =
     draftSchema.safeParse(props.draft).success &&
-    models.includes(props.draft.model)
+    models.includes(props.draft.model) &&
+    (!props.draft.queued || !!props.config?.qwen_access)
   return (
     <form
       className='space-y-4'
@@ -152,7 +156,7 @@ export function WorkflowComposer(props: {
               accept='image/png,image/jpeg,image/webp'
               multiple
               disabled={
-                props.busy || props.draft.references.length >= 3
+                props.busy || props.draft.references.length >= referenceLimit
               }
               onChange={(event) => {
                 props.onUpload([...(event.target.files ?? [])])
@@ -161,8 +165,22 @@ export function WorkflowComposer(props: {
             />
           </label>
           <p className='text-muted-foreground text-xs'>
-            {t('PNG, JPEG or WebP · up to 10 MB each · maximum 3 references')}
+            {t(
+              props.draft.queued
+                ? 'PNG, JPEG or WebP · up to 10 references · 16 MB total request'
+                : 'PNG, JPEG or WebP · up to 10 MB each · maximum 3 references'
+            )}
           </p>
+          {props.draft.queued && props.draft.references.length > 0 && (
+            <Button
+              type='button'
+              variant='outline'
+              disabled={props.busy}
+              onClick={props.onDraw}
+            >
+              {t('Edit with colored strokes')}
+            </Button>
+          )}
         </section>
       )}
       {props.draft.parent_id && (
@@ -199,7 +217,7 @@ export function WorkflowComposer(props: {
             disabled={props.busy}
             onChange={(event) => update({ count: Number(event.target.value) })}
           >
-            {[1, 2, 3, 4].map((count) => (
+            {(props.draft.queued ? [1] : [1, 2, 3, 4]).map((count) => (
               <option key={count}>{count}</option>
             ))}
           </select>
@@ -213,7 +231,15 @@ export function WorkflowComposer(props: {
         <RadioGroup
           aria-label={t('Quality')}
           value={props.draft.quality}
-          onValueChange={(value) => update({ quality: value as Quality })}
+          onValueChange={(value) => {
+            const quality = value as Quality
+            update({
+              quality,
+              ...(props.draft.queued
+                ? { steps: qwenQualitySteps(quality) }
+                : {}),
+            })
+          }}
           disabled={props.busy}
           className='grid-cols-3'
         >
@@ -233,6 +259,69 @@ export function WorkflowComposer(props: {
           ))}
         </RadioGroup>
       </div>
+      {props.draft.queued && (
+        <details>
+          <summary>{t('Advanced settings')}</summary>
+          <div className='mt-2 grid grid-cols-3 gap-2'>
+            <label>
+              {t('Steps')}
+              <Input
+                type='number'
+                min={1}
+                max={60}
+                value={
+                  props.draft.steps ?? qwenQualitySteps(props.draft.quality)
+                }
+                disabled={props.busy}
+                onChange={(event) =>
+                  update({
+                    steps:
+                      event.target.value === ''
+                        ? Number.NaN
+                        : Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              {t('CFG')}
+              <Input
+                type='number'
+                min={0}
+                max={10}
+                step={0.1}
+                value={props.draft.cfg ?? 1}
+                disabled={props.busy}
+                onChange={(event) =>
+                  update({
+                    cfg:
+                      event.target.value === ''
+                        ? Number.NaN
+                        : Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+            <label>
+              {t('Seed')}
+              <Input
+                type='number'
+                min={0}
+                value={props.draft.seed ?? 42}
+                disabled={props.busy}
+                onChange={(event) =>
+                  update({
+                    seed:
+                      event.target.value === ''
+                        ? Number.NaN
+                        : Number(event.target.value),
+                  })
+                }
+              />
+            </label>
+          </div>
+        </details>
+      )}
       <Button
         type='submit'
         className='w-full'

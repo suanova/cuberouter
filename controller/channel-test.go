@@ -70,6 +70,9 @@ func resolveChannelTestUserID(c *gin.Context) (int, error) {
 }
 
 func testChannel(ctx context.Context, channel *model.Channel, testUserID int, testModel string, endpointType string, isStream bool) testResult {
+	if channel.Type == constant.ChannelTypeImageModeration {
+		return testResult{localErr: testStudioModerationChannel(channel)}
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -1111,7 +1114,7 @@ func runChannelTestTask(ctx context.Context, mode string, notify bool, report fu
 func selectChannelsForAutomaticTest(channels []*model.Channel, mode string) []*model.Channel {
 	selected := make([]*model.Channel, 0, len(channels))
 	for _, channel := range channels {
-		if channel.Status == common.ChannelStatusManuallyDisabled {
+		if channel.Status == common.ChannelStatusManuallyDisabled || channel.Type == constant.ChannelTypeImageModeration {
 			continue
 		}
 		if mode == operation_setting.ChannelTestModeAutoBanOnly && !channel.GetAutoBan() {

@@ -477,6 +477,13 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
 	}
+	if isAdd && channel.Type == constant.ChannelTypeImageModeration {
+		if _, _, err := model.ValidateImageModerationChannel(channel); err != nil {
+			return err
+		}
+		channel.Models, channel.Group = model.ImageModerationModel, "image-moderation-internal"
+		channel.AutoBan = common.GetPointer(0)
+	}
 
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
@@ -660,6 +667,10 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
+	if addChannelRequest.Channel.Type == constant.ChannelTypeImageModeration && addChannelRequest.Mode == "multi_to_single" {
+		common.ApiError(c, fmt.Errorf("moderation channels require one endpoint and one service key"))
+		return
+	}
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
 	switch addChannelRequest.Mode {
@@ -1030,6 +1041,29 @@ func UpdateChannel(c *gin.Context) {
 		newProxy, _ := service.NormalizeProxyURL(channel.GetSetting().Proxy)
 		normalizedOriginProxy, originProxyErr := service.NormalizeProxyURL(originProxy)
 		proxyChanged = originProxyErr != nil || normalizedOriginProxy != newProxy
+	}
+
+	if originChannel.Type == constant.ChannelTypeImageModeration || channel.Type == constant.ChannelTypeImageModeration {
+		if channel.Type != 0 && channel.Type != originChannel.Type {
+			common.ApiError(c, fmt.Errorf("create a separate moderation channel instead of changing its type"))
+			return
+		}
+		merged := *originChannel
+		if channel.BaseURL != nil {
+			merged.BaseURL = channel.BaseURL
+		}
+		if channel.Key != "" {
+			merged.Key = channel.Key
+		}
+		if channel.OtherSettings != "" {
+			merged.OtherSettings = channel.OtherSettings
+		}
+		if _, _, err := model.ValidateImageModerationChannel(&merged); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		channel.Models, channel.Group = model.ImageModerationModel, "image-moderation-internal"
+		channel.AutoBan = common.GetPointer(0)
 	}
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.

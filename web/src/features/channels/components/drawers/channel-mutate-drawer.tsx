@@ -143,6 +143,7 @@ import {
   CLAUDE_FIELD_PASSTHROUGH_TYPES,
   CHANNEL_STATUS_LABELS,
   CHANNEL_TYPE_OPTIONS,
+  CHANNEL_TYPE_IMAGE_MODERATION,
   CHANNEL_TYPE_TASK_PLUGIN,
   channelTypeOptionsForTaskPluginBind,
   CHANNEL_TYPE_WARNINGS,
@@ -2019,6 +2020,23 @@ export function ChannelMutateDrawer({
                                             nextType > 0
                                           ) {
                                             field.onChange(nextType)
+                                            if (
+                                              nextType ===
+                                              CHANNEL_TYPE_IMAGE_MODERATION
+                                            ) {
+                                              form.setValue(
+                                                'models',
+                                                'google/shieldgemma-2-4b-it'
+                                              )
+                                              form.setValue('group', [
+                                                'image-moderation-internal',
+                                              ])
+                                              form.setValue('auto_ban', 0)
+                                              form.setValue(
+                                                'multi_key_mode',
+                                                'single'
+                                              )
+                                            }
                                           }
                                         }}
                                         placeholder={t('Select channel type')}
@@ -2045,6 +2063,37 @@ export function ChannelMutateDrawer({
                             />
                           </fieldset>
 
+                          {currentType === CHANNEL_TYPE_IMAGE_MODERATION && (
+                            <div className='space-y-3'>
+                              <p className='text-muted-foreground text-sm'>
+                                {t(
+                                  'Private output reviewer. Enter the full HTTPS /v1/moderate URL and its service key. This channel cannot be used for chat or generation.'
+                                )}
+                              </p>
+                              <FormField
+                                control={form.control}
+                                name='image_moderation_ca_pem'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t(
+                                        'Moderation CA certificate (optional)'
+                                      )}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        {...field}
+                                        disabled={sensitiveLocked}
+                                        placeholder='-----BEGIN CERTIFICATE-----'
+                                        rows={4}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          )}
                           {currentType === CHANNEL_TYPE_TASK_PLUGIN && (
                             <FormField
                               control={form.control}
@@ -2885,7 +2934,10 @@ export function ChannelMutateDrawer({
                                     </FormControl>
                                     <FormDescription>
                                       {t(
-                                        'Custom API base URL. For official channels, CubeRouter has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
+                                        currentType ===
+                                          CHANNEL_TYPE_IMAGE_MODERATION
+                                          ? 'Private output reviewer. Enter the full HTTPS /v1/moderate URL and its service key. This channel cannot be used for chat or generation.'
+                                          : 'Custom API base URL. For official channels, CubeRouter has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
                                       )}
                                     </FormDescription>
                                     <FormMessage />

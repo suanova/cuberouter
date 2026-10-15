@@ -150,15 +150,18 @@ test('defaults to the image tab and switches to the video composer', async () =>
     'aria-pressed',
     'true'
   )
-  expect(
-    within(tabs).getByRole('button', { name: 'Video' })
-  ).toHaveAttribute('aria-pressed', 'false')
+  expect(within(tabs).getByRole('button', { name: 'Video' })).toHaveAttribute(
+    'aria-pressed',
+    'false'
+  )
   expect(
     screen.queryByRole('button', { name: 'Generate video' })
   ).not.toBeInTheDocument()
 
   fireEvent.click(within(tabs).getByRole('button', { name: 'Video' }))
-  expect(screen.getByRole('button', { name: 'Generate video' })).toBeInTheDocument()
+  expect(
+    screen.getByRole('button', { name: 'Generate video' })
+  ).toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Generate image' })
   ).not.toBeInTheDocument()
@@ -169,7 +172,9 @@ test('defaults to the image tab and switches to the video composer', async () =>
   ).toHaveAttribute('aria-pressed', 'true')
 
   fireEvent.click(within(tabs).getByRole('button', { name: 'Images' }))
-  expect(screen.getByRole('button', { name: 'Generate image' })).toBeInTheDocument()
+  expect(
+    await screen.findByRole('button', { name: 'Generate image' })
+  ).toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Generate video' })
   ).not.toBeInTheDocument()
@@ -204,9 +209,9 @@ test('text to video submits the unified task body, polls and renders the finishe
   expect(screen.getByRole('status')).toHaveTextContent('Generating video…')
   expect(screen.queryByLabelText('Generated video')).not.toBeInTheDocument()
   // 进行中的任务按账号持久化，页面关闭重开后可恢复轮询。
-  expect(
-    window.localStorage.getItem('cuberouter-video-pending-401')
-  ).toContain('task_v1')
+  expect(window.localStorage.getItem('cuberouter-video-pending-401')).toContain(
+    'task_v1'
+  )
 
   await act(async () => {
     await vi.advanceTimersByTimeAsync(5000)
@@ -221,9 +226,7 @@ test('text to video submits the unified task body, polls and renders the finishe
   )
 
   // 生成结束后待恢复记录清除。
-  expect(
-    window.localStorage.getItem('cuberouter-video-pending-401')
-  ).toBeNull()
+  expect(window.localStorage.getItem('cuberouter-video-pending-401')).toBeNull()
 
   // fake-indexeddb 通过定时器投递 IndexedDB 事件（且落库事务会串行化后续
   // 读取），假计时下要先发起读取再推进定时器，否则会永久等待。
@@ -249,9 +252,9 @@ test('resumes polling of a pending task after the page is reopened', async () =>
     await vi.advanceTimersByTimeAsync(0)
   })
   // 进行中任务已持久化，此时「关闭页面」。
-  expect(
-    window.localStorage.getItem('cuberouter-video-pending-401')
-  ).toContain('task_v1')
+  expect(window.localStorage.getItem('cuberouter-video-pending-401')).toContain(
+    'task_v1'
+  )
   first.unmount()
 
   // 重开页面：全新 query client，localStorage 里还有待恢复记录。
@@ -271,15 +274,11 @@ test('resumes polling of a pending task after the page is reopened', async () =>
   })
   // 挂载后自动恢复轮询：任务接口被再次请求，结果直接渲染。
   expect(
-    http.get.mock.calls.some(
-      ([url]) => url === '/pg/video/generations/task_v1'
-    )
+    http.get.mock.calls.some(([url]) => url === '/pg/video/generations/task_v1')
   ).toBe(true)
   expect(screen.getByLabelText('Generated video')).toBeInTheDocument()
   // 终态处理完毕：待恢复记录清除。
-  expect(
-    window.localStorage.getItem('cuberouter-video-pending-401')
-  ).toBeNull()
+  expect(window.localStorage.getItem('cuberouter-video-pending-401')).toBeNull()
 
   // 先让落库事务单独走完再读：fake-indexeddb 下与 save 的 commit 落在同一
   // 计时批次的读取可能拿到更早的快照（真实浏览器的按存储序列化不会）。
@@ -360,9 +359,7 @@ test('a failed task stops polling and surfaces the upstream fail reason', async 
   )
   expect(screen.queryByLabelText('Generated video')).not.toBeInTheDocument()
   // 失败终态同样清除待恢复记录，重开页面不会反复弹这个错误。
-  expect(
-    window.localStorage.getItem('cuberouter-video-pending-401')
-  ).toBeNull()
+  expect(window.localStorage.getItem('cuberouter-video-pending-401')).toBeNull()
 
   const getCallCount = http.get.mock.calls.filter(([url]) =>
     String(url).startsWith('/pg/video/generations/task_')

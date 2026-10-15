@@ -67,3 +67,8 @@ knowledge/.upstream-cache/
 
 # Ignore models yaml (it includes sensitive credential information)
 *.models.yaml
+
+# Python service test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/

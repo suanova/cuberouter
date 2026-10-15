@@ -29,6 +29,10 @@ type BodyStorage interface {
 	NewReader() (io.ReadCloser, error)
 }
 
+// NewMemoryBodyStorage keeps bounded ephemeral media out of the disk spill cache.
+// Callers must validate a size limit before constructing it and close it afterwards.
+func NewMemoryBodyStorage(data []byte) BodyStorage { return newMemoryStorage(data) }
+
 // ReplayableBody is an outbound request body that can report its byte size and
 // create independent readers for transport-level retries.
 type ReplayableBody interface {

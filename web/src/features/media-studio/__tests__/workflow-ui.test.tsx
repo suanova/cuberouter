@@ -18,13 +18,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 
 import { TemplateGallery } from '../components/template-gallery'
 import { WorkflowComposer } from '../components/workflow-composer'
+import { qwenParameters } from '../lib/qwen-queue'
 import { initialDraft } from '../lib/workflow'
+import type { WorkflowDraft } from '../workflow-types'
 
 function Composer(props: { generate: () => void }) {
   const [draft, setDraft] = useState({
@@ -46,6 +47,57 @@ function Composer(props: { generate: () => void }) {
     />
   )
 }
+
+function QueuedComposer(props: { generate: (draft: WorkflowDraft) => void }) {
+  const [draft, setDraft] = useState<WorkflowDraft>({
+    ...initialDraft,
+    queued: true,
+    model: 'qwen-image-2.1',
+    prompt: 'A blue teapot',
+  })
+  return (
+    <WorkflowComposer
+      draft={draft}
+      config={{ qwen_access: true }}
+      textToImageModels={['qwen-image-2.1']}
+      imageToImageModels={['qwen-image-2.1']}
+      busy={false}
+      loading={false}
+      onChange={setDraft}
+      onUpload={vi.fn()}
+      onGenerate={() => props.generate(draft)}
+      onReset={vi.fn()}
+    />
+  )
+}
+
+test('queued Qwen keeps the quality presets and advanced settings collapsed initially', async () => {
+  const generate = vi.fn()
+  render(<QueuedComposer generate={generate} />)
+  expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+  expect(
+    screen.getByText('Advanced settings').closest('details')
+  ).not.toHaveAttribute('open')
+  expect(screen.getByLabelText('Steps')).toHaveValue(40)
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
+  expect(qwenParameters(generate.mock.calls[0][0]).steps).toBe(40)
+})
+
+test('queued Qwen preset selection affects submitted steps and permits an explicit advanced override', async () => {
+  const generate = vi.fn()
+  render(<QueuedComposer generate={generate} />)
+  fireEvent.click(screen.getByRole('radio', { name: 'High' }))
+  expect(screen.getByRole('radio', { name: 'High' })).toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
+  expect(qwenParameters(generate.mock.calls[0][0]).steps).toBe(50)
+  fireEvent.click(screen.getByText('Advanced settings'))
+  fireEvent.change(screen.getByLabelText('Steps'), { target: { value: '8' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(2))
+  expect(qwenParameters(generate.mock.calls[1][0]).steps).toBe(8)
+})
 test('the composer offers quality tiers instead of model-specific numeric settings', () => {
   render(<Composer generate={vi.fn()} />)
   expect(

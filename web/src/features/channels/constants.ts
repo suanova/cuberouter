@@ -31,6 +31,7 @@ export const CHANNEL_TYPE_TASK_PLUGIN = 62
 // Fork-local type with no upstream equivalent: image editing channels that only accept the
 // reference image inline as base64 (must match backend constant.ChannelTypeImageEdit).
 export const CHANNEL_TYPE_IMAGE_EDIT = 63
+export const CHANNEL_TYPE_IMAGE_MODERATION = 65
 
 // Fork-local type with no upstream equivalent: CubeStack (SGLang Diffusion) video channels
 // (must match backend constant.ChannelTypeCubeStack).
@@ -101,12 +102,13 @@ export const CHANNEL_TYPES = {
   62: 'Task Plugin',
   63: 'Image Edit (Base64)',
   64: 'CubeStack',
+  65: 'ShieldGemma 2 (Image moderation)',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
-  1, 14, 33, 24, 43, 3, 41, 48, 61, 58, 62, 63, 42, 34, 20, 4, 40, 27, 25, 17, 26,
-  15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 60, 22, 21, 44,
-  2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 59, 64,
+  1, 14, 33, 24, 43, 3, 41, 48, 61, 58, 62, 63, 42, 34, 20, 4, 40, 27, 25, 17,
+  26, 15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 60, 22, 21,
+  44, 2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 59, 64, 65,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -419,8 +421,30 @@ export const FIELD_DESCRIPTIONS = {
 // ============================================================================
 
 export const MODEL_FETCHABLE_TYPES = new Set([
-  1, 4, 14, 17, 20, 23, 24, 25, 26, 27, 31, 34, 35, 40, 42, 43, 47, 48, 57, 58,
-  59, 60, 61, CHANNEL_TYPE_CUBE_STACK,
+  1,
+  4,
+  14,
+  17,
+  20,
+  23,
+  24,
+  25,
+  26,
+  27,
+  31,
+  34,
+  35,
+  40,
+  42,
+  43,
+  47,
+  48,
+  57,
+  58,
+  59,
+  60,
+  61,
+  CHANNEL_TYPE_CUBE_STACK,
 ])
 
 // Upstream's 59 (Sub2API) is remapped to 60 in this fork; CHANNEL_TYPE_NEW_API is 61.

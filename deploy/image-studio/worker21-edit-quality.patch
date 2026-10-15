@@ -1,0 +1,79 @@
+diff --git a/worker21.py b/worker21.py
+--- a/worker21.py
++++ b/worker21.py
+@@ -4,6 +4,8 @@
+ from PIL import Image, ImageOps
+ import torch
+ from diffusers import QwenImage21Pipeline
++from edit_quality import (MAX_REFERENCE_PIXELS, REFERENCE_RESOLUTION_CAPS,
++                          conditioning_cache_release, reference_resolution)
+ 
+ MODEL = '2.1'
+ REVISION = 'b3179ad355be050328e483a9dfdd9e60cd62adfa'
+@@ -11,7 +13,14 @@
+ assert 0 <= GPU < 8
+ PORT = int(os.environ['TRIAL_PORT'])
+ LOCK = threading.Lock()
+-STATE = {'state': 'loading', 'model': MODEL, 'completed': 0, 'max_reference_images': 10, 'multi_reference_resolution': 512}
++STATE = {'state': 'loading', 'model': MODEL, 'completed': 0, 'max_reference_images': 10,
++         'multi_reference_resolution': REFERENCE_RESOLUTION_CAPS[10],
++         'single_reference_max_pixels': MAX_REFERENCE_PIXELS,
++         'reference_resolution_policy': 'quality_first',
++         'reference_resolution_caps': REFERENCE_RESOLUTION_CAPS,
++         'single_reference_vae_tiling': False, 'generation_vae_tiling': False,
++         'multi_reference_vae_tiling': False,
++         'conditioning_cache_release_before_decode': True}
+ PIPE = None
+ Image.MAX_IMAGE_PIXELS = 16_000_000
+ 
+@@ -25,7 +34,8 @@
+         assert Path('/models/model/READY').read_text().strip() == REVISION
+         PIPE = QwenImage21Pipeline.from_pretrained('/models/model', torch_dtype=torch.bfloat16,
+                                                    device_map='balanced', local_files_only=True)
+-        PIPE.vae.enable_tiling(); PIPE.vae.enable_slicing()
++        PIPE.vae.use_tiling = False
++        PIPE.vae.enable_slicing()
+         PIPE.set_progress_bar_config(disable=True)
+         assert all(str(device) in ('0', 'cuda:0') for device in PIPE.hf_device_map.values())
+         STATE.update(state='ready', gpu_count=1, physical_gpus=[GPU], model_revision=REVISION,
+@@ -84,19 +94,26 @@
+             STATE.update(state='generating', step=0, total_steps=p['steps'])
+             def progress(pipe, step, timestep, tensors):
+                 STATE['step'] = step + 1
++                if step + 1 == pipe.num_timesteps:
++                    torch.cuda.synchronize(0)
++                release_cache(step, pipe.num_timesteps)
+                 return tensors
+             args = dict(prompt=p['prompt'], width=p['width'], height=p['height'],
+                         num_inference_steps=p['steps'], true_cfg_scale=p['cfg'],
+                         negative_prompt=' ' if p['cfg'] > 1 else None, use_kv_cache=True,
+                         generator=torch.Generator(device='cuda:0').manual_seed(p['seed']),
+                         callback_on_step_end=progress)
++            # Quality takes priority over the memory savings of spatial tiles.
++            # Keep full VAE context for creation and every reference count.
++            # Conditioning limits remain explicit; never silently retry at a
++            # smaller size or switch to tiles after an out-of-memory failure.
++            PIPE.vae.use_tiling = False
+             if p['mode'] == 'edit':
+-                # Bound multi-reference KV/vision memory on the isolated single GPU.
+-                # Explicit width/height preserve the requested output dimensions.
+-                args.update(image=refs, output_resolution=512 if len(refs) > 3 else 1024)
++                args.update(image=refs, output_resolution=reference_resolution(refs))
+             torch.cuda.reset_peak_memory_stats(0)
+             inference_start = time.monotonic()
+-            with torch.inference_mode(): output = PIPE(**args).images[0]
++            with conditioning_cache_release(PIPE.transformer) as release_cache:
++                with torch.inference_mode(): output = PIPE(**args).images[0]
+             torch.cuda.synchronize(0)
+             elapsed = time.monotonic() - inference_start
+             png = io.BytesIO(); output.save(png, format='PNG')
+@@ -113,6 +130,9 @@
+             print(json.dumps({'event':'failed','error_type':type(exc).__name__}), flush=True)
+         finally:
+             p = refs = output = png = result = args = None
++            if PIPE is not None:
++                PIPE.vae.clear_cache()
++                PIPE.vae.use_tiling = False
+             torch.cuda.empty_cache()
+             STATE.update(state='ready' if PIPE is not None else 'failed', step=None, total_steps=None)
+             LOCK.release()

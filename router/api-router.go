@@ -13,6 +13,10 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
+	router.POST("/internal/image-studio/execute-api", controller.PrepareImageStudioRelay, middleware.Distribute(), controller.ImageStudioChannelRelay)
+	router.POST("/internal/image-studio/reconcile", controller.ReconcileImageStudioExecution)
+	router.GET("/internal/image-studio/capacity", controller.ImageStudioChannelCapacity)
+	router.POST("/internal/image-studio/execute", controller.PrepareImageStudioRelay, middleware.Distribute(), controller.ImageStudioChannelRelay)
 	registerApiRoutes(router.Group("/api"))
 	registerApiRoutes(router.Group("/api/v1"))
 	registerApiRoutes(router.Group("/api/v2"))
@@ -25,8 +29,14 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
-	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
+	imageStudio := apiRouter.Group("/image-studio", middleware.ImageStudioIPRateLimit(), middleware.UserAuth(), middleware.ImageStudioGroupAuth(), middleware.ImageStudioUserRateLimit())
+	imageStudio.GET("/*path", controller.ImageStudio)
+	imageStudio.POST("/*path", controller.ImageStudio)
+	apiRouter.Use(middleware.GlobalAPIRateLimit())
+	apiRouter.GET("/image-api-policy", middleware.RootAuth(), controller.ImageAPIPolicies)
+	apiRouter.PUT("/image-api-policy", middleware.RootAuth(), controller.ImageAPIPolicies)
+	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.ImageStudioAuditLookup)
 	studio := apiRouter.Group("/media-studio", middleware.UserAuth())
 	studio.GET("/config", controller.MediaStudioConfig)
 	studio.POST("/uploads/presign", middleware.UserCriticalRateLimit("studio-upload"), controller.MediaStudioUpload)

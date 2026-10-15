@@ -41,6 +41,7 @@ import { Route as AuthenticatedChatChatIdRouteImport } from './routes/_authentic
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedDashboardSectionRouteImport } from './routes/_authenticated/dashboard/$section'
 import { Route as AuthenticatedErrorsErrorRouteImport } from './routes/_authenticated/errors/$error'
+import { Route as AuthenticatedImageStudioAuditIndexRouteImport } from './routes/_authenticated/image-studio-audit/index'
 import { Route as AuthenticatedKeysIndexRouteImport } from './routes/_authenticated/keys/index'
 import { Route as AuthenticatedMediaStudioIndexRouteImport } from './routes/_authenticated/media-studio/index'
 import { Route as AuthenticatedModelsIndexRouteImport } from './routes/_authenticated/models/index'
@@ -243,6 +244,12 @@ const AuthenticatedErrorsErrorRoute =
   AuthenticatedErrorsErrorRouteImport.update({
     id: '/errors/$error',
     path: '/errors/$error',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedImageStudioAuditIndexRoute =
+  AuthenticatedImageStudioAuditIndexRouteImport.update({
+    id: '/image-studio-audit/',
+    path: '/image-studio-audit/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedKeysIndexRoute = AuthenticatedKeysIndexRouteImport.update({
@@ -504,6 +511,7 @@ export interface FileRoutesByFullPath {
   '/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/channels/': typeof AuthenticatedChannelsIndexRoute
   '/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/image-studio-audit/': typeof AuthenticatedImageStudioAuditIndexRoute
   '/keys/': typeof AuthenticatedKeysIndexRoute
   '/media-studio/': typeof AuthenticatedMediaStudioIndexRoute
   '/models/': typeof AuthenticatedModelsIndexRoute
@@ -573,6 +581,7 @@ export interface FileRoutesByTo {
   '/campaigns': typeof AuthenticatedCampaignsIndexRoute
   '/channels': typeof AuthenticatedChannelsIndexRoute
   '/dashboard': typeof AuthenticatedDashboardIndexRoute
+  '/image-studio-audit': typeof AuthenticatedImageStudioAuditIndexRoute
   '/keys': typeof AuthenticatedKeysIndexRoute
   '/media-studio': typeof AuthenticatedMediaStudioIndexRoute
   '/models': typeof AuthenticatedModelsIndexRoute
@@ -646,6 +655,7 @@ export interface FileRoutesById {
   '/_authenticated/campaigns/': typeof AuthenticatedCampaignsIndexRoute
   '/_authenticated/channels/': typeof AuthenticatedChannelsIndexRoute
   '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
+  '/_authenticated/image-studio-audit/': typeof AuthenticatedImageStudioAuditIndexRoute
   '/_authenticated/keys/': typeof AuthenticatedKeysIndexRoute
   '/_authenticated/media-studio/': typeof AuthenticatedMediaStudioIndexRoute
   '/_authenticated/models/': typeof AuthenticatedModelsIndexRoute
@@ -718,6 +728,7 @@ export interface FileRouteTypes {
     | '/campaigns/'
     | '/channels/'
     | '/dashboard/'
+    | '/image-studio-audit/'
     | '/keys/'
     | '/media-studio/'
     | '/models/'
@@ -787,6 +798,7 @@ export interface FileRouteTypes {
     | '/campaigns'
     | '/channels'
     | '/dashboard'
+    | '/image-studio-audit'
     | '/keys'
     | '/media-studio'
     | '/models'
@@ -859,6 +871,7 @@ export interface FileRouteTypes {
     | '/_authenticated/campaigns/'
     | '/_authenticated/channels/'
     | '/_authenticated/dashboard/'
+    | '/_authenticated/image-studio-audit/'
     | '/_authenticated/keys/'
     | '/_authenticated/media-studio/'
     | '/_authenticated/models/'
@@ -1140,6 +1153,13 @@ declare module '@tanstack/react-router' {
       path: '/errors/$error'
       fullPath: '/errors/$error'
       preLoaderRoute: typeof AuthenticatedErrorsErrorRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/image-studio-audit/': {
+      id: '/_authenticated/image-studio-audit/'
+      path: '/image-studio-audit'
+      fullPath: '/image-studio-audit/'
+      preLoaderRoute: typeof AuthenticatedImageStudioAuditIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/keys/': {
@@ -1506,6 +1526,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedCampaignsIndexRoute: typeof AuthenticatedCampaignsIndexRoute
   AuthenticatedChannelsIndexRoute: typeof AuthenticatedChannelsIndexRoute
   AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
+  AuthenticatedImageStudioAuditIndexRoute: typeof AuthenticatedImageStudioAuditIndexRoute
   AuthenticatedKeysIndexRoute: typeof AuthenticatedKeysIndexRoute
   AuthenticatedMediaStudioIndexRoute: typeof AuthenticatedMediaStudioIndexRoute
   AuthenticatedModelsIndexRoute: typeof AuthenticatedModelsIndexRoute
@@ -1542,6 +1563,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedCampaignsIndexRoute: AuthenticatedCampaignsIndexRoute,
   AuthenticatedChannelsIndexRoute: AuthenticatedChannelsIndexRoute,
   AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
+  AuthenticatedImageStudioAuditIndexRoute:
+    AuthenticatedImageStudioAuditIndexRoute,
   AuthenticatedKeysIndexRoute: AuthenticatedKeysIndexRoute,
   AuthenticatedMediaStudioIndexRoute: AuthenticatedMediaStudioIndexRoute,
   AuthenticatedModelsIndexRoute: AuthenticatedModelsIndexRoute,

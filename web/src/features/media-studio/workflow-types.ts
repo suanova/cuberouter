@@ -24,7 +24,13 @@ export interface StudioAsset {
   url: string
   mime: string
 }
-/** 按运维声明的模型标签分类的可用模型：文生图/图生图与文生视频/图生视频互不推断。 */
+export interface WorkflowConfig {
+  qwen_queue_enabled?: boolean
+  qwen_model?: string
+  qwen_access?: boolean
+  audit_retention_days?: number
+}
+/** 按运维声明的模型标签分类的可用模型：text-to-image 与 image-to-image 互不推断。 */
 export interface StudioModelCatalog {
   textToImage: string[]
   imageToImage: string[]
@@ -32,6 +38,16 @@ export interface StudioModelCatalog {
   imageToVideo: string[]
 }
 export interface WorkflowDraft {
+  queued?: boolean
+  user_prompt?: string
+  steps?: number
+  cfg?: number
+  seed?: number
+  annotation?: {
+    original: StudioAsset
+    strokes: import('./lib/qwen-edit').Stroke[]
+    instruction: string
+  }
   mode: 'create' | 'edit'
   model: string
   prompt: string

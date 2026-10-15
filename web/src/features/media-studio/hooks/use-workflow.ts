@@ -18,9 +18,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-
 import { useEffect, useRef, useState } from 'react'
 
+import {
+  collectQwenJob,
+  pendingJob,
+  releaseQwenResult,
+  submitQwenJob,
+  type PendingImageJob,
+  type QueueStatus,
+} from '../lib/qwen-queue'
 import {
   deleteStudioJob,
   listStudioJobs,
@@ -42,16 +49,38 @@ export function useWorkflow(owner: number) {
   const [warning, setWarning] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const started = useRef(0)
+  const abort = useRef<AbortController | null>(null)
+  const [queueStatus, setQueueStatus] = useState<QueueStatus>()
+  const [pending, setPending] = useState<PendingImageJob>()
+  const [recovering, setRecovering] = useState(true)
   const generation = useMutation({
-    mutationFn: async (draft: WorkflowDraft) => {
+    mutationFn: async (draft: WorkflowDraft & { resume?: PendingImageJob }) => {
       started.current = Date.now()
       setElapsed(0)
       setWarning('')
       setSelected(undefined)
-      const output = await workflowAPI.generate(draft)
+      setQueueStatus(undefined)
+      abort.current?.abort()
+      abort.current = new AbortController()
+      let output: { job: WorkflowJob; warning?: string }
+      if (draft.queued) {
+        const record = draft.resume ?? (await submitQwenJob(owner, draft))
+        setPending(record)
+        output = {
+          job: await collectQwenJob(
+            record,
+            abort.current.signal,
+            setQueueStatus
+          ),
+        }
+      } else output = await workflowAPI.generate(draft)
       let notice = output.warning ?? ''
       try {
         await saveStudioJob(owner, output.job)
+        if (draft.queued) {
+          await releaseQwenResult(owner, output.job.id)
+          setPending(undefined)
+        }
       } catch (error) {
         notice = workflowError(error)
       }
@@ -63,7 +92,31 @@ export function useWorkflow(owner: number) {
       setWarning(output.notice)
       void client.invalidateQueries({ queryKey: key })
     },
+    onError: () => {
+      void pendingJob(owner)
+        .then(setPending)
+        .catch(() => undefined)
+    },
   })
+  const mutate = useRef(generation.mutate)
+  mutate.current = generation.mutate
+  useEffect(() => {
+    let active = true
+    void pendingJob(owner)
+      .then((record) => {
+        if (!active || !record) return
+        setPending(record)
+        mutate.current({ ...record.draft, resume: record })
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setRecovering(false)
+      })
+    return () => {
+      active = false
+      abort.current?.abort()
+    }
+  }, [owner])
   useEffect(() => {
     if (!generation.isPending) return
     const timer = setInterval(
@@ -86,6 +139,19 @@ export function useWorkflow(owner: number) {
     selected,
     warning,
     elapsed,
+    queueStatus,
+    pending,
+    recovering,
+    reconnect: () => {
+      if (pending) generation.mutate({ ...pending.draft, resume: pending })
+    },
+    clearEndedRequest: async () => {
+      // This only removes a local recovery record; the UI enables it after terminal status.
+      await pendingJob(owner, null)
+      setPending(undefined)
+      setQueueStatus(undefined)
+      generation.reset()
+    },
     select: (id: string) =>
       setSelected(history.data?.find((job) => job.id === id)),
   }

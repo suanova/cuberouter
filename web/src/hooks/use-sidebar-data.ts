@@ -187,6 +187,12 @@ export function useSidebarData(): SidebarData {
             icon: CreditCard,
           },
           {
+            title: t('Image audit'),
+            url: '/image-studio-audit',
+            icon: ScrollText,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
             title: t('System Info'),
             url: '/system-info',
             icon: ServerCog,

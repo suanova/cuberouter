@@ -1,0 +1,23 @@
+services:
+  image-studio-dispatcher:
+    image: ${IMAGE_STUDIO_IMAGE:?Set the dispatcher image with the same immutable commit tag as the gateway}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    # One dispatcher and one callback gateway for both create/edit operations.
+    # Expose only to the gateway/private network, never to end users.
+    ports:
+      - "127.0.0.1:18195:18195"
+    environment:
+      IMAGE_STUDIO_DISPATCHER_TOKEN: ${IMAGE_STUDIO_DISPATCHER_TOKEN:?Set a random secret of at least 32 characters}
+      IMAGE_STUDIO_RELAY_URL: ${IMAGE_STUDIO_RELAY_URL:?Set the private CubeRouter callback URL}
+      IMAGE_STUDIO_RELAY_TOKEN: ${IMAGE_STUDIO_RELAY_TOKEN:?Set a separate random callback secret}
+      # Gateway must also set IMAGE_STUDIO_CHANNEL_IDS=auto.
+      IMAGE_STUDIO_RELAY_CONCURRENCY: ${IMAGE_STUDIO_RELAY_CONCURRENCY:-auto}
+    healthcheck:
+      test: [CMD, python, -B, /app/healthcheck.py]
+      interval: 30s
+      timeout: 5s
+      retries: 3
