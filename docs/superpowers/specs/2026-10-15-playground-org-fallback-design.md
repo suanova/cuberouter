@@ -33,7 +33,7 @@
 | 决策 | 选择 | 理由 |
 |---|---|---|
 | 触发条件 | 钱包为有效资金来源 **且** 钱包余量 `< 阈值`（严格小于） | 等于阈值不切，行为可预期 |
-| 阈值 | **0.2 美元 ≈ 100,000 quota**（按 `QuotaPerUnit` 派生，`common/constants.go:22` 默认 50 万/USD） | 低于此量基本撑不起一次常规请求；从 `QuotaPerUnit` 派生保住美元语义；单常量可调 |
+| 阈值 | **¥0.2 ≈ 13,700 quota**（= 0.2 ÷ 7.3 × `QuotaPerUnit`，`common/constants.go:22` 默认 50 万/USD） | 2026-10-15 确认按人民币表达。遵循「存储与计费永远 USD」原则（2026-09-08 货币设计）：折算为美元锚 ≈ $0.0274 后固定，**不随展示汇率变化**；`QuotaPerUnit` 在调用时参与换算，保证 USD 语义 |
 | 选组织 | 活跃成员 ∩ `org.status=active` ∩ `quota-used>0`；last-used 命中则用，否则剩余最多（并列 id 最小） | 与"上次用过 > 额度最多"定案一致；全自动、事后可解释 |
 | last-used 存储 | `users.setting` JSON 新字段 `playground_last_organization_id`（`relaykit/dto/user_settings.go`） | JSON 列加字段零迁移；随用户设置 Redis 缓存、多节点共享；仅值变化时写回 |
 | 切换位置 | 新中间件，注册在 **UserAuth 之后、Distribute 之前** | 渠道选择与分组倍率必须先看到组织分组（与组织 key 语义一致，`middleware/auth.go:474-498`） |
@@ -90,7 +90,7 @@
 | 文件 | 改动 |
 |---|---|
 | `relaykit/dto/user_settings.go` | +`PlaygroundLastOrganizationId int`（`json:"playground_last_organization_id,omitempty"`）；需 `cd relaykit && GOWORK=off go build ./...` 独立构建验证 |
-| `setting/`（新文件或并入现有文件） | 阈值 `0.2 USD`（按 `QuotaPerUnit` 换算为 int quota，含注释说明） |
+| `setting/`（新文件或并入现有文件） | 阈值 ¥0.2：以函数在**调用时**按 `0.2 / 7.3 * QuotaPerUnit` 换算为 int quota（避免包初始化顺序踩到 `QuotaPerUnit` 的加载时机）；注释说明「¥0.2 @ 展示汇率 7.3，美元锚定、不随展示汇率变」 |
 | `service/playground_organization.go`（新） | `SelectPlaygroundOrganization(userId)`（候选筛选 + last-used 回退 + 剩余最多）与组织 `TokenScopeContext` 构造；复用 `activeOrganizationMemberWithEnabledUserQuery` 与 `normalizeOrganizationGroup` |
 | `middleware/playground_organization.go`（新） | `PlaygroundOrganizationFallback()`：skip 条件、资金来源判定、选组织、上下文写入、last-used 写回、fail-open |
 | `controller/playground.go` | `preparePlaygroundContext` 组织分支（跳过个人 token，保留 PAT 拒绝）；`PlaygroundVideoFetch` 前置（无作用域加载 + 归属校验 + 作用域回填） |
@@ -131,4 +131,4 @@
 2. **有活跃订阅的用户**：不兜底；订阅耗尽时报订阅侧错误（同上，将来可叠加）。
 3. **任务可见性**：studio 视频历史为本地存储，不受影响；若后续存在服务端任务列表且按个人作用域查询，组织兜底任务不会出现在其中——与组织 key 任务现行行为一致。
 4. **last-used 不可读/写失败**：退化为「额度最多」/不记忆，不影响正确性。
-5. **阈值**：单常量 0.2 USD；调整需发版，不提为设置项。
+5. **阈值**：¥0.2（USD 锚 ≈ $0.0274，≈ 13,700 quota）；单常量，调整需发版，不提为设置项。
