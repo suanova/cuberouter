@@ -20,10 +20,8 @@ For commercial licensing, please contact support@quantumnous.com
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
@@ -36,42 +34,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// setupPlaygroundFallbackTestDB 打开游乐场兜底用例需要的内存 SQLite。
+// 复用包内共享的 setupOrganizationMiddlewareTestDB：除了建表，它还负责还原
+// model.DB / LOG_DB、数据库类型等进程级全局，不还原就会和本包其他用例互相污染。
 func setupPlaygroundFallbackTestDB(t *testing.T) {
 	t.Helper()
-	gin.SetMode(gin.TestMode)
-	originalRedisEnabled := common.RedisEnabled
-	originalSQLitePath := common.SQLitePath
-	originalMainType := common.MainDatabaseType()
-	originalLogType := common.LogDatabaseType()
-	originalSQLDSN, hadSQLDSN := os.LookupEnv("SQL_DSN")
-
-	common.RedisEnabled = false
-	common.SQLitePath = fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
-	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
-	require.NoError(t, os.Setenv("SQL_DSN", "local"))
-	require.NoError(t, model.InitDB())
-	model.LOG_DB = model.DB
-	require.NoError(t, model.DB.AutoMigrate(
+	setupOrganizationMiddlewareTestDB(t,
 		&model.User{},
 		&model.Token{},
 		&model.Organization{},
 		&model.OrganizationMember{},
 		&model.UserSubscription{},
-	))
-
-	t.Cleanup(func() {
-		if sqlDB, err := model.DB.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-		common.RedisEnabled = originalRedisEnabled
-		common.SQLitePath = originalSQLitePath
-		common.SetDatabaseTypes(originalMainType, originalLogType)
-		if hadSQLDSN {
-			require.NoError(t, os.Setenv("SQL_DSN", originalSQLDSN))
-		} else {
-			require.NoError(t, os.Unsetenv("SQL_DSN"))
-		}
-	})
+	)
 }
 
 func createPlaygroundFallbackUser(t *testing.T, username, group string, quota int) model.User {

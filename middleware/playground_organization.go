@@ -101,6 +101,7 @@ func shouldSwitchToOrganization(userId int) bool {
 	if preference == "subscription_first" || preference == "subscription_only" || preference == "wallet_first" {
 		hasSubscription, err := model.HasActiveUserSubscription(userId)
 		if err != nil {
+			common.SysLog(fmt.Sprintf("playground organization fallback: load subscription state failed (userId=%d): %s", userId, err.Error()))
 			return false
 		}
 		if hasSubscription {
@@ -109,6 +110,7 @@ func shouldSwitchToOrganization(userId int) bool {
 	}
 	quota, err := model.GetUserQuota(userId, false)
 	if err != nil {
+		common.SysLog(fmt.Sprintf("playground organization fallback: load quota failed (userId=%d): %s", userId, err.Error()))
 		return false
 	}
 	return quota < setting.PlaygroundOrgFallbackThreshold()
