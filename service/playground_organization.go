@@ -19,10 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 package service
 
-import (
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
-)
+import "github.com/QuantumNous/new-api/model"
 
 // SelectPlaygroundOrganization 为游乐场组织额度兜底选择计费组织。
 //
@@ -33,13 +30,12 @@ func SelectPlaygroundOrganization(userId int) (*model.Organization, bool, error)
 	if userId <= 0 {
 		return nil, false, nil
 	}
-	// 成员子查询的条件与 activeOrganizationMemberWithEnabledUserQuery 一致
-	// （成员 active + 用户 enabled）；不直接复用该 helper 是因为它自带
-	// Select("organization_members.*")，叠加 Select 后的 IN 子查询会返回多列，
-	// MySQL 会直接报错。
-	memberOrgIds := model.DB.Table("organization_members").
+	// 复用成员查询 helper（成员条件由调用方的 Where 给出，用户 enabled 的 JOIN
+	// 在 helper 里）；它自带的 Select("organization_members.*") 会被下面的单列
+	// Select 整体替换（gorm 的字符串 Select 覆盖 Statement.Selects），
+	// 于是子查询只剩 organization_id 一列，可以直接做 IN 子查询。
+	memberOrgIds := activeOrganizationMemberWithEnabledUserQuery(model.DB).
 		Select("organization_members.organization_id").
-		Joins("JOIN users ON users.id = organization_members.user_id AND users.deleted_at IS NULL AND users.status = ?", common.UserStatusEnabled).
 		Where("organization_members.user_id = ? AND organization_members.status = ?", userId, model.OrganizationMemberStatusActive)
 
 	var candidates []model.Organization
