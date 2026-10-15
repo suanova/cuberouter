@@ -1063,3 +1063,242 @@ func TestUpdateVideoTasksKeepsResultURLFromCubeRouterEnvelope(t *testing.T) {
 	require.EqualValues(t, model.TaskStatusSuccess, stored.Status)
 	assert.Equal(t, upstreamURL, stored.GetResultURL())
 }
+
+// 没有上游任务 ID 的未完成任务无法轮询，终结它们时必须写清 fail_reason/finish_time，
+// 并把预扣额度退回：这些任务从未到达可轮询的上游任务，静默 bulk FAILURE 会让用户
+// 既拿不到结果也拿不回钱。
+func TestRunTaskPollingOnceFailsTasksWithoutUpstreamID(t *testing.T) {
+	testCases := []struct {
+		name       string
+		submitTime int64
+		wantRefund bool
+		wantReason string
+	}{
+		{
+			name:       "current task is refunded",
+			submitTime: time.Now().Unix(),
+			wantRefund: true,
+			wantReason: "缺少上游任务ID",
+		},
+		{
+			name:       "legacy task fails without refund",
+			submitTime: 1771718399, // 2026-02-21 23:59:59 UTC, before TaskRefundLegacyCutoff
+			wantRefund: false,
+			wantReason: "旧系统遗留任务",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncate(t)
+
+			const userID, tokenID = 620, 620
+			const initialQuota, tokenRemain, preConsumed = 10_000, 6_000, 3_000
+			seedUser(t, userID, initialQuota)
+			seedToken(t, tokenID, userID, "sk-no-upstream-id", tokenRemain)
+
+			previousTimeout := constant.TaskTimeoutMinutes
+			constant.TaskTimeoutMinutes = 0 // isolate the null-id path from the timeout sweep
+			t.Cleanup(func() { constant.TaskTimeoutMinutes = previousTimeout })
+			previousQueryLimit := constant.TaskQueryLimit
+			constant.TaskQueryLimit = 100 // tests bypass InitEnv, so the production default must be seeded here
+			t.Cleanup(func() { constant.TaskQueryLimit = previousQueryLimit })
+
+			task := makeTask(userID, 0, preConsumed, tokenID, BillingSourceWallet, 0)
+			// GetUpstreamTaskID falls back to TaskID, so both must be empty to reach this path.
+			task.TaskID = ""
+			task.Progress = "30%"
+			task.SubmitTime = testCase.submitTime
+			require.NoError(t, model.DB.Create(task).Error)
+
+			previousFactory := GetTaskAdaptorFunc
+			GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return &taskPollingFetchAdaptor{} }
+			t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+			summary := RunTaskPollingOnce(context.Background(), nil)
+			assert.Equal(t, 1, summary.NullTasksFailed)
+
+			var persisted model.Task
+			require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+			assert.EqualValues(t, model.TaskStatusFailure, persisted.Status)
+			assert.Equal(t, "100%", persisted.Progress)
+			assert.NotZero(t, persisted.FinishTime)
+			assert.Contains(t, persisted.FailReason, testCase.wantReason)
+			assert.Zero(t, persisted.Quota)
+
+			if testCase.wantRefund {
+				assert.Equal(t, initialQuota+preConsumed, getUserQuota(t, userID))
+				assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
+				log := getLastLog(t)
+				require.NotNil(t, log)
+				assert.Equal(t, model.LogTypeRefund, log.Type)
+				assert.Equal(t, preConsumed, log.Quota)
+			} else {
+				assert.Equal(t, initialQuota, getUserQuota(t, userID))
+				assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+				assert.Equal(t, int64(0), countLogs(t))
+			}
+		})
+	}
+}
+
+// 渠道信息读取失败既可能是瞬态抖动，也可能是渠道被移除。它必须按瞬态失败计入
+// 轮询失败预算：预算内任务保持存活，预算耗尽时由既有失败路径统一失败并退款，
+// 一次抖动不能立刻把整批健康任务判死。
+func TestUpdateBatchTasksChannelLookupFailureUsesPollFailureBudget(t *testing.T) {
+	testCases := []struct {
+		name          string
+		priorFailures int
+		maxFailures   int
+		wantTerminal  bool
+	}{
+		{
+			name:          "below budget keeps the task alive and records the failure",
+			priorFailures: 0,
+			maxFailures:   3,
+			wantTerminal:  false,
+		},
+		{
+			name:          "reaching the budget fails and refunds",
+			priorFailures: 2,
+			maxFailures:   3,
+			wantTerminal:  true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncate(t)
+
+			const userID, tokenID, missingChannelID = 630, 630, 730
+			const initialQuota, tokenRemain, preConsumed = 10_000, 7_000, 4_000
+			seedUser(t, userID, initialQuota)
+			seedToken(t, tokenID, userID, "sk-batch-channel-lookup", tokenRemain)
+			// The channel is intentionally absent so CacheGetChannel fails.
+
+			previous := constant.TaskPollMaxFailures
+			constant.TaskPollMaxFailures = testCase.maxFailures
+			t.Cleanup(func() { constant.TaskPollMaxFailures = previous })
+
+			task := makeTask(userID, missingChannelID, preConsumed, tokenID, BillingSourceWallet, 0)
+			task.TaskID = "task_batch_channel_lookup"
+			task.Platform = "batch-plugin"
+			task.PrivateData.UpstreamTaskID = "upstream_batch_channel_lookup"
+			task.PrivateData.PollFailures = testCase.priorFailures
+			require.NoError(t, model.DB.Create(task).Error)
+
+			upstreamID := task.GetUpstreamTaskID()
+			adaptor := &scriptedBatchPollingAdaptor{}
+			err := updateBatchTasks(context.Background(), adaptor, missingChannelID, []string{upstreamID}, map[string]*model.Task{upstreamID: task})
+			assert.ErrorContains(t, err, "CacheGetChannel failed")
+
+			var persisted model.Task
+			require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+			if testCase.wantTerminal {
+				assert.EqualValues(t, model.TaskStatusFailure, persisted.Status)
+				assert.NotZero(t, persisted.FinishTime)
+				assert.Contains(t, persisted.FailReason, "poll failed: channel_lookup")
+				assert.Zero(t, persisted.Quota)
+				assert.Equal(t, initialQuota+preConsumed, getUserQuota(t, userID))
+				assert.Equal(t, tokenRemain+preConsumed, getTokenRemainQuota(t, tokenID))
+				log := getLastLog(t)
+				require.NotNil(t, log)
+				assert.Equal(t, model.LogTypeRefund, log.Type)
+			} else {
+				assert.EqualValues(t, model.TaskStatusInProgress, persisted.Status)
+				assert.Equal(t, testCase.priorFailures+1, persisted.PrivateData.PollFailures)
+				assert.Empty(t, persisted.FailReason)
+				assert.Equal(t, initialQuota, getUserQuota(t, userID))
+				assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+				assert.Equal(t, int64(0), countLogs(t))
+			}
+		})
+	}
+}
+
+// 视频轮询路径的渠道信息读取失败与批量路径同规则：预算内计入 PollFailures 保持存活，
+// 预算耗尽则由 failTaskFromPoll 失败整批任务并退款；渠道级抖动不得静默吞掉预扣额度。
+func TestUpdateVideoTasksChannelLookupFailureUsesPollFailureBudget(t *testing.T) {
+	testCases := []struct {
+		name          string
+		priorFailures int
+		maxFailures   int
+		wantTerminal  bool
+	}{
+		{
+			name:          "below budget keeps tasks alive and records the failure",
+			priorFailures: 0,
+			maxFailures:   3,
+			wantTerminal:  false,
+		},
+		{
+			name:          "reaching the budget fails and refunds every task",
+			priorFailures: 2,
+			maxFailures:   3,
+			wantTerminal:  true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			truncate(t)
+
+			const userID, tokenID, missingChannelID = 640, 640, 740
+			const initialQuota, tokenRemain, preConsumed = 10_000, 7_000, 4_000
+			seedUser(t, userID, initialQuota)
+			seedToken(t, tokenID, userID, "sk-video-channel-lookup", tokenRemain)
+			// The channel is intentionally absent so CacheGetChannel fails.
+
+			previous := constant.TaskPollMaxFailures
+			constant.TaskPollMaxFailures = testCase.maxFailures
+			t.Cleanup(func() { constant.TaskPollMaxFailures = previous })
+
+			adaptor := &taskPollingFetchAdaptor{}
+			previousFactory := GetTaskAdaptorFunc
+			GetTaskAdaptorFunc = func(constant.TaskPlatform) TaskPollingAdaptor { return adaptor }
+			t.Cleanup(func() { GetTaskAdaptorFunc = previousFactory })
+
+			first := makeTask(userID, missingChannelID, preConsumed, tokenID, BillingSourceWallet, 0)
+			first.TaskID = "task_video_channel_lookup_1"
+			first.PrivateData.UpstreamTaskID = "upstream_video_channel_lookup_1"
+			first.PrivateData.PollFailures = testCase.priorFailures
+			second := makeTask(userID, missingChannelID, preConsumed, tokenID, BillingSourceWallet, 0)
+			second.TaskID = "task_video_channel_lookup_2"
+			second.PrivateData.UpstreamTaskID = "upstream_video_channel_lookup_2"
+			second.PrivateData.PollFailures = testCase.priorFailures
+			require.NoError(t, model.DB.Create(first).Error)
+			require.NoError(t, model.DB.Create(second).Error)
+
+			firstID := first.GetUpstreamTaskID()
+			secondID := second.GetUpstreamTaskID()
+			err := updateVideoTasks(context.Background(), constant.TaskPlatform("kling"), missingChannelID,
+				[]string{firstID, secondID}, map[string]*model.Task{firstID: first, secondID: second})
+			assert.ErrorContains(t, err, "CacheGetChannel failed")
+			assert.Equal(t, 0, adaptor.fetchCount())
+
+			for _, task := range []*model.Task{first, second} {
+				var persisted model.Task
+				require.NoError(t, model.DB.First(&persisted, task.ID).Error)
+				if testCase.wantTerminal {
+					assert.EqualValues(t, model.TaskStatusFailure, persisted.Status)
+					assert.NotZero(t, persisted.FinishTime)
+					assert.Contains(t, persisted.FailReason, "poll failed: channel_lookup")
+					assert.Zero(t, persisted.Quota)
+				} else {
+					assert.EqualValues(t, model.TaskStatusInProgress, persisted.Status)
+					assert.Equal(t, testCase.priorFailures+1, persisted.PrivateData.PollFailures)
+					assert.Empty(t, persisted.FailReason)
+				}
+			}
+			if testCase.wantTerminal {
+				assert.Equal(t, initialQuota+2*preConsumed, getUserQuota(t, userID))
+				assert.Equal(t, tokenRemain+2*preConsumed, getTokenRemainQuota(t, tokenID))
+				assert.Equal(t, int64(2), countLogs(t))
+			} else {
+				assert.Equal(t, initialQuota, getUserQuota(t, userID))
+				assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+				assert.Equal(t, int64(0), countLogs(t))
+			}
+		})
+	}
+}
