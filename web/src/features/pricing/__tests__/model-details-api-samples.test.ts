@@ -60,6 +60,31 @@ describe('buildSample for the task-plugin video endpoint', () => {
     )
     expect(code).toContain('task_id = resp.json()["task_id"]')
   })
+
+  test('python sample polls on data.status with the gateway terminal values', () => {
+    // 网关轮询响应是 {code, message, data:{status, fail_reason, result_url}}，
+    // 终态是 SUCCESS / FAILURE。示例此前按 status=="completed"/"failed" 判断，
+    // 永远不会命中；undefined 提示词还会被拼进 print 行。
+    const code = buildSample('python', 'video-generation', ctx)
+
+    expect(code).toContain('data = task["data"]')
+    expect(code).toContain('data["status"] == "SUCCESS"')
+    expect(code).toContain('data["status"] == "FAILURE"')
+    expect(code).toContain('data["result_url"]')
+    expect(code).not.toContain('"completed"')
+    expect(code).not.toContain('undefined')
+  })
+
+  test('typescript sample polls on data.status with the gateway terminal values', () => {
+    const code = buildSample('typescript', 'video-generation', ctx)
+
+    expect(code).toContain('const { data } = await poll.json()')
+    expect(code).toContain("data.status === 'SUCCESS'")
+    expect(code).toContain("data.status === 'FAILURE'")
+    expect(code).toContain('data.result_url')
+    expect(code).not.toContain("'completed'")
+    expect(code).not.toContain('undefined')
+  })
 })
 
 describe('buildSample keeps other endpoint styles intact', () => {

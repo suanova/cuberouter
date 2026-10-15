@@ -81,8 +81,6 @@ export type SampleContext = {
   modelName: string
   endpointType: string
   endpointPath: string
-  /** 本地化后的视频结果注释(示例代码里内嵌,随语言展示) */
-  videoUrlHint?: string
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
@@ -446,7 +444,7 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `  -H "Content-Type: application/json" \\`,
       `  -d '${body.replaceAll('\n', '\n     ')}'`,
       '',
-      '# Poll task status (returns the video URL when completed):',
+      '# Poll task status until data.status is SUCCESS (data.result_url carries the video):',
       `# curl ${ctx.baseUrl}/v1/video/generations/<task_id> \\`,
       `#   -H "Authorization: Bearer $${ctx.apiKeyEnv}"`,
     ].join('\n')
@@ -464,14 +462,15 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `    json={"model": "${ctx.modelName}", "prompt": "${prompt}", "size": "720p", "duration": 5})`,
       `task_id = resp.json()["task_id"]`,
       '',
-      '# Poll until the task reaches a terminal status',
+      '# Poll until data.status reaches a terminal state (SUCCESS / FAILURE)',
       'while True:',
       `    task = requests.get("${pollUrl}".format(task_id=task_id), headers=headers).json()`,
-      '    if task.get("status") == "completed":',
-      `        print(task)  # ${ctx.videoUrlHint}`,
+      '    data = task["data"]',
+      '    if data["status"] == "SUCCESS":',
+      '        print(data["result_url"])  # download before the link expires',
       '        break',
-      '    if task.get("status") == "failed":',
-      '        raise SystemExit("task failed: " + str(task.get("error")))',
+      '    if data["status"] == "FAILURE":',
+      '        raise SystemExit("task failed: " + str(data.get("fail_reason") or task.get("message")))',
       '    time.sleep(3)',
     ].join('\n')
   }
@@ -494,16 +493,16 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
       `const { task_id } = await resp.json()`,
       '',
-      '// Poll until the task reaches a terminal status',
+      '// Poll until data.status reaches a terminal state (SUCCESS / FAILURE)',
       `while (true) {`,
       `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
   if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
-  const task = await poll.json()`,
-      `  if (task.status === 'completed') {`,
-      `    console.log(task)  // ${ctx.videoUrlHint}`,
+  const { data } = await poll.json()`,
+      `  if (data.status === 'SUCCESS') {`,
+      `    console.log(data.result_url)  // download before the link expires`,
       `    break`,
       `  }`,
-      `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
+      `  if (data.status === 'FAILURE') throw new Error('task failed: ' + (data.fail_reason || 'unknown'))`,
       `  await new Promise((resolve) => setTimeout(resolve, 3000))`,
       `}`,
     ].join('\n')
@@ -526,16 +525,16 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
     `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
     `const { task_id } = await resp.json()`,
     '',
-    '// Poll until the task reaches a terminal status',
+    '// Poll until data.status reaches a terminal state (SUCCESS / FAILURE)',
     `while (true) {`,
     `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
   if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
-  const task = await poll.json()`,
-    `  if (task.status === 'completed') {`,
-    `    console.log(task)  // ${ctx.videoUrlHint}`,
+  const { data } = await poll.json()`,
+    `  if (data.status === 'SUCCESS') {`,
+    `    console.log(data.result_url)  // download before the link expires`,
     `    break`,
     `  }`,
-    `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
+    `  if (data.status === 'FAILURE') throw new Error('task failed: ' + (data.fail_reason || 'unknown'))`,
     `  await new Promise((resolve) => setTimeout(resolve, 3000))`,
     `}`,
   ].join('\n')
