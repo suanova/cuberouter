@@ -127,8 +127,9 @@ func TestConvertRerankRequestPassthrough(t *testing.T) {
 func TestConvertImageRequestPassthrough(t *testing.T) {
 	adaptor := &Adaptor{}
 	request := dto.ImageRequest{Model: "gpt-image-1", Prompt: "a cat on a boat"}
+	info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeImagesGenerations}
 
-	out, err := adaptor.ConvertImageRequest(nil, nil, request)
+	out, err := adaptor.ConvertImageRequest(nil, info, request)
 	require.NoError(t, err)
 	got, ok := out.(dto.ImageRequest)
 	require.True(t, ok, "expected dto.ImageRequest, got %T", out)
