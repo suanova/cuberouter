@@ -90,6 +90,34 @@ func TestRefreshUserModelDiscountsCacheUpdatesHashField(t *testing.T) {
 	assert.Equal(t, map[string]float64{"m": 0.25}, read)
 }
 
+func TestRefreshUserModelDiscountsCacheFromNullColumn(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+
+	user := createUserModelDiscountTestUser(t, "discount-redis-null")
+	raw := `{"m":0.5}`
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("model_discounts", raw).Error)
+	user.ModelDiscounts = raw
+	require.NoError(t, populateUserCache(*user))
+	field, err := common.RDB.HGet(t.Context(), getUserCacheKey(user.Id), "ModelDiscounts").Result()
+	require.NoError(t, err)
+	require.Equal(t, raw, field)
+
+	// Every supported database stores NULL for a row written before the column
+	// existed. Refreshing the hash must publish an empty discount table for it
+	// instead of failing the NULL scan or leaving the stale entry behind.
+	require.NoError(t, DB.Exec("UPDATE users SET model_discounts = NULL WHERE id = ?", user.Id).Error)
+	require.NoError(t, RefreshUserModelDiscountsCache(user.Id))
+
+	field, err = common.RDB.HGet(t.Context(), getUserCacheKey(user.Id), "ModelDiscounts").Result()
+	require.NoError(t, err)
+	assert.Equal(t, "", field)
+
+	cached, err := cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Empty(t, cached.GetModelDiscounts())
+}
+
 func TestUserModelDiscountsCacheStaleSchemaFallsBackToDB(t *testing.T) {
 	truncateTables(t)
 	useUserCacheMiniRedis(t)
