@@ -73,6 +73,7 @@ setting/ratio_setting/model_ratio.go:  USD = 500                  // 祖宗常�
 | `CacheRatio` 缓存倍率 | 命中 prompt 缓存的输入 token 打几折 | 0.1 = 缓存部分 1 折 |
 | `CreateCacheRatio` 缓存写入倍率 | 显式写缓存(如 Claude)的输入 token 单价倍率 | 未设置则不产生该项费用 |
 | `GroupRatio` 分组倍率 | 按用户分组整体加价/折扣 | 1 = 无影响 |
+| 用户模型折扣 | 用户×模型维度的折扣倍率（跟随人） | 与分组倍率相乘（折上折）；见 user-model-discount.md |
 
 补充:缓存写入只有 `CreateCacheRatio` 一个配置项;1h 档不是独立配置,由代码按 ×1.6(6/3.75)从 5m 档派生(`relay/helper/price.go: claudeCacheCreation1hMultiplier`)。
 
@@ -87,6 +88,8 @@ setting/ratio_setting/model_ratio.go:  USD = 500                  // 祖宗常�
 分组定价页同理:可视化模式是"定价分组"表格,`GroupRatio` = **倍率**列,`TopupGroupRatio` = **充值倍率**列;右上角可切 JSON。
 
 两个页面保存的都还是 `/api/option/` 里的同名 option(可视化与 JSON 只是同一份数据的两种前端)。
+
+另:**用户 × 模型折扣**(用户×模型维度、折上折、跟随人的折扣倍率)不在上述页面上配置,口径与入口见 `docs/billing/user-model-discount.md`。
 
 ## 4. 计费公式
 
