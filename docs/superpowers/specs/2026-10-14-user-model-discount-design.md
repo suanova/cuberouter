@@ -21,7 +21,7 @@
 3. 不做用户自助配置——用户不能改自己的折扣。
 4. 不做组织级计价主体——组织令牌的价格取决于"人"，不是组织。
 5. 不改可访问性——折扣只影响价格，不影响模型可用范围（分组/渠道判定不变）、限流、余额校验。
-6. 折扣不作用于工具费（`relay/common/tool_usage.go` 的 tool price）。
+6. 工具费（`relay/common/tool_usage.go` 的 tool price）与罚金同机制：折扣折叠进有效倍率后，二者**随 d 缩放**（执行期裁决 2026-10-16：接受折叠架构的自然结果——与罚金先例一致，避免在第二处对折叠值做"反折叠"重解析；原文"不纳入"系起草时的范围最小化意愿）。
 7. 不支持通配符/前缀模型键，精确匹配计费模型名（`GetBillingModelName()`）。
 8. 不新增"我的折扣"自助查询接口；用户通过定价页折后价与使用日志可见（§9）。
 
@@ -126,7 +126,7 @@ groupRatioInfo.UserModelDiscount, groupRatioInfo.HasUserModelDiscount = d, d != 
 ### 7.4 边界说明
 
 - **罚金**（`service/violation_fee.go:123`）：不改，随折扣缩放；`docs/billing/` 写明。
-- **工具费**（`relay/common/tool_usage.go:49`）：非目标，不打折。
+- **工具费**（`relay/common/tool_usage.go:49`）：随 d 缩放（折叠架构的自然结果；执行期裁决接受，见 §2.6）。
 - **渠道测试**（`controller/channel-test.go:563`）：按测试者本人折扣（通常无配置），无影响。
 
 ## 8. API / 权限 / 审计
