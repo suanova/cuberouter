@@ -116,6 +116,10 @@ user.password_strength_invalid: "密码强度不足，需包含大写字母、�
 user.username_too_long: "用户名长度不能超过 50 个字符"
 user.display_name_too_long: "显示名称长度不能超过 20 个字符"
 user.email_too_long: "邮箱长度不能超过 50 个字符"
+user.model_discount_out_of_range: "模型折扣必须大于 0 且不超过 1"
+user.model_discount_name_invalid: "模型名称无效"
+user.model_discount_too_many: "模型折扣条目过多"
+user.model_discount_too_large: "模型折扣表过大"
 
 # Ops (运营角色) related messages
 ops.campaign_not_accessible: "无权查看该活动"

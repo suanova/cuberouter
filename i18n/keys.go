@@ -127,6 +127,10 @@ const (
 	MsgUserUsernameTooLong              = "user.username_too_long"
 	MsgUserDisplayNameTooLong           = "user.display_name_too_long"
 	MsgUserEmailTooLong                 = "user.email_too_long"
+	MsgModelDiscountOutOfRange          = "user.model_discount_out_of_range"
+	MsgModelDiscountNameInvalid         = "user.model_discount_name_invalid"
+	MsgModelDiscountTooMany             = "user.model_discount_too_many"
+	MsgModelDiscountTooLarge            = "user.model_discount_too_large"
 )
 
 // Ops (运营角色) related messages

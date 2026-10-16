@@ -843,6 +843,96 @@ func UpdateUser(c *gin.Context) {
 	return
 }
 
+type UserModelDiscountsRequest struct {
+	Discounts map[string]float64 `json:"discounts"`
+}
+
+// GetUserModelDiscounts 读取指定用户的模型折扣表（DB 直读，不走认证缓存）。
+func GetUserModelDiscounts(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidId)
+		return
+	}
+	var target model.User
+	if err := model.DB.Select("id").First(&target, id).Error; err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return
+	}
+	discounts, err := model.GetUserModelDiscounts(id, true)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	if discounts == nil {
+		discounts = map[string]float64{}
+	}
+	common.ApiSuccess(c, gin.H{"discounts": discounts})
+}
+
+// UpdateUserModelDiscounts 全量替换指定用户的模型折扣表（空表即清空）。
+func UpdateUserModelDiscounts(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidId)
+		return
+	}
+	var request UserModelDiscountsRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	normalized, err := model.NormalizeUserModelDiscounts(request.Discounts)
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrUserModelDiscountRange):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountOutOfRange)
+		case errors.Is(err, model.ErrUserModelDiscountName):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountNameInvalid)
+		case errors.Is(err, model.ErrUserModelDiscountCount):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountTooMany)
+		case errors.Is(err, model.ErrUserModelDiscountSize):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountTooLarge)
+		default:
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		}
+		return
+	}
+	var target model.User
+	if err := model.DB.Select("id", "role").First(&target, id).Error; err != nil {
+		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+		return
+	}
+	if !canManageTargetRole(c.GetInt("role"), target.Role) {
+		common.ApiErrorI18n(c, i18n.MsgUserNoPermissionHigherLevel)
+		return
+	}
+
+	raw := model.MarshalUserModelDiscounts(normalized)
+	var beforeRaw string
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		// 锁定目标行后再取 before，保证审计里的旧值与本次替换是同一份快照。
+		var row model.User
+		if err := model.LockForUpdate(tx).Select("id", "model_discounts").Where("id = ?", id).First(&row).Error; err != nil {
+			return err
+		}
+		beforeRaw = row.ModelDiscounts
+		return tx.Model(&model.User{}).Where("id = ?", id).Update("model_discounts", raw).Error
+	}); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
+	// 折扣不推进认证版本，缓存必须显式刷新；刷新失败只记日志，缓存未命中会回源 DB。
+	if err := model.RefreshUserModelDiscountsCache(id); err != nil {
+		common.SysError(fmt.Sprintf("failed to refresh user model discounts cache for user %d: %s", id, err.Error()))
+	}
+	recordManageAuditFor(c, id, "user.model_discounts", map[string]interface{}{
+		"before": model.ParseUserModelDiscounts(beforeRaw),
+		"after":  normalized,
+	})
+	common.ApiSuccess(c, nil)
+}
+
 func AdminClearUserBinding(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {

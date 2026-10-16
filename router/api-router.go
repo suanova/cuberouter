@@ -163,6 +163,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 				// 但显式顺序更安全；详见 router/user_invitees_route_test.go）
 				userReadRoute.GET("/:id/invitees", controller.GetUserInvitees)
 				userReadRoute.GET("/:id/quota-dates", controller.GetUserQuotaDatesByAdmin)
+				userReadRoute.GET("/:id/model-discounts", controller.GetUserModelDiscounts)
 				userReadRoute.GET("/:id", controller.GetUser)
 
 				// 2FA 统计（只读）
@@ -180,6 +181,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 				adminRoute.POST("/manage", controller.ManageUser)
 				adminRoute.POST("/export", controller.ExportUsers)
 				adminRoute.PUT("/", controller.UpdateUser)
+				adminRoute.PUT("/:id/model-discounts", controller.UpdateUserModelDiscounts)
 				adminRoute.DELETE("/:id", controller.DeleteUser)
 				adminRoute.DELETE("/:id/reset_passkey", controller.AdminResetPasskey)
 
