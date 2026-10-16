@@ -44,6 +44,10 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		organizationRoute.PATCH("/:id/members/:userId", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMembers), controller.UpdateOrganizationMember)
 		organizationRoute.DELETE("/:id/members/me", middleware.OrganizationAccountContextAuth(service.OrganizationCapabilityExitOrganization), controller.ExitOrganization)
 		organizationRoute.DELETE("/:id/members/:userId", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMembers), controller.RemoveOrganizationMember)
+		// 成员折扣挂在成员个人身上、跟随人走：读与成员名单同级，写是独立能力
+		// manage_member_discounts（owner/admin），不并入 manage_members。
+		organizationRoute.GET("/:id/members/:userId/model-discounts", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.GetOrganizationMemberModelDiscounts)
+		organizationRoute.PUT("/:id/members/:userId/model-discounts", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMemberDiscounts), controller.UpdateOrganizationMemberModelDiscounts)
 		organizationRoute.GET("/:id/invitations", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewInvitations), controller.ListOrganizationInvites)
 		organizationRoute.GET("/:id/tokens", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.ListOrganizationTokens)
 		organizationRoute.GET("/:id/tokens/:tokenId", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.GetOrganizationToken)

@@ -20,7 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 package service
 
 import (
+	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -460,6 +462,80 @@ func UpdateOrganizationMember(operatorUserId, organizationId int, accessMode str
 		return err
 	}
 	invalidateOrganizationTokenCaches(affectedCacheKeys...)
+	return nil
+}
+
+// GetOrganizationMemberModelDiscounts 读取组织成员个人的模型折扣表（DB 直读）。
+// 折扣表与成员名单同权限：只有能看到全组织数据的人读得到。
+func GetOrganizationMemberModelDiscounts(operatorUserId, organizationId int, accessMode string, targetUserId int) (map[string]float64, error) {
+	if operatorUserId <= 0 || organizationId <= 0 || targetUserId <= 0 {
+		return nil, errors.New("invalid organization member request")
+	}
+	actor, err := GetOrganizationActorContextForAccessMode(operatorUserId, organizationId, accessMode, true)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.Capabilities.CanViewOrganizationWideData {
+		return nil, errors.New("permission denied")
+	}
+	var member model.OrganizationMember
+	if err := model.DB.Where("organization_id = ? AND user_id = ? AND status = ?", organizationId, targetUserId, model.OrganizationMemberStatusActive).First(&member).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, errors.New("active organization member required")
+		}
+		return nil, err
+	}
+	return model.GetUserModelDiscounts(targetUserId, true)
+}
+
+// UpdateOrganizationMemberModelDiscounts 全量替换组织成员个人的模型折扣表（空表即清空）。
+// 折扣跟随成员个人：写入后对该成员的全部调用生效（含个人钱包），组织 Key 的调用按
+// Key 的责任成员归因到同一张表。校验错误原样返回，由控制器分派 i18n 文案。
+func UpdateOrganizationMemberModelDiscounts(operatorUserId, organizationId int, accessMode string, targetUserId int, discounts map[string]float64, auditMetadata ...OrganizationAuditRequestMetadata) error {
+	if operatorUserId <= 0 || organizationId <= 0 || targetUserId <= 0 {
+		return errors.New("invalid organization member request")
+	}
+	normalized, err := model.NormalizeUserModelDiscounts(discounts)
+	if err != nil {
+		return err
+	}
+	raw := model.MarshalUserModelDiscounts(normalized)
+	err = model.DB.Transaction(func(tx *gorm.DB) error {
+		organization, decision, err := lockedOrganizationManagementDecisionWithTx(tx, operatorUserId, organizationId, accessMode, OrganizationCapabilityManageMemberDiscounts)
+		if err != nil {
+			return err
+		}
+		var target model.OrganizationMember
+		if err := model.LockForUpdate(tx).Where("organization_id = ? AND user_id = ? AND status = ?", organizationId, targetUserId, model.OrganizationMemberStatusActive).First(&target).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return errors.New("active organization member required")
+			}
+			return err
+		}
+		if err := ensureOrganizationMemberTargetAllowed(decision, organization, &target); err != nil {
+			return err
+		}
+		// 锁定用户行后再取 before，保证审计里的旧值与本次替换是同一份快照。
+		// 列可为 NULL（早于该列的行），所以用 NullString 接。
+		var row struct {
+			Id             int
+			ModelDiscounts sql.NullString
+		}
+		if err := model.LockForUpdate(tx).Model(&model.User{}).Select("id", "model_discounts").Where("id = ?", targetUserId).First(&row).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&model.User{}).Where("id = ?", targetUserId).Update("model_discounts", raw).Error; err != nil {
+			return err
+		}
+		return recordOrganizationAudit(tx, organization, operatorUserId, decision.Role, organizationAuditActionMemberModelDiscountsUpdate, "member", target.Id, model.ParseUserModelDiscounts(row.ModelDiscounts.String), normalized, organizationAuditReasonMemberModelDiscountsUpdate, auditMetadata...)
+	})
+	if err != nil {
+		return err
+	}
+	// 折扣不推进认证版本，缓存必须显式刷新；刷新失败只记日志，缓存未命中会回源 DB。
+	if err := model.RefreshUserModelDiscountsCache(targetUserId); err != nil {
+		common.SysError(fmt.Sprintf("failed to refresh user model discounts cache for user %d: %s", targetUserId, err.Error()))
+	}
 	return nil
 }
 

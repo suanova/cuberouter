@@ -26,6 +26,8 @@ import (
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -47,6 +49,10 @@ type addOrganizationMemberRequest struct {
 type removeOrganizationMemberRequest struct {
 	TransferToUserId int    `json:"transfer_to_user_id"`
 	Reason           string `json:"reason"`
+}
+
+type updateOrganizationMemberModelDiscountsRequest struct {
+	Discounts map[string]float64 `json:"discounts"`
 }
 
 // ListOrganizationMembers 分页查询组织成员列表
@@ -102,6 +108,61 @@ func UpdateOrganizationMember(c *gin.Context) {
 	}
 	if err := service.UpdateOrganizationMember(c.GetInt("id"), organizationId, organizationAccessMode(c), targetUserId, service.UpdateMemberRequest{Role: req.Role, Status: req.Status, TransferToUserId: req.TransferToUserId, Reason: req.Reason, IdempotencyKey: c.GetHeader("Idempotency-Key")}, organizationAuditRequestMetadata(c)); err != nil {
 		writeOrganizationError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
+}
+
+// GetOrganizationMemberModelDiscounts 读取组织成员个人的模型折扣表
+func GetOrganizationMemberModelDiscounts(c *gin.Context) {
+	organizationId, ok := parseOrganizationId(c)
+	if !ok {
+		return
+	}
+	targetUserId, ok := parseOrganizationUserId(c)
+	if !ok {
+		return
+	}
+	discounts, err := service.GetOrganizationMemberModelDiscounts(c.GetInt("id"), organizationId, organizationAccessMode(c), targetUserId)
+	if err != nil {
+		writeOrganizationError(c, err)
+		return
+	}
+	if discounts == nil {
+		discounts = map[string]float64{}
+	}
+	common.ApiSuccess(c, gin.H{"discounts": discounts})
+}
+
+// UpdateOrganizationMemberModelDiscounts 全量替换组织成员个人的模型折扣表（空表即清空）
+func UpdateOrganizationMemberModelDiscounts(c *gin.Context) {
+	organizationId, ok := parseOrganizationId(c)
+	if !ok {
+		return
+	}
+	targetUserId, ok := parseOrganizationUserId(c)
+	if !ok {
+		return
+	}
+	var req updateOrganizationMemberModelDiscountsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	err := service.UpdateOrganizationMemberModelDiscounts(c.GetInt("id"), organizationId, organizationAccessMode(c), targetUserId, req.Discounts, organizationAuditRequestMetadata(c))
+	if err != nil {
+		switch {
+		case errors.Is(err, model.ErrUserModelDiscountRange):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountOutOfRange)
+		case errors.Is(err, model.ErrUserModelDiscountName):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountNameInvalid)
+		case errors.Is(err, model.ErrUserModelDiscountCount):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountTooMany)
+		case errors.Is(err, model.ErrUserModelDiscountSize):
+			common.ApiErrorI18n(c, i18n.MsgModelDiscountTooLarge)
+		default:
+			writeOrganizationError(c, err)
+		}
 		return
 	}
 	common.ApiSuccess(c, nil)

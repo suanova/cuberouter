@@ -51,6 +51,8 @@ func TestOrganizationCanonicalRestfulRoutesAreRegistered(t *testing.T) {
 	require.Contains(t, routes, "PUT /api/organizations/:id/owner")
 	require.Contains(t, routes, "GET /api/organizations/:id/members")
 	require.Contains(t, routes, "PATCH /api/organizations/:id/members/:userId")
+	require.Contains(t, routes, "GET /api/organizations/:id/members/:userId/model-discounts")
+	require.Contains(t, routes, "PUT /api/organizations/:id/members/:userId/model-discounts")
 	require.Contains(t, routes, "DELETE /api/organizations/:id/members/me")
 	require.Contains(t, routes, "DELETE /api/organizations/:id/members/:userId")
 	require.Contains(t, routes, "GET /api/organizations/:id/invitations")
