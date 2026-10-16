@@ -70,6 +70,14 @@ describe('ModelDiscountEditor', () => {
     expect(screen.getByDisplayValue('80')).toBeInTheDocument()
   })
 
+  test('shows float-prone discounts as clean percentages', () => {
+    // 0.29 * 100 === 28.999999999999996 and 0.07 * 100 === 7.000000000000001.
+    render(<EditorHarness initial={{ m: 0.29, m2: 0.07 }} />)
+
+    expect(screen.getByDisplayValue('29')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('7')).toBeInTheDocument()
+  })
+
   test('reports the edited percent to onChange', () => {
     const onChange = vi.fn()
     render(<EditorHarness initial={{ m: 0.8 }} onChange={onChange} />)

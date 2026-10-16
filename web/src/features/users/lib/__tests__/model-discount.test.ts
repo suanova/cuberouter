@@ -25,7 +25,7 @@ import {
   percentToDiscount,
   removeDiscount,
   upsertDiscount,
-} from './model-discount'
+} from '../model-discount'
 
 describe('model discount conversion', () => {
   test('converts a percent to a 4-decimal discount', () => {

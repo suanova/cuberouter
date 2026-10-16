@@ -143,8 +143,11 @@ export function ModelDiscountEditor(props: ModelDiscountEditorProps) {
       <div className='text-sm font-medium'>{t('Model Discounts')}</div>
       <div className='space-y-3'>
         {Object.entries(props.value).map(([model, discount]) => {
+          // 0.29 * 100 is 28.999999999999996 in binary floating point, so the
+          // display rounds to 4 decimals before turning the number into text.
           const text =
-            percentDrafts[model] ?? String(discountToPercent(discount))
+            percentDrafts[model] ??
+            String(Math.round(discountToPercent(discount) * 1e4) / 1e4)
           const invalidPercent = !isValidPercent(Number(text))
           return (
             <div key={model} className='space-y-1'>
