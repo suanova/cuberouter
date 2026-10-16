@@ -49,6 +49,26 @@ func TestNormalizeUserModelDiscounts(t *testing.T) {
 			want:  map[string]float64{"m": 0.8},
 		},
 		{
+			name:    "rejects discount that rounds to zero",
+			input:   map[string]float64{"m": 0.00004},
+			wantErr: ErrUserModelDiscountRange,
+		},
+		{
+			name:  "rounds discount up to smallest storable value",
+			input: map[string]float64{"m": 0.00006},
+			want:  map[string]float64{"m": 0.0001},
+		},
+		{
+			name:  "drops discount that rounds up to full price",
+			input: map[string]float64{"m": 0.99999},
+			want:  map[string]float64{},
+		},
+		{
+			name:  "drops discount that rounds down to full price",
+			input: map[string]float64{"m": 1.00004},
+			want:  map[string]float64{},
+		},
+		{
 			name:    "rejects zero",
 			input:   map[string]float64{"m": 0},
 			wantErr: ErrUserModelDiscountRange,

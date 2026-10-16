@@ -58,8 +58,10 @@ func isValidUserModelDiscount(discount float64) bool {
 // NormalizeUserModelDiscounts validates a discount table for the write path.
 // Model names are trimmed, discounts are rounded to four decimal places, and
 // full price entries (d == 1) are dropped because they are equivalent to no
-// entry at all. The result is never nil. Structural limits are checked before
-// per-entry validation, so an oversized payload is refused as a whole.
+// entry at all. Validation applies to the rounded value, which is what gets
+// stored, so a discount that rounds to zero is rejected and one that rounds to
+// full price is dropped. The result is never nil. Structural limits are checked
+// before per-entry validation, so an oversized payload is refused as a whole.
 func NormalizeUserModelDiscounts(input map[string]float64) (map[string]float64, error) {
 	if len(input) > MaxUserModelDiscountEntries {
 		return nil, ErrUserModelDiscountCount
@@ -73,10 +75,10 @@ func NormalizeUserModelDiscounts(input map[string]float64) (map[string]float64, 
 		if name == "" || len(name) > MaxUserModelDiscountNameLen {
 			return nil, ErrUserModelDiscountName
 		}
+		discount = math.Round(discount*10000) / 10000
 		if !isValidUserModelDiscount(discount) {
 			return nil, fmt.Errorf("%w: %s", ErrUserModelDiscountRange, name)
 		}
-		discount = math.Round(discount*10000) / 10000
 		if discount == 1 {
 			continue
 		}
