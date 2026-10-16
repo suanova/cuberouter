@@ -31,7 +31,7 @@
 |---|---|---|
 | 存储 | `users.model_discounts TEXT` JSON 列（`{"模型名": 0.8}`） | 与 `users.setting`（`model/user.go` User 结构）同型先例；随认证缓存零额外往返；三库只需 ADD COLUMN；不新增表 |
 | 生效位点 | 折叠进 `GroupRatioInfo.GroupRatio`，插点为 `relay/helper/price.go:46 HandleGroupRatio`（唯一） | 与"专属倍率"折叠先例（`price.go:60-69`）一致；预扣/结算/任务快照/订阅/组织账本全部自动继承。独立字段方案要改约 10 处乘法点，漏一即预扣≠结算 |
-| 查找键 | `ActorUserId` | 跟随人：个人=本人、组织令牌=调用者；`middleware/account_context.go:92-104` 恒填充 |
+| 查找键 | `ActorUserId` | 跟随人：个人 key=令牌属主、组织 key=该 key 的责任成员（§6 归因表）；与扣费主体解耦 |
 | 快照时机 | 鉴权时载入 context → `GenRelayInfo` 快照进 `relayInfo` → 请求内不再重读；任务另做 `TaskBillingContext` 快照 | 单次请求预扣与结算同值（I3） |
 | 罚金 | 随折扣缩放（`service/violation_fee.go:123` 不改） | 现状罚金已随专属倍率缩放；保持一致，文档标注 |
 | 0 折 | 写入校验拒绝 d ≤ 0 | 见非目标 2 |
@@ -49,6 +49,7 @@
 - **I5 罚金缩放**：罚金 = `ViolationDeductionAmount × GroupRatioInfo.GroupRatio`（已含折扣），与专属倍率现状一致。
 - **I6 无 0 折**：d ∈ (0, 1] ⇒ `GroupRatio == 0` 只可能来自分组倍率 0 的既有配置，`freeModel` 判定（`price.go:168-184`）不受本功能影响。
 - **I7 不外泄**：`model_discounts` 列 `json:"-"`；仅专用接口按权限返回；`GetSelf` / `GetAllUsers` / `ToBaseUser` 不带该字段。
+- **I8 与分组折扣正交叠加**：最终价格 = 模型价/倍率 × [专属倍率 若配置，否则分组倍率] × d × 其他系数；d 乘在组级基准之上，不覆盖、不替换分组倍率，也不影响可用分组/渠道/auto group 的选择。例如专属倍率 0.9 × 折扣 0.8 = 0.72。免费组（分组倍率 0）下 0 × d = 0 仍免费（配合 I6，d 不可能把付费模型变免费）。
 
 ## 5. 数据模型与校验
 
@@ -80,6 +81,16 @@ ModelDiscounts string `json:"-" gorm:"type:text;column:model_discounts"`
 5. 两处写 API 在事务提交后调用刷新；失败仅 `SysError`（与用户分组同策略），缓存过期后自然收敛。
 6. **组织令牌**：`middleware/auth.go:458` 的 `userCache` 是令牌属主；scopeCtx 解析后（:472 起），若 `scopeCtx.ActorUserId != token.UserId`，额外 `GetUserCache(ActorUserId)` 并覆盖 context key（跟随人）。
 7. **兜底**：`relayInfo.UserModelDiscounts == nil`（未经过 TokenAuth 的路径，如 Playground / 渠道测试）时，`HandleGroupRatio` 用 `model.GetUserModelDiscounts(ActorUserId || UserId)` 惰性读缓存（`relay/helper` 可以 import `model`，`relay/common` 不行，注意依赖方向）。
+
+**ActorUserId 归因（折扣查找键的口径）**：
+
+| 调用方式 | ActorUserId | 依据 |
+|---|---|---|
+| 个人 key | `token.UserId`（令牌属主，即本人） | `service/organization_token_auth.go:67` |
+| 组织 key | `token.ResponsibleUserId`（该 key 的责任成员/使用者） | `service/organization_token_auth.go:129`（并校验其为该组织 active 成员，否则调用直接被拒） |
+| 会话/账号上下文（dashboard 切换组织） | 登录用户本人 | `middleware/account_context.go:104` |
+
+组织 key 是共享凭证、无调用者登录态，"谁在用"由 key 的责任成员确定：同一成员无论用个人 key 还是归他负责的组织 key，都按同一份折扣；换成别人负责的 key 即换折扣表。
 
 ## 7. 计费链改造点
 
@@ -132,9 +143,11 @@ groupRatioInfo.UserModelDiscount, groupRatioInfo.HasUserModelDiscount = d, d != 
 
 - `GET /api/organizations/:id/members/:userId/model-discounts` —— `middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull)`（与成员列表同权限面）。
 - `PUT /api/organizations/:id/members/:userId/model-discounts` —— `middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMemberDiscounts)`。
+- 与平台管理员编辑的是**同一份** `users.model_discounts`（无组织级副本），组织管理员仅限本组织在职成员范围；两边各自审计。
+- 提示：组织 key 为共享凭证，其使用者按该 key 责任成员的折扣计价（§6 归因表）——"给一把 key 统一折扣"等价于给其责任成员配置。
 - 新 capability：`service/organization_policy.go:41` 常量区加 `OrganizationCapabilityManageMemberDiscounts = "manage_member_discounts"`，并在角色→能力授予表（同文件 `:342-392`，owner/admin 段）与 `manage_members` 同级授予；`service/organization_access.go:35` Capabilities 结构加 `CanManageMemberDiscounts`（`:192` 映射处同步）。
 - 服务层校验：目标 userId 是本组织**在职（active）**成员；对 owner 成员的操作沿用 `UpdateOrganizationMember` 的现有等级校验。
-- 审计：`service/organization_audit.go:42` 常量区新增 action `organization.member.model_discounts.update`，`target_type=member`、before/after，metadata 注明"折扣作用于该成员个人，对其全部调用生效（含个人钱包）"。
+- 审计：`service/organization_audit.go:42` 常量区新增 action `organization.member.model_discounts.update`，`target_type=member`、before/after，metadata 注明"折扣作用于该成员个人，对其全部调用生效（含个人钱包；组织 key 调用按 key 责任成员归因，见 §6）"。
 - 路由挂点：`router/organization-router.go:43-46`。
 
 ### 8.3 读路径防御
@@ -211,7 +224,7 @@ groupRatioInfo.UserModelDiscount, groupRatioInfo.HasUserModelDiscount = d, d != 
 ## 附录 B：验收标准
 
 1. 配置折扣后：同一用户、同一模型，quota 按 d 等比下降；预扣与结算差额为 0（同请求一致性）。
-2. 组织成员用组织令牌调用按成员本人折扣计价；非成员、非本组织管理员无法读写他人折扣。
+2. 组织 key 调用按该 key 责任成员的折扣计价；非成员、非本组织管理员无法读写他人折扣。
 3. 未配置折扣的用户全链路行为与现状完全一致（回归全绿）。
 4. 三库矩阵与 Redis 开关组合通过；两类审计记录可见（管理审计 + 组织审计）。
 5. 定价页对配置了折扣的用户显示折后价与折扣徽标。
