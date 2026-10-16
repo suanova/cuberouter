@@ -148,6 +148,11 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 			other["model_ratio"] = bc.ModelRatio
 		}
 		other["group_ratio"] = bc.GroupRatio
+		// 与消费日志（LogTaskConsumption）同型：只写真实折扣；旧任务的缺省 0 与
+		// 被写坏的越界值一律不落日志（它们也不参与重算）。
+		if bc.UserModelDiscount > 0 && bc.UserModelDiscount < 1 {
+			other["user_model_discount"] = bc.UserModelDiscount
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				other[k] = v

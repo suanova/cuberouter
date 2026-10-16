@@ -131,6 +131,10 @@ func TestRecalculateTaskQuotaAppliesSnapshotDiscount(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Contains(t, log.Content, "discount=0.5000")
+	// 差额结算日志与消费日志同型：真实折扣写进 other.user_model_discount。
+	var other map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.Equal(t, 0.5, other["user_model_discount"])
 }
 
 func TestRecalculateTaskQuotaLegacyContextDefaultsToOne(t *testing.T) {
@@ -154,6 +158,12 @@ func TestRecalculateTaskQuotaLegacyContextDefaultsToOne(t *testing.T) {
 			// 一律按原价 2400 结算：预扣 2000 差 400 补扣（10000-400）。
 			assert.Equal(t, taskDiscountFullPriceQuota, getTaskQuota(t, fixture.task.ID))
 			assert.Equal(t, taskDiscountSeedQuota-taskDiscountFullPriceQuota+taskDiscountPreConsumed, getUserQuota(t, fixture.user.Id))
+			// 缺省 0 与越界值都不落日志字段：结算按原价，日志也不该声称有折扣。
+			log := getLastLog(t)
+			require.NotNil(t, log)
+			var other map[string]any
+			require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+			assert.NotContains(t, other, "user_model_discount")
 		})
 	}
 }
