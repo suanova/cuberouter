@@ -22,6 +22,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { api } from '@/lib/api'
+
 import {
   getOrganizationMemberModelDiscounts,
   listOrganizationMembers,
@@ -203,6 +205,27 @@ describe('organization member model discount entry', () => {
     )
   })
 
+  test('treats a read refused as HTTP 200 as a failure, not an empty record', async () => {
+    const realOrganizationApi =
+      await vi.importActual<typeof import('../../api')>('../../api')
+    getModelDiscountsMock.mockImplementation(
+      realOrganizationApi.getOrganizationMemberModelDiscounts
+    )
+    // The server reports a refused read (member no longer active) as HTTP 200
+    // with `success: false`; the api module is what turns that envelope into a
+    // rejection. An empty record here would offer a full replacement that
+    // clears what was never read.
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: false, message: 'member not active' },
+    } as never)
+
+    renderSection(true)
+    await openDiscountDialog()
+
+    expect(await screen.findByText('Failed to load')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
   test('saves the shown discounts through the organization surface', async () => {
     renderSection(true)
     await openDiscountDialog()
@@ -224,6 +247,36 @@ describe('organization member model discount entry', () => {
         screen.queryByText('Member Model Discounts')
       ).not.toBeInTheDocument()
     )
+  })
+
+  test('keeps a save refused as HTTP 200 from closing as successful', async () => {
+    const realOrganizationApi =
+      await vi.importActual<typeof import('../../api')>('../../api')
+    updateModelDiscountsMock.mockImplementation(
+      realOrganizationApi.updateOrganizationMemberModelDiscounts
+    )
+    // A business refusal is answered as HTTP 200 with `success: false`; the api
+    // module is what turns that envelope into a rejection, so the dialog stays
+    // open on the edit instead of closing as if it had been stored.
+    vi.spyOn(api, 'put').mockResolvedValue({
+      data: { success: false, message: 'Discount factor out of range' },
+    } as never)
+
+    renderSection(true)
+    await openDiscountDialog()
+    await screen.findByDisplayValue('80')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/organizations/${ORGANIZATION_ID}/members/${MEMBER_USER_ID}/model-discounts`,
+        { discounts: STORED_DISCOUNTS }
+      )
+    )
+    expect(toastSuccess).not.toHaveBeenCalled()
+    expect(screen.getByText('Member Model Discounts')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('80')).toBeInTheDocument()
   })
 
   test('opens the next member on their own discounts, not the previous edit', async () => {

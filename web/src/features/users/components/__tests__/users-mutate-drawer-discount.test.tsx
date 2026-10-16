@@ -22,6 +22,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { api } from '@/lib/api'
+
 import {
   getGroups,
   getPermissionCatalog,
@@ -265,6 +267,28 @@ describe('users mutate drawer model discounts', () => {
     ).not.toBeInTheDocument()
   })
 
+  test('treats a read refused as HTTP 200 as a failure, not an empty record', async () => {
+    const realUsersApi =
+      await vi.importActual<typeof import('../../api')>('../../api')
+    getUserModelDiscountsMock.mockImplementation(
+      realUsersApi.getUserModelDiscounts
+    )
+    // The server reports a failed read (unknown user, database error) as HTTP
+    // 200 with `success: false`; the api module is what turns that envelope into
+    // a rejection the query can surface. An empty record here would let the
+    // drawer save a full replacement that clears what was never read.
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: false, message: 'database error' },
+    } as never)
+
+    renderDrawer(buildUser())
+
+    expect(await screen.findByText('Failed to load')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Save discounts' })
+    ).not.toBeInTheDocument()
+  })
+
   test('writes pending discount edits before the footer saves the form', async () => {
     const onOpenChange = vi.fn()
     renderHarness(onOpenChange)
@@ -308,6 +332,39 @@ describe('users mutate drawer model discounts', () => {
     // The edit survives and the footer is usable again.
     expect(screen.getByDisplayValue('50')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  })
+
+  test('keeps a discount write refused as HTTP 200 from reporting success', async () => {
+    const realUsersApi =
+      await vi.importActual<typeof import('../../api')>('../../api')
+    updateUserModelDiscountsMock.mockImplementation(
+      realUsersApi.updateUserModelDiscounts
+    )
+    // A business refusal is answered as HTTP 200 with `success: false`; the api
+    // module is what turns that envelope into a rejection, so the footer stays
+    // with the edit instead of reporting the write as stored.
+    vi.spyOn(api, 'put').mockResolvedValue({
+      data: { success: false, message: 'Discount factor out of range' },
+    } as never)
+    const onOpenChange = vi.fn()
+    renderHarness(onOpenChange)
+
+    fireEvent.input(await screen.findByDisplayValue('80'), {
+      target: { value: '50' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(api.put).toHaveBeenCalledWith(
+        `/api/user/${EDITED_USER_ID}/model-discounts`,
+        { discounts: { m: 0.5 } }
+      )
+    )
+    expect(updateUserMock).not.toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    expect(toastSuccess).not.toHaveBeenCalled()
+    // The rejected edit stays on screen for a retry.
+    expect(screen.getByDisplayValue('50')).toBeInTheDocument()
   })
 
   test('shows nothing of the previous user after the drawer closes and reopens', async () => {

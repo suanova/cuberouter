@@ -391,6 +391,13 @@ export async function getOrganizationMemberModelDiscounts(
   const payload = res.data as
     | OrganizationApiResponse<{ discounts?: UserModelDiscounts }>
     | undefined
+  // A refusal (member no longer active, no longer readable) is answered as
+  // HTTP 200 with `success: false`. Falling through to the empty record would
+  // present it as "this member has no discounts", and saving that shape would
+  // clear the record the caller never read.
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
   return payload?.data?.discounts ?? {}
 }
 
@@ -404,8 +411,9 @@ export async function getOrganizationMemberModelDiscounts(
  * member responsible for it.
  *
  * A business-level refusal — a malformed model name, an out-of-range factor —
- * is answered `success: false` and reported by the API client's interceptor,
- * which is the same mechanism the platform administration's write uses.
+ * is answered HTTP 200 with `success: false` and reported by the API client's
+ * interceptor, which is the same mechanism the platform administration's write
+ * uses; throwing here is what keeps the dialog from treating it as saved.
  */
 export async function updateOrganizationMemberModelDiscounts(
   organizationId: number,
@@ -413,10 +421,13 @@ export async function updateOrganizationMemberModelDiscounts(
   discounts: UserModelDiscounts,
   surface: OrganizationSurface
 ): Promise<void> {
-  await api.put(
+  const res = await api.put(
     `${organizationResourceBase(surface, organizationId)}/members/${userId}/model-discounts`,
     { discounts }
   )
+  if (res.data?.success === false) {
+    throw new Error(res.data.message || 'Request failed')
+  }
 }
 
 /**

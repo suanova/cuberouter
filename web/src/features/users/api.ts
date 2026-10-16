@@ -20,6 +20,7 @@ import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
 import type { CustomOAuthBinding } from '@/lib/oauth'
 
+import type { ExportUsersPayload } from './lib/export-utils'
 import type {
   User,
   GetUsersParams,
@@ -33,7 +34,6 @@ import type {
   UserDashboardPayload,
   UserModelDiscounts,
 } from './types'
-import type { ExportUsersPayload } from './lib/export-utils'
 
 // ============================================================================
 // User Management APIs
@@ -105,6 +105,13 @@ export async function getUserModelDiscounts(
   const payload = res.data as
     | ApiResponse<{ discounts?: UserModelDiscounts }>
     | undefined
+  // A read that failed on the server (unknown user, database error) is answered
+  // as HTTP 200 with `success: false`. Falling through to the empty record would
+  // present it as "this user has no discounts", and saving that empty shape
+  // would clear the record the caller never read.
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
   return payload?.data?.discounts ?? {}
 }
 
@@ -116,7 +123,15 @@ export async function updateUserModelDiscounts(
   userId: number,
   discounts: UserModelDiscounts
 ): Promise<void> {
-  await api.put(`/api/user/${userId}/model-discounts`, { discounts })
+  const res = await api.put(`/api/user/${userId}/model-discounts`, {
+    discounts,
+  })
+  // A refused write (out-of-range factor, malformed model name) is answered as
+  // HTTP 200 with `success: false`. Without this check the callers report
+  // success and keep the drawer's edit as if it had been stored.
+  if (res.data?.success === false) {
+    throw new Error(res.data.message || 'Request failed')
+  }
 }
 
 /**
