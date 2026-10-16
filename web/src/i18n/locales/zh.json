@@ -6130,6 +6130,7 @@
     "Model Discounts": "模型折扣",
     "Discount (%)": "折扣 (%)",
     "Add model discount": "添加模型折扣",
-    "Discount must be between 1% and 100%": "折扣必须在 1% 到 100% 之间"
+    "Discount must be between 1% and 100%": "折扣必须在 1% 到 100% 之间",
+    "Save discounts": "保存折扣"
   }
 }

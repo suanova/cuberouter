@@ -6130,6 +6130,7 @@
     "Model Discounts": "Model Discounts",
     "Discount (%)": "Discount (%)",
     "Add model discount": "Add model discount",
-    "Discount must be between 1% and 100%": "Discount must be between 1% and 100%"
+    "Discount must be between 1% and 100%": "Discount must be between 1% and 100%",
+    "Save discounts": "Save discounts"
   }
 }
