@@ -6133,6 +6133,7 @@
     "Discount must be between 1% and 100%": "Discount must be between 1% and 100%",
     "Save discounts": "Save discounts",
     "Member Model Discounts": "Member Model Discounts",
-    "Applies to all calls made by this member (including personal wallet); organization keys are attributed to their responsible member.": "Applies to all calls made by this member (including personal wallet); organization keys are attributed to their responsible member."
+    "Applies to all calls made by this member (including personal wallet); organization keys are attributed to their responsible member.": "Applies to all calls made by this member (including personal wallet); organization keys are attributed to their responsible member.",
+    "User Model Discount": "User Model Discount"
   }
 }

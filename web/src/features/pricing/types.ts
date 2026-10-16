@@ -163,6 +163,12 @@ export type PricingData = {
   data: PricingResponse
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
+  /**
+   * Per-model discounts of the current viewer (`GET /api/pricing`), as
+   * multipliers of the list price. Absent means no discount; an anonymous
+   * viewer always gets an empty map.
+   */
+  user_model_discounts?: Record<string, number>
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>
   auto_groups: string[]

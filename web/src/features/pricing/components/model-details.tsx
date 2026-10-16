@@ -36,6 +36,7 @@ import { useTranslation } from 'react-i18next'
 import { CopyButton } from '@/components/copy-button'
 import { sideDrawerContentClassName } from '@/components/drawer-layout'
 import { PublicLayout } from '@/components/layout'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -67,7 +68,9 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import {
+  formatModelDiscountPercent,
   getViewerGroupRatio,
+  getViewerModelDiscount,
   isTokenBasedModel,
 } from '../lib/model-helpers'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
@@ -625,6 +628,8 @@ function PriceSection(props: {
   offPeakWindow?: OffPeakWindow
   /** Billing group ratio of the current viewer (1 = base price). */
   viewerGroupRatio: number
+  /** Per-model discount of the current viewer (1 = list price). */
+  viewerModelDiscount: number
 }) {
   const { t } = useTranslation()
   if (props.model.video_prices) {
@@ -632,7 +637,9 @@ function PriceSection(props: {
       <VideoPriceTable
         table={props.model.video_prices}
         offPeakWindow={props.offPeakWindow}
-        groupRatioMultiplier={props.viewerGroupRatio}
+        groupRatioMultiplier={
+          props.viewerGroupRatio * props.viewerModelDiscount
+        }
       />
     )
   }
@@ -648,7 +655,7 @@ function PriceSection(props: {
     showRechargePrice: props.showRechargePrice,
     priceRate: props.priceRate,
     usdExchangeRate: props.usdExchangeRate,
-    groupRatioMultiplier: props.viewerGroupRatio,
+    groupRatioMultiplier: props.viewerGroupRatio * props.viewerModelDiscount,
   })
 
   const primaryPriceTypes: { label: string; type: PriceType }[] = [
@@ -786,7 +793,8 @@ function PriceSection(props: {
             props.showRechargePrice,
             props.priceRate,
             props.usdExchangeRate,
-            viewerGroupRatioMap
+            viewerGroupRatioMap,
+            props.viewerModelDiscount
           )}
         </span>
       </div>
@@ -804,7 +812,8 @@ function PriceSection(props: {
         props.showRechargePrice,
         props.priceRate,
         props.usdExchangeRate,
-        viewerGroupRatioMap
+        viewerGroupRatioMap,
+        props.viewerModelDiscount
       )}
       <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
         / {tokenUnitLabel}
@@ -870,6 +879,8 @@ export interface ModelDetailsContentProps {
   tokenUnit: TokenUnit
   showRechargePrice?: boolean
   offPeakWindow?: OffPeakWindow
+  /** Per-model discounts of the current viewer, keyed by model name. */
+  userModelDiscounts?: Record<string, number>
 }
 
 export function ModelDetailsContent(props: ModelDetailsContentProps) {
@@ -884,6 +895,10 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
     props.model,
     props.usableGroup,
     props.groupRatio
+  )
+  const viewerModelDiscount = getViewerModelDiscount(
+    props.userModelDiscounts,
+    props.model.model_name
   )
 
   return (
@@ -912,7 +927,17 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
 
           <section className='bg-card/60 space-y-5 rounded-xl border p-4 shadow-sm'>
             <SectionTitle>{t('Pricing')}</SectionTitle>
-            <ModelBillingModeBadge model={props.model} />
+            <div className='flex flex-wrap items-center gap-2'>
+              <ModelBillingModeBadge model={props.model} />
+              {viewerModelDiscount < 1 && (
+                <StatusBadge
+                  label={`${t('Discount')} ${formatModelDiscountPercent(viewerModelDiscount)}%`}
+                  variant='success'
+                  size='sm'
+                  copyable={false}
+                />
+              )}
+            </div>
             <PriceSection
               model={props.model}
               priceRate={props.priceRate}
@@ -921,6 +946,7 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
               showRechargePrice={showRechargePrice}
               offPeakWindow={props.offPeakWindow}
               viewerGroupRatio={viewerGroupRatio}
+              viewerModelDiscount={viewerModelDiscount}
             />
             {isDynamic && (
               <DynamicPricingBreakdown
@@ -997,6 +1023,7 @@ export function ModelDetails() {
     priceRate,
     usdExchangeRate,
     offPeakWindow,
+    userModelDiscounts,
   } = usePricingData()
 
   const tokenUnit: TokenUnit =
@@ -1083,6 +1110,7 @@ export function ModelDetails() {
             >) || {}
           }
           offPeakWindow={offPeakWindow}
+          userModelDiscounts={userModelDiscounts}
         />
       </div>
     </PublicLayout>

@@ -136,6 +136,30 @@ export function getViewerGroupRatio(
 }
 
 /**
+ * Resolve the current viewer's discount for one model.
+ *
+ * The pricing response (`PricingData.user_model_discounts`) maps model name to
+ * the multiplier folded into that model's billing, so viewers pay the list
+ * price times the result — 1 whenever no usable discount applies: an anonymous
+ * viewer, a model without an entry, or a stored value outside (0, 1) that must
+ * never discount (or inflate) a displayed price.
+ */
+export function getViewerModelDiscount(
+  discounts: Record<string, number> | undefined,
+  modelName: string
+): number {
+  const discount = discounts?.[modelName]
+  return typeof discount === 'number' && discount > 0 && discount < 1
+    ? discount
+    : 1
+}
+
+/** Paid percent of a model discount for display, without trailing zeros. */
+export function formatModelDiscountPercent(discount: number): string {
+  return (discount * 100).toFixed(2).replace(/\.?0+$/, '')
+}
+
+/**
  * Replace model placeholder in endpoint path
  */
 export function replaceModelInPath(path: string, modelName: string): string {
