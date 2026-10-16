@@ -14,6 +14,7 @@
    | `glm-*` | 智谱 |
    | `kimi-*` | Moonshot |
    | `qwen*` | 阿里巴巴 |
+   | `wan*` | 阿里巴巴 |
    | `vidu*` | Vidu |
    | `doubao-*` | 字节跳动 |
    | `minimax-*` | MiniMax |
