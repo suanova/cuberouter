@@ -31,6 +31,7 @@ import type {
   ApiResponse,
   InviteesListData,
   UserDashboardPayload,
+  UserModelDiscounts,
 } from './types'
 import type { ExportUsersPayload } from './lib/export-utils'
 
@@ -91,6 +92,31 @@ export async function searchUsers(
 export async function getUser(id: number): Promise<ApiResponse<User>> {
   const res = await api.get(`/api/user/${id}`)
   return res.data
+}
+
+/**
+ * Get a user's per-model billing discounts (admin).
+ * The backend answers with an empty object when the user has none.
+ */
+export async function getUserModelDiscounts(
+  userId: number
+): Promise<UserModelDiscounts> {
+  const res = await api.get(`/api/user/${userId}/model-discounts`)
+  const payload = res.data as
+    | ApiResponse<{ discounts?: UserModelDiscounts }>
+    | undefined
+  return payload?.data?.discounts ?? {}
+}
+
+/**
+ * Replace a user's per-model billing discounts (admin); an empty record clears
+ * every discount of that user.
+ */
+export async function updateUserModelDiscounts(
+  userId: number,
+  discounts: UserModelDiscounts
+): Promise<void> {
+  await api.put(`/api/user/${userId}/model-discounts`, { discounts })
 }
 
 /**

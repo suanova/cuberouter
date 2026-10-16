@@ -87,6 +87,12 @@ export interface ApiResponse<T = unknown> {
   data?: T
 }
 
+/**
+ * Per-model billing multiplier of one user: model name -> factor (0.01-1)
+ * applied on top of the model ratio. Empty record = no discount.
+ */
+export type UserModelDiscounts = Record<string, number>
+
 export type UserSortBy =
   | 'id'
   | 'username'

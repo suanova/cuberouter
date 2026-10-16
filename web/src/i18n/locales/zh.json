@@ -6126,6 +6126,10 @@
     "Video mode": "视频模式",
     "Video operation could not be completed.": "视频操作无法完成。",
     "Video preview": "视频预览",
-    "Your videos will appear here.": "你的视频将显示在这里。"
+    "Your videos will appear here.": "你的视频将显示在这里。",
+    "Model Discounts": "模型折扣",
+    "Discount (%)": "折扣 (%)",
+    "Add model discount": "添加模型折扣",
+    "Discount must be between 1% and 100%": "折扣必须在 1% 到 100% 之间"
   }
 }

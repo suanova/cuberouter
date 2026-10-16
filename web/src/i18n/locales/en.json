@@ -6126,6 +6126,10 @@
     "Video mode": "Video mode",
     "Video operation could not be completed.": "Video operation could not be completed.",
     "Video preview": "Video preview",
-    "Your videos will appear here.": "Your videos will appear here."
+    "Your videos will appear here.": "Your videos will appear here.",
+    "Model Discounts": "Model Discounts",
+    "Discount (%)": "Discount (%)",
+    "Add model discount": "Add model discount",
+    "Discount must be between 1% and 100%": "Discount must be between 1% and 100%"
   }
 }
