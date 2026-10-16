@@ -53,6 +53,9 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
+	if info.PriceData.GroupRatioInfo.HasUserModelDiscount {
+		other["user_model_discount"] = info.PriceData.GroupRatioInfo.UserModelDiscount
+	}
 	if info.IsModelMapped {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
@@ -456,10 +459,20 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 		otherMultiplier = priceData.OtherRatioMultiplier()
 	}
 
-	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * otherMultiplier（饱和转换，防止溢出成负数）
-	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
+	// 用户×模型折扣在提交时已折叠进分组倍率并快照进 BillingContext，重算沿用快照；
+	// 旧任务没有该字段（缺省 0）与越界值一律按 1.0，绝不出现 0 折或溢价。
+	discount := 1.0
+	if bc := task.PrivateData.BillingContext; bc != nil {
+		discount = bc.UserModelDiscount
+	}
+	if discount <= 0 || discount > 1 {
+		discount = 1
+	}
 
-	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
+	// 计算实际应扣费额度: totalTokens * modelRatio * groupRatio * discount * otherMultiplier（饱和转换，防止溢出成负数）
+	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * discount * otherMultiplier)
+
+	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, discount=%.4f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, discount, otherMultiplier)
 	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
 	return true
 }
