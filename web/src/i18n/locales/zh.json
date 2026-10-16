@@ -6131,6 +6131,8 @@
     "Discount (%)": "折扣 (%)",
     "Add model discount": "添加模型折扣",
     "Discount must be between 1% and 100%": "折扣必须在 1% 到 100% 之间",
-    "Save discounts": "保存折扣"
+    "Save discounts": "保存折扣",
+    "Member Model Discounts": "成员模型折扣",
+    "Applies to all calls made by this member (including personal wallet); organization keys are attributed to their responsible member.": "对该成员的全部调用生效（含个人钱包）；组织 Key 的调用按其使用者归因。"
   }
 }

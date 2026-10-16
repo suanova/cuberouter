@@ -210,6 +210,15 @@ export interface OrganizationMemberRow {
   user_status?: number
 }
 
+/**
+ * Per-model billing multiplier of one member: model name -> factor (0.01-1)
+ * applied on top of the model ratio. A member's discounts are stored on the
+ * user, not on the membership, so the organization and the platform
+ * administration read and write the same record — see `features/users/types.ts`
+ * for the canonical definition.
+ */
+export type { UserModelDiscounts } from '@/features/users/types'
+
 // ============================================================================
 // Invitations
 // ============================================================================

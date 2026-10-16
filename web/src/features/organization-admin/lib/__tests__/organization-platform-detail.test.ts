@@ -52,6 +52,9 @@ function capabilities(
     can_disable_organization: true,
     can_enable_organization: true,
     can_manage_members: true,
+    // Not part of the platform administrator's set: the organization's own
+    // console is where member discounts are edited (see capabilitiesForPlatformRole).
+    can_manage_member_discounts: false,
     can_transfer_owner: true,
     can_add_members_directly: true,
     can_exit_organization: false,

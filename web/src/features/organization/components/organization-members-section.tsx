@@ -18,7 +18,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { Pencil, Power, PowerOff, Trash2, UserPlus } from 'lucide-react'
+import {
+  BadgePercent,
+  Pencil,
+  Power,
+  PowerOff,
+  Trash2,
+  UserPlus,
+} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -68,6 +75,7 @@ import {
   OrganizationMemberEditDialog,
   OrganizationRemoveMemberDialog,
 } from './organization-member-dialogs'
+import { OrganizationMemberDiscountDialog } from './organization-member-discount-dialog'
 import {
   useOrganizationSectionRoute,
   useOrganizationSurface,
@@ -84,6 +92,14 @@ type OrganizationMembersSectionProps = {
   /** The caller may read the organization at all. */
   canView: boolean
   canManageMembers: boolean
+  /**
+   * The caller may set the model discounts of this organization's members.
+   *
+   * A separate grant from managing the membership itself — the backend resolves
+   * it from its own capability — so it arrives as its own flag rather than
+   * being read off `canManageMembers`.
+   */
+  canManageMemberDiscounts: boolean
   canAddMembersDirectly: boolean
   canExitOrganization: boolean
   /**
@@ -120,6 +136,9 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
   const [removing, setRemoving] = useState<OrganizationMemberRow | null>(null)
   const [demoting, setDemoting] = useState<OrganizationMemberRow | null>(null)
   const [editing, setEditing] = useState<OrganizationMemberRow | null>(null)
+  const [discounting, setDiscounting] = useState<OrganizationMemberRow | null>(
+    null
+  )
 
   const {
     pagination,
@@ -202,6 +221,7 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
         // touch this particular row sees a plain label rather than a control
         // that would be rejected on submit.
         canManageMembers: props.canManageMembers,
+        canManageMemberDiscounts: props.canManageMemberDiscounts,
         readOnly: props.readOnly,
         actorRole: props.actorRole,
         currentUserId: props.currentUserId,
@@ -209,12 +229,14 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
         onChangeRole: (member, nextRole) => void changeRole(member, nextRole),
         onChangeStatus: (member, status) => void changeStatus(member, status),
         onEdit: (member) => setEditing(member),
+        onModelDiscounts: (member) => setDiscounting(member),
         onRemove: (member) => setRemoving(member),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       t,
       props.canManageMembers,
+      props.canManageMemberDiscounts,
       props.readOnly,
       props.actorRole,
       props.currentUserId,
@@ -318,6 +340,12 @@ export function OrganizationMembersSection(props: OrganizationMembersSectionProp
         onUpdated={() => members.refetch()}
       />
 
+      <OrganizationMemberDiscountDialog
+        organizationId={props.organizationId}
+        member={discounting}
+        onOpenChange={(open) => !open && setDiscounting(null)}
+      />
+
       <OrganizationExitDialog
         organizationId={props.organizationId}
         open={isExiting}
@@ -333,6 +361,7 @@ type MemberColumnContext = {
   actorRole: string
   currentUserId: number
   canManageMembers: boolean
+  canManageMemberDiscounts: boolean
   readOnly: boolean
   isPlatformAdministrator: boolean
   onChangeRole: (member: OrganizationMemberRow, nextRole: string) => void
@@ -341,6 +370,7 @@ type MemberColumnContext = {
     status: 'active' | 'disabled'
   ) => void
   onEdit: (member: OrganizationMemberRow) => void
+  onModelDiscounts: (member: OrganizationMemberRow) => void
   onRemove: (member: OrganizationMemberRow) => void
 }
 
@@ -524,6 +554,15 @@ function MemberRowActions(props: {
 
   if (!flags.canChangeStatus && !flags.canRemove) return null
 
+  // Discounts are their own grant, offered on the rows the other member actions
+  // apply to: the backend refuses the owner's row and every row at or above the
+  // actor's own rank, and `canChangeStatus` is the row-level verdict already
+  // computed for them. The platform administrator's menu above does not offer
+  // it — an outside administrator reaches the same record from the users page,
+  // and the organization endpoint only exists for a member.
+  const canManageModelDiscounts =
+    props.context.canManageMemberDiscounts && flags.canChangeStatus
+
   return (
     <DataTableRowActionMenu ariaLabel={t('Open menu')} contentClassName='w-40'>
       {props.member.status === 'active' ? (
@@ -547,6 +586,17 @@ function MemberRowActions(props: {
           </DropdownMenuShortcut>
         </DropdownMenuItem>
       )}
+
+      {canManageModelDiscounts ? (
+        <DropdownMenuItem
+          onSelect={() => props.context.onModelDiscounts(props.member)}
+        >
+          {t('Model Discounts')}
+          <DropdownMenuShortcut>
+            <BadgePercent size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+      ) : null}
 
       <DropdownMenuSeparator />
 

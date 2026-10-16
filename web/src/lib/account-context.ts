@@ -51,6 +51,7 @@ export const organizationCapabilitiesSchema = z.object({
   can_disable_organization: z.boolean(),
   can_enable_organization: z.boolean(),
   can_manage_members: z.boolean(),
+  can_manage_member_discounts: z.boolean(),
   can_transfer_owner: z.boolean(),
   can_add_members_directly: z.boolean(),
   can_exit_organization: z.boolean(),

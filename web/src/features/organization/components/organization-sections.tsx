@@ -100,6 +100,7 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           currentUserId={actor.user_id}
           canView={capabilities.can_view_organization}
           canManageMembers={capabilities.can_manage_members}
+          canManageMemberDiscounts={capabilities.can_manage_member_discounts}
           canAddMembersDirectly={capabilities.can_add_members_directly}
           canExitOrganization={capabilities.can_exit_organization}
           isPlatformAdministrator={isPlatformSurface && actor.is_platform_admin}
