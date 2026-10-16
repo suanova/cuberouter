@@ -83,6 +83,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     props.userModelDiscounts,
     props.model.model_name
   )
+  // 徽标只在卡片摘要本身已随 d 折算时显示：视频/图片摘要按基准价展示（既有形态，
+  // 折后价与徽标在详情弹窗给出），摘要与徽标并排会被读成「这些价格已折后」。
+  const summaryReflectsDiscount = !(
+    props.model.video_prices || props.model.image_prices
+  )
   const dynamicPriceOptions = {
     tokenUnit,
     showRechargePrice,
@@ -304,7 +309,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             </h3>
             <div className='mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm sm:mt-1 sm:gap-x-3'>
               {priceSummary}
-              {modelDiscount < 1 && (
+              {modelDiscount < 1 && summaryReflectsDiscount && (
                 <StatusBadge
                   label={`${t('Discount')} ${formatModelDiscountPercent(modelDiscount)}%`}
                   variant='success'

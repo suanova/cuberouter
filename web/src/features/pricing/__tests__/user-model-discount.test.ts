@@ -222,4 +222,41 @@ describe('ModelCard viewer discount', () => {
     expect(screen.getByText('$4')).toBeInTheDocument()
     expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
   })
+
+  test('hides the badge on a video summary that keeps the base price', () => {
+    renderCard(
+      pricingModel({
+        video_prices: {
+          rows: [
+            { resolution: '480p', normal_price: 0.05, off_peak_price: 0.03 },
+            { resolution: '720p', normal_price: 0.1, off_peak_price: 0.07 },
+          ],
+        },
+      }),
+      { 'test-model': 0.8 }
+    )
+
+    // The card keeps summarizing in base prices, so the badge would read as if
+    // these numbers were already discounted; the detail panel is where the
+    // discount and the badge live.
+    expect(screen.getByText(/From \$0\.05\/s/)).toBeInTheDocument()
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+  })
+
+  test('hides the badge on an image summary that keeps the base price', () => {
+    renderCard(
+      pricingModel({
+        image_prices: {
+          rows: [
+            { tier: 'standard', price: 0.04 },
+            { tier: 'high', price: 0.08 },
+          ],
+        },
+      }),
+      { 'test-model': 0.8 }
+    )
+
+    expect(screen.getByText('$0.08/image')).toBeInTheDocument()
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+  })
 })
