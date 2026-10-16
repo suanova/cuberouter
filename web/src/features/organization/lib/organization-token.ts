@@ -271,12 +271,6 @@ export const ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS: Array<{
   { labelKey: 'Never expire', seconds: null },
 ]
 
-/** Closed presets for the per-key quota. Amounts, not quota units, because the
- * deployment decides what a unit is worth; see `parseQuotaFromDollars`. */
-export const ORGANIZATION_TOKEN_QUOTA_PRESET_AMOUNTS = [
-  1, 10, 50, 100, 500, 1000,
-]
-
 // ============================================================================
 // Error mapping
 // ============================================================================

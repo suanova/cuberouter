@@ -423,7 +423,6 @@
     "You will lose access to this organization immediately. Responsibility for any API keys you hold is transferred by policy.": "你將立即失去該組織的存取權限。你持有的 API Key 會按政策完成移交。",
     "Your account context changed. Reload the page and try again.": "你的帳號上下文已變更。請重新整理頁面後重試。",
     "{\"original-model\": \"replacement-model\"}": "{\"original-model\": \"replacement-model\"}",
-    "{{amount}} dollars": "{{amount}} 美元",
     "{{category}} Models": "{{category}} 模型",
     "{{completed}}/{{total}} completed": "已完成 {{completed}}/{{total}}",
     "{{count}} announcements will be removed from the list.": "將從列表中移除 {{count}} 條公告。",

@@ -67,7 +67,6 @@ import {
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS,
   ORGANIZATION_TOKEN_FORM_DEFAULT_VALUES,
-  ORGANIZATION_TOKEN_QUOTA_PRESET_AMOUNTS,
   ORGANIZATION_TOKEN_VISIBILITIES,
   transformOrganizationTokenFormToPayload,
   transformOrganizationTokenToFormDefaults,
@@ -284,8 +283,6 @@ export function OrganizationTokenFormDialog(
       setIsSubmitting(false)
     }
   }
-
-  const quotaPresets = ORGANIZATION_TOKEN_QUOTA_PRESET_AMOUNTS
 
   // Each picker resolves its trigger text from the items the root is given, so
   // the list is built once here and is what both the options and the registry
@@ -543,23 +540,6 @@ export function OrganizationTokenFormDialog(
                           }
                         />
                       </FormControl>
-                      <div className='flex flex-wrap gap-1 pt-1'>
-                        {quotaPresets.map((amount) => (
-                          <Button
-                            key={amount}
-                            type='button'
-                            variant='outline'
-                            size='xs'
-                            onClick={() =>
-                              form.setValue('remain_quota_dollars', amount, {
-                                shouldValidate: true,
-                              })
-                            }
-                          >
-                            {t('{{amount}} dollars', { amount })}
-                          </Button>
-                        ))}
-                      </div>
                       <FormDescription>
                         {t(
                           'Limits what this one key may spend. The organization pays for whatever it does use.'
