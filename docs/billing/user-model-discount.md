@@ -84,13 +84,16 @@
 
 ## 7. 展示、日志与对账字段
 
-定价页（`/api/pricing`）响应顶层追加 `user_model_discounts`（对登录用户返回其折扣表；匿名用户为空表；**不写入** `model.GetPricing()` 的共享缓存对象）。前端对命中折扣的用户展示折后价与「Discount N%」徽标：token 价、按次固定价、tiered/dynamic 摘要、视频按秒价均按 d 折算；图片价表按基准价展示（§6）。
+定价页（`/api/pricing`）响应顶层追加 `user_model_discounts`（对登录用户返回其折扣表；匿名用户为空表；**不写入** `model.GetPricing()` 的共享缓存对象）。前端对命中折扣的用户展示折后价与「Discount N%」徽标，口径是**徽标只在同屏主价格已随 d 折算的界面出现**：
+
+- 卡片/列表：token 价、按次固定价、tiered/dynamic 摘要按 d 折算、显示徽标；**视频/图片摘要按基准价展示**（分辨率/档位明细本就在详情弹窗），这类卡片不显示徽标——基准价与徽标并排会被读成「这些价格已折后」。
+- 详情弹窗：价格区已折后（token/按次/动态/视频价表均乘 d），徽标保留；其中图片按张价目表仍按基准价展示（§6），不影响该弹窗的徽标。
 
 日志与对账相关字段：
 
 | 字段 | 位置 | 写入条件 |
 |---|---|---|
-| `other.user_model_discount` | 消费日志、MJ 日志、任务消费日志（`service/log_info_generate.go`、`service/task_billing.go`） | 仅真实折扣（d < 1）时写入；d = 1 不写 |
+| `other.user_model_discount` | 消费日志、MJ 日志、任务消费日志、任务差额/退款日志（`service/log_info_generate.go`、`service/task_billing.go`） | 仅真实折扣（d < 1）时写入；d = 1 不写 |
 | `other.pre_consume_detail.user_model_discount` | 消费日志的预扣明细（`types/price_data.go`；仅 token/倍率计费路径有该明细） | 明细存在时总是带（1 = 无折扣） |
 | `user_model_discounts` | 定价页响应（顶层） | 登录用户 |
 
