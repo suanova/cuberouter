@@ -86,16 +86,19 @@ type TokenCountMeta struct {
 }
 
 type RelayInfo struct {
-	TokenId           int
-	TokenKey          string
-	TokenGroup        string
-	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup         string // 用户所在分组
-	TokenUnlimited    bool
-	StartTime         time.Time
-	FirstResponseTime time.Time
-	isFirstResponse   bool
+	TokenId    int
+	TokenKey   string
+	TokenGroup string
+	UserId     int
+	UsingGroup string // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup  string // 用户所在分组
+	// UserModelDiscounts 是用户×模型折扣表快照（TokenAuth 随 UserBase 带出）。
+	// nil 表示未知（非令牌鉴权路径），计费时按 ActorUserId 回源。
+	UserModelDiscounts map[string]float64
+	TokenUnlimited     bool
+	StartTime          time.Time
+	FirstResponseTime  time.Time
+	isFirstResponse    bool
 	//SendLastReasoningResponse bool
 	IsStream               bool
 	IsGeminiBatchEmbedding bool
@@ -643,6 +646,12 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 
 	if info.RelayMode == relayconstant.RelayModeUnknown {
 		info.RelayMode = c.GetInt("relay_mode")
+	}
+
+	if v, ok := common.GetContextKey(c, constant.ContextKeyUserModelDiscounts); ok {
+		if m, ok := v.(map[string]float64); ok {
+			info.UserModelDiscounts = m
+		}
 	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/pg") {
