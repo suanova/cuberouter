@@ -93,7 +93,8 @@ type RelayInfo struct {
 	UsingGroup string // 使用的分组，当auto跨分组重试时，会变动
 	UserGroup  string // 用户所在分组
 	// UserModelDiscounts 是用户×模型折扣表快照（TokenAuth 随 UserBase 带出）。
-	// nil 表示未知（非令牌鉴权路径），计费时按 ActorUserId 回源。
+	// nil 表示未载入（非令牌鉴权路径），计费时按 ActorUserId 回源；
+	// 非 nil 空 map 表示已载入且该用户无折扣（不回源）。
 	UserModelDiscounts map[string]float64
 	TokenUnlimited     bool
 	StartTime          time.Time
@@ -649,9 +650,13 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	}
 
 	if v, ok := common.GetContextKey(c, constant.ContextKeyUserModelDiscounts); ok {
-		if m, ok := v.(map[string]float64); ok {
-			info.UserModelDiscounts = m
+		// key present = 已载入：无折扣用户的 nil map 归一为非 nil 空 map，
+		// 避免计费折叠把「无折扣」误判成「未载入」而逐次回源。
+		m, _ := v.(map[string]float64)
+		if m == nil {
+			m = map[string]float64{}
 		}
+		info.UserModelDiscounts = m
 	}
 
 	if strings.HasPrefix(c.Request.URL.Path, "/pg") {

@@ -164,7 +164,8 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 }
 
 // GenRelayInfo 必须把 TokenAuth 落下的用户×模型折扣快照带进 RelayInfo：
-// 计费折叠以该快照为准，nil（非令牌路径）才触发按 actor 回源。
+// key present = 已载入（无折扣用户是 nil map，须归一为非 nil 空 map，否则计费
+// 会逐次回源）；key absent = 未载入，计费层按 ActorUserId 回源。
 func TestGenRelayInfoCapturesUserModelDiscounts(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	discounts := map[string]float64{"m1": 0.5, "m2": 0.8}
@@ -185,11 +186,20 @@ func TestGenRelayInfoCapturesUserModelDiscounts(t *testing.T) {
 		common.SetContextKey(ctx, constant.ContextKeyUserModelDiscounts, discounts)
 	}).UserModelDiscounts)
 
+	// 无折扣用户：GetModelDiscounts() 返回 nil，但 key 已 present —— 归一为
+	// 非 nil 空 map，计费层据此跳过回源。
+	var noDiscounts map[string]float64
+	loadedEmpty := newInfo(t, func(ctx *gin.Context) {
+		common.SetContextKey(ctx, constant.ContextKeyUserModelDiscounts, noDiscounts)
+	}).UserModelDiscounts
+	assert.NotNil(t, loadedEmpty)
+	assert.Empty(t, loadedEmpty)
+
 	// 未经过 TokenAuth：字段保持 nil，计费层按 ActorUserId 回源。
 	assert.Nil(t, newInfo(t, nil).UserModelDiscounts)
 
-	// 上下文里是异型值：不得 panic，也不得写入半个折扣表。
-	assert.Nil(t, newInfo(t, func(ctx *gin.Context) {
+	// present 但不是折扣表：同样按「已载入」处理，不 panic、不回源。
+	assert.Empty(t, newInfo(t, func(ctx *gin.Context) {
 		ctx.Set(string(constant.ContextKeyUserModelDiscounts), "not-a-discount-table")
 	}).UserModelDiscounts)
 }

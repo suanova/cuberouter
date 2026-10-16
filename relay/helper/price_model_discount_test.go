@@ -284,6 +284,41 @@ func setupModelDiscountTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+// TestModelPriceHelperLoadedEmptySnapshotSkipsFallback：令牌快照已载入且为空
+// （无折扣用户）时以快照为准，不得回源——即使 DB 里该用户有折扣也不查。
+func TestModelPriceHelperLoadedEmptySnapshotSkipsFallback(t *testing.T) {
+	db := setupModelDiscountTestDB(t)
+	user := model.User{
+		Username: "discount-empty-snapshot-user", Password: "password", Role: common.RoleCommonUser,
+		Status: common.UserStatusEnabled, Group: "default",
+		ModelDiscounts: `{"discount-empty-snap-model":0.5}`,
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	savedRatios := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatios)) })
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"discount-empty-snap-model":0.88}`))
+
+	prevFloor := common.PreConsumedQuota
+	common.PreConsumedQuota = 500
+	t.Cleanup(func() { common.PreConsumedQuota = prevFloor })
+
+	ctx := discountRatioTestContext(t)
+	info := &relaycommon.RelayInfo{
+		OriginModelName:    "discount-empty-snap-model",
+		UserGroup:          "default",
+		UsingGroup:         "default",
+		ActorUserId:        user.Id,
+		UserModelDiscounts: map[string]float64{},
+	}
+
+	priceData, err := ModelPriceHelper(ctx, info, 55, &types.TokenCountMeta{MaxTokens: 100})
+	require.NoError(t, err)
+
+	assert.EqualValues(t, 528, priceData.QuotaToPreConsume, "want 600×0.88 at full price from the loaded snapshot")
+	assert.False(t, priceData.GroupRatioInfo.HasUserModelDiscount)
+}
+
 // TestModelPriceHelperNilMapFallsBackToCache：令牌未带折扣快照（nil）时按
 // ActorUserId 回源数据库；存在 ActorUserId 时不看属主(UserId)。
 func TestModelPriceHelperNilMapFallsBackToCache(t *testing.T) {
