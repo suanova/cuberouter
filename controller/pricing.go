@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -85,8 +86,12 @@ func GetPricing(c *gin.Context) {
 	userModelDiscounts := map[string]float64{}
 	if exists {
 		if id, ok := userId.(int); ok {
-			// 读不出折扣就按无折扣处理，价目表不该因为折扣读取失败而 500。
-			if loaded, err := model.GetUserModelDiscounts(id, false); err == nil && loaded != nil {
+			// 读不出折扣就按无折扣处理，价目表不该因为折扣读取失败而 500；但失败
+			// 必须留痕——前端据此展示折后价与徽标，静默降级会让折扣「看起来没配」。
+			loaded, err := model.GetUserModelDiscounts(id, false)
+			if err != nil {
+				common.SysError(fmt.Sprintf("用户模型折扣读取失败，价目表按原价下发: userId=%d, err=%v", id, err))
+			} else if loaded != nil {
 				userModelDiscounts = loaded
 			}
 		}

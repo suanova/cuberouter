@@ -9,11 +9,11 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -77,7 +77,12 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 			actorUserId = relayInfo.UserId
 		}
 		if actorUserId > 0 {
-			if loaded, err := model.GetUserModelDiscounts(actorUserId, false); err == nil {
+			loaded, err := model.GetUserModelDiscounts(actorUserId, false)
+			if err != nil {
+				// 回源失败按原价继续（fail-open），但必须留痕：否则一次缓存整体
+				// 失效期间的无折扣会被当成常态，账单少收且无迹可循。
+				common.SysError(fmt.Sprintf("用户模型折扣回源失败，本次按原价计费: userId=%d, err=%v", actorUserId, err))
+			} else {
 				discounts = loaded
 			}
 		}
