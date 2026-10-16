@@ -254,9 +254,12 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	req.Model = model
 
 	var body any
-	if isKlingModel(model) {
+	switch {
+	case isKlingModel(model):
 		body, err = a.convertKlingRequestPayload(&req, model)
-	} else {
+	case isWanModel(model):
+		body, err = deriveWanRequest(&req, model)
+	default:
 		body, err = a.convertToRequestPayload(&req)
 	}
 	if err != nil {
@@ -806,6 +809,223 @@ func deriveKlingRequest(req *relaycommon.TaskSubmitReq, model string) (*klingReq
 		facts["variant"] = payload.Parameters.KlingV3Type
 	}
 	return payload, facts, nil
+}
+
+// ============================
+// wan 家族：wan3.0-video / wan3.0-video-prime（阿里万相 3.0 全模态）
+// ============================
+
+// wan3（wan3.0-video / wan3.0-video-prime）不走 Ark content 数组：上游是
+// Aliyun 风格方言——提示词在 input.prompt，图片/视频/音频参考统一放
+// input.media 的 {type, url} 数组，模型按 media 的 type 自动路由任务模式
+// （first_frame 图生视频、first_frame+last_frame 首尾帧、reference_* 全模态
+// 参考），其余参数在 parameters（resolution/ratio/duration）。与 seedance 的
+// Ark 形态是两套参数体系（2026-10-16 对上游实测确认）。
+//
+// 家族判定按 "wan3." 前缀：wan 老代（wanx2.x 等）参数体系不同，导入前需
+// 另行探测，不得靠本方言兜底。
+type wanMedia struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+type wanInput struct {
+	Prompt string     `json:"prompt,omitempty"`
+	Media  []wanMedia `json:"media,omitempty"`
+}
+
+// wanParameters 是 wan 家族的 parameters 集合：统一请求字段与客户端
+// metadata 共同填充（metadata 显式值优先）。仅保留已实测生效的字段；
+// 其余参数（prompt_extend 等）待验证后再扩展。
+type wanParameters struct {
+	Resolution string        `json:"resolution,omitempty"`
+	Ratio      string        `json:"ratio,omitempty"`
+	Duration   *dto.IntValue `json:"duration,omitempty"`
+}
+
+// wanRequestPayload 是 wan 家族的提交体：
+// { "model": "...", "input": {"prompt": ..., "media": [...]}, "parameters": {...} }。
+type wanRequestPayload struct {
+	Model      string        `json:"model"`
+	Input      wanInput      `json:"input"`
+	Parameters wanParameters `json:"parameters,omitempty"`
+}
+
+const (
+	wanMediaFirstFrame = "first_frame"
+	wanMediaLastFrame  = "last_frame"
+	wanMediaReference  = "reference_image"
+	// wanDefaultResolution 必须显式下发：上游缺省 1080p，而网关计费按
+	// relay/helper/video_price.go 的缺省档 720p 锚定——不下发会按 720p 收费
+	// 却按 1080p 出片。
+	wanDefaultResolution = "720p"
+	wanDefaultSec        = 5
+	wanRatioAdaptive     = "adaptive"
+)
+
+// isWanModel 判断模型是否属于 wan3 家族（wan3.0-video / wan3.0-video-prime）。
+func isWanModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(model), "wan3.")
+}
+
+// deriveWanRequest 把统一任务请求成形为 wan 方言提交体。时长 / 分辨率优先级
+// 与计费推导（relay/helper/video_price.go ComputeVideoPriceRatiosForTaskSubmit）
+// 保持一致，避免"发给上游的参数"与"计费读取的档位"漂移。
+func deriveWanRequest(req *relaycommon.TaskSubmitReq, model string) (*wanRequestPayload, error) {
+	payload := &wanRequestPayload{Model: model}
+	if err := req.UnmarshalMetadata(&payload.Parameters); err != nil {
+		return nil, errors.Wrap(err, "unmarshal wan metadata parameters failed")
+	}
+	// metadata.media 显式覆盖：reference_video / reference_audio / file / link
+	// 只能由此通道下发（统一请求没有对应的顶层字段）。
+	var metaShim struct {
+		Media []wanMedia `json:"media"`
+	}
+	if err := req.UnmarshalMetadata(&metaShim); err != nil {
+		return nil, errors.Wrap(err, "unmarshal wan metadata media failed")
+	}
+	payload.Input.Prompt = req.Prompt
+	if len(metaShim.Media) > 0 {
+		payload.Input.Media = metaShim.Media
+	} else {
+		payload.Input.Media = deriveWanMedia(req)
+	}
+
+	// 时长优先级（与计费一致）：metadata > 顶层 duration > seconds > 缺省 5。
+	// 上游限制 2~30 秒（-1 为自动），越界交给上游拒绝（异步失败会退款）；
+	// 这里只拦住计费上不可表达的值（≤0 及超过 MaxTaskDurationSeconds）。
+	if payload.Parameters.Duration == nil {
+		if req.Duration > 0 {
+			payload.Parameters.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+		} else if sec, parseErr := strconv.Atoi(strings.TrimSpace(req.Seconds)); parseErr == nil && sec > 0 {
+			payload.Parameters.Duration = lo.ToPtr(dto.IntValue(sec))
+		}
+	}
+	if payload.Parameters.Duration == nil {
+		payload.Parameters.Duration = lo.ToPtr(dto.IntValue(wanDefaultSec))
+	}
+	seconds := int(*payload.Parameters.Duration)
+	if seconds <= 0 || seconds > relaycommon.MaxTaskDurationSeconds {
+		return nil, fmt.Errorf("wan: duration %d out of range", seconds)
+	}
+
+	// 分辨率：metadata > 顶层 resolution > size 归一 > 缺省 720p（见
+	// wanDefaultResolution 注释）。可归一的尺寸写法（1280x720）归一到档位；
+	// 无法识别的非空取值原样下发，交给上游拒绝而不是静默改写。
+	if payload.Parameters.Resolution == "" {
+		payload.Parameters.Resolution = strings.TrimSpace(req.Resolution)
+		if payload.Parameters.Resolution == "" {
+			payload.Parameters.Resolution = helper.VideoResolutionTier(req.Size)
+		}
+	}
+	if tier := helper.VideoResolutionTier(payload.Parameters.Resolution); tier != "" {
+		payload.Parameters.Resolution = tier
+	} else if payload.Parameters.Resolution == "" {
+		payload.Parameters.Resolution = wanDefaultResolution
+	}
+
+	// 宽高比：metadata/顶层透传；含首帧/尾帧媒体时缺省 adaptive（输出比例
+	// 跟随输入图）。其余情况不下发，走上游缺省 16:9。
+	if payload.Parameters.Ratio == "" && req.Ratio != nil {
+		payload.Parameters.Ratio = *req.Ratio
+	}
+	if payload.Parameters.Ratio == "" && hasFrameMedia(payload.Input.Media) {
+		payload.Parameters.Ratio = wanRatioAdaptive
+	}
+	return payload, nil
+}
+
+// hasFrameMedia 判断 media 中是否含首帧/尾帧（决定 ratio 是否缺省 adaptive）。
+func hasFrameMedia(media []wanMedia) bool {
+	for _, m := range media {
+		if m.Type == wanMediaFirstFrame || m.Type == wanMediaLastFrame {
+			return true
+		}
+	}
+	return false
+}
+
+// deriveWanMedia 把统一请求的图片/视频/音频映射为 wan media 数组：content
+// 数组的角色标注（first_frame / last_frame / reference_image）优先，视频/音频
+// 项按 reference_video / reference_audio 归类；无角色图片按数量启发式
+// （1 张 = 首帧、2 张 = 首尾帧、3 张及以上 = 参考图，与 kling omni 的标注
+// 规则一致）。需要 reference_video / reference_audio / file / link 的完整
+// 控制时用 metadata.media 显式下发。
+func deriveWanMedia(req *relaycommon.TaskSubmitReq) []wanMedia {
+	type candidate struct {
+		mediaType string
+		url       string
+		isImage   bool
+	}
+	var candidates []candidate
+	for _, item := range req.Content {
+		switch item.Type {
+		case "image_url":
+			if item.ImageURL == nil || item.ImageURL.URL == nil {
+				continue
+			}
+			role := ""
+			if item.Role != nil {
+				role = *item.Role
+			}
+			switch role {
+			case wanMediaFirstFrame, wanMediaLastFrame, wanMediaReference:
+				candidates = append(candidates, candidate{mediaType: role, url: *item.ImageURL.URL, isImage: true})
+			default:
+				candidates = append(candidates, candidate{url: *item.ImageURL.URL, isImage: true})
+			}
+		case "video_url":
+			if item.VideoURL == nil || item.VideoURL.URL == nil {
+				continue
+			}
+			candidates = append(candidates, candidate{mediaType: "reference_video", url: *item.VideoURL.URL})
+		case "audio_url":
+			if item.AudioURL == nil || item.AudioURL.URL == nil {
+				continue
+			}
+			candidates = append(candidates, candidate{mediaType: "reference_audio", url: *item.AudioURL.URL})
+		}
+	}
+	if len(candidates) == 0 {
+		for _, img := range req.Images {
+			candidates = append(candidates, candidate{url: img, isImage: true})
+		}
+	}
+
+	imageTotal := 0
+	for _, c := range candidates {
+		if c.isImage {
+			imageTotal++
+		}
+	}
+	media := make([]wanMedia, 0, len(candidates))
+	imageOrdinal := 0
+	for _, c := range candidates {
+		url := strings.TrimSpace(c.url)
+		if url == "" {
+			continue
+		}
+		mediaType := c.mediaType
+		if c.isImage {
+			if mediaType == "" {
+				switch {
+				case imageTotal <= 1:
+					mediaType = wanMediaFirstFrame
+				case imageTotal == 2:
+					if imageOrdinal == 0 {
+						mediaType = wanMediaFirstFrame
+					} else {
+						mediaType = wanMediaLastFrame
+					}
+				default:
+					mediaType = wanMediaReference
+				}
+			}
+			imageOrdinal++
+		}
+		media = append(media, wanMedia{Type: mediaType, URL: url})
+	}
+	return media
 }
 
 // ExtractUsageFacts 是计费事实接口的兼容包装（tiered 闸门按

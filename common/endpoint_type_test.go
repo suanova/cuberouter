@@ -60,6 +60,11 @@ func TestAstraFlowMultiModelEndpointTypes(t *testing.T) {
 			wantTypes: []constant.EndpointType{constant.EndpointTypeArkVideo},
 		},
 		{
+			name:      "wan3 video model uses ark-video",
+			model:     "wan3.0-video",
+			wantTypes: []constant.EndpointType{constant.EndpointTypeArkVideo},
+		},
+		{
 			name:      "chat model exposes openai and openai-response",
 			model:     "deepseek-v3",
 			wantTypes: []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse},

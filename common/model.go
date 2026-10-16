@@ -32,6 +32,7 @@ var (
 		"seedance",
 		"sora",
 		"kling",
+		"wan3.0-video",
 	}
 )
 
