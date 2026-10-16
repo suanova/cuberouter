@@ -11,19 +11,20 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const userCacheSchemaVersion = 2
+const userCacheSchemaVersion = 3
 
 type UserBase struct {
-	Id          int    `json:"id"`
-	Group       string `json:"group"`
-	Email       string `json:"email"`
-	Quota       int    `json:"quota"`
-	Status      int    `json:"status"`
-	Role        int    `json:"role"`
-	Username    string `json:"username"`
-	Setting     string `json:"setting"`
-	AuthVersion int64  `json:"-"`
-	CacheSchema int    `json:"-"`
+	Id             int    `json:"id"`
+	Group          string `json:"group"`
+	Email          string `json:"email"`
+	Quota          int    `json:"quota"`
+	Status         int    `json:"status"`
+	Role           int    `json:"role"`
+	Username       string `json:"username"`
+	Setting        string `json:"setting"`
+	ModelDiscounts string `json:"model_discounts"`
+	AuthVersion    int64  `json:"-"`
+	CacheSchema    int    `json:"-"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -33,6 +34,7 @@ func (user *UserBase) WriteContext(c *gin.Context) {
 	common.SetContextKey(c, constant.ContextKeyUserEmail, user.Email)
 	common.SetContextKey(c, constant.ContextKeyUserName, user.Username)
 	common.SetContextKey(c, constant.ContextKeyUserSetting, user.GetSetting())
+	common.SetContextKey(c, constant.ContextKeyUserModelDiscounts, user.GetModelDiscounts())
 }
 
 func (user *UserBase) GetSetting() dto.UserSetting {
@@ -44,6 +46,13 @@ func (user *UserBase) GetSetting() dto.UserSetting {
 		}
 	}
 	return setting
+}
+
+func (user *UserBase) GetModelDiscounts() map[string]float64 {
+	if user.ModelDiscounts == "" {
+		return nil
+	}
+	return ParseUserModelDiscounts(user.ModelDiscounts)
 }
 
 // getUserCacheKey returns the key for user cache
@@ -236,6 +245,48 @@ func RefreshUserGroupCache(userId int) error {
 		return err
 	}
 	return fmt.Errorf("user group changed repeatedly during cache refresh")
+}
+
+// RefreshUserModelDiscountsCache writes the database-authoritative discount
+// table into an existing user hash without changing the user's authentication
+// version.
+func RefreshUserModelDiscountsCache(userId int) error {
+	if !common.RedisEnabled {
+		return nil
+	}
+	if userId <= 0 {
+		return fmt.Errorf("invalid user id")
+	}
+	var authoritative User
+	if err := DB.Select("id", "auth_version", "model_discounts").Where("id = ?", userId).First(&authoritative).Error; err != nil {
+		return err
+	}
+	// Discount updates intentionally keep the same authentication version. A
+	// refresh that read the previous table can therefore arrive after a newer
+	// refresh and still pass the auth-version fence. Re-read after every write
+	// and repair the cache when the authoritative table changed in between.
+	for range 3 {
+		if err := updateUserCacheFieldAtVersion(userId, "ModelDiscounts", authoritative.ModelDiscounts, authoritative.AuthVersion); err != nil {
+			return err
+		}
+
+		var verified User
+		if err := DB.Select("id", "auth_version", "model_discounts").Where("id = ?", userId).First(&verified).Error; err != nil {
+			return err
+		}
+		if verified.AuthVersion == authoritative.AuthVersion && verified.ModelDiscounts == authoritative.ModelDiscounts {
+			return nil
+		}
+		authoritative = verified
+	}
+
+	// Preserve the freshest snapshot observed even when the row was too busy to
+	// stabilize within the bounded retries. Returning an error lets best-effort
+	// callers emit an operation-specific warning.
+	if err := updateUserCacheFieldAtVersion(userId, "ModelDiscounts", authoritative.ModelDiscounts, authoritative.AuthVersion); err != nil {
+		return err
+	}
+	return fmt.Errorf("user model discounts changed repeatedly during cache refresh")
 }
 
 func updateUserEmailCache(userId int, email string) error {
