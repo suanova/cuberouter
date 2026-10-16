@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import {
@@ -26,6 +27,7 @@ import {
   getPermissionCatalog,
   getUser,
   getUserModelDiscounts,
+  updateUser,
   updateUserModelDiscounts,
 } from '../../api'
 import type { User, UserModelDiscounts } from '../../types'
@@ -56,6 +58,7 @@ vi.mock('../../api', async (importOriginal) => ({
   getPermissionCatalog: vi.fn(),
   getUser: vi.fn(),
   getUserModelDiscounts: vi.fn(),
+  updateUser: vi.fn(),
   updateUserModelDiscounts: vi.fn(),
 }))
 
@@ -63,9 +66,11 @@ const getUserMock = vi.mocked(getUser)
 const getGroupsMock = vi.mocked(getGroups)
 const getPermissionCatalogMock = vi.mocked(getPermissionCatalog)
 const getUserModelDiscountsMock = vi.mocked(getUserModelDiscounts)
+const updateUserMock = vi.mocked(updateUser)
 const updateUserModelDiscountsMock = vi.mocked(updateUserModelDiscounts)
 
 const EDITED_USER_ID = 7
+const SECOND_USER_ID = 8
 const STORED_DISCOUNTS: UserModelDiscounts = { m: 0.8 }
 
 function buildUser(overrides: Partial<User> = {}): User {
@@ -83,21 +88,64 @@ function buildUser(overrides: Partial<User> = {}): User {
   }
 }
 
-function renderDrawer(currentRow?: User): void {
+function renderWithProviders(ui: ReactNode): void {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   render(
     <QueryClientProvider client={queryClient}>
-      <UsersProvider>
-        <UsersMutateDrawer
-          open
-          onOpenChange={() => undefined}
-          currentRow={currentRow}
-        />
-      </UsersProvider>
+      <UsersProvider>{ui}</UsersProvider>
     </QueryClientProvider>
   )
+}
+
+function renderDrawer(currentRow?: User): void {
+  renderWithProviders(
+    <UsersMutateDrawer
+      open
+      onOpenChange={() => undefined}
+      currentRow={currentRow}
+    />
+  )
+}
+
+// The users page keeps the drawer mounted and swaps `currentRow` when another
+// row is opened (dropping it while the drawer is closed), so the harness mirrors
+// that lifecycle for the cases where state must not survive a close.
+function DrawerHarness(props: { onOpenChange?: (open: boolean) => void }) {
+  const [open, setOpen] = useState(true)
+  const [currentRow, setCurrentRow] = useState<User | undefined>(buildUser())
+
+  return (
+    <>
+      <button type='button' onClick={() => setOpen(false)}>
+        Close from page
+      </button>
+      <button
+        type='button'
+        onClick={() => {
+          setCurrentRow(
+            buildUser({ id: SECOND_USER_ID, username: 'second-user' })
+          )
+          setOpen(true)
+        }}
+      >
+        Edit second user
+      </button>
+      <UsersMutateDrawer
+        open={open}
+        onOpenChange={(next) => {
+          props.onOpenChange?.(next)
+          setOpen(next)
+        }}
+        currentRow={open ? currentRow : undefined}
+      />
+    </>
+  )
+}
+
+function renderHarness(onOpenChange?: (open: boolean) => void): void {
+  renderWithProviders(<DrawerHarness onOpenChange={onOpenChange} />)
 }
 
 // A request that never settles pins the drawer in its in-flight state.
@@ -117,6 +165,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ resources: [], roles: [] })
   getUserModelDiscountsMock.mockReset().mockResolvedValue(STORED_DISCOUNTS)
+  updateUserMock.mockReset().mockResolvedValue({ success: true, data: {} })
   updateUserModelDiscountsMock.mockReset().mockResolvedValue(undefined)
   toastSuccess.mockReset()
 })
@@ -214,5 +263,77 @@ describe('users mutate drawer model discounts', () => {
     expect(
       screen.queryByRole('button', { name: 'Save discounts' })
     ).not.toBeInTheDocument()
+  })
+
+  test('writes pending discount edits before the footer saves the form', async () => {
+    const onOpenChange = vi.fn()
+    renderHarness(onOpenChange)
+
+    fireEvent.input(await screen.findByDisplayValue('80'), {
+      target: { value: '50' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(updateUserMock).toHaveBeenCalled())
+    expect(updateUserModelDiscountsMock).toHaveBeenCalledWith(EDITED_USER_ID, {
+      m: 0.5,
+    })
+    // Discounts first: the form save is what closes the drawer.
+    expect(
+      updateUserModelDiscountsMock.mock.invocationCallOrder[0]
+    ).toBeLessThan(updateUserMock.mock.invocationCallOrder[0])
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  test('keeps a failed discount write from saving the form', async () => {
+    const onOpenChange = vi.fn()
+    updateUserModelDiscountsMock.mockRejectedValue(new Error('rejected'))
+    renderHarness(onOpenChange)
+
+    fireEvent.input(await screen.findByDisplayValue('80'), {
+      target: { value: '50' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() =>
+      expect(updateUserModelDiscountsMock).toHaveBeenCalledWith(
+        EDITED_USER_ID,
+        {
+          m: 0.5,
+        }
+      )
+    )
+    expect(updateUserMock).not.toHaveBeenCalled()
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    // The edit survives and the footer is usable again.
+    expect(screen.getByDisplayValue('50')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
+  })
+
+  test('shows nothing of the previous user after the drawer closes and reopens', async () => {
+    getUserModelDiscountsMock.mockImplementation(
+      async (userId): Promise<UserModelDiscounts> =>
+        userId === SECOND_USER_ID ? { m2: 0.4 } : STORED_DISCOUNTS
+    )
+    renderHarness()
+
+    fireEvent.input(await screen.findByDisplayValue('80'), {
+      target: { value: '50' },
+    })
+    expect(screen.getByDisplayValue('50')).toBeInTheDocument()
+
+    // The open drawer hides the page behind it from the accessibility tree, so
+    // the harness's own controls are queried as hidden ones.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close from page', hidden: true })
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Edit second user', hidden: true })
+    )
+
+    // The second user's own record is what the reopened editor shows.
+    expect(await screen.findByDisplayValue('40')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('50')).not.toBeInTheDocument()
+    expect(updateUserModelDiscountsMock).not.toHaveBeenCalled()
   })
 })

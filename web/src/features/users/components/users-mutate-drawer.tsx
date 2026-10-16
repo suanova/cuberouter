@@ -164,6 +164,9 @@ export function UsersMutateDrawer({
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
+      // The drawer outlives a close (the page only swaps `currentRow`), so
+      // discounts edited for the previous user must not survive into this one.
+      setEditedDiscounts(null)
       // For update, fetch fresh data
       getUser(currentRow.id).then((result) => {
         if (result.success && result.data) {
@@ -199,6 +202,18 @@ export function UsersMutateDrawer({
 
     setIsSubmitting(true)
     try {
+      // The footer button saves the whole drawer, so discounts that are still
+      // only local go first; a failed write aborts the submit (the API client's
+      // interceptor has already reported it) instead of silently dropping them.
+      if (editedDiscounts && currentRow) {
+        try {
+          await updateUserModelDiscounts(currentRow.id, editedDiscounts)
+          setEditedDiscounts(null)
+        } catch {
+          return
+        }
+      }
+
       const payload = transformFormDataToPayload(
         data,
         currentRow?.id,
@@ -247,6 +262,8 @@ export function UsersMutateDrawer({
       await updateUserModelDiscounts(currentRow.id, modelDiscounts)
       toast.success(t('Operation successful'))
       await refetchModelDiscounts()
+      // Drop the draft so the editor shows the stored (normalized) record.
+      setEditedDiscounts(null)
     } catch {
       // The API client's interceptor already surfaces the failure as a toast.
     } finally {
