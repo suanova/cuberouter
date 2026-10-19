@@ -34,9 +34,10 @@ import (
 )
 
 // policy 是本渠道的多协议路由决策。基线是三条文本协议全部原生: 上游（vLLM/SGLang）
-// 原生提供 /v1/chat/completions、/v1/responses、/v1/messages, 因此**不需要任何配置**
-// 就能三条都按原协议直达; 只有上游明确回"不支持该协议"时, 该 (渠道, 模型, 协议) 才会
-// 在进程内被记住并降级为转 chat。gemini 不在基线里, 需要时按 model_protocols 声明。
+// 原生提供 /v1/chat/completions、/v1/responses, Anthropic Messages 挂在
+// /anthropic/v1/messages 前缀下, 因此**不需要任何配置**就能三条都按原协议直达;
+// 只有上游明确回"不支持该协议"时, 该 (渠道, 模型, 协议) 才会在进程内被记住并降级为
+// 转 chat。gemini 不在基线里, 需要时按 model_protocols 声明。
 // 路由、Header、转换与响应分派都在 protocolroute 里, 与 AstraFlow 共用。
 var policy = protocolroute.Policy{
 	ChannelLabel: "cubestack adaptor",
@@ -46,6 +47,9 @@ var policy = protocolroute.Policy{
 		dto.ModelProtocolResponses,
 		dto.ModelProtocolMessages,
 	},
+	// 上游把 Anthropic API 挂在 /anthropic 下, 而 OpenAI 协议仍在根路径:
+	// 原生 messages 需要加这个前缀才能命中路由, chat/responses 不受影响。
+	MessagesPathPrefix: "/anthropic",
 	// 本地 SGLang/vLLM 上游通常不校验凭证(与视频侧 task/cubestack 一致):
 	// 渠道 key 为空时不要把一个空的 Bearer 发给上游。
 	SkipEmptyBearer: true,

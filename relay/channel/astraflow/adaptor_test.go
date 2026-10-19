@@ -11,6 +11,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/relay/channel/protocolroute"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -21,9 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// 降级记忆由 protocolroute 持有, 进程级共享、只能在那个包内清空。本文件的用例靠
-// "每个用例用互不相同的渠道 ID" 保持隔离: 要断言"没有被降级"的用例, 用的都是只有
-// 它自己会碰的渠道 ID, 因此不需要(也无法)清空那张表。
+// 降级记忆由 protocolroute 持有, 进程级共享; 凡是会写入或读取记忆的用例, 都在
+// setup 与 t.Cleanup 各清空一次, 使同一进程内重跑(-count=2)从干净状态开始。
 
 // newNativeMessagesInfo 构造一次声明原生支持 messages 的 glm-5.3 会话。
 func newNativeMessagesInfo(baseURL string, channelID int) *relaycommon.RelayInfo {
@@ -275,6 +275,8 @@ func TestSetupRequestHeaderSendsClaudeHeadersOnNativeMessages(t *testing.T) {
 // 后续请求不再直连,改为降级转换;且探测读取的错误体必须被还原,不影响调用方解析。
 func TestAstraflowDowngradesRejectedNativeProtocol(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	protocolroute.ResetDowngradeMemoForTest()
+	t.Cleanup(protocolroute.ResetDowngradeMemoForTest)
 
 	const upstreamErrorBody = `{"error":{"message":"not implemented","type":"upstream_error"}}`
 	const requestBody = `{"model":"glm-5.3","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`
@@ -440,6 +442,8 @@ func TestAstraflowKeepsNativeProtocolOnUnrelatedUpstreamError(t *testing.T) {
 // 的响应体读完后必须逐字节完整, 且命中签名时仍要记入降级记忆。
 func TestAstraflowRestoresAndMemoizesLargeErrorBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	protocolroute.ResetDowngradeMemoForTest()
+	t.Cleanup(protocolroute.ResetDowngradeMemoForTest)
 
 	// 窥探上限是 4KB(见 protocolroute), 错误体必须超过它才能覆盖"前缀重放 + 余量"这条路径。
 	const peekLimit = 4 * 1024
@@ -805,6 +809,8 @@ func TestAstraflowKeepsNativeGeminiOnTransientRequestModeError(t *testing.T) {
 // chat 转换; 探测读取的错误体同样要还原。
 func TestAstraflowDowngradesRejectedGeminiProtocol(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	protocolroute.ResetDowngradeMemoForTest()
+	t.Cleanup(protocolroute.ResetDowngradeMemoForTest)
 
 	const upstreamErrorBody = `{"error":{"message":"not implemented","type":"upstream_error"}}`
 	const requestBody = `{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`

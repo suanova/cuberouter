@@ -40,7 +40,8 @@ const nativeProtocolBodyPeekLimit = 4 * 1024
 // protocolUnsupportedMarkers 是上游拒绝某协议时的错误文案特征(小写子串)。
 // 只收能指明"协议/端点本身不支持"的措辞: 裸 "unsupported" 会把参数级 4xx
 // (如 "unsupported parameter: temperature") 也算作协议拒绝, 让该组合在进程内
-// 被永久降级。实测: claude 模型打 /v1/responses 返回 500 "not implemented";
+// 被永久降级; "does not support" 同样太宽——"model X does not support tools"
+// 这类功能级错误会把整条协议误判为不存在。实测: claude 模型打 /v1/responses 返回 500 "not implemented";
 // 图像模型返回 400 "The requested operation is unsupported."。
 // 不收 "Invalid param: get request mode": 星图的 gemini 端点会整体抖动——同一模型
 // 同一请求在几分钟内 200/400 交替(实测 2026-09-27,期间所有模型一起 400), 那是上游
@@ -48,9 +49,17 @@ const nativeProtocolBodyPeekLimit = 4 * 1024
 var protocolUnsupportedMarkers = []string{
 	"not implemented",
 	"operation is unsupported",
-	"does not support",
 	"unsupported protocol",
 	"unsupported endpoint",
+}
+
+// ResetDowngradeMemoForTest 清空降级记忆, 仅供测试使用(必须在 setup 与 t.Cleanup
+// 各调一次, 否则同一进程内重跑用例会读到上一轮留下的记录)。
+func ResetDowngradeMemoForTest() {
+	nativeProtocolDowngradeMemo.Range(func(key, _ any) bool {
+		nativeProtocolDowngradeMemo.Delete(key)
+		return true
+	})
 }
 
 func nativeProtocolMemoKey(info *relaycommon.RelayInfo, protocol string) string {
@@ -73,6 +82,12 @@ func nativeProtocolDowngraded(info *relaycommon.RelayInfo, protocol string) bool
 	}
 	recorded, ok := recordedAt.(time.Time)
 	if !ok {
+		return true
+	}
+	// 重试是重新发送请求: 报文与响应处理都会按新决定重建, 不存在"在途报文被中途
+	// 翻转"的问题, 因此重试轮次不受水位线约束——否则刚被 404 拒过的请求重试时仍会
+	// 走原生协议, 把同一次客户端请求的每次重试都撞成同一个 404。
+	if info.RetryIndex > 0 {
 		return true
 	}
 	return recorded.Before(info.StartTime)

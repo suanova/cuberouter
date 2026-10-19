@@ -52,9 +52,10 @@ func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		return "", fmt.Errorf("%s: channel base url is empty", p.ChannelLabel)
 	}
 	// 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游，拒绝明文上游
-	// （https 或回环地址除外），避免凭证被明文传输（CWE-319）。面向本地/内网上游的
-	// 渠道可用 AllowCleartextUpstream 豁免，见该字段。
-	if !p.AllowCleartextUpstream {
+	// （https 或回环地址除外），避免凭证被明文传输（CWE-319）。AllowCleartextUpstream
+	// 只豁免不携带凭证的上游——本地 SGLang/vLLM 惯例是无鉴权；只要渠道会发出
+	// Authorization(API key 或头覆盖)，仍按安全设置校验，见该字段。
+	if !p.AllowCleartextUpstream || info.ApiKey != "" || hasAuthorizationOverride(info) {
 		if err := common.ValidateHTTPSChannelBaseURL(info.ChannelBaseUrl, security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
 			return "", fmt.Errorf("%s: %w", p.ChannelLabel, err)
 		}
@@ -91,7 +92,7 @@ func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		info.RelayMode != constant.RelayModeResponses &&
 		info.RelayMode != constant.RelayModeResponsesCompact {
 		if p.nativeMessagesRequest(info) {
-			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestPath, info.ChannelType), nil
+			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl+p.MessagesPathPrefix, requestPath, info.ChannelType), nil
 		}
 		return fmt.Sprintf("%s/v1/chat/completions", info.ChannelBaseUrl), nil
 	}
@@ -102,19 +103,25 @@ func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestPath, info.ChannelType), nil
 }
 
+// hasAuthorizationOverride 报告渠道是否配置了 Authorization 头覆盖。覆盖值本身就是
+// 凭证, 因此明文上游校验必须把它和 API key 同等对待。
+func hasAuthorizationOverride(info *relaycommon.RelayInfo) bool {
+	if info == nil {
+		return false
+	}
+	for k := range info.HeadersOverride {
+		if strings.EqualFold(k, "Authorization") {
+			return true
+		}
+	}
+	return false
+}
+
 func (p Policy) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	// 非任务模式（chat/responses/embeddings/image）需要携带渠道鉴权头；
 	// 若渠道已配置 Authorization Header Override 则跳过默认 Bearer，避免覆盖自定义鉴权。
-	hasAuthOverride := false
-	if len(info.HeadersOverride) > 0 {
-		for k := range info.HeadersOverride {
-			if strings.EqualFold(k, "Authorization") {
-				hasAuthOverride = true
-				break
-			}
-		}
-	}
+	hasAuthOverride := hasAuthorizationOverride(info)
 	// SkipEmptyBearer 的上游本来就不校验凭证(本地 SGLang/vLLM),空 key 时不要把
 	// 一个空的 Bearer 送到上游。
 	if !hasAuthOverride && !(p.SkipEmptyBearer && info.ApiKey == "") {

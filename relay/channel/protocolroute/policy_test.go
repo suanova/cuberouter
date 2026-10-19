@@ -20,12 +20,17 @@ For commercial licensing, please contact support@quantumnous.com
 package protocolroute
 
 import (
+	"bytes"
+	"io"
+	"net/http"
 	"slices"
 	"testing"
 	"time"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/types"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,14 +42,6 @@ var allModelProtocols = []string{
 	dto.ModelProtocolResponses,
 	dto.ModelProtocolMessages,
 	dto.ModelProtocolGemini,
-}
-
-// 降级记忆由本包持有, 白盒测试直接清空; 这个辅助函数不进导出面。
-func resetDowngradeMemoForTest() {
-	nativeProtocolDowngradeMemo.Range(func(key, _ any) bool {
-		nativeProtocolDowngradeMemo.Delete(key)
-		return true
-	})
 }
 
 func newInfo(channelID int, model string, protocols map[string][]string) *relaycommon.RelayInfo {
@@ -106,8 +103,8 @@ func TestUseNativeProtocolBaseline(t *testing.T) {
 // 只看声明——包括声明把某个协议从基线里**拿掉**(astraflow 的 responses 基线也能被
 // 覆盖), 以及空数组表示该模型没有文本协议。
 func TestUseNativeProtocolDeclarationOverridesBaseline(t *testing.T) {
-	resetDowngradeMemoForTest()
-	t.Cleanup(resetDowngradeMemoForTest)
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
 
 	astraflow := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolResponses}}
 	cubestack := Policy{NativeWhenUndeclared: []string{
@@ -130,8 +127,8 @@ func TestUseNativeProtocolDeclarationOverridesBaseline(t *testing.T) {
 // TestDowngradeWatermarkKeepsInFlightRequestsNative 锁定水位线语义: 降级只对
 // "记录之后才开始"的请求生效, 记录之前已在途的请求保持它发出时的原生决定。
 func TestDowngradeWatermarkKeepsInFlightRequestsNative(t *testing.T) {
-	resetDowngradeMemoForTest()
-	t.Cleanup(resetDowngradeMemoForTest)
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
 
 	policy := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolMessages}}
 	info := newInfo(105, "glm-5.3", map[string][]string{"glm-*": {dto.ModelProtocolMessages}})
@@ -158,8 +155,8 @@ func TestDowngradeWatermarkKeepsInFlightRequestsNative(t *testing.T) {
 // "上游应该原生支持"的推断(拒绝即证伪,该组合转 chat)。两个策略的 NativeWhenUndeclared
 // 取值相同,差别只在这一个开关上。
 func TestDowngradeUndeclaredGovernsTheBaseline(t *testing.T) {
-	resetDowngradeMemoForTest()
-	t.Cleanup(resetDowngradeMemoForTest)
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
 
 	promise := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolResponses}}
 	inference := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolResponses}, DowngradeUndeclared: true}
@@ -178,8 +175,8 @@ func TestDowngradeUndeclaredGovernsTheBaseline(t *testing.T) {
 // TestDowngradeMemoIsScopedToTheChannel 锁定降级记忆的键含渠道 ID: 这正是多个渠道
 // 类型能共用同一张表的原因——一个渠道上的协议拒绝不得影响另一个渠道。
 func TestDowngradeMemoIsScopedToTheChannel(t *testing.T) {
-	resetDowngradeMemoForTest()
-	t.Cleanup(resetDowngradeMemoForTest)
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
 
 	policy := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolMessages}}
 	declared := map[string][]string{"glm-*": {dto.ModelProtocolMessages}}
@@ -191,4 +188,162 @@ func TestDowngradeMemoIsScopedToTheChannel(t *testing.T) {
 	other := newInfo(107, "glm-5.3", declared)
 	assert.True(t, policy.useNativeProtocol(other, dto.ModelProtocolMessages),
 		"another channel serving the same model must stay native")
+}
+
+// TestGetRequestURLMessagesPathPrefix 锁定 MessagesPathPrefix 的作用范围: 只有
+// 原生 messages 会话在渠道 base URL 后追加前缀(保留客户端查询串), chat、
+// responses 以及被声明降级成 chat 的 messages 仍走渠道 base URL。
+func TestGetRequestURLMessagesPathPrefix(t *testing.T) {
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
+
+	policy := Policy{
+		ChannelLabel:           "cubestack adaptor",
+		NativeWhenUndeclared:   []string{dto.ModelProtocolChat, dto.ModelProtocolResponses, dto.ModelProtocolMessages},
+		AllowCleartextUpstream: true,
+		MessagesPathPrefix:     "/anthropic",
+	}
+	messagesInfo := func(channelID int, protocols map[string][]string) *relaycommon.RelayInfo {
+		info := newInfo(channelID, "qwen38-27b", protocols)
+		info.ChannelBaseUrl = "http://model.internal:5001"
+		info.RelayFormat = types.RelayFormatClaude
+		info.RequestURLPath = "/v1/messages?beta=true"
+		return info
+	}
+
+	t.Run("native messages get the prefix", func(t *testing.T) {
+		url, err := policy.GetRequestURL(messagesInfo(113, nil))
+		require.NoError(t, err)
+		assert.Equal(t, "http://model.internal:5001/anthropic/v1/messages?beta=true", url)
+	})
+
+	t.Run("an empty prefix keeps the client path", func(t *testing.T) {
+		plain := policy
+		plain.MessagesPathPrefix = ""
+		url, err := plain.GetRequestURL(messagesInfo(114, nil))
+		require.NoError(t, err)
+		assert.Equal(t, "http://model.internal:5001/v1/messages?beta=true", url)
+	})
+
+	t.Run("chat is unaffected by the prefix", func(t *testing.T) {
+		info := newInfo(115, "qwen38-27b", nil)
+		info.ChannelBaseUrl = "http://model.internal:5001"
+		info.RelayFormat = types.RelayFormatOpenAI
+		info.RequestURLPath = "/v1/chat/completions"
+		url, err := policy.GetRequestURL(info)
+		require.NoError(t, err)
+		assert.Equal(t, "http://model.internal:5001/v1/chat/completions", url)
+	})
+
+	t.Run("downgraded messages are unaffected", func(t *testing.T) {
+		info := messagesInfo(116, map[string][]string{"qwen38-27b": {dto.ModelProtocolChat}})
+		url, err := policy.GetRequestURL(info)
+		require.NoError(t, err)
+		assert.Equal(t, "http://model.internal:5001/v1/chat/completions", url)
+	})
+}
+
+// TestDetectRejectedNativeProtocolTreatsNotFoundAsRejection 锁定 404 的语义: 原生
+// 协议端点不存在时, FastAPI 类上游只回 {"detail":"Not Found"} 这类文案, 不命中任何
+// 错误签名。404 只可能来自本次按原生协议打出的端点, 因此它本身就是"该协议不存在"的
+// 证据, 必须记入降级记忆, 否则 Claude Code 这类只用 /v1/messages 的客户端会每次撞 404。
+func TestDetectRejectedNativeProtocolTreatsNotFoundAsRejection(t *testing.T) {
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
+
+	policy := Policy{
+		NativeWhenUndeclared: []string{dto.ModelProtocolMessages},
+		DowngradeUndeclared:  true,
+	}
+	newMessagesInfo := func() *relaycommon.RelayInfo {
+		info := newInfo(109, "qwen38-27b", nil)
+		info.RelayFormat = types.RelayFormatClaude
+		info.RequestURLPath = "/v1/messages"
+		return info
+	}
+
+	t.Run("404 records the downgrade and restores the body", func(t *testing.T) {
+		ResetDowngradeMemoForTest()
+		body := []byte(`{"detail":"Not Found"}`)
+		resp := &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(bytes.NewReader(body))}
+
+		policy.DetectRejectedNativeProtocol(newMessagesInfo(), resp)
+
+		assert.False(t, policy.useNativeProtocol(newInfo(109, "qwen38-27b", nil), dto.ModelProtocolMessages))
+		got, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Equal(t, body, got, "the peek must not consume the upstream body")
+	})
+
+	t.Run("an unrelated 400 does not record", func(t *testing.T) {
+		ResetDowngradeMemoForTest()
+		resp := &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":"invalid temperature"}`))),
+		}
+
+		policy.DetectRejectedNativeProtocol(newMessagesInfo(), resp)
+
+		assert.True(t, policy.useNativeProtocol(newInfo(109, "qwen38-27b", nil), dto.ModelProtocolMessages))
+	})
+
+	t.Run("a feature-level rejection does not record", func(t *testing.T) {
+		ResetDowngradeMemoForTest()
+		// "does not support tools" 是模型能力/参数级错误, 不是"端点不存在";
+		// 一次这样的请求不得把整个组合永久降级。
+		resp := &http.Response{
+			StatusCode: http.StatusBadRequest,
+			Body: io.NopCloser(bytes.NewReader([]byte(
+				`{"error":{"message":"This model does not support tools"}}`,
+			))),
+		}
+
+		policy.DetectRejectedNativeProtocol(newMessagesInfo(), resp)
+
+		assert.True(t, policy.useNativeProtocol(newInfo(109, "qwen38-27b", nil), dto.ModelProtocolMessages))
+	})
+}
+
+// TestDetectRejectedNativeProtocolSkipsDeclaredPromiseBaseline 锁定: 未声明模型且
+// 基线不受记忆约束(AstraFlow 的 responses)时, 上游拒绝不写入记忆。否则这条记录会在
+// 运营者事后声明该协议时立刻生效, 让新配置背上一次并不存在的"已拒绝"。
+func TestDetectRejectedNativeProtocolSkipsDeclaredPromiseBaseline(t *testing.T) {
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
+
+	policy := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolResponses}}
+	info := newInfo(117, "qwen38-27b", nil)
+	info.RelayFormat = types.RelayFormatOpenAIResponses
+	info.RelayMode = relayconstant.RelayModeResponses
+	resp := &http.Response{
+		StatusCode: http.StatusBadRequest,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"error":"not implemented"}`))),
+	}
+
+	policy.DetectRejectedNativeProtocol(info, resp)
+
+	declared := newInfo(117, "qwen38-27b", map[string][]string{"qwen38-27b": {dto.ModelProtocolResponses}})
+	assert.True(t, policy.useNativeProtocol(declared, dto.ModelProtocolResponses),
+		"a rejection of a promise baseline must not leak into a later declaration")
+}
+
+// TestDowngradeMemoAppliesToRetries 锁定重试轮次不受水位线约束: 重试会重新发送请求
+// 并按新决定重建报文, 不存在"在途报文被中途翻转"的问题。否则刚被 404 拒过的请求每次
+// 重试都会重新走原生协议, 同一个 404 撞满重试次数。
+func TestDowngradeMemoAppliesToRetries(t *testing.T) {
+	ResetDowngradeMemoForTest()
+	t.Cleanup(ResetDowngradeMemoForTest)
+
+	policy := Policy{NativeWhenUndeclared: []string{dto.ModelProtocolMessages}, DowngradeUndeclared: true}
+	info := newInfo(110, "qwen38-27b", nil)
+	info.StartTime = time.Now()
+	nativeProtocolDowngradeMemo.Store(nativeProtocolMemoKey(info, dto.ModelProtocolMessages), time.Now())
+
+	info.RetryIndex = 0
+	assert.True(t, policy.useNativeProtocol(info, dto.ModelProtocolMessages),
+		"an in-flight request keeps the protocol it was sent with")
+
+	info.RetryIndex = 1
+	assert.False(t, policy.useNativeProtocol(info, dto.ModelProtocolMessages),
+		"a retried attempt is rebuilt and may downgrade")
 }

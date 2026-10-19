@@ -52,12 +52,17 @@ type Policy struct {
 	// SkipEmptyBearer 为真时,渠道 key 为空就不发 Authorization 头
 	// (上游无鉴权,如本地 SGLang/vLLM)。
 	SkipEmptyBearer bool
-	// AllowCleartextUpstream 为真时跳过上游 base URL 的传输安全校验,明文 http 上游
-	// 照常放行(安全设置 security_setting.require_https_channel_base_url 对该渠道不再
-	// 生效)。给面向本地/内网 SGLang·vLLM 的渠道用——那类上游的 base URL 就是
-	// http://<内网IP>:port,回环豁免覆盖不到,而校验的意义(防止渠道 key 明文出网)
-	// 对通常无鉴权的本地上游并不成立。默认 false 即保持校验。
+	// AllowCleartextUpstream 为真时允许明文 http 上游通过传输安全校验(安全设置
+	// security_setting.require_https_channel_base_url 对该渠道不再生效)。只用于
+	// 不携带凭证的本地/内网 SGLang·vLLM——那类上游的 base URL 就是
+	// http://<内网IP>:port,回环豁免覆盖不到。渠道一旦会发出 Authorization
+	// (API key 或头覆盖), 校验照常生效, 避免凭证明文出网。默认 false 即保持校验。
 	AllowCleartextUpstream bool
+	// MessagesPathPrefix 是原生 Anthropic Messages 会话在渠道 base URL 之后追加的
+	// 路径前缀。上游把 Anthropic API 挂在独立前缀(如 /anthropic)下、而 OpenAI 协议
+	// 仍留在根路径时使用; 只影响原生 messages, 降级后的 chat 与其余协议不受影响。
+	// 留空即按客户端原路径直发 base URL。
+	MessagesPathPrefix string
 }
 
 // useNativeProtocol 报告本次请求能否直连上游的该协议。
@@ -157,6 +162,12 @@ func (p Policy) DetectRejectedNativeProtocol(info *relaycommon.RelayInfo, resp *
 	if protocol == dto.ModelProtocolChat || !p.useNativeProtocol(info, protocol) {
 		return
 	}
+	// 未声明模型且基线不受记忆约束(如 AstraFlow)时, 记了也不会改变任何路由,
+	// 日志里的"downgrading subsequent requests"就是假的; 而且这条陈旧记录会在
+	// 运营者事后声明该协议时立刻生效, 把一次历史拒绝算到新配置头上。
+	if _, declared := info.ChannelOtherSettings.ResolveModelProtocols(upstreamModelID(info)); !declared && !p.DowngradeUndeclared {
+		return
+	}
 	peeked, err := io.ReadAll(io.LimitReader(resp.Body, nativeProtocolBodyPeekLimit))
 	if err != nil {
 		return
@@ -165,7 +176,10 @@ func (p Policy) DetectRejectedNativeProtocol(info *relaycommon.RelayInfo, resp *
 		io.Reader
 		io.Closer
 	}{io.MultiReader(bytes.NewReader(peeked), resp.Body), resp.Body}
-	if !upstreamRejectsProtocol(string(peeked)) {
+	// 404 本身就是端点不存在的证据: 上游只有 FastAPI 的 {"detail":"Not Found"} 之类
+	// 文案, 不会命中错误签名。只对已判定为原生协议的请求生效, 因此 404 一定来自该协议
+	// 的上游端点本身, 而不是客户端或其他路径。
+	if resp.StatusCode != http.StatusNotFound && !upstreamRejectsProtocol(string(peeked)) {
 		return
 	}
 	key := nativeProtocolMemoKey(info, protocol)

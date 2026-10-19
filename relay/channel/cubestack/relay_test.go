@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/relay/channel/protocolroute"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -39,18 +40,18 @@ import (
 )
 
 const (
-	chatRequestBody = `{"model":"qwen38-27b","messages":[{"role":"user","content":"hi"}]}`
+	chatRequestBody  = `{"model":"qwen38-27b","messages":[{"role":"user","content":"hi"}]}`
 	chatUpstreamBody = `{"id":"chatcmpl-1","object":"chat.completion","created":1700000000,"model":"qwen38-27b",` +
 		`"choices":[{"index":0,"message":{"role":"assistant","content":"pong"},"finish_reason":"stop"}],` +
 		`"usage":{"prompt_tokens":12,"completion_tokens":8,"total_tokens":20}}`
 
-	responsesRequestBody = `{"model":"qwen38-27b","input":"hi"}`
+	responsesRequestBody  = `{"model":"qwen38-27b","input":"hi"}`
 	responsesUpstreamBody = `{"id":"resp_1","object":"response","created_at":1700000000,"model":"qwen38-27b","status":"completed",` +
 		`"output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed",` +
 		`"content":[{"type":"output_text","text":"pong","annotations":[]}]}],` +
 		`"usage":{"input_tokens":5,"output_tokens":3,"total_tokens":8}}`
 
-	messagesRequestBody = `{"model":"qwen38-27b","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`
+	messagesRequestBody  = `{"model":"qwen38-27b","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}`
 	messagesUpstreamBody = `{"id":"msg_1","type":"message","role":"assistant","model":"qwen38-27b",` +
 		`"content":[{"type":"text","text":"pong"}],"stop_reason":"end_turn",` +
 		`"usage":{"input_tokens":3,"output_tokens":2}}`
@@ -112,7 +113,7 @@ func TestCubeStackDefaultsToNativeProtocols(t *testing.T) {
 			relayMode: relayconstant.RelayModeChatCompletions, relayFormat: types.RelayFormatClaude,
 			upstreamModel: "qwen38-27b", apiKey: "sk-test", channelID: 203,
 			requestBody: messagesRequestBody, upstreamBody: messagesUpstreamBody,
-			wantUpstreamPath: "/v1/messages",
+			wantUpstreamPath: "/anthropic/v1/messages",
 			wantPromptTokens: 3, wantCompletionTokens: 2,
 			wantBodyContains:     `"pong"`,
 			wantAnthropicVersion: "2023-06-01",
@@ -240,7 +241,7 @@ func TestRelayChainStreamingNativeMessages(t *testing.T) {
 	require.True(t, ok, "expected *http.Response, got %T", respAny)
 	defer func() { _ = resp.Body.Close() }()
 
-	assert.Equal(t, "/v1/messages", gotPath)
+	assert.Equal(t, "/anthropic/v1/messages", gotPath)
 
 	usageAny, apiErr := adaptor.DoResponse(context, resp, info)
 	require.Nil(t, apiErr)
@@ -257,6 +258,8 @@ func TestRelayChainStreamingNativeMessages(t *testing.T) {
 // 后续请求改走 chat 转换；探测读取的错误体必须被还原，不影响调用方解析。
 func TestCubeStackDowngradesRejectedProtocol(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	protocolroute.ResetDowngradeMemoForTest()
+	t.Cleanup(protocolroute.ResetDowngradeMemoForTest)
 
 	const upstreamErrorBody = `{"error":{"message":"unsupported protocol","type":"invalid_request_error"}}`
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -286,7 +289,7 @@ func TestCubeStackDowngradesRejectedProtocol(t *testing.T) {
 
 	url, err := adaptor.GetRequestURL(info)
 	require.NoError(t, err)
-	require.Equal(t, server.URL+"/v1/messages", url, "an undeclared model must start out native")
+	require.Equal(t, server.URL+"/anthropic/v1/messages", url, "an undeclared model must start out native")
 
 	respAny, err := adaptor.DoRequest(context, info, bytes.NewBufferString(messagesRequestBody))
 	require.NoError(t, err)
@@ -303,10 +306,65 @@ func TestCubeStackDowngradesRejectedProtocol(t *testing.T) {
 	assert.Equal(t, server.URL+"/v1/chat/completions", url, "after a rejection the combination must downgrade to chat")
 }
 
-// TestGetRequestURLAcceptsCleartextUpstream 锁定本渠道对明文上游的豁免：全局安全
+// TestCubeStackDowngradesOnEndpointNotFound 锁定 404 也是"协议不存在"的证据: 只提供
+// chat 端点的上游对 /anthropic/v1/messages 回的是 404 + {"detail":"Not Found"}, 文案
+// 不命中任何错误签名。不把 404 记入降级记忆, 只用 Anthropic 协议的客户端(Claude Code)
+// 会每次失败。
+func TestCubeStackDowngradesOnEndpointNotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	protocolroute.ResetDowngradeMemoForTest()
+	t.Cleanup(protocolroute.ResetDowngradeMemoForTest)
+
+	const upstreamErrorBody = `{"detail":"Not Found"}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(upstreamErrorBody))
+	}))
+	defer server.Close()
+
+	context, _ := gin.CreateTestContext(httptest.NewRecorder())
+	context.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(messagesRequestBody))
+
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId:         209,
+			ChannelBaseUrl:    server.URL,
+			ChannelType:       constant.ChannelTypeCubeStack,
+			ApiKey:            "sk-test",
+			UpstreamModelName: "qwen38-27b",
+		},
+		RequestURLPath:  "/v1/messages",
+		RelayFormat:     types.RelayFormatClaude,
+		RelayMode:       relayconstant.RelayModeChatCompletions,
+		OriginModelName: "qwen38-27b",
+	}
+	adaptor := &Adaptor{}
+
+	url, err := adaptor.GetRequestURL(info)
+	require.NoError(t, err)
+	require.Equal(t, server.URL+"/anthropic/v1/messages", url, "an undeclared model must start out native")
+
+	respAny, err := adaptor.DoRequest(context, info, bytes.NewBufferString(messagesRequestBody))
+	require.NoError(t, err)
+	resp, ok := respAny.(*http.Response)
+	require.True(t, ok, "expected *http.Response, got %T", respAny)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, upstreamErrorBody, string(body), "peeking must restore the response body for the caller")
+
+	url, err = adaptor.GetRequestURL(info)
+	require.NoError(t, err)
+	assert.Equal(t, server.URL+"/v1/chat/completions", url, "a 404 must downgrade the combination to chat")
+}
+
+// TestGetRequestURLAcceptsCleartextUpstream 锁定本渠道对明文上游的豁免边界：全局安全
 // 开关(默认开启)要求渠道 base URL 用 https 或回环地址，但内网 SGLang·vLLM 的 base
-// URL 就是 http://<内网IP>:port，回环豁免覆盖不到。本渠道不做该校验，明文上游照常
-// 可用；AstraFlow 等渠道仍受全局开关约束（见 astraflow 的同名用例）。
+// URL 就是 http://<内网IP>:port，回环豁免覆盖不到。无鉴权的本地上游照常可用；一旦
+// 渠道会携带凭证(API key 或 Authorization 头覆盖)，仍受全局开关约束，拒绝凭证明文出网。
+// AstraFlow 等渠道没有该豁免，见 astraflow 的同名用例。
 func TestGetRequestURLAcceptsCleartextUpstream(t *testing.T) {
 	old := security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL
 	security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = true
@@ -314,19 +372,30 @@ func TestGetRequestURLAcceptsCleartextUpstream(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 
-	info := &relaycommon.RelayInfo{
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ChannelBaseUrl:    "http://10.0.0.7:5001",
-			ChannelType:       constant.ChannelTypeCubeStack,
-			ApiKey:            "sk-test",
-			UpstreamModelName: "qwen38-27b",
-		},
-		RequestURLPath: "/v1/chat/completions",
+	newInfo := func() *relaycommon.RelayInfo {
+		return &relaycommon.RelayInfo{
+			ChannelMeta: &relaycommon.ChannelMeta{
+				ChannelBaseUrl:    "http://10.0.0.7:5001",
+				ChannelType:       constant.ChannelTypeCubeStack,
+				UpstreamModelName: "qwen38-27b",
+			},
+			RequestURLPath: "/v1/chat/completions",
+		}
 	}
 
-	url, err := (&Adaptor{}).GetRequestURL(info)
-	require.NoError(t, err, "a private-network cleartext upstream must stay usable")
+	url, err := (&Adaptor{}).GetRequestURL(newInfo())
+	require.NoError(t, err, "a keyless private-network cleartext upstream must stay usable")
 	assert.Equal(t, "http://10.0.0.7:5001/v1/chat/completions", url)
+
+	keyed := newInfo()
+	keyed.ApiKey = "sk-test"
+	_, err = (&Adaptor{}).GetRequestURL(keyed)
+	require.Error(t, err, "a channel sending an API key must not bypass the HTTPS requirement")
+
+	overridden := newInfo()
+	overridden.HeadersOverride = map[string]interface{}{"Authorization": "Bearer sk-test"}
+	_, err = (&Adaptor{}).GetRequestURL(overridden)
+	require.Error(t, err, "a channel sending an Authorization override must not bypass the HTTPS requirement")
 }
 
 // runRelayChain 执行一次完整链路：DoRequest 打向假上游并断言请求契约，
