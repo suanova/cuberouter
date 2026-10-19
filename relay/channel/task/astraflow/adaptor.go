@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	taskdto "github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -69,6 +70,109 @@ type requestPayload struct {
 	Model      string         `json:"model"`
 	Input      taskInput      `json:"input"`
 	Parameters taskParameters `json:"parameters,omitempty"`
+}
+
+// ============================
+// kling 家族请求形态
+// ============================
+
+// kling（kling-v3 / kling-v3-omni）不走 Ark content 数组：上游要求
+// input.prompt + parameters 的家族方言（首尾帧、参考图、模式、声音都在
+// parameters 下；运动控制的参考图/视频在 input 下）。与 seedance 的 Ark
+// 形态是两套参数体系，见 modelverse 文档 video_api/Kling-v3 与 Kling-O3。
+type klingInput struct {
+	Prompt string `json:"prompt,omitempty"`
+	// 运动控制（motion_control）的参考图 / 参考视频。
+	ImgURL   string `json:"img_url,omitempty"`
+	VideoURL string `json:"video_url,omitempty"`
+}
+
+// klingParameters 是 kling 家族的 parameters 集合：统一请求字段与客户端
+// metadata 共同填充（metadata 显式值优先）。
+type klingParameters struct {
+	KlingV3Type          string                 `json:"kling_v3_type,omitempty"`
+	Image                string                 `json:"image,omitempty"`
+	ImageTail            string                 `json:"image_tail,omitempty"`
+	Mode                 string                 `json:"mode,omitempty"`
+	Sound                string                 `json:"sound,omitempty"`
+	AspectRatio          string                 `json:"aspect_ratio,omitempty"`
+	Duration             *dto.IntValue          `json:"duration,omitempty"`
+	CharacterOrientation string                 `json:"character_orientation,omitempty"`
+	KeepOriginalSound    string                 `json:"keep_original_sound,omitempty"`
+	MultiShot            *dto.BoolValue         `json:"multi_shot,omitempty"`
+	ShotType             string                 `json:"shot_type,omitempty"`
+	MultiPrompt          []klingMultiPromptShot `json:"multi_prompt,omitempty"`
+	ImageList            []klingImageRef        `json:"image_list,omitempty"`
+	VideoList            []klingVideoRef        `json:"video_list,omitempty"`
+}
+
+type klingImageRef struct {
+	ImageURL string `json:"image_url"`
+	Type     string `json:"type,omitempty"`
+}
+
+type klingVideoRef struct {
+	VideoURL          string `json:"video_url"`
+	ReferType         string `json:"refer_type,omitempty"`
+	KeepOriginalSound string `json:"keep_original_sound,omitempty"`
+}
+
+type klingMultiPromptShot struct {
+	Index    int    `json:"index"`
+	Prompt   string `json:"prompt"`
+	Duration string `json:"duration"`
+}
+
+// klingRequestPayload 是 kling 家族的提交体：
+// { "model": "...", "input": {"prompt": ...}, "parameters": {...} }。
+type klingRequestPayload struct {
+	Model      string          `json:"model"`
+	Input      klingInput      `json:"input"`
+	Parameters klingParameters `json:"parameters,omitempty"`
+}
+
+const (
+	klingModeStd     = "std"
+	klingModePro     = "pro"
+	klingSoundOn     = "on"
+	klingSoundOff    = "off"
+	klingAspectRatio = "16:9"
+	klingDefaultSec  = 5
+	klingTypeT2V     = "t2v"
+	klingTypeI2V     = "i2v"
+	klingTypeMotion  = "motion_control"
+	klingRefYes      = "ref"
+	klingRefNo       = "noref"
+)
+
+var (
+	klingModes        = map[string]bool{klingModeStd: true, klingModePro: true, "4k": true}
+	klingSounds       = map[string]bool{klingSoundOn: true, klingSoundOff: true}
+	klingAspectRatios = map[string]bool{"16:9": true, "9:16": true, "1:1": true}
+	klingTypes        = map[string]bool{klingTypeT2V: true, klingTypeI2V: true, klingTypeMotion: true}
+)
+
+// init 注册 kling 家族的计费事实 schema：表达式保存时按此校验 u() 键并生成
+// 冒烟测试向量（setting/billing_setting.SmokeTestTaskExprWithFacts）。按子系列
+// 分开注册——非 omni 运行时只产生 variant，omni 只产生 reference——schema 的键
+// 集合必须与 deriveKlingRequest 的推导一致，否则会放行运行时不存在的 u() 键
+// （求值为 0/空字符串导致静默错档）。两个 schema 的冒烟组合数（54/36）均在 64
+// 上限内，全部枚举值参与校验。
+func init() {
+	billingexpr.RegisterTaskUsageSchema(isKlingOmniModel, map[string]billingexpr.UsageFieldSchema{
+		"seconds":   {Type: "number", Unit: "second"},
+		"mode":      {Type: "string", Enum: []string{klingModeStd, klingModePro, "4k"}},
+		"sound":     {Type: "string", Enum: []string{klingSoundOn, klingSoundOff}},
+		"reference": {Type: "string", Enum: []string{klingRefYes, klingRefNo}},
+	})
+	billingexpr.RegisterTaskUsageSchema(func(model string) bool {
+		return isKlingModel(model) && !isKlingOmniModel(model)
+	}, map[string]billingexpr.UsageFieldSchema{
+		"seconds": {Type: "number", Unit: "second"},
+		"mode":    {Type: "string", Enum: []string{klingModeStd, klingModePro, "4k"}},
+		"sound":   {Type: "string", Enum: []string{klingSoundOn, klingSoundOff}},
+		"variant": {Type: "string", Enum: []string{klingTypeT2V, klingTypeI2V, klingTypeMotion}},
+	})
 }
 
 type submitResponseBody struct {
@@ -140,14 +244,26 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		return nil, err
 	}
 
-	body, err := a.convertToRequestPayload(&req)
+	// 成形按映射后的上游模型名选择家族（kling 方言 / 其余按 Ark 形态）。
+	model := req.Model
+	if info.IsModelMapped {
+		model = info.UpstreamModelName
+	} else {
+		info.UpstreamModelName = model
+	}
+	req.Model = model
+
+	var body any
+	switch {
+	case isKlingModel(model):
+		body, err = a.convertKlingRequestPayload(&req, model)
+	case isWanModel(model):
+		body, err = deriveWanRequest(&req, model)
+	default:
+		body, err = a.convertToRequestPayload(&req)
+	}
 	if err != nil {
 		return nil, errors.Wrap(err, "convert request payload failed")
-	}
-	if info.IsModelMapped {
-		body.Model = info.UpstreamModelName
-	} else {
-		info.UpstreamModelName = body.Model
 	}
 	data, err := common.Marshal(body)
 	if err != nil {
@@ -272,6 +388,10 @@ func (a *TaskAdaptor) ParseTaskResult(task *model.Task, resp *http.Response, res
 		// 而非一直保留预扣额度）。
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.CompletionTokens
+		// 终态事实：结算时与提交事实合并后重跑表达式（例如上游修正后的时长）。
+		if resTask.Usage.Duration > 0 {
+			taskResult.UsageFacts = map[string]any{"seconds": float64(resTask.Usage.Duration)}
+		}
 	case "Failure", "Expired":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"
@@ -280,9 +400,9 @@ func (a *TaskAdaptor) ParseTaskResult(task *model.Task, resp *http.Response, res
 			taskResult.Reason = fmt.Sprintf("task %s", strings.ToLower(resTask.Output.TaskStatus))
 		}
 	default:
-		// Unknown status, treat as processing
-		taskResult.Status = model.TaskStatusInProgress
-		taskResult.Progress = "30%"
+		// 未知状态映射为 UNKNOWN：轮询层按失败预算处理（连续超限 → 失败并退款），
+		// 不再当作处理中无限等待 24h 超时——否则上游的真实失败态会被永久静默。
+		taskResult.Status = model.TaskStatusUnknown
 	}
 
 	return &taskResult, nil
@@ -505,4 +625,432 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	return &r, nil
+}
+
+// ============================
+// kling 家族：成形与计费事实
+// ============================
+
+// isKlingModel 判断模型是否属于 kling 家族（kling-v3 / kling-v3-omni）。
+func isKlingModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(model), "kling")
+}
+
+// isKlingOmniModel 判断模型是否属于 kling omni 子系列（事实集合与非 omni 不同）。
+func isKlingOmniModel(model string) bool {
+	return isKlingModel(model) && strings.Contains(strings.ToLower(model), "omni")
+}
+
+// convertKlingRequestPayload 把统一任务请求成形为 kling 方言提交体。
+func (a *TaskAdaptor) convertKlingRequestPayload(req *relaycommon.TaskSubmitReq, model string) (*klingRequestPayload, error) {
+	payload, _, err := deriveKlingRequest(req, model)
+	return payload, err
+}
+
+// klingUsageFacts 推导 kling 的计费事实（tiered_expr 的 u() 变量）：
+// seconds/mode/sound 通用，kling-v3 另有 variant（t2v/i2v/motion_control），
+// kling-v3-omni 另有 reference（ref/noref）。
+func klingUsageFacts(req *relaycommon.TaskSubmitReq, model string) (map[string]any, error) {
+	_, facts, err := deriveKlingRequest(req, model)
+	return facts, err
+}
+
+// deriveKlingRequest 同时产出成形载荷与计费事实：两条链路共用同一份推导，
+// 避免"发给上游的参数"与"计费读取的档位"漂移（例如时长、模式不一致）。
+func deriveKlingRequest(req *relaycommon.TaskSubmitReq, model string) (*klingRequestPayload, map[string]any, error) {
+	omni := strings.Contains(strings.ToLower(model), "omni")
+	payload := &klingRequestPayload{Model: model}
+	if err := req.UnmarshalMetadata(&payload.Parameters); err != nil {
+		return nil, nil, errors.Wrap(err, "unmarshal kling metadata parameters failed")
+	}
+	// 运动控制的参考图/视频在 input 下，metadata 直传。
+	var metaInput struct {
+		ImgURL   string `json:"img_url"`
+		VideoURL string `json:"video_url"`
+	}
+	if err := req.UnmarshalMetadata(&metaInput); err != nil {
+		return nil, nil, errors.Wrap(err, "unmarshal kling metadata input failed")
+	}
+	payload.Input.Prompt = req.Prompt
+	payload.Input.ImgURL = metaInput.ImgURL
+	payload.Input.VideoURL = metaInput.VideoURL
+
+	images := req.Images
+	if len(images) == 0 && req.Image != "" {
+		images = []string{req.Image}
+	}
+
+	// 时长优先级与 Ark 路径一致：metadata 覆盖 > 顶层 duration > seconds > 缺省 5。
+	if payload.Parameters.Duration == nil {
+		if req.Duration > 0 {
+			payload.Parameters.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+		} else if sec, parseErr := strconv.Atoi(strings.TrimSpace(req.Seconds)); parseErr == nil && sec > 0 {
+			payload.Parameters.Duration = lo.ToPtr(dto.IntValue(sec))
+		}
+	}
+	if payload.Parameters.Duration == nil {
+		payload.Parameters.Duration = lo.ToPtr(dto.IntValue(klingDefaultSec))
+	}
+	seconds := int(*payload.Parameters.Duration)
+	if seconds <= 0 || seconds > relaycommon.MaxTaskDurationSeconds {
+		return nil, nil, fmt.Errorf("kling: duration %d out of range", seconds)
+	}
+
+	// 模式：metadata > 顶层 mode > 家族默认（v3=std，omni=pro）。
+	if payload.Parameters.Mode == "" {
+		payload.Parameters.Mode = req.Mode
+	}
+	if payload.Parameters.Mode == "" {
+		if omni {
+			payload.Parameters.Mode = klingModePro
+		} else {
+			payload.Parameters.Mode = klingModeStd
+		}
+	}
+	if !klingModes[payload.Parameters.Mode] {
+		return nil, nil, fmt.Errorf("kling: unsupported mode %q", payload.Parameters.Mode)
+	}
+
+	// 声音：默认 off（计费按 sound 档位，非法值直接拒绝，不静默落到默认价）。
+	if payload.Parameters.Sound == "" {
+		payload.Parameters.Sound = klingSoundOff
+	}
+	if !klingSounds[payload.Parameters.Sound] {
+		return nil, nil, fmt.Errorf("kling: unsupported sound %q", payload.Parameters.Sound)
+	}
+
+	// 宽高比：kling 只认 16:9/9:16/1:1；顶层 ratio 里非 kling 取值（adaptive 等）
+	// 不转发；视频编辑（refer_type=base）时上游允许省略，此时不下发默认值。
+	videoEditBase := false
+	for _, v := range payload.Parameters.VideoList {
+		if v.ReferType == "base" {
+			videoEditBase = true
+		}
+	}
+	if payload.Parameters.AspectRatio == "" && !videoEditBase {
+		if req.Ratio != nil && klingAspectRatios[*req.Ratio] {
+			payload.Parameters.AspectRatio = *req.Ratio
+		} else {
+			payload.Parameters.AspectRatio = klingAspectRatio
+		}
+	}
+
+	if omni {
+		// omni：统一 images 映射为 image_list——单图首帧、双图首尾帧、
+		// 三张及以上不带类型（参考图）；metadata.image_list 显式值优先。
+		if len(payload.Parameters.ImageList) == 0 && len(images) > 0 {
+			list := make([]klingImageRef, 0, len(images))
+			for i, u := range images {
+				ref := klingImageRef{ImageURL: u}
+				if len(images) == 1 || (len(images) == 2 && i == 0) {
+					ref.Type = "first_frame"
+				} else if len(images) == 2 && i == 1 {
+					ref.Type = "end_frame"
+				}
+				list = append(list, ref)
+			}
+			payload.Parameters.ImageList = list
+		}
+	} else {
+		// v3：显式 kling_v3_type 优先；否则按入参推导（有参考视频/图 → motion_control，
+		// 有首帧图 → i2v，否则 t2v）。
+		if payload.Parameters.KlingV3Type == "" {
+			switch {
+			case payload.Input.VideoURL != "" || payload.Input.ImgURL != "":
+				payload.Parameters.KlingV3Type = klingTypeMotion
+			case len(images) > 0 || payload.Parameters.Image != "":
+				payload.Parameters.KlingV3Type = klingTypeI2V
+			default:
+				payload.Parameters.KlingV3Type = klingTypeT2V
+			}
+		}
+		if !klingTypes[payload.Parameters.KlingV3Type] {
+			return nil, nil, fmt.Errorf("kling: unsupported kling_v3_type %q", payload.Parameters.KlingV3Type)
+		}
+		if payload.Parameters.KlingV3Type == klingTypeI2V {
+			if payload.Parameters.Image == "" && len(images) > 0 {
+				payload.Parameters.Image = images[0]
+			}
+			if payload.Parameters.ImageTail == "" && len(images) > 1 {
+				payload.Parameters.ImageTail = images[1]
+			}
+		}
+		if payload.Parameters.KlingV3Type == klingTypeMotion && payload.Input.ImgURL == "" && len(images) > 0 {
+			payload.Input.ImgURL = images[0]
+		}
+	}
+
+	facts := map[string]any{
+		"seconds": float64(seconds),
+		"mode":    payload.Parameters.Mode,
+		"sound":   payload.Parameters.Sound,
+	}
+	if omni {
+		reference := klingRefNo
+		if len(payload.Parameters.VideoList) > 0 {
+			reference = klingRefYes
+		} else {
+			for _, ref := range payload.Parameters.ImageList {
+				if ref.Type == "" {
+					reference = klingRefYes
+					break
+				}
+			}
+		}
+		// 显式覆盖：metadata.reference = ref/noref（歧义场景由调用方定档）。
+		var metaFacts struct {
+			Reference string `json:"reference"`
+		}
+		if err := req.UnmarshalMetadata(&metaFacts); err == nil && (metaFacts.Reference == klingRefYes || metaFacts.Reference == klingRefNo) {
+			reference = metaFacts.Reference
+		}
+		facts["reference"] = reference
+	} else {
+		facts["variant"] = payload.Parameters.KlingV3Type
+	}
+	return payload, facts, nil
+}
+
+// ============================
+// wan 家族：wan3.0-video / wan3.0-video-prime（阿里万相 3.0 全模态）
+// ============================
+
+// wan3（wan3.0-video / wan3.0-video-prime）不走 Ark content 数组：上游是
+// Aliyun 风格方言——提示词在 input.prompt，图片/视频/音频参考统一放
+// input.media 的 {type, url} 数组，模型按 media 的 type 自动路由任务模式
+// （first_frame 图生视频、first_frame+last_frame 首尾帧、reference_* 全模态
+// 参考），其余参数在 parameters（resolution/ratio/duration）。与 seedance 的
+// Ark 形态是两套参数体系（2026-10-16 对上游实测确认）。
+//
+// 家族判定按 "wan3." 前缀：wan 老代（wanx2.x 等）参数体系不同，导入前需
+// 另行探测，不得靠本方言兜底。
+type wanMedia struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+type wanInput struct {
+	Prompt string     `json:"prompt,omitempty"`
+	Media  []wanMedia `json:"media,omitempty"`
+}
+
+// wanParameters 是 wan 家族的 parameters 集合：统一请求字段与客户端
+// metadata 共同填充（metadata 显式值优先）。仅保留已实测生效的字段；
+// 其余参数（prompt_extend 等）待验证后再扩展。
+type wanParameters struct {
+	Resolution string        `json:"resolution,omitempty"`
+	Ratio      string        `json:"ratio,omitempty"`
+	Duration   *dto.IntValue `json:"duration,omitempty"`
+}
+
+// wanRequestPayload 是 wan 家族的提交体：
+// { "model": "...", "input": {"prompt": ..., "media": [...]}, "parameters": {...} }。
+type wanRequestPayload struct {
+	Model      string        `json:"model"`
+	Input      wanInput      `json:"input"`
+	Parameters wanParameters `json:"parameters,omitempty"`
+}
+
+const (
+	wanMediaFirstFrame = "first_frame"
+	wanMediaLastFrame  = "last_frame"
+	wanMediaReference  = "reference_image"
+	// wanDefaultResolution 必须显式下发：上游缺省 1080p，而网关计费按
+	// relay/helper/video_price.go 的缺省档 720p 锚定——不下发会按 720p 收费
+	// 却按 1080p 出片。
+	wanDefaultResolution = "720p"
+	wanDefaultSec        = 5
+	wanRatioAdaptive     = "adaptive"
+)
+
+// isWanModel 判断模型是否属于 wan3 家族（wan3.0-video / wan3.0-video-prime）。
+func isWanModel(model string) bool {
+	return strings.HasPrefix(strings.ToLower(model), "wan3.")
+}
+
+// deriveWanRequest 把统一任务请求成形为 wan 方言提交体。时长 / 分辨率优先级
+// 与计费推导（relay/helper/video_price.go ComputeVideoPriceRatiosForTaskSubmit）
+// 保持一致，避免"发给上游的参数"与"计费读取的档位"漂移。
+func deriveWanRequest(req *relaycommon.TaskSubmitReq, model string) (*wanRequestPayload, error) {
+	payload := &wanRequestPayload{Model: model}
+	if err := req.UnmarshalMetadata(&payload.Parameters); err != nil {
+		return nil, errors.Wrap(err, "unmarshal wan metadata parameters failed")
+	}
+	// metadata.media 显式覆盖：reference_video / reference_audio / file / link
+	// 只能由此通道下发（统一请求没有对应的顶层字段）。
+	var metaShim struct {
+		Media []wanMedia `json:"media"`
+	}
+	if err := req.UnmarshalMetadata(&metaShim); err != nil {
+		return nil, errors.Wrap(err, "unmarshal wan metadata media failed")
+	}
+	payload.Input.Prompt = req.Prompt
+	if len(metaShim.Media) > 0 {
+		payload.Input.Media = metaShim.Media
+	} else {
+		payload.Input.Media = deriveWanMedia(req)
+	}
+
+	// 时长优先级（与计费一致）：metadata > 顶层 duration > seconds > 缺省 5。
+	// 上游限制 2~30 秒（-1 为自动），越界交给上游拒绝（异步失败会退款）；
+	// 这里只拦住计费上不可表达的值（≤0 及超过 MaxTaskDurationSeconds）。
+	if payload.Parameters.Duration == nil {
+		if req.Duration > 0 {
+			payload.Parameters.Duration = lo.ToPtr(dto.IntValue(req.Duration))
+		} else if sec, parseErr := strconv.Atoi(strings.TrimSpace(req.Seconds)); parseErr == nil && sec > 0 {
+			payload.Parameters.Duration = lo.ToPtr(dto.IntValue(sec))
+		}
+	}
+	if payload.Parameters.Duration == nil {
+		payload.Parameters.Duration = lo.ToPtr(dto.IntValue(wanDefaultSec))
+	}
+	seconds := int(*payload.Parameters.Duration)
+	if seconds <= 0 || seconds > relaycommon.MaxTaskDurationSeconds {
+		return nil, fmt.Errorf("wan: duration %d out of range", seconds)
+	}
+
+	// 分辨率：metadata > 顶层 resolution > size 归一 > 缺省 720p（见
+	// wanDefaultResolution 注释）。可归一的尺寸写法（1280x720）归一到档位；
+	// 无法识别的非空取值原样下发，交给上游拒绝而不是静默改写。
+	if payload.Parameters.Resolution == "" {
+		payload.Parameters.Resolution = strings.TrimSpace(req.Resolution)
+		if payload.Parameters.Resolution == "" {
+			payload.Parameters.Resolution = helper.VideoResolutionTier(req.Size)
+		}
+	}
+	if tier := helper.VideoResolutionTier(payload.Parameters.Resolution); tier != "" {
+		payload.Parameters.Resolution = tier
+	} else if payload.Parameters.Resolution == "" {
+		payload.Parameters.Resolution = wanDefaultResolution
+	}
+
+	// 宽高比：metadata/顶层透传；含首帧/尾帧媒体时缺省 adaptive（输出比例
+	// 跟随输入图）。其余情况不下发，走上游缺省 16:9。
+	if payload.Parameters.Ratio == "" && req.Ratio != nil {
+		payload.Parameters.Ratio = *req.Ratio
+	}
+	if payload.Parameters.Ratio == "" && hasFrameMedia(payload.Input.Media) {
+		payload.Parameters.Ratio = wanRatioAdaptive
+	}
+	return payload, nil
+}
+
+// hasFrameMedia 判断 media 中是否含首帧/尾帧（决定 ratio 是否缺省 adaptive）。
+func hasFrameMedia(media []wanMedia) bool {
+	for _, m := range media {
+		if m.Type == wanMediaFirstFrame || m.Type == wanMediaLastFrame {
+			return true
+		}
+	}
+	return false
+}
+
+// deriveWanMedia 把统一请求的图片/视频/音频映射为 wan media 数组：content
+// 数组的角色标注（first_frame / last_frame / reference_image）优先，视频/音频
+// 项按 reference_video / reference_audio 归类；无角色图片按数量启发式
+// （1 张 = 首帧、2 张 = 首尾帧、3 张及以上 = 参考图，与 kling omni 的标注
+// 规则一致）。需要 reference_video / reference_audio / file / link 的完整
+// 控制时用 metadata.media 显式下发。
+func deriveWanMedia(req *relaycommon.TaskSubmitReq) []wanMedia {
+	type candidate struct {
+		mediaType string
+		url       string
+		isImage   bool
+	}
+	var candidates []candidate
+	for _, item := range req.Content {
+		switch item.Type {
+		case "image_url":
+			if item.ImageURL == nil || item.ImageURL.URL == nil {
+				continue
+			}
+			role := ""
+			if item.Role != nil {
+				role = *item.Role
+			}
+			switch role {
+			case wanMediaFirstFrame, wanMediaLastFrame, wanMediaReference:
+				candidates = append(candidates, candidate{mediaType: role, url: *item.ImageURL.URL, isImage: true})
+			default:
+				candidates = append(candidates, candidate{url: *item.ImageURL.URL, isImage: true})
+			}
+		case "video_url":
+			if item.VideoURL == nil || item.VideoURL.URL == nil {
+				continue
+			}
+			candidates = append(candidates, candidate{mediaType: "reference_video", url: *item.VideoURL.URL})
+		case "audio_url":
+			if item.AudioURL == nil || item.AudioURL.URL == nil {
+				continue
+			}
+			candidates = append(candidates, candidate{mediaType: "reference_audio", url: *item.AudioURL.URL})
+		}
+	}
+	if len(candidates) == 0 {
+		for _, img := range req.Images {
+			candidates = append(candidates, candidate{url: img, isImage: true})
+		}
+	}
+
+	imageTotal := 0
+	for _, c := range candidates {
+		if c.isImage {
+			imageTotal++
+		}
+	}
+	media := make([]wanMedia, 0, len(candidates))
+	imageOrdinal := 0
+	for _, c := range candidates {
+		url := strings.TrimSpace(c.url)
+		if url == "" {
+			continue
+		}
+		mediaType := c.mediaType
+		if c.isImage {
+			if mediaType == "" {
+				switch {
+				case imageTotal <= 1:
+					mediaType = wanMediaFirstFrame
+				case imageTotal == 2:
+					if imageOrdinal == 0 {
+						mediaType = wanMediaFirstFrame
+					} else {
+						mediaType = wanMediaLastFrame
+					}
+				default:
+					mediaType = wanMediaReference
+				}
+			}
+			imageOrdinal++
+		}
+		media = append(media, wanMedia{Type: mediaType, URL: url})
+	}
+	return media
+}
+
+// ExtractUsageFacts 是计费事实接口的兼容包装（tiered 闸门按
+// TaskUsageFactsProvider 判定，故两个接口都要实现）。
+func (a *TaskAdaptor) ExtractUsageFacts(c *gin.Context, info *relaycommon.RelayInfo) map[string]any {
+	facts, err := a.ExtractUsageFactsValidated(c, info)
+	if err != nil {
+		return map[string]any{}
+	}
+	return facts
+}
+
+// ExtractUsageFactsValidated 为 tiered_expr 任务计费提供事实：kling 家族给出
+// seconds/mode/sound/variant|reference；其余模型返回空事实（非本适配器职责）。
+func (a *TaskAdaptor) ExtractUsageFactsValidated(c *gin.Context, info *relaycommon.RelayInfo) (map[string]any, error) {
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil, err
+	}
+	model := req.Model
+	if info != nil && info.UpstreamModelName != "" {
+		model = info.UpstreamModelName
+	}
+	if !isKlingModel(model) {
+		return map[string]any{}, nil
+	}
+	return klingUsageFacts(&req, model)
 }

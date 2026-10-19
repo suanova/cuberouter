@@ -38,7 +38,7 @@ import (
 
 func TestOrganizationBillingInsufficientQuotaFails(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Updates(map[string]any{"quota": 10, "used_quota": 9}).Error)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
@@ -50,7 +50,7 @@ func TestOrganizationBillingInsufficientQuotaFails(t *testing.T) {
 
 func TestOrganizationBillingSuccessIncreasesOrganizationUsedQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 
@@ -64,7 +64,7 @@ func TestOrganizationBillingSuccessIncreasesOrganizationUsedQuota(t *testing.T) 
 
 func TestOrganizationBillingDoesNotIncreaseResponsibleUserUsage(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 
@@ -78,7 +78,7 @@ func TestOrganizationBillingDoesNotIncreaseResponsibleUserUsage(t *testing.T) {
 
 func TestOrganizationBillingRefundReducesUsedQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	require.NoError(t, PostConsumeQuota(relayInfo, 100, 0, false))
@@ -92,7 +92,7 @@ func TestOrganizationBillingRefundReducesUsedQuota(t *testing.T) {
 
 func TestOrganizationBillingTokenRemainQuotaDeducted(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 
@@ -106,7 +106,7 @@ func TestOrganizationBillingTokenRemainQuotaDeducted(t *testing.T) {
 
 func TestOrganizationBillingTokenQuotaLookupRejectsMismatchedOrganization(t *testing.T) {
 	owner, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "quota-scope-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -123,7 +123,7 @@ func TestOrganizationBillingTokenQuotaLookupRejectsMismatchedOrganization(t *tes
 
 func TestOrganizationBillingTokenFailureRollsBackOrganizationQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-failing-key", ExpiredTime: -1, RemainQuota: 100})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-failing-key", ExpiredTime: -1, RemainQuota: 100})
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Updates(map[string]any{"quota": 100, "used_quota": 0, "request_count": 0}).Error)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
@@ -151,7 +151,7 @@ func TestOrganizationBillingTokenFailureRollsBackOrganizationQuota(t *testing.T)
 
 func TestOrganizationBillingSessionTokenFailureRollsBackPreConsumeRecord(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "session-failing-key", ExpiredTime: -1, RemainQuota: 100})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "session-failing-key", ExpiredTime: -1, RemainQuota: 100})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "session-token-failure"
@@ -180,7 +180,7 @@ func TestOrganizationBillingSessionTokenFailureRollsBackPreConsumeRecord(t *test
 
 func TestOrganizationBillingSessionRecordFailureRollsBackPreConsume(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "session-record-failing-key", ExpiredTime: -1, RemainQuota: 100})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "session-record-failing-key", ExpiredTime: -1, RemainQuota: 100})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "session-record-failure"
@@ -281,7 +281,7 @@ func TestOrganizationBillingIdenticalRecordConflictRollsBackTransaction(t *testi
 
 func TestOrganizationBillingSessionUnlimitedTokenTracksSettledUsageAndRefund(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "unlimited-usage-key", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "unlimited-usage-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "unlimited-usage-session"
@@ -312,7 +312,7 @@ func TestOrganizationBillingSessionUnlimitedTokenTracksSettledUsageAndRefund(t *
 
 func TestOrganizationBillingSessionUsesUnlimitedSnapshotAfterTokenBecomesLimited(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "unlimited-snapshot-key", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "unlimited-snapshot-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "unlimited-snapshot-session"
@@ -335,7 +335,7 @@ func TestOrganizationBillingSessionUsesUnlimitedSnapshotAfterTokenBecomesLimited
 
 func TestOrganizationBillingSessionUsesLimitedSnapshotAfterTokenBecomesUnlimited(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "limited-snapshot-key", ExpiredTime: -1, RemainQuota: 200})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "limited-snapshot-key", ExpiredTime: -1, RemainQuota: 200})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "limited-snapshot-session"
@@ -359,7 +359,7 @@ func TestOrganizationBillingSessionUsesLimitedSnapshotAfterTokenBecomesUnlimited
 func TestOrganizationBillingSessionPreConsumePersistsSessionAndSkipsPersonalBilling(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
 	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", member.Id).Updates(map[string]any{"quota": 0, "used_quota": 0, "request_count": 0}).Error)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-preconsume"
@@ -410,7 +410,7 @@ func TestOrganizationBillingSessionPreConsumePersistsSessionAndSkipsPersonalBill
 
 func TestOrganizationBillingSessionRequestReplayIsIdempotentAndConflictIsRejected(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "idempotent-session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "idempotent-session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	first := organizationBillingRelayInfo(token, organization.Id)
 	first.RequestId = "org-session-replay"
@@ -445,7 +445,7 @@ func TestOrganizationBillingSessionRequestReplayIsIdempotentAndConflictIsRejecte
 
 func TestOrganizationBillingSessionReplayPrecheckSkipsCreate(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "rows-affected-replay-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "rows-affected-replay-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	first := organizationBillingRelayInfo(token, organization.Id)
 	first.RequestId = "org-session-rows-affected-replay"
@@ -480,7 +480,7 @@ func TestOrganizationBillingSessionReplayPrecheckSkipsCreate(t *testing.T) {
 
 func TestOrganizationBillingSessionInsertConflictResolvesReplay(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "insert-conflict-replay-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "insert-conflict-replay-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	first := organizationBillingRelayInfo(token, organization.Id)
 	first.RequestId = "org-session-insert-conflict-replay"
@@ -515,7 +515,7 @@ func TestOrganizationBillingSessionInsertConflictResolvesReplay(t *testing.T) {
 
 func TestOrganizationBillingSessionConcurrentPreConsumeDoesNotLoseUpdates(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "concurrent-session-key", ExpiredTime: -1, RemainQuota: 100000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "concurrent-session-key", ExpiredTime: -1, RemainQuota: 100000})
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Updates(map[string]any{"quota": 100000, "used_quota": 0, "request_count": 0}).Error)
 
@@ -555,7 +555,7 @@ func TestOrganizationBillingSessionConcurrentPreConsumeDoesNotLoseUpdates(t *tes
 
 func TestOrganizationBillingSessionUsesTaskIdAndSupportsZeroPreConsume(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "task-session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "task-session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.TaskRelayInfo = &relaycommon.TaskRelayInfo{OriginTaskID: "org-task-session"}
@@ -583,7 +583,7 @@ func TestOrganizationBillingSessionUsesTaskIdAndSupportsZeroPreConsume(t *testin
 
 func TestOrganizationBillingSessionUnlimitedTokenFailureRefundsOrganizationQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "unlimited-refund-session-key", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "unlimited-refund-session-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-unlimited-refund"
@@ -611,7 +611,7 @@ func TestOrganizationBillingSessionUnlimitedTokenFailureRefundsOrganizationQuota
 
 func TestOrganizationBillingSessionRefundWorksAfterOrganizationDisabled(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "disabled-refund-session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "disabled-refund-session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-disabled-refund"
@@ -632,7 +632,7 @@ func TestOrganizationBillingSessionRefundWorksAfterOrganizationDisabled(t *testi
 
 func TestOrganizationBillingSessionNegativeSettleWorksAfterOrganizationDisabled(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "disabled-settle-session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "disabled-settle-session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-disabled-settle"
@@ -663,7 +663,7 @@ func TestOrganizationBillingSessionSettleWorksAfterTokenDeleted(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			_, member, organization := createOrganizationTokenTestOrg(t)
-			token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+			token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 				Name:        "deleted-settle-key",
 				ExpiredTime: -1,
 				RemainQuota: 1000,
@@ -704,7 +704,7 @@ func TestOrganizationBillingSessionSettleWorksAfterTokenDeleted(t *testing.T) {
 
 func TestOrganizationBillingSessionRefundWorksAfterTokenDeleted(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "deleted-refund-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -737,7 +737,7 @@ func TestOrganizationBillingSessionRefundWorksAfterTokenDeleted(t *testing.T) {
 
 func TestOrganizationBillingSessionSettleUsesLockedSessionAfterCallerIdentityMutation(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "mutated-caller-settle-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -776,7 +776,7 @@ func TestOrganizationBillingSessionSettleUsesLockedSessionAfterCallerIdentityMut
 
 func TestOrganizationBillingSessionRefundUsesLockedSessionAfterCallerIdentityMutation(t *testing.T) {
 	owner, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "mutated-caller-refund-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -819,7 +819,7 @@ func TestOrganizationBillingSessionRefundUsesLockedSessionAfterCallerIdentityMut
 
 func TestOrganizationBillingSessionRefundRejectsPhysicallyDeletedToken(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "hard-deleted-refund-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -844,7 +844,7 @@ func TestOrganizationBillingSessionRefundRejectsPhysicallyDeletedToken(t *testin
 
 func TestOrganizationBillingSessionRejectsTokenFromDifferentOrganization(t *testing.T) {
 	owner, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "mismatched-session-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -880,7 +880,7 @@ func TestOrganizationBillingSessionRejectsTokenFromDifferentOrganization(t *test
 
 func TestOrganizationBillingSessionSettleAndRefundWriteRecordsIdempotently(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "settle-session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "settle-session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-settle"
@@ -942,7 +942,7 @@ func TestOrganizationBillingSessionSettleAndRefundWriteRecordsIdempotently(t *te
 
 func TestOrganizationBillingFailedRequestKeepsZeroLogAndBalancedLedger(t *testing.T) {
 	owner, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "failed-request-ledger-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "failed-request-ledger-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "failed-request-balanced-ledger"
@@ -999,7 +999,7 @@ func TestOrganizationBillingFailedRequestKeepsZeroLogAndBalancedLedger(t *testin
 
 func TestOrganizationBillingUnlimitedTokenSessionTracksUsedQuotaWithoutMutatingRemainQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "unlimited-session-key", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "unlimited-session-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-unlimited"
@@ -1039,7 +1039,7 @@ func TestOrganizationBillingQuotaAdjustmentWritesAppendOnlyRecord(t *testing.T) 
 
 func TestOrganizationRelayBillingNonStreamSuccessSettlesSession(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "relay-success-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "relay-success-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-relay-success"
@@ -1063,7 +1063,7 @@ func TestOrganizationRelayBillingNonStreamSuccessSettlesSession(t *testing.T) {
 
 func TestOrganizationRelayBillingUpstreamFailureRefundsSession(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "relay-failure-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "relay-failure-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-relay-failure"
@@ -1093,7 +1093,7 @@ func TestOrganizationRelayBillingUpstreamFailureRefundsSession(t *testing.T) {
 
 func TestOrganizationBillingStreamHeartbeatUpdatesSessionExpiry(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "heartbeat-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "heartbeat-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-heartbeat"
@@ -1119,7 +1119,7 @@ func TestOrganizationBillingStreamHeartbeatUpdatesSessionExpiry(t *testing.T) {
 
 func TestOrganizationBillingRepairClaimsExpiredSessionOnceAndRefunds(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "repair-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "repair-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-repair"
@@ -1161,7 +1161,7 @@ func TestOrganizationBillingRepairClaimsExpiredSessionOnceAndRefunds(t *testing.
 
 func TestOrganizationBillingRepairRefundsDeletedTokenAndUnblocksDissolve(t *testing.T) {
 	owner, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{
 		Name:        "deleted-repair-key",
 		ExpiredTime: -1,
 		RemainQuota: 1000,
@@ -1538,7 +1538,7 @@ func TestOrganizationBillingRepairFailedAuditSkipsWhenFailedTransitionIsLost(t *
 
 func TestOrganizationBillingSessionStartsWithRepairExpiry(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "repair-expiry-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "repair-expiry-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-repair-expiry"
@@ -1555,7 +1555,7 @@ func TestOrganizationBillingSessionStartsWithRepairExpiry(t *testing.T) {
 
 func TestOrganizationBillingClaimRechecksExpiryBeforeRepairing(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "repair-race-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "repair-race-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-repair-race"
@@ -1578,7 +1578,7 @@ func TestOrganizationBillingClaimRechecksExpiryBeforeRepairing(t *testing.T) {
 
 func TestOrganizationBillingLoadSessionRequiresMatchingSessionKey(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "session-key-match-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "session-key-match-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-session-key-match"
@@ -1599,7 +1599,7 @@ func TestOrganizationBillingLoadSessionRequiresMatchingSessionKey(t *testing.T) 
 
 func TestOrganizationBillingRepairDoesNotClaimTerminalSessions(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "repair-terminal-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "repair-terminal-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	now := common.GetTimestamp()
 
@@ -1634,7 +1634,7 @@ func TestOrganizationBillingRepairDoesNotClaimTerminalSessions(t *testing.T) {
 
 func TestOrganizationBillingSessionReferencePersistsToTask(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "task-session-reference-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "task-session-reference-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-task-session-reference"
@@ -1651,7 +1651,7 @@ func TestOrganizationBillingSessionReferencePersistsToTask(t *testing.T) {
 
 func TestOrganizationBillingRefundDoesNotMakeUsedQuotaNegative(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	require.NoError(t, PostConsumeQuota(relayInfo, 30, 0, false))
@@ -1665,7 +1665,7 @@ func TestOrganizationBillingRefundDoesNotMakeUsedQuotaNegative(t *testing.T) {
 
 func TestOrganizationBillingConcurrentConsumeDoesNotLoseUpdates(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 100000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 100000})
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Updates(map[string]any{"quota": 100000, "used_quota": 0, "request_count": 0}).Error)
 
@@ -1694,7 +1694,7 @@ func TestOrganizationBillingConcurrentConsumeDoesNotLoseUpdates(t *testing.T) {
 
 func TestOrganizationBillingConcurrentConsumeStopsAtQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 100000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "billing-key", ExpiredTime: -1, RemainQuota: 100000})
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Updates(map[string]any{"quota": 25, "used_quota": 0, "request_count": 0}).Error)
 
@@ -1729,7 +1729,7 @@ func TestOrganizationBillingConcurrentConsumeStopsAtQuota(t *testing.T) {
 
 func TestOrganizationRelayLogFieldsComplete(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "log-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "log-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	common.LogConsumeEnabled = true

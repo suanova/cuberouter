@@ -27,6 +27,9 @@ type OrganizationMember struct {
 	Status         string `json:"status" gorm:"type:varchar(16);not null;index;index:idx_org_members_org_status,priority:2;default:'active'"`
 	DisabledSource string `json:"disabled_source" gorm:"type:varchar(16);not null;default:''"`
 	InvitedBy      int    `json:"invited_by" gorm:"index;default:0"`
+	ModelAccess    string `json:"-" gorm:"type:text;column:model_access"`
+	QuotaLimit     int    `json:"-" gorm:"not null;default:0;column:quota_limit"`
+	UsedQuota      int    `json:"-" gorm:"not null;default:0;column:used_quota"`
 	JoinedAt       int64  `json:"joined_at" gorm:"bigint;index;default:0"`
 	LastActiveAt   int64  `json:"last_active_at" gorm:"bigint;index;default:0"`
 	CreatedAt      int64  `json:"created_at" gorm:"bigint;index"`

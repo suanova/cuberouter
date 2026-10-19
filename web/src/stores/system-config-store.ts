@@ -50,6 +50,12 @@ export interface SystemConfig {
   videoPrice: VideoPrice
   /** Off-peak billing window (admin option `OffPeakWindow`) */
   offPeakWindow: OffPeakWindow
+  /** Master switch for the region switcher (admin option `site.counterpart_enabled`) */
+  siteCounterpartEnabled?: boolean
+  /** Counterpart site root URL for the region switcher (admin option `site.counterpart_url`) */
+  siteCounterpartUrl?: string
+  /** Label shown on the region switcher (admin option `site.counterpart_label`) */
+  siteCounterpartLabel?: string
 }
 
 export const DEFAULT_OFF_PEAK_WINDOW: OffPeakWindow = {
@@ -89,6 +95,9 @@ export const useSystemConfigStore = create<SystemConfigState>()(
         currency: { ...DEFAULT_CURRENCY_CONFIG },
         videoPrice: {},
         offPeakWindow: { ...DEFAULT_OFF_PEAK_WINDOW },
+        siteCounterpartEnabled: false,
+        siteCounterpartUrl: '',
+        siteCounterpartLabel: '',
       },
       loading: true,
       loadedLogoUrl: DEFAULT_LOGO,

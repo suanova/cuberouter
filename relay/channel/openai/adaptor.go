@@ -523,7 +523,7 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
-		if isJSONRequest(c) {
+		if IsJSONRequest(c) {
 			return request, nil
 		}
 
@@ -654,7 +654,11 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	}
 }
 
-func isJSONRequest(c *gin.Context) bool {
+// IsJSONRequest 报告客户端请求体是否是 JSON(而非 multipart 表单)。图片编辑的请求体
+// 形状由它决定: 转换路径据此选择透传 DTO 或重建表单, 发送路径据此选择 DoApiRequest
+// 或 DoFormRequest; 复用此谓词的适配器(如 astraflow)必须与转换路径同判, 两条路
+// 才会选中同一个形状。
+func IsJSONRequest(c *gin.Context) bool {
 	if c == nil || c.Request == nil {
 		return false
 	}
@@ -737,7 +741,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription ||
 		info.RelayMode == relayconstant.RelayModeAudioTranslation ||
-		(info.RelayMode == relayconstant.RelayModeImagesEdits && !isJSONRequest(c)) {
+		(info.RelayMode == relayconstant.RelayModeImagesEdits && !IsJSONRequest(c)) {
 		return channel.DoFormRequest(a, c, info, requestBody)
 	} else if info.RelayMode == relayconstant.RelayModeRealtime {
 		return channel.DoWssRequest(a, c, info, requestBody)

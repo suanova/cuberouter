@@ -75,14 +75,12 @@ const LANG_HIGHLIGHT: Record<Lang, BundledLanguage> = {
   javascript: 'javascript',
 }
 
-type SampleContext = {
+export type SampleContext = {
   baseUrl: string
   apiKeyEnv: string
   modelName: string
   endpointType: string
   endpointPath: string
-  /** 本地化后的视频结果注释(示例代码里内嵌,随语言展示) */
-  videoUrlHint?: string
 }
 
 function buildChatSample(lang: Lang, ctx: SampleContext): string {
@@ -446,7 +444,7 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `  -H "Content-Type: application/json" \\`,
       `  -d '${body.replaceAll('\n', '\n     ')}'`,
       '',
-      '# Poll task status (returns the video URL when completed):',
+      '# Poll task status until data.status is SUCCESS (data.result_url carries the video):',
       `# curl ${ctx.baseUrl}/v1/video/generations/<task_id> \\`,
       `#   -H "Authorization: Bearer $${ctx.apiKeyEnv}"`,
     ].join('\n')
@@ -464,14 +462,15 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `    json={"model": "${ctx.modelName}", "prompt": "${prompt}", "size": "720p", "duration": 5})`,
       `task_id = resp.json()["task_id"]`,
       '',
-      '# Poll until the task reaches a terminal status',
+      '# Poll until data.status reaches a terminal state (SUCCESS / FAILURE)',
       'while True:',
       `    task = requests.get("${pollUrl}".format(task_id=task_id), headers=headers).json()`,
-      '    if task.get("status") == "completed":',
-      `        print(task)  # ${ctx.videoUrlHint}`,
+      '    data = task["data"]',
+      '    if data["status"] == "SUCCESS":',
+      '        print(data["result_url"])  # download before the link expires',
       '        break',
-      '    if task.get("status") == "failed":',
-      '        raise SystemExit("task failed: " + str(task.get("error")))',
+      '    if data["status"] == "FAILURE":',
+      '        raise SystemExit("task failed: " + str(data.get("fail_reason") or task.get("message")))',
       '    time.sleep(3)',
     ].join('\n')
   }
@@ -494,16 +493,16 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
       `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
       `const { task_id } = await resp.json()`,
       '',
-      '// Poll until the task reaches a terminal status',
+      '// Poll until data.status reaches a terminal state (SUCCESS / FAILURE)',
       `while (true) {`,
       `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
   if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
-  const task = await poll.json()`,
-      `  if (task.status === 'completed') {`,
-      `    console.log(task)  // ${ctx.videoUrlHint}`,
+  const { data } = await poll.json()`,
+      `  if (data.status === 'SUCCESS') {`,
+      `    console.log(data.result_url)  // download before the link expires`,
       `    break`,
       `  }`,
-      `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
+      `  if (data.status === 'FAILURE') throw new Error('task failed: ' + (data.fail_reason || 'unknown'))`,
       `  await new Promise((resolve) => setTimeout(resolve, 3000))`,
       `}`,
     ].join('\n')
@@ -526,16 +525,16 @@ function buildPerSecondVideoSample(lang: Lang, ctx: SampleContext): string {
     `if (!resp.ok) throw new Error('submission failed: ' + await resp.text())`,
     `const { task_id } = await resp.json()`,
     '',
-    '// Poll until the task reaches a terminal status',
+    '// Poll until data.status reaches a terminal state (SUCCESS / FAILURE)',
     `while (true) {`,
     `  const poll = await fetch('${pollUrl}'.replace('{task_id}', task_id), { headers })
   if (!poll.ok) throw new Error('poll failed: ' + await poll.text())
-  const task = await poll.json()`,
-    `  if (task.status === 'completed') {`,
-    `    console.log(task)  // ${ctx.videoUrlHint}`,
+  const { data } = await poll.json()`,
+    `  if (data.status === 'SUCCESS') {`,
+    `    console.log(data.result_url)  // download before the link expires`,
     `    break`,
     `  }`,
-    `  if (task.status === 'failed') throw new Error('task failed: ' + JSON.stringify(task.error))`,
+    `  if (data.status === 'FAILURE') throw new Error('task failed: ' + (data.fail_reason || 'unknown'))`,
     `  await new Promise((resolve) => setTimeout(resolve, 3000))`,
     `}`,
   ].join('\n')
@@ -710,7 +709,9 @@ function buildVideoSample(lang: Lang, ctx: SampleContext): string {
   ].join('\n')
 }
 
-function buildSample(
+/** 按端点类型生成示例代码;导出供 __tests__ 断言各端点形状。 */
+// eslint-disable-next-line react-refresh/only-export-components -- 纯函数导出供单测断言,不影响组件刷新
+export function buildSample(
   lang: Lang,
   endpointType: string,
   ctx: SampleContext
@@ -721,7 +722,9 @@ function buildSample(
     return buildEmbeddingSample(lang, ctx)
   }
   if (endpointType === 'image-generation') return buildImageSample(lang, ctx)
-  if (endpointType === 'per-second-video') {
+  // 按秒计费视频与任务插件渠道的通用任务端点（video-generation）共享同一套
+  // 提交 / 轮询 / 取片形状，示例里的路径取端点默认路径（/v1/video/generations）。
+  if (endpointType === 'per-second-video' || endpointType === 'video-generation') {
     return buildPerSecondVideoSample(lang, ctx)
   }
   if (endpointType === 'openai-video' || endpointType === 'ark-video') {

@@ -95,7 +95,7 @@ func ConsumeOrganizationQuotaWithRequestCount(relayInfo *relaycommon.RelayInfo, 
 		return nil
 	}
 	return runOrganizationBillingTransaction(func(tx *gorm.DB) error {
-		if _, _, err := updateOrganizationUsedQuotaTx(tx, relayInfo.BillingAccountId, quota, incrementRequestCount, quota > 0, common.GetTimestamp()); err != nil {
+		if _, _, err := updateOrganizationUsedQuotaTx(tx, relayInfo.BillingAccountId, quota, incrementRequestCount, quota > 0, common.GetTimestamp(), relayInfo.ResponsibleUserId, false); err != nil {
 			return err
 		}
 		return syncOrganizationQuotaFromTx(tx, relayInfo)
@@ -107,7 +107,7 @@ func consumeOrganizationAndTokenQuotaWithRequestCount(relayInfo *relaycommon.Rel
 		return nil
 	}
 	err := runOrganizationBillingTransaction(func(tx *gorm.DB) error {
-		if _, _, err := updateOrganizationUsedQuotaTx(tx, relayInfo.BillingAccountId, quota, incrementRequestCount, quota > 0, common.GetTimestamp()); err != nil {
+		if _, _, err := updateOrganizationUsedQuotaTx(tx, relayInfo.BillingAccountId, quota, incrementRequestCount, quota > 0, common.GetTimestamp(), relayInfo.ResponsibleUserId, false); err != nil {
 			return err
 		}
 		if !relayInfo.IsPlayground {
@@ -204,7 +204,10 @@ func syncOrganizationQuotaFromTx(tx *gorm.DB, relayInfo *relaycommon.RelayInfo) 
 //
 // 返回 before/after 两份快照供账本记录，before 由 after 反推，
 // 保证与 UPDATE 的语义完全一致（包括 used_quota 被 CASE 夹在 0 的情况）。
-func updateOrganizationUsedQuotaTx(tx *gorm.DB, organizationId int, delta int, incrementRequestCount bool, requireActive bool, now int64) (model.Organization, model.Organization, error) {
+//
+// 同一事务里顺带维护责任成员的累计消费（updateOrganizationMemberUsedQuotaTx）：
+// enforceMemberQuota 只在预扣准入时打开，成员超限会让整个事务回滚。
+func updateOrganizationUsedQuotaTx(tx *gorm.DB, organizationId int, delta int, incrementRequestCount bool, requireActive bool, now int64, memberUserId int, enforceMemberQuota bool) (model.Organization, model.Organization, error) {
 	if delta == 0 && !incrementRequestCount {
 		var organization model.Organization
 		query := tx.Where("id = ?", organizationId)
@@ -255,6 +258,9 @@ func updateOrganizationUsedQuotaTx(tx *gorm.DB, organizationId int, delta int, i
 	}
 	if incrementRequestCount && before.RequestCount > 0 {
 		before.RequestCount--
+	}
+	if err := updateOrganizationMemberUsedQuotaTx(tx, organizationId, memberUserId, after.OwnerUserId, delta, enforceMemberQuota); err != nil {
+		return model.Organization{}, model.Organization{}, err
 	}
 	return before, after, nil
 }
@@ -454,7 +460,7 @@ func (f *OrganizationFunding) PreConsumeWithToken(amount int) error {
 		if err := tx.Create(session).Error; err != nil {
 			return fmt.Errorf("%w: %v", errOrganizationBillingSessionInsertFailure, err)
 		}
-		before, after, err := updateOrganizationUsedQuotaTx(tx, f.relayInfo.BillingAccountId, amount, false, true, now)
+		before, after, err := updateOrganizationUsedQuotaTx(tx, f.relayInfo.BillingAccountId, amount, false, true, now, f.relayInfo.ResponsibleUserId, true)
 		if err != nil {
 			return err
 		}
@@ -537,7 +543,7 @@ func (f *OrganizationFunding) ReserveMoreWithToken(delta int) error {
 			return nil
 		}
 		tokenRelayInfo := organizationBillingTokenQuotaRelayInfo(&session, f.relayInfo)
-		before, after, err := updateOrganizationUsedQuotaTx(tx, session.OrganizationId, delta, false, true, now)
+		before, after, err := updateOrganizationUsedQuotaTx(tx, session.OrganizationId, delta, false, true, now, session.ResponsibleUserId, false)
 		if err != nil {
 			return err
 		}
@@ -645,7 +651,7 @@ func (f *OrganizationFunding) settleWithTokenActual(actualQuota int) error {
 		delta := actualQuota - session.PreConsumedQuota
 		incrementRequestCount := actualQuota > 0
 		// 只有增方向要求组织活跃：实际用量比预扣少时，退还要能穿过已封禁的组织。
-		before, after, err := updateOrganizationUsedQuotaTx(tx, session.OrganizationId, delta, incrementRequestCount, delta > 0, now)
+		before, after, err := updateOrganizationUsedQuotaTx(tx, session.OrganizationId, delta, incrementRequestCount, delta > 0, now, session.ResponsibleUserId, false)
 		if err != nil {
 			return err
 		}
@@ -740,7 +746,7 @@ func (f *OrganizationFunding) RefundWithToken() error {
 		}
 		// requireActive=false：退款必须穿过已封禁/已解散的组织，
 		// 否则平台一封号就能把在途的预扣据为己有。
-		before, after, err := updateOrganizationUsedQuotaTx(tx, session.OrganizationId, -refundQuota, false, false, now)
+		before, after, err := updateOrganizationUsedQuotaTx(tx, session.OrganizationId, -refundQuota, false, false, now, session.ResponsibleUserId, false)
 		if err != nil {
 			return err
 		}

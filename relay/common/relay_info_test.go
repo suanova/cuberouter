@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
@@ -166,6 +167,47 @@ func TestGenRelayInfoCapturesRequestReasoningEffort(t *testing.T) {
 			assert.Equal(t, tt.expected, info.ReasoningEffort)
 		})
 	}
+}
+
+// GenRelayInfo 必须把 TokenAuth 落下的用户×模型折扣快照带进 RelayInfo：
+// key present = 已载入（无折扣用户是 nil map，须归一为非 nil 空 map，否则计费
+// 会逐次回源）；key absent = 未载入，计费层按 ActorUserId 回源。
+func TestGenRelayInfoCapturesUserModelDiscounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	discounts := map[string]float64{"m1": 0.5, "m2": 0.8}
+
+	newInfo := func(t *testing.T, prepare func(ctx *gin.Context)) *RelayInfo {
+		t.Helper()
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
+		if prepare != nil {
+			prepare(ctx)
+		}
+		info, err := GenRelayInfo(ctx, types.RelayFormatOpenAI, &dto.GeneralOpenAIRequest{Model: "gpt-test"}, nil)
+		require.NoError(t, err)
+		return info
+	}
+
+	assert.Equal(t, discounts, newInfo(t, func(ctx *gin.Context) {
+		common.SetContextKey(ctx, constant.ContextKeyUserModelDiscounts, discounts)
+	}).UserModelDiscounts)
+
+	// 无折扣用户：GetModelDiscounts() 返回 nil，但 key 已 present —— 归一为
+	// 非 nil 空 map，计费层据此跳过回源。
+	var noDiscounts map[string]float64
+	loadedEmpty := newInfo(t, func(ctx *gin.Context) {
+		common.SetContextKey(ctx, constant.ContextKeyUserModelDiscounts, noDiscounts)
+	}).UserModelDiscounts
+	assert.NotNil(t, loadedEmpty)
+	assert.Empty(t, loadedEmpty)
+
+	// 未经过 TokenAuth：字段保持 nil，计费层按 ActorUserId 回源。
+	assert.Nil(t, newInfo(t, nil).UserModelDiscounts)
+
+	// present 但不是折扣表：同样按「已载入」处理，不 panic、不回源。
+	assert.Empty(t, newInfo(t, func(ctx *gin.Context) {
+		ctx.Set(string(constant.ContextKeyUserModelDiscounts), "not-a-discount-table")
+	}).UserModelDiscounts)
 }
 
 func TestInitChannelMetaRestoresRequestReasoningEffortForRetry(t *testing.T) {

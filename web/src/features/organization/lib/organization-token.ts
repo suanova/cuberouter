@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { t } from 'i18next'
+
 import type { StatusVariant } from '@/components/status-badge'
 
 import type { OrganizationTokenRow } from '../types'
@@ -74,7 +76,10 @@ export const ORGANIZATION_TOKEN_STATUS_FILTER_OPTIONS = [
   ORGANIZATION_TOKEN_STATUS.DISABLED,
   ORGANIZATION_TOKEN_STATUS.EXPIRED,
   ORGANIZATION_TOKEN_STATUS.EXHAUSTED,
-].map((value) => ({ value: String(value), labelKey: organizationTokenStatusMeta(value).labelKey }))
+].map((value) => ({
+  value: String(value),
+  labelKey: organizationTokenStatusMeta(value).labelKey,
+}))
 
 // ============================================================================
 // Visibility
@@ -172,6 +177,22 @@ export function organizationTokenFullKey(
 }
 
 // ============================================================================
+// Row labels
+// ============================================================================
+
+/**
+ * Who created the key, as the Owner column shows it.
+ *
+ * Resolution mirrors the responsible column — username first, display name
+ * second — because both columns name the same kind of person in one table.
+ */
+export function organizationTokenOwnerName(
+  token: Pick<OrganizationTokenRow, 'creator_username' | 'creator_display_name'>
+): string {
+  return token.creator_username || token.creator_display_name || '-'
+}
+
+// ============================================================================
 // Per-row authority
 // ============================================================================
 
@@ -195,20 +216,20 @@ export interface OrganizationTokenActionContext {
  * What the caller may do with one key, mirroring the checks in
  * `service/organization_token.go`.
  *
- * A plain member holds no organization-wide authority, so they reach only the
- * keys they are responsible for — and a key they published is excluded even
- * from that, because publishing it was the act of giving up control. Copying is
- * a read: it survives `readOnly`, and a public key is copyable by anyone who can
- * see it.
+ * A plain member holds no organization-wide authority, so they may change only
+ * the keys they created — being the member a key is handed to grants its use,
+ * never its control, and a key they published is excluded even from that,
+ * because publishing it was the act of giving up control. Copying is a read: it
+ * survives `readOnly`, and a public key is copyable by anyone who can see it.
  *
- * A responsible id of zero is treated as "nobody", never as a match: the field
- * is absent on a row that never went through the organization token path, and
+ * A creator id of zero is treated as "nobody", never as a match: the field is
+ * absent on a row that never went through the organization token path, and
  * reading that as ownership would hand out authority over it.
  */
 export function getOrganizationTokenActionFlags(
   token: Pick<
     OrganizationTokenRow,
-    'responsible_user_id' | 'user_id' | 'visibility' | 'key'
+    'responsible_user_id' | 'user_id' | 'creator_user_id' | 'visibility' | 'key'
   >,
   context: OrganizationTokenActionContext
 ): OrganizationTokenActionFlags {
@@ -216,6 +237,8 @@ export function getOrganizationTokenActionFlags(
   const responsibleUserId = token.responsible_user_id || token.user_id || 0
   const isResponsible =
     responsibleUserId > 0 && responsibleUserId === context.currentUserId
+  const creatorUserId = token.creator_user_id ?? 0
+  const isCreator = creatorUserId > 0 && creatorUserId === context.currentUserId
   const isPublic = token.visibility === 'public'
 
   if (context.canManageAllTokens) {
@@ -227,9 +250,9 @@ export function getOrganizationTokenActionFlags(
   }
 
   return {
-    canEdit: !context.readOnly && isResponsible && !isPublic,
-    canDelete: !context.readOnly && isResponsible && !isPublic,
-    canCopy: hasKey && (isResponsible || isPublic),
+    canEdit: !context.readOnly && isCreator && !isPublic,
+    canDelete: !context.readOnly && isCreator && !isPublic,
+    canCopy: hasKey && (isResponsible || isCreator || isPublic),
   }
 }
 
@@ -253,12 +276,6 @@ export const ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS: Array<{
   { labelKey: 'Never expire', seconds: null },
 ]
 
-/** Closed presets for the per-key quota. Amounts, not quota units, because the
- * deployment decides what a unit is worth; see `parseQuotaFromDollars`. */
-export const ORGANIZATION_TOKEN_QUOTA_PRESET_AMOUNTS = [
-  1, 10, 50, 100, 500, 1000,
-]
-
 // ============================================================================
 // Error mapping
 // ============================================================================
@@ -273,7 +290,9 @@ export type OrganizationTokenApiError = {
 }
 
 /** The parameter is `unknown` because that is what a caught error is. */
-function tokenErrorBody(error: unknown): OrganizationTokenErrorBody | undefined {
+function tokenErrorBody(
+  error: unknown
+): OrganizationTokenErrorBody | undefined {
   return (error as OrganizationTokenApiError | null | undefined)?.response?.data
 }
 
@@ -291,10 +310,15 @@ const ORGANIZATION_TOKEN_ERROR_MESSAGE_KEYS: Record<string, string> = {
     'The responsible user for this key is disabled by the platform. Enable the user before enabling the key.',
   organization_token_enable_forbidden:
     'This key was disabled by a higher-privilege administrator. Your account cannot enable it.',
+  insufficient_organization_member_quota:
+    'Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.',
+  insufficient_organization_quota: 'The organization has no available quota.',
 }
 
 /** `null` when the refusal is not one this mapping knows. */
-export function organizationTokenErrorMessageKey(error: unknown): string | null {
+export function organizationTokenErrorMessageKey(
+  error: unknown
+): string | null {
   const code = tokenErrorBody(error)?.code
   if (!code) return null
   return ORGANIZATION_TOKEN_ERROR_MESSAGE_KEYS[code] ?? null
@@ -309,6 +333,6 @@ export function organizationTokenErrorText(
   fallback: string
 ): string {
   const specific = organizationTokenErrorMessageKey(error)
-  if (specific) return specific
+  if (specific) return t(specific)
   return tokenErrorBody(error)?.message || fallback
 }

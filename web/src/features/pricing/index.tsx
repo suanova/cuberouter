@@ -46,6 +46,7 @@ export function Pricing() {
     models,
     vendors,
     groupRatio,
+    userModelDiscounts,
     usableGroup,
     endpointMap,
     autoGroups,
@@ -132,6 +133,7 @@ export function Pricing() {
           tokenUnit={tokenUnit}
           showRechargePrice={showRechargePrice}
           selectedGroup={groupFilter}
+          userModelDiscounts={userModelDiscounts}
         />
       )
     }
@@ -145,6 +147,7 @@ export function Pricing() {
         showRechargePrice={showRechargePrice}
         selectedGroup={groupFilter}
         onModelClick={handleModelClick}
+        userModelDiscounts={userModelDiscounts}
       />
     )
   }
@@ -282,6 +285,7 @@ export function Pricing() {
               tokenUnit={tokenUnit}
               showRechargePrice={showRechargePrice}
               offPeakWindow={offPeakWindow}
+              userModelDiscounts={userModelDiscounts}
             />
           )}
         </PageTransition>

@@ -51,6 +51,7 @@ token.db_error: "无效的令牌，数据库查询出错，请联系管理员"
 token.auto_groups_too_many: "每个令牌最多可选择 {{.Max}} 个 Auto 分组"
 token.auto_groups_duplicate: "Auto 分组 {{.Group}} 重复"
 token.auto_groups_invalid: "Auto 分组 {{.Group}} 不可用或无权访问"
+token.model_outside_member_access: "模型 {{.Model}} 不在组织为你的账号设置的允许范围内"
 
 # Redemption messages
 redemption.name_length: "兑换码名称长度必须在1-20之间"
@@ -116,6 +117,10 @@ user.password_strength_invalid: "密码强度不足，需包含大写字母、�
 user.username_too_long: "用户名长度不能超过 50 个字符"
 user.display_name_too_long: "显示名称长度不能超过 20 个字符"
 user.email_too_long: "邮箱长度不能超过 50 个字符"
+user.model_discount_out_of_range: "模型折扣必须大于 0 且不超过 1"
+user.model_discount_name_invalid: "模型名称无效"
+user.model_discount_too_many: "模型折扣条目过多"
+user.model_discount_too_large: "模型折扣表过大"
 
 # Ops (运营角色) related messages
 ops.campaign_not_accessible: "无权查看该活动"
@@ -330,6 +335,7 @@ distributor.channel_disabled: "该渠道已被禁用"
 distributor.affinity_channel_disabled: "渠道亲和性命中的渠道已被禁用，已按规则停止重试，请联系管理员处理"
 distributor.token_no_model_access: "该令牌无权访问任何模型"
 distributor.token_model_forbidden: "该令牌无权访问模型 {{.Model}}"
+distributor.member_model_forbidden: "模型 {{.Model}} 不在组织为你的账号设置的允许范围内"
 distributor.model_name_required: "未指定模型名称，模型名称不能为空"
 distributor.invalid_playground_request: "无效的playground请求，{{.Error}}"
 distributor.group_access_denied: "无权访问该分组"

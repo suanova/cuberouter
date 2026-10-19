@@ -20,9 +20,18 @@ For commercial licensing, please contact support@quantumnous.com
 package router
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -51,6 +60,12 @@ func TestOrganizationCanonicalRestfulRoutesAreRegistered(t *testing.T) {
 	require.Contains(t, routes, "PUT /api/organizations/:id/owner")
 	require.Contains(t, routes, "GET /api/organizations/:id/members")
 	require.Contains(t, routes, "PATCH /api/organizations/:id/members/:userId")
+	require.Contains(t, routes, "GET /api/organizations/:id/members/:userId/model-discounts")
+	require.Contains(t, routes, "PUT /api/organizations/:id/members/:userId/model-discounts")
+	require.Contains(t, routes, "GET /api/organizations/:id/members/:userId/model-access")
+	require.Contains(t, routes, "PUT /api/organizations/:id/members/:userId/model-access")
+	require.Contains(t, routes, "GET /api/organizations/:id/members/:userId/quota")
+	require.Contains(t, routes, "PUT /api/organizations/:id/members/:userId/quota")
 	require.Contains(t, routes, "DELETE /api/organizations/:id/members/me")
 	require.Contains(t, routes, "DELETE /api/organizations/:id/members/:userId")
 	require.Contains(t, routes, "GET /api/organizations/:id/invitations")
@@ -157,6 +172,61 @@ func TestOrganizationLegacyRoutesAreRemoved(t *testing.T) {
 	require.NotContains(t, routes, "GET /api/organizations/:id/invites")
 	require.NotContains(t, routes, "POST /api/organizations/:id/invites")
 	require.NotContains(t, routes, "DELETE /api/organizations/:id/invites/:inviteId")
+}
+
+// TestOrganizationMemberQuotaRoutesEnforceCapabilities 验证路由层的两道权限门：
+// GET 与成员名单同权（view_members_full），PUT 是独立的 manage_member_quotas。
+// 普通成员两个方向都被拒绝，owner 能读能写。
+func TestOrganizationMemberQuotaRoutesEnforceCapabilities(t *testing.T) {
+	setupOrganizationPolicyRouterTestDB(t)
+	owner := createOrganizationPolicyRouterUser(t, "router-member-quota-owner", common.RoleCommonUser)
+	member := createOrganizationPolicyRouterUser(t, "router-member-quota-member", common.RoleCommonUser)
+	organization, err := service.CreateOrganization(owner.Id, service.CreateOrganizationRequest{Name: "Router Member Quota Org"})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 300).Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: member.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive}).Error)
+
+	router := gin.New()
+	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("router-test-secret"))))
+	SetApiRouter(router)
+
+	quotaPath := "/api/organizations/" + strconv.Itoa(organization.Id) + "/members/" + strconv.Itoa(member.Id) + "/quota"
+	perform := func(method string, user model.User, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, quotaPath, strings.NewReader(body))
+		req.Header.Set("Authorization", user.GetAccessToken())
+		req.Header.Set("New-Api-User", strconv.Itoa(user.Id))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Account-Context-Type", "organization")
+		req.Header.Set("X-Account-Context-Id", strconv.Itoa(organization.Id))
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+		return recorder
+	}
+
+	for _, method := range []string{http.MethodGet, http.MethodPut} {
+		recorder := perform(method, member, `{"limit":50}`)
+		require.Equal(t, http.StatusForbidden, recorder.Code, method+" "+recorder.Body.String())
+		require.Contains(t, recorder.Body.String(), `"code":"organization_access_denied"`)
+	}
+
+	readRecorder := perform(http.MethodGet, owner, "")
+	require.Equal(t, http.StatusOK, readRecorder.Code, readRecorder.Body.String())
+	require.Contains(t, readRecorder.Body.String(), `"success":true`)
+	require.Contains(t, readRecorder.Body.String(), `"organization_quota":300`)
+	require.Contains(t, readRecorder.Body.String(), `"over_allocated":false`)
+
+	writeRecorder := perform(http.MethodPut, owner, `{"limit":50}`)
+	require.Equal(t, http.StatusOK, writeRecorder.Code, writeRecorder.Body.String())
+	require.Contains(t, writeRecorder.Body.String(), `"success":true`)
+
+	var stored model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, member.Id).First(&stored).Error)
+	require.Equal(t, 50, stored.QuotaLimit)
+
+	updatedRecorder := perform(http.MethodGet, owner, "")
+	require.Equal(t, http.StatusOK, updatedRecorder.Code, updatedRecorder.Body.String())
+	require.Contains(t, updatedRecorder.Body.String(), `"limit":50`)
+	require.Contains(t, updatedRecorder.Body.String(), `"allocated":50`)
 }
 
 func isOrganizationRoutePath(path string) bool {

@@ -26,11 +26,33 @@ import {
   organizationTokenErrorText,
   organizationTokenFullKey,
   organizationTokenKeyPreview,
+  organizationTokenOwnerName,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_EXPIRY_SHORTCUTS,
   ORGANIZATION_TOKEN_STATUS_FILTER_OPTIONS,
 } from '../organization-token'
+
+describe('organizationTokenOwnerName', () => {
+  test('prefers the creator username over the display name', () => {
+    expect(
+      organizationTokenOwnerName({
+        creator_username: 'alice',
+        creator_display_name: 'Alice',
+      })
+    ).toBe('alice')
+  })
+
+  test('falls back to the display name when the username is absent', () => {
+    expect(organizationTokenOwnerName({ creator_display_name: 'Alice' })).toBe(
+      'Alice'
+    )
+  })
+
+  test('a row with no creator name reads as absent rather than blank', () => {
+    expect(organizationTokenOwnerName({})).toBe('-')
+  })
+})
 
 describe('organizationTokenStatusMeta', () => {
   test('names the four states a key can be stored in', () => {
@@ -100,7 +122,7 @@ describe('maskOrganizationTokenKey', () => {
 })
 
 describe('organizationTokenKeyPreview', () => {
-  test("prefers the mask the backend computed", () => {
+  test('prefers the mask the backend computed', () => {
     expect(
       organizationTokenKeyPreview({
         key: 'sk-abcdefghijklmnop',
@@ -110,9 +132,9 @@ describe('organizationTokenKeyPreview', () => {
   })
 
   test('masks the key itself when no preview came with it', () => {
-    expect(
-      organizationTokenKeyPreview({ key: 'sk-abcdefghijklmnop' })
-    ).toBe('sk-abcd**********mnop')
+    expect(organizationTokenKeyPreview({ key: 'sk-abcdefghijklmnop' })).toBe(
+      'sk-abcd**********mnop'
+    )
     expect(organizationTokenKeyPreview({ key: '' })).toBe('')
   })
 })
@@ -146,6 +168,7 @@ describe('getOrganizationTokenActionFlags', () => {
   const key = {
     responsible_user_id: 7,
     user_id: 7,
+    creator_user_id: 7,
     visibility: 'private',
     key: 'sk-abcdefghijklmnop',
   }
@@ -154,7 +177,11 @@ describe('getOrganizationTokenActionFlags', () => {
     currentUserId: 7,
     readOnly: false,
   }
-  const member = { canManageAllTokens: false, currentUserId: 7, readOnly: false }
+  const member = {
+    canManageAllTokens: false,
+    currentUserId: 7,
+    readOnly: false,
+  }
 
   test('an organization-wide manager may act on every key', () => {
     expect(getOrganizationTokenActionFlags(key, manager)).toEqual({
@@ -170,54 +197,66 @@ describe('getOrganizationTokenActionFlags', () => {
     ).toBe(true)
   })
 
-  test('a member reaches the keys they are responsible for', () => {
+  test('a member may manage the keys they created', () => {
     expect(getOrganizationTokenActionFlags(key, member)).toEqual({
       canEdit: true,
       canDelete: true,
       canCopy: true,
     })
-  })
-
-  test('a member may copy a public key but not change it', () => {
-    expect(
-      getOrganizationTokenActionFlags(
-        { ...key, visibility: 'public' },
-        member
-      )
-    ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
-  })
-
-  test('a member may not touch a key held by someone else', () => {
     expect(
       getOrganizationTokenActionFlags(
         { ...key, responsible_user_id: 99 },
         member
       )
+    ).toEqual({ canEdit: true, canDelete: true, canCopy: true })
+  })
+
+  test('a member who only uses a key may copy it but not change it', () => {
+    expect(
+      getOrganizationTokenActionFlags({ ...key, creator_user_id: 99 }, member)
+    ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
+  })
+
+  test('a member may copy a public key but not change it', () => {
+    expect(
+      getOrganizationTokenActionFlags(
+        { ...key, visibility: 'public', creator_user_id: 99 },
+        member
+      )
+    ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
+  })
+
+  test('a member may not touch a key created and held by someone else', () => {
+    expect(
+      getOrganizationTokenActionFlags(
+        { ...key, responsible_user_id: 99, creator_user_id: 99 },
+        member
+      )
     ).toEqual({ canEdit: false, canDelete: false, canCopy: false })
   })
 
-  test('a key with no owner belongs to nobody, not to user zero', () => {
+  test('a key with no creator belongs to nobody, not to user zero', () => {
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 0, user_id: 0 },
+        { ...key, responsible_user_id: 0, user_id: 0, creator_user_id: 0 },
         member
       )
     ).toEqual({ canEdit: false, canDelete: false, canCopy: false })
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 0, user_id: 0 },
+        { ...key, responsible_user_id: 0, user_id: 0, creator_user_id: 0 },
         manager
       )
     ).toEqual({ canEdit: true, canDelete: true, canCopy: true })
   })
 
-  test('falling back to the owner column still counts as responsibility', () => {
+  test('the responsible-id fallback still counts for use, not for control', () => {
     expect(
       getOrganizationTokenActionFlags(
-        { ...key, responsible_user_id: 0, user_id: 7 },
+        { ...key, responsible_user_id: 0, user_id: 7, creator_user_id: 99 },
         member
-      ).canEdit
-    ).toBe(true)
+      )
+    ).toEqual({ canEdit: false, canDelete: false, canCopy: true })
   })
 
   test('read-only keeps copy, which is a read', () => {
@@ -230,9 +269,9 @@ describe('getOrganizationTokenActionFlags', () => {
   })
 
   test('there is nothing to copy when the secret is absent', () => {
-    expect(getOrganizationTokenActionFlags({ ...key, key: '' }, manager).canCopy).toBe(
-      false
-    )
+    expect(
+      getOrganizationTokenActionFlags({ ...key, key: '' }, manager).canCopy
+    ).toBe(false)
   })
 })
 
@@ -303,8 +342,34 @@ describe('organizationTokenErrorText', () => {
       )
     ).toBe('organization token limit reached')
     expect(
-      organizationTokenErrorText(new Error('offline'), 'Failed to save organization key')
+      organizationTokenErrorText(
+        new Error('offline'),
+        'Failed to save organization key'
+      )
     ).toBe('Failed to save organization key')
+  })
+
+  test('member and organization quota refusals have their own sentences', () => {
+    expect(
+      organizationTokenErrorText(
+        {
+          response: {
+            data: { code: 'insufficient_organization_member_quota' },
+          },
+        },
+        'fallback'
+      )
+    ).toBe(
+      'Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.'
+    )
+    expect(
+      organizationTokenErrorText(
+        {
+          response: { data: { code: 'insufficient_organization_quota' } },
+        },
+        'fallback'
+      )
+    ).toBe('The organization has no available quota.')
   })
 })
 

@@ -21,6 +21,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -996,6 +998,38 @@ func TestOrganizationInviteForceRotateReplaySucceedsAfterInviteAccepted(t *testi
 	require.Equal(t, model.OrganizationInviteStatusAccepted, replayed.Status)
 	require.Empty(t, replayed.Token)
 	require.Equal(t, 1, sentCount)
+}
+
+// A reader that missed the cache during the accept transaction can read the
+// still-exited membership and cache "unrestricted". The post-commit
+// invalidation must drop that value, or the restriction stays invisible for
+// the whole TTL.
+func TestAcceptInviteInvalidatesMemberModelAllowListCacheAfterCommit(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	server := useMemberModelAccessMiniRedis(t)
+	target := createServiceTestUser(t, "invite-model-access-cache", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "model-access-cache@example.com").Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{
+		OrganizationId: organization.Id,
+		UserId:         target.Id,
+		Role:           model.OrganizationRoleMember,
+		Status:         model.OrganizationMemberStatusExited,
+		ModelAccess:    model.MarshalMemberModelAccess([]string{"a"}),
+	}).Error)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email: "model-access-cache@example.com",
+		Role:  model.OrganizationRoleMember,
+	})
+	require.NoError(t, err)
+
+	// The raced reader cached the pre-commit (exited) state.
+	key := fmt.Sprintf("user:model_allowlist:%d", target.Id)
+	require.NoError(t, common.RedisSet(key, `{"u":true}`, time.Minute))
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+	assert.False(t, server.Exists(key), "accept must clear a cache filled during the transaction")
+	assert.Equal(t, []string{"a"}, model.GetUserModelAllowList(target.Id))
 }
 
 func TestOrganizationInviteForceRotateIdempotencyConflict(t *testing.T) {

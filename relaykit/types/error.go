@@ -97,9 +97,10 @@ const (
 	// 所以必须在这里再声明一份。取值与宿主 types/organization_error.go 逐字相同——
 	// 它们是发到客户端的 wire 契约，两边任何一处改动都要同步。
 	// 与 ErrorCodeViolationFeeGrokCSAM 的处理方式一致。
-	ErrorCodeOrganizationBillingSessionConflict ErrorCode = "organization_billing_session_conflict"
-	ErrorCodeInsufficientOrganizationQuota      ErrorCode = "insufficient_organization_quota"
-	ErrorCodeOrganizationDisabled               ErrorCode = "organization_disabled"
+	ErrorCodeOrganizationBillingSessionConflict  ErrorCode = "organization_billing_session_conflict"
+	ErrorCodeInsufficientOrganizationQuota       ErrorCode = "insufficient_organization_quota"
+	ErrorCodeInsufficientOrganizationMemberQuota ErrorCode = "insufficient_organization_member_quota"
+	ErrorCodeOrganizationDisabled                ErrorCode = "organization_disabled"
 )
 
 type NewAPIError struct {

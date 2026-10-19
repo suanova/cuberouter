@@ -108,6 +108,9 @@ export type SiteSettings = {
   'legal.privacy_policy': string
   'general_setting.docs_link': string
   'general_setting.admin_docs_link': string
+  'site.counterpart_enabled': string
+  'site.counterpart_url': string
+  'site.counterpart_label': string
   HeaderNavModules: string
   SidebarModulesAdmin: string
 }

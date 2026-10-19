@@ -35,6 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { formatModelDiscountPercent } from '@/features/pricing/lib/model-helpers'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
@@ -276,6 +277,20 @@ function buildTypeDetailSegments(
       if (effectiveRatio != null && Number.isFinite(effectiveRatio)) {
         segments.push({
           text: `${ratioLabel} ${formatRatioCompact(effectiveRatio)}x`,
+        })
+      }
+
+      // Written only while a per-model discount applied, and already folded
+      // into the ratio above; the segment explains the reduced ratio.
+      const modelDiscount = other.user_model_discount
+      if (
+        modelDiscount != null &&
+        Number.isFinite(modelDiscount) &&
+        modelDiscount > 0 &&
+        modelDiscount < 1
+      ) {
+        segments.push({
+          text: `${t('User Model Discount')} ${formatModelDiscountPercent(modelDiscount)}%`,
         })
       }
     }

@@ -9,11 +9,11 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,6 +67,30 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		// normal group ratio
 		groupRatioInfo.GroupRatio = ratio_setting.GetGroupRatio(relayInfo.UsingGroup)
 	}
+
+	// 用户×模型折扣：每次调用都从基准分组倍率重新合成，auto 分组重试天然幂等。
+	// 令牌未带折扣快照（nil）时按 actor 回源；没有用户(<=0)时保持原价。
+	discounts := relayInfo.UserModelDiscounts
+	if discounts == nil {
+		actorUserId := relayInfo.ActorUserId
+		if actorUserId <= 0 {
+			actorUserId = relayInfo.UserId
+		}
+		if actorUserId > 0 {
+			loaded, err := model.GetUserModelDiscounts(actorUserId, false)
+			if err != nil {
+				// 回源失败按原价继续（fail-open），但必须留痕：否则一次缓存整体
+				// 失效期间的无折扣会被当成常态，账单少收且无迹可循。
+				common.SysError(fmt.Sprintf("用户模型折扣回源失败，本次按原价计费: userId=%d, err=%v", actorUserId, err))
+			} else {
+				discounts = loaded
+			}
+		}
+	}
+	discount := model.LookupModelDiscount(discounts, relayInfo.GetBillingModelName())
+	groupRatioInfo.GroupRatio *= discount
+	groupRatioInfo.UserModelDiscount = discount
+	groupRatioInfo.HasUserModelDiscount = discount != 1
 
 	return groupRatioInfo
 }
@@ -218,6 +242,7 @@ func ModelPriceHelper(c *gin.Context, info *relaycommon.RelayInfo, promptTokens 
 		PreConsumedTokens:     preConsumedTokens,
 		ModelRatio:            modelRatio,
 		GroupRatio:            groupRatioInfo.GroupRatio,
+		UserModelDiscount:     groupRatioInfo.UserModelDiscount,
 		UsePrice:              usePrice,
 		Quota:                 priceData.QuotaToPreConsume,
 	}

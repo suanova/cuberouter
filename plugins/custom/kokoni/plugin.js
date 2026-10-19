@@ -247,7 +247,7 @@ export function buildQueryRequest(ctx) {
   };
 }
 
-export function parseTaskResult(ctx, body, response) {
+export function parseTaskResult(ctx, body, _response) {
   const envelope = asObject(body) || {};
   const code = trimmed(envelope.code);
   // 平台自己的错误包装（如 task_not_exist）：没有任务体，直接判失败，避免白轮询 20 次

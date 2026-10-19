@@ -30,6 +30,7 @@ const (
 	ErrorCodeOrganizationLimitExceeded                     ErrorCode = "organization_limit_exceeded"
 	ErrorCodeOrganizationNameConflict                      ErrorCode = "organization_name_conflict"
 	ErrorCodeInsufficientOrganizationQuota                 ErrorCode = "insufficient_organization_quota"
+	ErrorCodeInsufficientOrganizationMemberQuota           ErrorCode = "insufficient_organization_member_quota"
 	ErrorCodeOrganizationIdempotencyConflict               ErrorCode = "organization_idempotency_conflict"
 	ErrorCodeOrganizationIdempotencyKeyRequired            ErrorCode = "organization_idempotency_key_required"
 	ErrorCodeOrganizationConfirmationMismatch              ErrorCode = "organization_confirmation_mismatch"

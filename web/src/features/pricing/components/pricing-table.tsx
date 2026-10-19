@@ -40,6 +40,8 @@ export interface PricingTableProps {
   showRechargePrice?: boolean
   selectedGroup?: string
   onModelClick?: (modelName: string) => void
+  /** Per-model discounts of the current viewer, keyed by model name. */
+  userModelDiscounts?: Record<string, number>
 }
 
 export function PricingTable(props: PricingTableProps) {
@@ -53,6 +55,7 @@ export function PricingTable(props: PricingTableProps) {
     showRechargePrice = false,
     selectedGroup,
     onModelClick,
+    userModelDiscounts,
   } = props
 
   const [pagination, setPagination] = useState<PaginationState>({
@@ -66,6 +69,7 @@ export function PricingTable(props: PricingTableProps) {
     usdExchangeRate,
     showRechargePrice,
     selectedGroup,
+    userModelDiscounts,
   })
 
   const { table } = useDataTable({

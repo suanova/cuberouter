@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -62,6 +62,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
+import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
@@ -80,6 +81,8 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  getUserModelDiscounts,
+  updateUserModelDiscounts,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -89,7 +92,8 @@ import {
   transformFormDataToPayload,
   transformUserToFormDefaults,
 } from '../lib'
-import { type User } from '../types'
+import type { User, UserModelDiscounts } from '../types'
+import { ModelDiscountEditor } from './model-discount-editor'
 import { UserQuotaDialog } from './user-quota-dialog'
 import { useUsers } from './users-provider'
 
@@ -110,6 +114,11 @@ export function UsersMutateDrawer({
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
+  const [isSavingDiscounts, setIsSavingDiscounts] = useState(false)
+  // Discounts edited in this drawer session. Null means the editor still shows
+  // the server's copy of the user.
+  const [editedDiscounts, setEditedDiscounts] =
+    useState<UserModelDiscounts | null>(null)
 
   // Fetch groups
   const { data: groupsData } = useQuery({
@@ -127,6 +136,26 @@ export function UsersMutateDrawer({
     staleTime: 5 * 60 * 1000,
   })
 
+  // Discounts belong to an existing user, so this read follows the update mode.
+  const {
+    data: modelDiscountsData,
+    isLoading: discountsLoading,
+    isError: discountsError,
+    refetch: refetchModelDiscounts,
+  } = useQuery({
+    queryKey: ['user-model-discounts', currentRow?.id],
+    queryFn: () => getUserModelDiscounts(currentRow?.id ?? 0),
+    enabled: isUpdate,
+  })
+
+  // The editor's model picker offers the models the site prices.
+  const { models: pricingModels } = usePricingData(isUpdate)
+  const modelOptions = useMemo(
+    () => pricingModels.map((pricing) => pricing.model_name),
+    [pricingModels]
+  )
+  const modelDiscounts = editedDiscounts ?? modelDiscountsData ?? {}
+
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userFormSchema),
     defaultValues: USER_FORM_DEFAULT_VALUES,
@@ -135,6 +164,9 @@ export function UsersMutateDrawer({
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
+      // The drawer outlives a close (the page only swaps `currentRow`), so
+      // discounts edited for the previous user must not survive into this one.
+      setEditedDiscounts(null)
       // For update, fetch fresh data
       getUser(currentRow.id).then((result) => {
         if (result.success && result.data) {
@@ -170,6 +202,18 @@ export function UsersMutateDrawer({
 
     setIsSubmitting(true)
     try {
+      // The footer button saves the whole drawer, so discounts that are still
+      // only local go first; a failed write aborts the submit (the API client's
+      // interceptor has already reported it) instead of silently dropping them.
+      if (editedDiscounts && currentRow) {
+        try {
+          await updateUserModelDiscounts(currentRow.id, editedDiscounts)
+          setEditedDiscounts(null)
+        } catch {
+          return
+        }
+      }
+
       const payload = transformFormDataToPayload(
         data,
         currentRow?.id,
@@ -211,6 +255,50 @@ export function UsersMutateDrawer({
     triggerRefresh()
   }
 
+  const saveModelDiscounts = async () => {
+    if (!currentRow) return
+    setIsSavingDiscounts(true)
+    try {
+      await updateUserModelDiscounts(currentRow.id, modelDiscounts)
+      toast.success(t('Operation successful'))
+      await refetchModelDiscounts()
+      // Drop the draft so the editor shows the stored (normalized) record.
+      setEditedDiscounts(null)
+    } catch {
+      // The API client's interceptor already surfaces the failure as a toast.
+    } finally {
+      setIsSavingDiscounts(false)
+    }
+  }
+
+  const renderModelDiscounts = () => {
+    if (discountsLoading) {
+      return <p className='text-muted-foreground text-xs'>{t('Loading')}</p>
+    }
+    if (discountsError) {
+      return <p className='text-destructive text-xs'>{t('Failed to load')}</p>
+    }
+    return (
+      <>
+        <ModelDiscountEditor
+          value={modelDiscounts}
+          modelOptions={modelOptions}
+          disabled={isSavingDiscounts}
+          onChange={(next) => setEditedDiscounts(next)}
+        />
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          disabled={isSavingDiscounts}
+          onClick={saveModelDiscounts}
+        >
+          {isSavingDiscounts ? t('Saving...') : t('Save discounts')}
+        </Button>
+      </>
+    )
+  }
+
   return (
     <>
       <Sheet
@@ -219,6 +307,7 @@ export function UsersMutateDrawer({
           onOpenChange(v)
           if (!v) {
             form.reset()
+            setEditedDiscounts(null)
           }
         }}
       >
@@ -467,6 +556,11 @@ export function UsersMutateDrawer({
                     )}
                   />
                 </SideDrawerSection>
+              )}
+
+              {/* Model Discounts (Update only) */}
+              {isUpdate && (
+                <SideDrawerSection>{renderModelDiscounts()}</SideDrawerSection>
               )}
 
               {canEditAdminPermissions &&

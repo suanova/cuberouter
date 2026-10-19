@@ -20,6 +20,7 @@ import type { PermissionCatalog } from '@/lib/admin-permissions'
 import { api } from '@/lib/api'
 import type { CustomOAuthBinding } from '@/lib/oauth'
 
+import type { ExportUsersPayload } from './lib/export-utils'
 import type {
   User,
   GetUsersParams,
@@ -31,8 +32,8 @@ import type {
   ApiResponse,
   InviteesListData,
   UserDashboardPayload,
+  UserModelDiscounts,
 } from './types'
-import type { ExportUsersPayload } from './lib/export-utils'
 
 // ============================================================================
 // User Management APIs
@@ -91,6 +92,46 @@ export async function searchUsers(
 export async function getUser(id: number): Promise<ApiResponse<User>> {
   const res = await api.get(`/api/user/${id}`)
   return res.data
+}
+
+/**
+ * Get a user's per-model billing discounts (admin).
+ * The backend answers with an empty object when the user has none.
+ */
+export async function getUserModelDiscounts(
+  userId: number
+): Promise<UserModelDiscounts> {
+  const res = await api.get(`/api/user/${userId}/model-discounts`)
+  const payload = res.data as
+    | ApiResponse<{ discounts?: UserModelDiscounts }>
+    | undefined
+  // A read that failed on the server (unknown user, database error) is answered
+  // as HTTP 200 with `success: false`. Falling through to the empty record would
+  // present it as "this user has no discounts", and saving that empty shape
+  // would clear the record the caller never read.
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
+  return payload?.data?.discounts ?? {}
+}
+
+/**
+ * Replace a user's per-model billing discounts (admin); an empty record clears
+ * every discount of that user.
+ */
+export async function updateUserModelDiscounts(
+  userId: number,
+  discounts: UserModelDiscounts
+): Promise<void> {
+  const res = await api.put(`/api/user/${userId}/model-discounts`, {
+    discounts,
+  })
+  // A refused write (out-of-range factor, malformed model name) is answered as
+  // HTTP 200 with `success: false`. Without this check the callers report
+  // success and keep the drawer's edit as if it had been stored.
+  if (res.data?.success === false) {
+    throw new Error(res.data.message || 'Request failed')
+  }
 }
 
 /**

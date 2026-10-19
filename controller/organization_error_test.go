@@ -111,6 +111,18 @@ func TestWriteOrganizationErrorReturnsStableCodes(t *testing.T) {
 			statusCode: http.StatusForbidden,
 			code:       "organization_token_enable_forbidden",
 		},
+		{
+			name:       "insufficient organization member quota",
+			err:        service.ErrOrganizationMemberQuotaExhausted,
+			statusCode: http.StatusForbidden,
+			code:       "insufficient_organization_member_quota",
+		},
+		{
+			name:       "insufficient organization quota",
+			err:        service.ErrOrganizationQuotaUnavailable,
+			statusCode: http.StatusForbidden,
+			code:       "insufficient_organization_quota",
+		},
 	}
 
 	for _, tc := range testCases {

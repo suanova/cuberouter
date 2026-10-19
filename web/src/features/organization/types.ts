@@ -210,6 +210,48 @@ export interface OrganizationMemberRow {
   user_status?: number
 }
 
+/**
+ * Per-model billing multiplier of one member: model name -> factor (0.01-1)
+ * applied on top of the model ratio. A member's discounts are stored on the
+ * user, not on the membership, so the organization and the platform
+ * administration read and write the same record — see `features/users/types.ts`
+ * for the canonical definition.
+ */
+export type { UserModelDiscounts } from '@/features/users/types'
+
+/**
+ * What one member may use, as the organization sees it.
+ *
+ * `access` is the member's own allow-list; an empty list is not "nothing" but
+ * "no restriction", which is why the two lists are answered together. `models`
+ * is the candidate universe the site offers — the models the organization's
+ * group can reach — so a picker never has to ask a second endpoint what a
+ * member could be allowed to use.
+ */
+export interface MemberModelAccess {
+  access: string[]
+  models: string[]
+}
+
+/**
+ * How much one member may consume inside the organization, and how the
+ * organization's own quota is distributed across its members.
+ *
+ * Every value is in quota units, not dollars — conversion for display belongs
+ * to the dialog. `limit` is the member's own cumulative ceiling, `0` meaning
+ * unlimited, and `used` is what they have consumed in this organization.
+ * `organization_quota` and `allocated` describe the pool the limit draws from;
+ * `over_allocated` is the backend's verdict that the members' limits together
+ * exceed it.
+ */
+export interface MemberQuota {
+  limit: number
+  used: number
+  organization_quota: number
+  allocated: number
+  over_allocated: boolean
+}
+
 // ============================================================================
 // Invitations
 // ============================================================================
@@ -361,6 +403,8 @@ export interface OrganizationTokenRow {
   system_disabled_ref_id?: number
   system_disabled_at?: number
   previous_status?: number
+  creator_username?: string
+  creator_display_name?: string
   responsible_username?: string
   responsible_display_name?: string
   /** Why the key is currently force-disabled, if anything disabled it. */

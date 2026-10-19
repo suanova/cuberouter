@@ -36,7 +36,7 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import { getViewerModelDiscount, isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatPrice,
   formatRequestPrice,
@@ -56,6 +56,8 @@ export interface PricingColumnsOptions {
   usdExchangeRate?: number
   showRechargePrice?: boolean
   selectedGroup?: string
+  /** Per-model discounts of the current viewer, keyed by model name. */
+  userModelDiscounts?: Record<string, number>
 }
 
 export function usePricingColumns(
@@ -68,6 +70,7 @@ export function usePricingColumns(
     usdExchangeRate = 1,
     showRechargePrice = false,
     selectedGroup,
+    userModelDiscounts,
   } = options
 
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
@@ -120,6 +123,10 @@ export function usePricingColumns(
       ),
       cell: ({ row }) => {
         const model = row.original
+        const modelDiscount = getViewerModelDiscount(
+          userModelDiscounts,
+          model.model_name
+        )
         const videoPrices = model.video_prices
         if (videoPrices && videoPrices.rows.length > 0) {
           return (
@@ -153,10 +160,8 @@ export function usePricingColumns(
           showRechargePrice,
           priceRate,
           usdExchangeRate,
-          groupRatioMultiplier: getDynamicDisplayGroupRatio(
-            model,
-            selectedGroup
-          ),
+          groupRatioMultiplier:
+            getDynamicDisplayGroupRatio(model, selectedGroup) * modelDiscount,
         })
 
         if (dynamicSummary) {
@@ -237,7 +242,8 @@ export function usePricingColumns(
               showRechargePrice,
               priceRate,
               usdExchangeRate,
-              selectedGroup
+              selectedGroup,
+              modelDiscount
             )
           )
           const outputPrice = stripTrailingZeros(
@@ -248,7 +254,8 @@ export function usePricingColumns(
               showRechargePrice,
               priceRate,
               usdExchangeRate,
-              selectedGroup
+              selectedGroup,
+              modelDiscount
             )
           )
 
@@ -272,7 +279,8 @@ export function usePricingColumns(
             showRechargePrice,
             priceRate,
             usdExchangeRate,
-            selectedGroup
+            selectedGroup,
+            modelDiscount
           )
         )
 
@@ -295,15 +303,17 @@ export function usePricingColumns(
       header: t('Cached'),
       cell: ({ row }) => {
         const model = row.original
+        const modelDiscount = getViewerModelDiscount(
+          userModelDiscounts,
+          model.model_name
+        )
         const dynamicSummary = getDynamicPricingSummary(model, {
           tokenUnit,
           showRechargePrice,
           priceRate,
           usdExchangeRate,
-          groupRatioMultiplier: getDynamicDisplayGroupRatio(
-            model,
-            selectedGroup
-          ),
+          groupRatioMultiplier:
+            getDynamicDisplayGroupRatio(model, selectedGroup) * modelDiscount,
         })
 
         if (dynamicSummary) {
@@ -352,7 +362,8 @@ export function usePricingColumns(
             showRechargePrice,
             priceRate,
             usdExchangeRate,
-            selectedGroup
+            selectedGroup,
+            modelDiscount
           )
         )
 

@@ -75,6 +75,9 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other["model_ratio"] = modelRatio
 	other["group_ratio"] = groupRatio
 	other["completion_ratio"] = completionRatio
+	if relayInfo.PriceData.GroupRatioInfo.HasUserModelDiscount {
+		other["user_model_discount"] = relayInfo.PriceData.GroupRatioInfo.UserModelDiscount
+	}
 	other["cache_tokens"] = cacheTokens
 	other["cache_ratio"] = cacheRatio
 	other["model_price"] = modelPrice
@@ -320,6 +323,9 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData hosttypes.P
 	other := make(map[string]interface{})
 	other["model_price"] = priceData.ModelPrice
 	other["group_ratio"] = priceData.GroupRatioInfo.GroupRatio
+	if priceData.GroupRatioInfo.HasUserModelDiscount {
+		other["user_model_discount"] = priceData.GroupRatioInfo.UserModelDiscount
+	}
 	if priceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = priceData.GroupRatioInfo.GroupSpecialRatio
 	}

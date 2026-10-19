@@ -63,7 +63,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(middleware.RelayCapacity())
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	playgroundRouter.Use(middleware.UserAuth(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
 	{
 		playgroundRouter.POST("/chat/completions", controller.Playground)
 		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
@@ -80,7 +80,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundVideoRouter.Use(middleware.RelayCapacity())
 	playgroundVideoRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundVideoRouter.Use(middleware.AllowTaskPluginChannel())
-	playgroundVideoRouter.Use(middleware.UserAuth(), middleware.Distribute())
+	playgroundVideoRouter.Use(middleware.UserAuth(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
 	{
 		playgroundVideoRouter.POST("/generations", controller.PlaygroundVideo)
 		playgroundVideoRouter.GET("/generations/:task_id", controller.PlaygroundVideoFetch)

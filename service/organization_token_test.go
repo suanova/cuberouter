@@ -80,8 +80,8 @@ func TestOrganizationTokenPlatformRoleMemberWorkspaceCanBatchCreateOwnPrivateTok
 }
 
 func TestOrganizationTokenPlatformRoleMemberWorkspaceCreatesMemberClearanceBlocker(t *testing.T) {
-	owner, platformMember, organization := createOrganizationTokenPlatformMember(t, "org-token-platform-member-disable")
-	token, err := CreateOrganizationToken(owner.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "workspace-disable", ResponsibleUserId: platformMember.Id, Visibility: model.TokenVisibilityPrivate, ExpiredTime: -1})
+	_, platformMember, organization := createOrganizationTokenPlatformMember(t, "org-token-platform-member-disable")
+	token, err := CreateOrganizationToken(platformMember.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "workspace-disable", ResponsibleUserId: platformMember.Id, Visibility: model.TokenVisibilityPrivate, ExpiredTime: -1})
 	require.NoError(t, err)
 
 	_, err = UpdateOrganizationToken(platformMember.Id, organization.Id, OrganizationAccessModeWorkspace, token.Id, OrganizationTokenRequest{Name: token.Name, Status: common.TokenStatusDisabled, ResponsibleUserId: platformMember.Id, Visibility: model.TokenVisibilityPrivate, ExpiredTime: -1})
@@ -94,7 +94,7 @@ func TestOrganizationTokenPlatformRoleMemberWorkspaceCreatesMemberClearanceBlock
 
 func TestOrganizationTokenPlatformRoleMemberWorkspaceCannotClearPlatformBlocker(t *testing.T) {
 	owner, platformMember, organization := createOrganizationTokenPlatformMember(t, "org-token-platform-member-enable")
-	token, err := CreateOrganizationToken(owner.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "workspace-enable", ResponsibleUserId: platformMember.Id, Visibility: model.TokenVisibilityPrivate, ExpiredTime: -1})
+	token, err := CreateOrganizationToken(platformMember.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "workspace-enable", ResponsibleUserId: platformMember.Id, Visibility: model.TokenVisibilityPrivate, ExpiredTime: -1})
 	require.NoError(t, err)
 	now := common.GetTimestamp()
 	require.NoError(t, ensureOrganizationTokenSystemBlockerWithTx(model.DB, token, organizationTokenBlockerReasonManualDisabled, organizationTokenBlockerRefTypeOperator, owner.Id, owner.Id, organizationTokenBlockerClearancePlatform, now))
@@ -270,6 +270,31 @@ func TestOrganizationTokenListIncludesResponsibleUsernameButNotEmail(t *testing.
 	require.Equal(t, "token-owner", tokens[0].ResponsibleUsername)
 	require.Equal(t, "Token Owner", tokens[0].ResponsibleDisplayName)
 	require.Empty(t, tokens[0].ResponsibleEmail)
+}
+
+func TestOrganizationTokenListHydratesCreatorNameSeparateFromResponsible(t *testing.T) {
+	admin, member, organization := createOrganizationTokenTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", admin.Id).Updates(map[string]any{
+		"username":     "key-creator",
+		"display_name": "Key Creator",
+	}).Error)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", member.Id).Updates(map[string]any{
+		"username":     "key-responsible",
+		"display_name": "Key Responsible",
+	}).Error)
+	_, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "handover-key", ExpiredTime: -1, ResponsibleUserId: member.Id})
+	require.NoError(t, err)
+
+	tokens, total, err := ListOrganizationTokens(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20})
+
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, tokens, 1)
+	require.Equal(t, admin.Id, tokens[0].CreatorUserId)
+	require.Equal(t, "key-creator", tokens[0].CreatorUsername)
+	require.Equal(t, "Key Creator", tokens[0].CreatorDisplayName)
+	require.Equal(t, "key-responsible", tokens[0].ResponsibleUsername)
+	require.Equal(t, "Key Responsible", tokens[0].ResponsibleDisplayName)
 }
 
 func TestOrganizationTokenCreateSetsScopeFieldsAndPersonalIsolation(t *testing.T) {
@@ -672,6 +697,60 @@ func TestOrganizationTokenMemberCanUpdateOwnResponsibleKeyButCannotTransfer(t *t
 	require.NotZero(t, updated.UpdatedAt)
 }
 
+func TestOrganizationTokenMemberCannotManageKeyCreatedByOthers(t *testing.T) {
+	admin, member, organization := createOrganizationTokenTestOrg(t)
+	created, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "handed-over", ExpiredTime: -1, ResponsibleUserId: member.Id})
+	require.NoError(t, err)
+	require.Equal(t, admin.Id, created.CreatorUserId)
+	require.Equal(t, member.Id, created.ResponsibleUserId)
+
+	_, err = UpdateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, created.Id, OrganizationTokenRequest{Name: "renamed", Status: common.TokenStatusDisabled, ExpiredTime: -1, RemainQuota: 10})
+	require.ErrorContains(t, err, "permission denied")
+
+	require.ErrorContains(t, DeleteOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, created.Id), "permission denied")
+
+	_, err = BatchDeleteOrganizationTokens(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenBatchDeleteRequest{Ids: []int{created.Id}, IdempotencyKey: testOrganizationIdempotencyKey(t, "batch-delete")})
+	require.ErrorContains(t, err, "permission denied")
+
+	var stored model.Token
+	require.NoError(t, model.DB.First(&stored, created.Id).Error)
+	require.Equal(t, "handed-over", stored.Name)
+	require.Equal(t, common.TokenStatusEnabled, stored.Status)
+	require.False(t, stored.DeletedAt.Valid)
+
+	// 使用者仍能看到这把 Key —— 能用，只是不能改。
+	tokens, total, err := ListOrganizationTokens(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, tokens, 1)
+	require.Equal(t, created.Id, tokens[0].Id)
+}
+
+func TestOrganizationTokenCreatorKeepsManageAndViewAfterHandover(t *testing.T) {
+	admin, member, organization := createOrganizationTokenTestOrg(t)
+	other := createServiceTestUser(t, "org-token-handover-target", common.RoleCommonUser)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: other.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive}).Error)
+	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "handover-source", ExpiredTime: -1})
+	require.NoError(t, err)
+	_, err = TransferOrganizationTokenResponsibility(admin.Id, organization.Id, OrganizationAccessModeWorkspace, token.Id, other.Id, "handover")
+	require.NoError(t, err)
+
+	updated, err := UpdateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, token.Id, OrganizationTokenRequest{Name: "handover-renamed", Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 10})
+	require.NoError(t, err)
+	require.Equal(t, "handover-renamed", updated.Name)
+	require.Equal(t, other.Id, updated.ResponsibleUserId)
+
+	tokens, total, err := ListOrganizationTokens(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenListRequest{Limit: 20})
+	require.NoError(t, err)
+	require.EqualValues(t, 1, total)
+	require.Len(t, tokens, 1)
+	require.Equal(t, token.Id, tokens[0].Id)
+
+	// 被转交的使用者只能用，不能改。
+	_, err = UpdateOrganizationToken(other.Id, organization.Id, OrganizationAccessModeWorkspace, token.Id, OrganizationTokenRequest{Name: "by-user", Status: common.TokenStatusEnabled, ExpiredTime: -1, RemainQuota: 10})
+	require.ErrorContains(t, err, "permission denied")
+}
+
 func TestOrganizationTokenMemberCannotUpdateResponsiblePublicKey(t *testing.T) {
 	admin, member, organization := createOrganizationTokenTestOrg(t)
 	token, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "member-public", ExpiredTime: -1, Visibility: model.TokenVisibilityPublic})
@@ -1070,6 +1149,7 @@ func TestOrganizationTokenBatchCreateReplayRechecksCurrentViewAuthorization(t *t
 	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", first.Tokens[0].Id).Updates(map[string]any{
 		"user_id":             admin.Id,
 		"responsible_user_id": admin.Id,
+		"creator_user_id":     admin.Id,
 	}).Error)
 
 	_, err = BatchCreateOrganizationTokens(member.Id, organization.Id, OrganizationAccessModeWorkspace, req)
@@ -1157,6 +1237,7 @@ func TestOrganizationTokenBatchDeleteReplayRechecksCurrentResourceAuthorization(
 	require.NoError(t, model.DB.Unscoped().Model(&model.Token{}).Where("id = ?", token.Id).Updates(map[string]any{
 		"user_id":             admin.Id,
 		"responsible_user_id": admin.Id,
+		"creator_user_id":     admin.Id,
 	}).Error)
 
 	_, err = BatchDeleteOrganizationTokens(member.Id, organization.Id, OrganizationAccessModeWorkspace, req)

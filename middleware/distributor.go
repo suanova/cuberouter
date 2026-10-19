@@ -99,6 +99,23 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 
+			// 组织成员模型白名单：拿到用户号才查询；有效允许集非 nil（受限）时才收窄，nil 直通。
+			// 空模型跳过判定：只出现在 fetch/状态类路径（如无模型源的 MJ 任务轮询）；
+			// 自带模型的提交路径由紧随其后的 MsgDistributorModelNameRequired 400 兜底，
+			// 空模型的提交类路径（视频 remix）已在 relay.ResolveOriginTask 单点补判。
+			actorUserId := common.GetContextKeyInt(c, constant.ContextKeyActorUserId)
+			if actorUserId <= 0 {
+				actorUserId = common.GetContextKeyInt(c, constant.ContextKeyUserId)
+			}
+			var allow []string
+			if actorUserId > 0 {
+				allow = model.GetUserModelAllowList(actorUserId)
+			}
+			if allow != nil && modelRequest.Model != "" && !model.IsModelAllowedByMemberAccess(allow, modelRequest.Model) {
+				abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorMemberModelForbidden, map[string]any{"Model": modelRequest.Model}))
+				return
+			}
+
 			if shouldSelectChannel {
 				if modelRequest.Model == "" {
 					abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorModelNameRequired))
@@ -561,8 +578,19 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 // 当 token 启用「可用模型限制」时，下游 modelLimitEnable 校验会因
 // modelRequest.Model 为空而误报 "This token has no access to model"。
 // 从已存储的任务记录中回填 OriginModelName 即可让校验走在正确的模型上。
+// 成员模型白名单在同一个检查块里校验模型，受限 actor 同样要回填，
+// 否则状态端点会因空模型被误拒（无任务记录时保持空模型，与 token 路径一致）。
 func getTaskOriginModelName(c *gin.Context) string {
-	if !common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled) {
+	tokenModelLimitEnabled := common.GetContextKeyBool(c, constant.ContextKeyTokenModelLimitEnabled)
+	memberModelAccessRestricted := false
+	if !tokenModelLimitEnabled {
+		actorUserId := common.GetContextKeyInt(c, constant.ContextKeyActorUserId)
+		if actorUserId <= 0 {
+			actorUserId = common.GetContextKeyInt(c, constant.ContextKeyUserId)
+		}
+		memberModelAccessRestricted = actorUserId > 0 && model.GetUserModelAllowList(actorUserId) != nil
+	}
+	if !tokenModelLimitEnabled && !memberModelAccessRestricted {
 		return ""
 	}
 

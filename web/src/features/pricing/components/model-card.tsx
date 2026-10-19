@@ -20,6 +20,7 @@ import { ChevronRight, Copy } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { StatusBadge } from '@/components/status-badge'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
@@ -38,7 +39,11 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { imagePriceTierLabelKey } from '../lib/image-price'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import {
+  formatModelDiscountPercent,
+  getViewerModelDiscount,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { getTaskNumberFields } from '../lib/task-expr'
 import { formatVideoPriceMoney } from '../lib/video-price'
@@ -53,6 +58,8 @@ export interface ModelCardProps {
   tokenUnit?: TokenUnit
   showRechargePrice?: boolean
   selectedGroup?: string
+  /** Per-model discounts of the current viewer, keyed by model name. */
+  userModelDiscounts?: Record<string, number>
   perf?: ModelPerfBadgeData
 }
 
@@ -72,15 +79,23 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
     props.model.billing_mode === 'tiered_expr' &&
     Boolean(props.model.billing_expr)
   const isUnconfiguredTaskUsage = isUnconfiguredTaskUsageModel(props.model)
+  const modelDiscount = getViewerModelDiscount(
+    props.userModelDiscounts,
+    props.model.model_name
+  )
+  // 徽标只在卡片摘要本身已随 d 折算时显示：视频/图片摘要按基准价展示（既有形态，
+  // 折后价与徽标在详情弹窗给出），摘要与徽标并排会被读成「这些价格已折后」。
+  const summaryReflectsDiscount = !(
+    props.model.video_prices || props.model.image_prices
+  )
   const dynamicPriceOptions = {
     tokenUnit,
     showRechargePrice,
     priceRate,
     usdExchangeRate,
-    groupRatioMultiplier: getDynamicDisplayGroupRatio(
-      props.model,
-      props.selectedGroup
-    ),
+    groupRatioMultiplier:
+      getDynamicDisplayGroupRatio(props.model, props.selectedGroup) *
+      modelDiscount,
   }
   const dynamicSummary = isDynamicPricing
     ? getDynamicPricingSummary(props.model, dynamicPriceOptions)
@@ -231,7 +246,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               showRechargePrice,
               priceRate,
               usdExchangeRate,
-              props.selectedGroup
+              props.selectedGroup,
+              modelDiscount
             )}
           </span>
         </span>
@@ -245,7 +261,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
               showRechargePrice,
               priceRate,
               usdExchangeRate,
-              props.selectedGroup
+              props.selectedGroup,
+              modelDiscount
             )}
           </span>
         </span>
@@ -260,7 +277,8 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             showRechargePrice,
             priceRate,
             usdExchangeRate,
-            props.selectedGroup
+            props.selectedGroup,
+            modelDiscount
           )}
         </span>{' '}
         / {t('request')}
@@ -291,6 +309,14 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             </h3>
             <div className='mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm sm:mt-1 sm:gap-x-3'>
               {priceSummary}
+              {modelDiscount < 1 && summaryReflectsDiscount && (
+                <StatusBadge
+                  label={`${t('Discount')} ${formatModelDiscountPercent(modelDiscount)}%`}
+                  variant='success'
+                  size='sm'
+                  copyable={false}
+                />
+              )}
             </div>
           </div>
         </div>

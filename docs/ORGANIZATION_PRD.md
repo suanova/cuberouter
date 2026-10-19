@@ -439,27 +439,27 @@ owner 不能被禁用、移除或退出，必须先完成所有权转交。
 组织 Key 必须具备清晰的产品归属：
 
 - 归属于某个组织。
-- 有创建者，用于记录谁创建了该 Key。
-- 有责任人，用于权限判断、用量归因和成员维度展示。
+- 有创建者（owner），记录谁创建了该 Key，并持有该 Key 的管理权限。
+- 有使用者（原责任人），用于归因和成员维度展示；Key 的权限判断以创建者为准。
 - 有可见性，用于控制普通成员能否查看。
 - 有独立额度和状态，用于控制该 Key 的可用性。
 
-组织 Key 的计费账户始终是组织，不是责任人的个人账户。具体数据字段和兼容策略由技术方案定义。
+组织 Key 的计费账户始终是组织，不是使用者的个人账户。具体数据字段和兼容策略由技术方案定义。
 
 ### 11.2 Visibility
 
 组织 Key visibility：
 
-- `private`：仅责任人和具备管理权限的角色可见。
+- `private`：仅使用者、创建者和具备管理权限的角色可见。
 - `public`：组织内成员可见。
 
 规则：
 
-- member 可查看本组织全部 public Key，以及自己负责的 private Key。
-- member 只能管理自己负责的 private Key。
-- member 只能担任 private Key 的责任人。
-- public Key 的责任人必须是组织 owner 或 admin；member 不能创建 public Key，也不能担任 public Key 责任人。
-- owner/admin 可以管理本组织全部 Key。
+- member 可查看本组织全部 public Key，以及自己使用和自己创建的 private Key。
+- member 只能管理自己创建的 private Key；使用者身份不授予管理权。
+- member 只能担任 private Key 的使用者。
+- public Key 的使用者必须是组织 owner 或 admin；member 不能创建 public Key，也不能担任 public Key 使用者。
+- owner/admin 可以管理本组织全部 Key，包括 member 创建的 Key。
 - platform admin/root 可通过管理端查看、更新、删除、转交组织 Key，但默认不创建组织 Key。
 - 组织 Key 完整 secret 在列表、详情、更新、转交等接口中按操作者权限每次返回，便于成员随时取用；同时附带 masked key 预览用于安全展示。
 
@@ -468,9 +468,9 @@ owner 不能被禁用、移除或退出，必须先完成所有权转交。
 组织 Key 创建规则：
 
 - 组织必须 active。
-- 责任人必须是 active 成员。
-- member 只能创建自己负责的 private Key。
-- owner/admin 可指定 active 成员为责任人。
+- 使用者必须是 active 成员。
+- member 只能创建自己使用的 private Key。
+- owner/admin 可指定 active 成员为使用者。
 - group 必须在组织可用 group 范围内。
 - 创建必须写审计日志。
 
@@ -802,7 +802,7 @@ Key 审计只记录：
 
 - 批量创建和批量删除必须具备重复提交保护。
 - 组织 Key 完整 secret 在创建、列表、详情、更新、转交、批量幂等重试等接口中按操作者权限每次返回，masked key 预览用于安全展示。
-- member 只能管理自己负责且有权限可见的 Key。
+- member 只能管理自己创建的 Key；使用者身份不授予管理权。
 - owner/admin 可以按权限管理组织内 Key。
 
 ### 16.7 日志、任务、用量与审计能力

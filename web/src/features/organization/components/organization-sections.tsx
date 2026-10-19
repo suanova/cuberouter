@@ -27,11 +27,11 @@ import { OrganizationInvitesSection } from './organization-invites-section'
 import { OrganizationLogsSection } from './organization-logs-section'
 import { OrganizationMembersSection } from './organization-members-section'
 import { OrganizationOverviewSection } from './organization-overview-section'
+import { useOrganizationSurface } from './organization-page-provider'
 import { OrganizationSectionEmpty } from './organization-section'
 import { OrganizationSettingsSection } from './organization-settings-section'
 import { OrganizationTasksSection } from './organization-tasks-section'
 import { OrganizationTokensSection } from './organization-tokens-section'
-import { useOrganizationSurface } from './organization-page-provider'
 
 type OrganizationSectionsProps = {
   detail: OrganizationDetail
@@ -100,6 +100,9 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           currentUserId={actor.user_id}
           canView={capabilities.can_view_organization}
           canManageMembers={capabilities.can_manage_members}
+          canManageMemberDiscounts={capabilities.can_manage_member_discounts}
+          canManageMemberModels={capabilities.can_manage_member_models}
+          canManageMemberQuotas={capabilities.can_manage_member_quotas}
           canAddMembersDirectly={capabilities.can_add_members_directly}
           canExitOrganization={capabilities.can_exit_organization}
           isPlatformAdministrator={isPlatformSurface && actor.is_platform_admin}
@@ -126,6 +129,7 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           organizationGroup={organization.group ?? ''}
           canView={capabilities.can_view_organization_tokens}
           canManageAllTokens={capabilities.can_manage_all_tokens}
+          isPlatformAdministrator={actor.is_platform_admin}
           canCreate={!isPlatformSurface}
           currentUserId={actor.user_id}
           isOrganizationMember={actor.is_organization_member}

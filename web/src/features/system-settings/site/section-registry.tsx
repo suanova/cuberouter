@@ -51,6 +51,11 @@ const SITE_SECTIONS = [
             docs_link: settings['general_setting.docs_link'],
             admin_docs_link: settings['general_setting.admin_docs_link'],
           },
+          site: {
+            counterpart_enabled: settings['site.counterpart_enabled'],
+            counterpart_url: settings['site.counterpart_url'],
+            counterpart_label: settings['site.counterpart_label'],
+          },
         }}
       />
     ),

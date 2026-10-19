@@ -148,7 +148,7 @@ tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)
 | `cc` | 缓存写入(5m) | 缓存写入 (5m) |
 | `cc1h` | 缓存写入(1h) | 缓存写入 (1h) |
 | `img` / `ai` / `ao` / `img_o` | 图片输入 / 音频输入 / 音频输出 / 图片输出 | 对应中文标签 |
-| `u("key")` | task 插件计费事实(见 expr.md Task Usage 节) | — |
+| `u("key")` | task 计费事实(插件 schema 或 Go 适配器注册,见 expr.md Task Usage 节) | — |
 
 ### 条件构建规则
 
@@ -163,7 +163,7 @@ tier("base", p * 5 + c * 25 + cr * 0.5 + cc * 6.25 + cc1h * 10)
 
 ### Task(视频生成等)的表达式差异
 
-task 表达式输出**已是该请求的美元总价**,不再 /1M:`u("seconds") * 0.4` = $0.40/秒;token 型字段用 `u("tokens") * <$/1M> / 1000000` 的规范形状。保存时按插件 `meta.usageSchema` 校验 `u()` 键。
+task 表达式输出**已是该请求的美元总价**,不再 /1M:`u("seconds") * 0.4` = $0.40/秒;token 型字段用 `u("tokens") * <$/1M> / 1000000` 的规范形状。保存时按插件 `meta.usageSchema` 或 Go 适配器注册的 schema(`billingexpr.RegisterTaskUsageSchema`)校验 `u()` 键。
 
 ## 4. 视频按秒价目表(VideoPrice)
 

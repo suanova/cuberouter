@@ -99,11 +99,14 @@ export const ENDPOINT_TYPES = {
   EMBEDDINGS: 'embeddings',
   OPENAI_VIDEO: 'openai-video',
   ARK_VIDEO: 'ark-video',
+  /** 任务插件渠道（62）的通用任务视频端点 /v1/video/generations。 */
+  VIDEO_GENERATION: 'video-generation',
   /**
-   * Filter value standing for both video endpoint styles — Sora / doubao
-   * (openai-video) and AstraFlow (ark-video). No model carries this value in
-   * its `supported_endpoint_types`; matchesEndpointType (lib/filters.ts) is
-   * what expands it. Both styles mean "this model generates video", and the
+   * Filter value standing for every video endpoint style — Sora / doubao
+   * (openai-video), AstraFlow (ark-video) and task-plugin channels
+   * (video-generation). No model carries this value in its
+   * `supported_endpoint_types`; matchesEndpointType (lib/filters.ts) is
+   * what expands it. All styles mean "this model generates video", and the
    * style a caller ends up using depends on the path they call, so the
    * marketplace offers a single Video filter.
    */
@@ -113,16 +116,17 @@ export const ENDPOINT_TYPES = {
 export type EndpointTypeOption =
   (typeof ENDPOINT_TYPES)[keyof typeof ENDPOINT_TYPES]
 
-/** Endpoint values the filter panel offers: video is listed once for both styles. */
+/** Endpoint values the filter panel offers: video is listed once for all styles. */
 export type EndpointFilterValue = Exclude<
   EndpointTypeOption,
-  'openai-video' | 'ark-video'
+  'openai-video' | 'ark-video' | 'video-generation'
 >
 
 /**
  * Endpoint type labels — also the source of the filter panel's options, so the
- * two video styles are listed once, under VIDEO. The individual OPENAI_VIDEO /
- * ARK_VIDEO values stay for matching (see ENDPOINT_TYPES.VIDEO).
+ * video styles are listed once, under VIDEO. The individual OPENAI_VIDEO /
+ * ARK_VIDEO / VIDEO_GENERATION values stay for matching (see
+ * ENDPOINT_TYPES.VIDEO).
  */
 export function getEndpointTypeLabels(
   t: TFunction
@@ -144,12 +148,12 @@ export function getEndpointTypeLabels(
  * Display labels for a model's endpoints, in the order the backend declared
  * them, without repeats.
  *
- * A per-second video model is billed through the OpenAI-compatible video
- * endpoint whichever style its channel uses, so it reads as one 视频 label
- * instead of exposing the raw style; a model declaring both raw video styles
- * still shows that label once. An endpoint type the label map does not know
- * keeps its raw value, so a type added on the backend still renders something
- * rather than disappearing from the card.
+ * A video model reads as one 视频 label whatever API style its channel serves
+ * (openai-video, ark-video, or the task-plugin video-generation endpoint), so
+ * the card does not expose the raw style; a model declaring several video
+ * styles still shows that label once. An endpoint type the label map does not
+ * know keeps its raw value, so a type added on the backend still renders
+ * something rather than disappearing from the card.
  */
 export function getModelEndpointLabels(
   model: PricingModel,
@@ -160,7 +164,8 @@ export function getModelEndpointLabels(
   const resolved = (model.supported_endpoint_types ?? []).map((type) => {
     if (
       type === ENDPOINT_TYPES.OPENAI_VIDEO ||
-      type === ENDPOINT_TYPES.ARK_VIDEO
+      type === ENDPOINT_TYPES.ARK_VIDEO ||
+      type === ENDPOINT_TYPES.VIDEO_GENERATION
     ) {
       return labels[ENDPOINT_TYPES.VIDEO]
     }

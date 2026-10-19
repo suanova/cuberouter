@@ -704,7 +704,7 @@ func AcceptInvite(token string, userId int, auditMetadata ...OrganizationAuditRe
 		return err
 	}
 	now := common.GetTimestamp()
-	return model.DB.Transaction(func(tx *gorm.DB) error {
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		var organization model.Organization
 		if err := model.LockForUpdate(tx).Where("id = ?", lookup.OrganizationId).First(&organization).Error; err != nil {
 			return err
@@ -760,6 +760,13 @@ func AcceptInvite(token string, userId int, auditMetadata ...OrganizationAuditRe
 		}
 		return recordOrganizationAudit(tx, &organization, userId, actor.OperatorRoleForAudit, organizationAuditActionInviteAccept, "invite", invite.Id, before, invite, "", auditMetadata...)
 	})
+	if err != nil {
+		return err
+	}
+	// 提交后再失效：事务内删除会被并发读者用提交前的快照回填，而提交后没有第二次
+	// 机会；这里与成员增删、组织启停等路径保持同一口径。
+	invalidateUserModelAllowListCaches(userId)
+	return nil
 }
 
 func RevokeInvite(operatorUserId, organizationId int, accessMode string, inviteId int, reason string, auditMetadata ...OrganizationAuditRequestMetadata) error {

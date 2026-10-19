@@ -67,7 +67,7 @@ func TestPersonalTaskQuotaCheckStillUsesUserQuota(t *testing.T) {
 
 func TestOrganizationTaskQuotaCheckRejectsInsufficientTokenQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "limited-task-key", ExpiredTime: -1, RemainQuota: 50})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "limited-task-key", ExpiredTime: -1, RemainQuota: 50})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "limited-task-key"
@@ -80,7 +80,7 @@ func TestOrganizationTaskQuotaCheckRejectsInsufficientTokenQuota(t *testing.T) {
 
 func TestOrganizationTaskQuotaCheckAllowsUnlimitedTokenQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "unlimited-task-key", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "unlimited-task-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "unlimited-task-key"
@@ -93,7 +93,7 @@ func TestOrganizationTaskQuotaCheckAllowsUnlimitedTokenQuota(t *testing.T) {
 
 func TestOrganizationTaskRefundReturnsQuotaToOrganizationAndToken(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "org-task-refund-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "org-task-refund-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	task := &model.Task{
 		UserId:             member.Id,
@@ -129,7 +129,7 @@ func TestOrganizationTaskRefundReturnsQuotaToOrganizationAndToken(t *testing.T) 
 
 func TestOrganizationTaskSessionFailureWritesPreConsumeAndRefundLedger(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "org-task-session-refund-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "org-task-session-refund-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "org-task-session-refund"
@@ -168,7 +168,7 @@ func TestOrganizationTaskSessionFailureWritesPreConsumeAndRefundLedger(t *testin
 
 func TestOrganizationTaskAdjustQuotaChargesOrganizationAndTokenOnly(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "org-task-adjust-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "org-task-adjust-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	task := &model.Task{
 		UserId:             member.Id,
@@ -207,7 +207,7 @@ func TestOrganizationTaskAdjustQuotaChargesOrganizationAndTokenOnly(t *testing.T
 
 func TestOrganizationMidjourneyRefundReturnsQuotaToOrganizationAndToken(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "org-mj-refund-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "org-mj-refund-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	task := &model.Midjourney{
 		UserId:             member.Id,
@@ -240,7 +240,7 @@ func TestOrganizationMidjourneyRefundReturnsQuotaToOrganizationAndToken(t *testi
 
 func TestOrganizationTaskSettleDifferentActualReplayConflictsWithoutMutation(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "task-settle-conflict-replay", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "task-settle-conflict-replay", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "task-settle-conflict-replay"
@@ -288,7 +288,7 @@ func TestOrganizationTaskSettleDifferentActualReplayConflictsWithoutMutation(t *
 
 func TestOrganizationTaskSettleCrashReplayFillsTaskQuotaOnly(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "task-settle-crash-replay", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "task-settle-crash-replay", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "task-settle-crash-replay"
@@ -338,7 +338,7 @@ func TestOrganizationTaskSettleCrashReplayFillsTaskQuotaOnly(t *testing.T) {
 
 func TestOrganizationMidjourneySettleCrashReplayFillsTaskQuotaOnly(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "midjourney-settle-crash-replay", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "midjourney-settle-crash-replay", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "midjourney-settle-crash-replay"
@@ -388,7 +388,7 @@ func TestOrganizationMidjourneySettleCrashReplayFillsTaskQuotaOnly(t *testing.T)
 
 func TestInitTaskPersistsOrganizationBillingAndTokenScope(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "org-init-task-key", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "org-init-task-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.UsingGroup = "default"
@@ -433,7 +433,7 @@ func TestPersonalBillingUntouchedByPrecedingOrganizationRequest(t *testing.T) {
 	subscriptionId := member.Id + 500000
 	seedSubscription(t, subscriptionId, member.Id, 1000, 0)
 
-	orgToken, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "personal-isolation-org-key", ExpiredTime: -1, RemainQuota: 1000})
+	orgToken, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "personal-isolation-org-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	orgRelayInfo := organizationBillingRelayInfo(orgToken, organization.Id)
 	orgRelayInfo.RequestId = "personal-isolation-org-request"

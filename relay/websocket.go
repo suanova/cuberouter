@@ -1,7 +1,9 @@
 package relay
 
 import (
+	"errors"
 	"fmt"
+	"net/http"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -25,6 +27,15 @@ func WssHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.
 	//requestBody = bytes.NewBuffer(firstWssRequest.([]byte))
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
+	if err := service.CheckOrganizationMemberQuotaAtSessionStart(info); err != nil {
+		// Only the member-cap refusal is a business decision. A transient database
+		// failure must keep the default retry/log treatment instead of posing as
+		// an exhausted quota that skips retries and error logging.
+		if errors.Is(err, service.ErrOrganizationMemberQuotaExceeded) {
+			return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientOrganizationMemberQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+		return types.NewError(err, types.ErrorCodeDoRequestFailed)
+	}
 	resp, err := adaptor.DoRequest(c, info, nil)
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeDoRequestFailed)

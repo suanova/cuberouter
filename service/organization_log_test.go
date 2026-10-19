@@ -33,7 +33,7 @@ import (
 func createOrganizationLogFixture(t *testing.T) (model.User, model.User, *model.Organization, *model.Token, *model.Token) {
 	t.Helper()
 	admin, member, organization := createOrganizationTokenTestOrg(t)
-	memberToken, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "member-log-key", ExpiredTime: -1, RemainQuota: 1000})
+	memberToken, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "member-log-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	adminToken, err := CreateOrganizationToken(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "admin-log-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)

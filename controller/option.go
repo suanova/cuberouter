@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
@@ -225,6 +226,12 @@ func UpdateOption(c *gin.Context) {
 				} else {
 					err = billing_setting.SmokeTestExpr(expression)
 				}
+			} else if schema, ok := billingexpr.LookupTaskUsageSchema(modelName); ok {
+				// Go 任务适配器注册的计费事实 schema（如星图 kling 家族）。必须放在
+				// 插件别名解析之后：名字命中 Go schema 但经 mapping 别名路由到插件的
+				// 模型（例如 kling-* 域名下的插件别名），运行期事实来自插件，
+				// 校验同样必须用插件 schema，否则会拒掉合法表达式。
+				err = billing_setting.SmokeTestTaskExprWithFacts(expression, schema)
 			} else {
 				err = billing_setting.SmokeTestExpr(expression)
 			}

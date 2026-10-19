@@ -19,9 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import type { OrganizationCapabilities } from '@/lib/account-context'
-
 import type { OrganizationMemberRow } from '@/features/organization/types'
+import type { OrganizationCapabilities } from '@/lib/account-context'
 
 import {
   getPlatformOrganizationDetailActions,
@@ -52,6 +51,11 @@ function capabilities(
     can_disable_organization: true,
     can_enable_organization: true,
     can_manage_members: true,
+    // Not part of the platform administrator's set: the organization's own
+    // console is where member discounts are edited (see capabilitiesForPlatformRole).
+    can_manage_member_discounts: false,
+    can_manage_member_models: false,
+    can_manage_member_quotas: false,
     can_transfer_owner: true,
     can_add_members_directly: true,
     can_exit_organization: false,
@@ -106,9 +110,9 @@ describe('normalizePlatformOrganizationTabKey', () => {
   })
 
   it('reads the last segment of a nested path', () => {
-    expect(normalizePlatformOrganizationTabKey('/admin/organizations/5/tokens')).toBe(
-      'tokens'
-    )
+    expect(
+      normalizePlatformOrganizationTabKey('/admin/organizations/5/tokens')
+    ).toBe('tokens')
   })
 
   it('falls back to the overview rather than 404-ing', () => {

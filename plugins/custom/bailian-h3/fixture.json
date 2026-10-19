@@ -1,0 +1,508 @@
+{
+  "cases": [
+    {
+      "name": "t2v: duration/size defaults and the mandatory ratio",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "action": "text_to_video",
+          "requestBody": {
+            "model": "minimax-h3-a",
+            "prompt": "一只猫在草地上奔跑",
+            "duration": 5,
+            "size": "720p"
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": { "prompt": "一只猫在草地上奔跑" },
+          "parameters": { "resolution": "768P", "duration": 5, "ratio": "16:9" }
+        },
+        "action": "text_to_video"
+      }
+    },
+    {
+      "name": "t2v: 2K tier with an explicit ratio",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": {
+            "prompt": "城市夜景航拍",
+            "duration": 10,
+            "size": "2k",
+            "ratio": "9:16"
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": { "prompt": "城市夜景航拍" },
+          "parameters": { "resolution": "2K", "duration": 10, "ratio": "9:16" }
+        },
+        "action": "text_to_video"
+      }
+    },
+    {
+      "name": "i2v: one image becomes first_frame, ratio is left to the upstream",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": {
+            "prompt": "让画面里的船动起来",
+            "duration": 4,
+            "images": ["https://cdn.example.com/first.png"]
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": {
+            "prompt": "让画面里的船动起来",
+            "media": [{ "type": "first_frame", "url": "https://cdn.example.com/first.png" }]
+          },
+          "parameters": { "resolution": "768P", "duration": 4 }
+        },
+        "action": "image_to_video"
+      }
+    },
+    {
+      "name": "i2v: image plus a second entry become first_frame + last_frame",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": {
+            "prompt": "从白天过渡到夜晚",
+            "duration": 5,
+            "image": "https://cdn.example.com/a.png",
+            "images": ["https://cdn.example.com/a.png", "https://cdn.example.com/b.png"]
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": {
+            "prompt": "从白天过渡到夜晚",
+            "media": [
+              { "type": "first_frame", "url": "https://cdn.example.com/a.png" },
+              { "type": "last_frame", "url": "https://cdn.example.com/b.png" }
+            ]
+          },
+          "parameters": { "resolution": "768P", "duration": 5 }
+        },
+        "action": "image_to_video"
+      }
+    },
+    {
+      "name": "r2v: three or more images become reference images",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": {
+            "prompt": "主角走进参考场景",
+            "duration": 5,
+            "size": "768P",
+            "images": [
+              "https://cdn.example.com/1.png",
+              "https://cdn.example.com/2.png",
+              "https://cdn.example.com/3.png",
+              "https://cdn.example.com/4.png",
+              "https://cdn.example.com/5.png",
+              "https://cdn.example.com/6.png",
+              "https://cdn.example.com/7.png"
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": {
+            "prompt": "主角走进参考场景",
+            "media": [
+              { "type": "image_url", "url": "https://cdn.example.com/1.png" },
+              { "type": "image_url", "url": "https://cdn.example.com/2.png" },
+              { "type": "image_url", "url": "https://cdn.example.com/3.png" },
+              { "type": "image_url", "url": "https://cdn.example.com/4.png" },
+              { "type": "image_url", "url": "https://cdn.example.com/5.png" },
+              { "type": "image_url", "url": "https://cdn.example.com/6.png" },
+              { "type": "image_url", "url": "https://cdn.example.com/7.png" }
+            ]
+          },
+          "parameters": { "resolution": "768P", "duration": 5 }
+        },
+        "action": "reference_to_video"
+      }
+    },
+    {
+      "name": "r2v: metadata.media passes reference video and audio through",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": {
+            "prompt": "切换到参考运镜并合上音频",
+            "duration": 6,
+            "ratio": "1:1",
+            "metadata": {
+              "media": [
+                { "type": "feature", "url": "https://cdn.example.com/ref.mp4" },
+                { "type": "driving_audio", "url": "https://cdn.example.com/ref.mp3" },
+                { "type": "image_url", "url": "https://cdn.example.com/ref.png" }
+              ],
+              "watermark": true
+            }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": {
+            "prompt": "切换到参考运镜并合上音频",
+            "media": [
+              { "type": "feature", "url": "https://cdn.example.com/ref.mp4" },
+              { "type": "driving_audio", "url": "https://cdn.example.com/ref.mp3" },
+              { "type": "image_url", "url": "https://cdn.example.com/ref.png" }
+            ]
+          },
+          "parameters": { "resolution": "768P", "duration": 6, "ratio": "1:1", "watermark": true }
+        },
+        "action": "reference_to_video"
+      }
+    },
+    {
+      "name": "duration outside 4-15 is rejected",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": { "prompt": "太短了", "duration": 3 }
+        }
+      ],
+      "expectedError": "duration must be an integer between 4 and 15 seconds"
+    },
+    {
+      "name": "adaptive ratio is rejected for text-to-video",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": { "prompt": "自适应比例", "duration": 5, "ratio": "adaptive" }
+        }
+      ],
+      "expectedError": "ratio must not be adaptive for text-to-video"
+    },
+    {
+      "name": "frames cannot be mixed with reference media",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": {
+            "prompt": "混用素材",
+            "duration": 5,
+            "metadata": {
+              "media": [
+                { "type": "first_frame", "url": "https://cdn.example.com/1.png" },
+                { "type": "image_url", "url": "https://cdn.example.com/2.png" }
+              ]
+            }
+          }
+        }
+      ],
+      "expectedError": "first_frame/last_frame cannot be mixed with image_url/feature/driving_audio media"
+    },
+    {
+      "name": "resolutions below 768P are rejected instead of silently downgraded",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": { "prompt": "低分辨率", "duration": 5, "size": "540p" }
+        }
+      ],
+      "expectedError": "unsupported resolution 540p; MiniMax-H3 supports 768P or 2K"
+    },
+    {
+      "name": "submit success returns the upstream task id with the raw envelope",
+      "hook": "parseSubmitResponse",
+      "args": [
+        {},
+        {
+          "statusCode": 200,
+          "headers": {},
+          "body": {
+            "output": { "task_id": "abc-123", "task_status": "PENDING" },
+            "request_id": "req-1"
+          }
+        }
+      ],
+      "expected": {
+        "taskId": "abc-123",
+        "taskData": {
+          "output": { "task_id": "abc-123", "task_status": "PENDING" },
+          "request_id": "req-1"
+        }
+      }
+    },
+    {
+      "name": "submit failure surfaces the upstream code and message",
+      "hook": "parseSubmitResponse",
+      "args": [{}, { "statusCode": 404, "headers": {}, "body": { "code": "InvalidParameter", "message": "Model not exist.", "request_id": "req-2" } }],
+      "expectedError": "InvalidParameter: Model not exist."
+    },
+    {
+      "name": "poll: PENDING maps to QUEUED",
+      "hook": "parseTaskResult",
+      "args": [{}, { "output": { "task_id": "t-1", "task_status": "PENDING" } }],
+      "expected": { "status": "QUEUED" }
+    },
+    {
+      "name": "poll: SUCCEEDED returns the video url",
+      "hook": "parseTaskResult",
+      "args": [
+        {},
+        {
+          "output": {
+            "task_id": "t-1",
+            "task_status": "SUCCEEDED",
+            "video_url": "https://oss-example.oss-cn-shanghai.aliyuncs.com/out.mp4?Expires=1&Signature=x"
+          },
+          "usage": { "SR": "768", "duration": 5, "image_count": 0, "size": "1344*768", "total_seconds": 5 }
+        }
+      ],
+      "expected": {
+        "status": "SUCCESS",
+        "url": "https://oss-example.oss-cn-shanghai.aliyuncs.com/out.mp4?Expires=1&Signature=x"
+      }
+    },
+    {
+      "name": "poll: FAILED carries the upstream reason",
+      "hook": "parseTaskResult",
+      "args": [{}, { "output": { "task_id": "t-1", "task_status": "FAILED", "code": "InvalidParameter", "message": "ratio required" } }],
+      "expected": { "status": "FAILURE", "reason": "InvalidParameter: ratio required" }
+    },
+    {
+      "name": "poll: UNKNOWN converges to FAILURE instead of polling forever",
+      "hook": "parseTaskResult",
+      "args": [{}, { "output": { "task_id": "t-1", "task_status": "UNKNOWN" } }],
+      "expected": { "status": "FAILURE", "reason": "task not found or expired" }
+    },
+    {
+      "name": "usage facts at submit mirror the submitted parameters",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "usagePurpose": "facts",
+          "requestBody": {
+            "prompt": "七张参考图",
+            "duration": 5,
+            "size": "2K",
+            "images": [
+              "https://cdn.example.com/1.png",
+              "https://cdn.example.com/2.png",
+              "https://cdn.example.com/3.png",
+              "https://cdn.example.com/4.png",
+              "https://cdn.example.com/5.png",
+              "https://cdn.example.com/6.png",
+              "https://cdn.example.com/7.png"
+            ]
+          }
+        }
+      ],
+      "expected": { "seconds": 5, "resolution": "2K", "input_images": 2 }
+    },
+    {
+      "name": "billing_ratios is not served by this plugin",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "usagePurpose": "billing_ratios",
+          "requestBody": { "prompt": "x", "duration": 5 }
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "completion facts use the upstream billed seconds and image count",
+      "hook": "extractUsageOnComplete",
+      "args": [
+        { "status": "SUCCESS" },
+        {},
+        {
+          "output": { "task_id": "t-1", "task_status": "SUCCEEDED", "video_url": "https://x/out.mp4" },
+          "usage": { "SR": "768", "duration": 20, "image_count": 2, "input_seconds": 15, "output_seconds": 5, "size": "1344*768" }
+        }
+      ],
+      "expected": { "seconds": 20, "input_images": 2 }
+    },
+    {
+      "name": "completion without usage keeps the submission facts",
+      "hook": "extractUsageOnComplete",
+      "args": [{ "status": "FAILURE" }, {}, { "output": { "task_id": "t-1", "task_status": "FAILED" } }],
+      "expected": {}
+    },
+    {
+      "name": "artifacts only exist for successful tasks",
+      "hook": "listArtifacts",
+      "args": [{ "status": "SUCCESS", "data": { "output": { "task_id": "t-1", "task_status": "SUCCEEDED", "video_url": "https://x/out.mp4" } } }],
+      "expected": [{ "key": "video", "type": "video" }]
+    },
+    {
+      "name": "artifacts are empty while the task is running",
+      "hook": "listArtifacts",
+      "args": [{ "status": "IN_PROGRESS", "data": { "output": { "task_id": "t-1", "task_status": "RUNNING" } } }],
+      "expected": []
+    },
+    {
+      "name": "the video artifact is fetched credentialless from the signed url",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "artifactKey": "video",
+          "data": { "output": { "task_id": "t-1", "task_status": "SUCCEEDED", "video_url": "https://x/out.mp4" } },
+          "clientRequest": { "method": "GET" }
+        }
+      ],
+      "expected": { "url": "https://x/out.mp4", "method": "GET", "credentialless": true }
+    },
+    {
+      "name": "unknown artifact keys are rejected",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "artifactKey": "audio",
+          "data": { "output": { "video_url": "https://x/out.mp4" } },
+          "clientRequest": { "method": "GET" }
+        }
+      ],
+      "expectedError": "artifact_not_found"
+    },
+    {
+      "name": "i2v: a multipart image upload becomes the first frame placeholder",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://ws-test.cn-beijing.maas.aliyuncs.com",
+          "apiKey": "sk-test",
+          "model": "minimax-h3-a",
+          "upstreamModel": "MiniMax/MiniMax-H3",
+          "requestBody": { "prompt": "让上传的图动起来", "duration": 5 },
+          "files": [{ "ref": "request_file:image", "field": "image", "filename": "first.png", "mimeType": "image/png", "size": 1024 }]
+        }
+      ],
+      "expected": {
+        "url": "https://ws-test.cn-beijing.maas.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test",
+          "X-DashScope-Async": "enable"
+        },
+        "body": {
+          "model": "MiniMax/MiniMax-H3",
+          "input": {
+            "prompt": "让上传的图动起来",
+            "media": [
+              {
+                "type": "first_frame",
+                "url": { "__fileRef": "request_file:image", "encoding": "dataUrl" }
+              }
+            ]
+          },
+          "parameters": { "resolution": "768P", "duration": 5 }
+        },
+        "action": "image_to_video"
+      }
+    }
+  ]
+}

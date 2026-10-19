@@ -6,10 +6,10 @@ import (
 	"sort"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/samber/lo"
 )
@@ -120,12 +120,29 @@ func smokeTestExpr(exprStr string) error {
 // declared by its plugin. Literal u() keys must be declared; dynamic calls are
 // still exercised by the generated runtime vectors when possible.
 func SmokeTestTaskExpr(exprStr string, schema map[string]jsplugin.UsageFieldSchema) error {
+	return SmokeTestTaskExprWithFacts(exprStr, FactsSchemaFromPlugin(schema))
+}
+
+// FactsSchemaFromPlugin 把插件 schema 转换为中性事实 schema（跨包类型转换）。
+func FactsSchemaFromPlugin(schema map[string]jsplugin.UsageFieldSchema) map[string]billingexpr.UsageFieldSchema {
+	converted := make(map[string]billingexpr.UsageFieldSchema, len(schema))
+	for name, field := range schema {
+		converted[name] = billingexpr.UsageFieldSchema{Type: field.Type, Unit: field.Unit, Enum: field.Enum}
+	}
+	return converted
+}
+
+// SmokeTestTaskExprWithFacts validates a task usage expression against a facts
+// schema registered by a Go task adaptor (billingexpr.RegisterTaskUsageSchema).
+// Literal u() keys must be declared; dynamic calls are still exercised by the
+// generated runtime vectors when possible.
+func SmokeTestTaskExprWithFacts(exprStr string, schema map[string]billingexpr.UsageFieldSchema) error {
 	if _, err := billingexpr.CompileFromCache(exprStr); err != nil {
 		return err
 	}
 	for key := range billingexpr.UsedUsageKeys(exprStr) {
 		if _, declared := schema[key]; !declared {
-			return fmt.Errorf("usage key %q is not declared by the task plugin", key)
+			return fmt.Errorf("usage key %q is not declared by the task usage schema", key)
 		}
 	}
 
@@ -149,7 +166,7 @@ type usageSmokeDimension struct {
 	values []any
 }
 
-func taskUsageSmokeVectors(schema map[string]jsplugin.UsageFieldSchema) []map[string]any {
+func taskUsageSmokeVectors(schema map[string]billingexpr.UsageFieldSchema) []map[string]any {
 	names := make([]string, 0, len(schema))
 	for name := range schema {
 		names = append(names, name)

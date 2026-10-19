@@ -44,6 +44,12 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		fallthrough
 	case constant.ChannelTypeDoubaoVideo:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
+	case constant.ChannelTypeTaskPlugin:
+		// 任务插件渠道（62）的客户端入口是通用任务端点 /v1/video/generations
+		// （插件自行声明的 native 路由 / 协议入口另行解析）。已注册的 62 类插件
+		// （kokoni、bailian-h3）都是视频任务；此前该类型落到 default 分支被标注成
+		// openai，定价页把视频模型的端点显示成 Chat，代码示例也按聊天渲染。
+		endpointTypes = []constant.EndpointType{constant.EndpointTypeVideoGeneration}
 	case constant.ChannelTypeAstraFlow:
 		// AstraFlow 是多模态渠道：视频模型（Seedance）走 Ark 风格任务端点
 		// （/v1/videos/generations/tasks），端点类型标注为 ark-video 而非

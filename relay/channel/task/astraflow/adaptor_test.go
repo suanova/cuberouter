@@ -250,10 +250,9 @@ func TestParseTaskResult(t *testing.T) {
 			wantReason:   "task expired",
 		},
 		{
-			name:         "unknown status treated as in_progress",
-			body:         `{"output":{"task_id":"t1","task_status":"SomethingNew"}}`,
-			wantStatus:   model.TaskStatusInProgress,
-			wantProgress: "30%",
+			name:       "unknown status maps to UNKNOWN for the poll failure budget",
+			body:       `{"output":{"task_id":"t1","task_status":"SomethingNew"}}`,
+			wantStatus: model.TaskStatusUnknown,
 		},
 	}
 

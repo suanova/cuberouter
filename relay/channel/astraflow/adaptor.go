@@ -6,8 +6,10 @@ import (
 	"net/http"
 
 	"github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/openai"
 	"github.com/QuantumNous/new-api/relay/channel/protocolroute"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 
@@ -59,7 +61,11 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	return request, nil
+	// JSON 请求(图像生成、以及以 base64 内联参考图的编辑)原样透传 DTO;multipart
+	// /v1/images/edits 必须交给 openai 适配器重建请求体: host 只把表单值解析进 DTO,
+	// 文件部分(image/mask)只有重建才会带上, Content-Type 也要换成新 boundary——
+	// 否则上游收到的是 JSON 报文配客户端的旧 boundary, 文件全丢且请求无法解析。
+	return (&openai.Adaptor{}).ConvertImageRequest(c, info, request)
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
@@ -67,6 +73,18 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.RelayMode == constant.RelayModeImagesEdits && !openai.IsJSONRequest(c) {
+		// multipart 图片编辑: 请求体已由 ConvertImageRequest 重建, c.Request.Header
+		// 上是新 boundary, 走表单发送路径把该 Content-Type 带给上游。谓词与转换路径
+		// 同一个(openai.IsJSONRequest), 两条路不会选中不同形状。
+		resp, err := channel.DoFormRequest(a, c, info, requestBody)
+		if err != nil {
+			return resp, err
+		}
+		// 单协议会话不会命中, 但表单路径同样要经过降级探测, 保持与 DoApiRequest 一致。
+		policy.DetectRejectedNativeProtocol(info, resp)
+		return resp, nil
+	}
 	// 传 a: DoApiRequest 会回调 a.GetRequestURL / a.SetupRequestHeader。
 	return policy.DoRequest(a, c, info, requestBody)
 }

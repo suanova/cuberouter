@@ -51,6 +51,9 @@ export const organizationCapabilitiesSchema = z.object({
   can_disable_organization: z.boolean(),
   can_enable_organization: z.boolean(),
   can_manage_members: z.boolean(),
+  can_manage_member_discounts: z.boolean(),
+  can_manage_member_models: z.boolean(),
+  can_manage_member_quotas: z.boolean(),
   can_transfer_owner: z.boolean(),
   can_add_members_directly: z.boolean(),
   can_exit_organization: z.boolean(),
@@ -115,12 +118,15 @@ export async function refreshAccountContexts(): Promise<AccountContextsPayload> 
   const { accountContext } = useAccountContextStore.getState()
   accountContext.setStatus('loading')
   try {
-    const res = await api.get<AccountContextsResponse>('/api/account-contexts', {
-      // 上下文接口自身不该再触发上下文错误处理，否则失败会绕回自己。
-      skipErrorHandler: true,
-      skipBusinessError: true,
-      skipAccountContext: true,
-    })
+    const res = await api.get<AccountContextsResponse>(
+      '/api/account-contexts',
+      {
+        // 上下文接口自身不该再触发上下文错误处理，否则失败会绕回自己。
+        skipErrorHandler: true,
+        skipBusinessError: true,
+        skipAccountContext: true,
+      }
+    )
     const payload: AccountContextsPayload = {
       current: res.data?.data?.current ?? null,
       contexts: res.data?.data?.contexts ?? [],

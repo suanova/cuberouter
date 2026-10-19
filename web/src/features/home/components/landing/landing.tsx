@@ -368,7 +368,7 @@ export function Landing() {
                   className='dark:brightness-0 dark:invert'
                 />
               </div>
-              <p className='cr-footer__desc'>{t('oneSuanova is a leading AI service provider. Through its proprietary Token-as-a-Service (TaaS) platform, it provides stable and efficient AI Token cloud services for enterprises and institutions across industries. The brand is wholly owned and operated by Suanova Technology, dedicated to building high-standard, scalable next-generation AI computing infrastructure.')}</p>
+              <p className='cr-footer__desc'>{t('suanova is a leading AI service provider. Through its proprietary Token-as-a-Service (TaaS) platform, it provides stable and efficient AI Token cloud services for enterprises and institutions across industries. The brand is wholly owned and operated by Suanova Technology, dedicated to building high-standard, scalable next-generation AI computing infrastructure.')}</p>
             </div>
 
             <div>

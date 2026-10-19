@@ -24,6 +24,7 @@ import { Dialog } from '@/components/dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
+import { SiteRegionSwitcher } from '@/components/site-region-switcher'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -50,6 +51,7 @@ export interface PublicHeaderProps {
   navContent?: React.ReactNode
   showThemeSwitch?: boolean
   showLanguageSwitcher?: boolean
+  showSiteRegionSwitcher?: boolean
   logo?: React.ReactNode
   siteName?: string
   homeUrl?: string
@@ -66,6 +68,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     navLinks = defaultTopNavLinks,
     showThemeSwitch = true,
     showLanguageSwitcher = true,
+    showSiteRegionSwitcher = true,
     siteName: customSiteName,
     homeUrl = '/',
     showAuthButtons = true,
@@ -239,12 +242,14 @@ export function PublicHeader(props: PublicHeaderProps) {
               })}
 
               {(showLanguageSwitcher ||
+                showSiteRegionSwitcher ||
                 showThemeSwitch ||
                 showNotifications) && (
                 <div className='bg-border/40 mx-2 h-4 w-px' />
               )}
 
               {showLanguageSwitcher && <LanguageSwitcher />}
+              {showSiteRegionSwitcher && <SiteRegionSwitcher />}
               {showThemeSwitch && <ThemeSwitch />}
               {showNotifications && (
                 <NotificationPopover

@@ -369,6 +369,9 @@ func setOrganizationStatus(operatorUserId int, organizationId int, accessMode st
 		return err
 	}
 	invalidateOrganizationTokenCaches(affectedCacheKeys...)
+	// 组织启停两个方向都会改变成员的有效模型白名单（禁用解除限制，启用让限制回来）：
+	// 一律刷新，删键幂等，宁可多删不可漏掉某个方向。
+	invalidateOrganizationMemberModelAllowListCaches(organizationId)
 	return nil
 }
 
@@ -530,6 +533,9 @@ func DissolveOrganization(operatorUserId int, organizationId int, accessMode str
 		return err
 	}
 	invalidateOrganizationTokenCaches(affectedCacheKeys...)
+	// 解散后组织与管理员都不在了，没人能再解除成员的限制：缓存必须立刻失效，
+	// 让下一次读重算出「解除」。
+	invalidateOrganizationMemberModelAllowListCaches(organizationId)
 	return nil
 }
 

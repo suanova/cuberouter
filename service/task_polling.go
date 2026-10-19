@@ -68,15 +68,29 @@ func sweepTimedOutTasks(ctx context.Context) {
 
 	reason := fmt.Sprintf("任务超时（%d分钟）", constant.TaskTimeoutMinutes)
 	legacyReason := "任务超时（旧系统遗留任务，不进行退款，请联系管理员）"
+	timedOutCount := failAndRefundTasks(ctx, tasks, reason, legacyReason)
+
+	if timedOutCount > 0 {
+		logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: timed out %d tasks", timedOutCount))
+	}
+}
+
+// failAndRefundTasks 把一批任务逐条终态化为 FAILURE，并按退款策略处理预扣额度：
+// 旧系统遗留任务（SubmitTime 早于 TaskRefundLegacyCutoff）不退款，只清掉 quota；
+// 其余任务通过 RefundTaskQuota 全额退款。返回成功推进终态的任务数。
+//
+// 逐条走 UpdateWithStatus 状态 CAS，避免无守卫的批量更新覆盖被正常轮询推进的状态；
+// 失败的退款恰好由赢得 CAS 的那一次调用执行，保证预扣额度至多结算一次。
+func failAndRefundTasks(ctx context.Context, tasks []*model.Task, reason string, legacyReason string) int {
 	now := time.Now().Unix()
-	timedOutCount := 0
+	transitionedCount := 0
 
 	for _, task := range tasks {
 		isLegacy := task.SubmitTime > 0 && task.SubmitTime < model.TaskRefundLegacyCutoff
 
 		oldStatus := task.Status
 		task.Status = model.TaskStatusFailure
-		task.Progress = "100%"
+		task.Progress = taskcommon.ProgressComplete
 		task.FinishTime = now
 		if isLegacy {
 			task.FailReason = legacyReason
@@ -89,22 +103,20 @@ func sweepTimedOutTasks(ctx context.Context) {
 
 		won, err := task.UpdateWithStatus(oldStatus)
 		if err != nil {
-			logger.LogError(ctx, fmt.Sprintf("sweepTimedOutTasks CAS update error for task %s: %v", task.TaskID, err))
+			logger.LogError(ctx, fmt.Sprintf("failAndRefundTasks CAS update error for task id=%d: %v", task.ID, err))
 			continue
 		}
 		if !won {
-			logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: task %s already transitioned, skip", task.TaskID))
+			logger.LogInfo(ctx, fmt.Sprintf("failAndRefundTasks: task id=%d already transitioned, skip", task.ID))
 			continue
 		}
-		timedOutCount++
+		transitionedCount++
 		if !isLegacy && task.Quota != 0 {
 			RefundTaskQuota(ctx, task, reason)
 		}
 	}
 
-	if timedOutCount > 0 {
-		logger.LogInfo(ctx, fmt.Sprintf("sweepTimedOutTasks: timed out %d tasks", timedOutCount))
-	}
+	return transitionedCount
 }
 
 // TaskPollSummary is the result recorded on an async_task_poll system task row,
@@ -154,28 +166,24 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 		summary.PlatformsScanned++
 		taskChannelM := make(map[int][]string)
 		taskM := make(map[string]*model.Task)
-		nullTaskIds := make([]int64, 0)
+		nullUpstreamTasks := make([]*model.Task, 0)
 		for _, task := range tasks {
 			upstreamID := task.GetUpstreamTaskID()
 			if upstreamID == "" {
-				// 统计失败的未完成任务
-				nullTaskIds = append(nullTaskIds, task.ID)
+				// 没有上游任务 ID 的任务永远无法轮询，只能按失败终结；
+				// 交给 failAndRefundTasks 补上 fail_reason/finish_time 并退款。
+				nullUpstreamTasks = append(nullUpstreamTasks, task)
 				continue
 			}
 			taskM[upstreamID] = task
 			taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], upstreamID)
 		}
-		if len(nullTaskIds) > 0 {
-			summary.NullTasksFailed += len(nullTaskIds)
-			err := model.TaskBulkUpdateByID(nullTaskIds, map[string]any{
-				"status":   "FAILURE",
-				"progress": "100%",
-			})
-			if err != nil {
-				logger.LogError(ctx, fmt.Sprintf("Fix null task_id task error: %v", err))
-			} else {
-				logger.LogInfo(ctx, fmt.Sprintf("Fix null task_id task success: %v", nullTaskIds))
-			}
+		if len(nullUpstreamTasks) > 0 {
+			summary.NullTasksFailed += len(nullUpstreamTasks)
+			reason := "任务缺少上游任务ID，无法继续查询任务状态，请联系管理员"
+			legacyReason := "任务缺少上游任务ID（旧系统遗留任务，不进行退款，请联系管理员）"
+			failedCount := failAndRefundTasks(ctx, nullUpstreamTasks, reason, legacyReason)
+			logger.LogInfo(ctx, fmt.Sprintf("Fix null task_id task: failed %d of %d", failedCount, len(nullUpstreamTasks)))
 		}
 		if len(taskChannelM) == 0 {
 			continue
@@ -234,23 +242,20 @@ func updateBatchTasks(ctx context.Context, adaptor BatchTaskPollingAdaptor, chan
 	}
 	ch, err := model.CacheGetChannel(channelId)
 	if err != nil {
-		common.SysLog(fmt.Sprintf("CacheGetChannel: %v", err))
-		// Collect DB primary key IDs for bulk update (taskIds are upstream IDs, not task_id column values)
-		var failedIDs []int64
+		// 渠道信息读取失败既可能是瞬态抖动（DB/缓存），也可能是渠道确实被移除。
+		// 一律按瞬态失败计入轮询失败预算：预算内任务保持存活（渠道恢复后继续轮询），
+		// 预算耗尽后由 failTaskFromPoll 统一失败并退款，一次抖动不会静默判死整批任务。
+		channelTasks := make([]*model.Task, 0, len(taskIds))
 		for _, upstreamID := range taskIds {
-			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
+			if task := taskM[upstreamID]; task != nil {
+				channelTasks = append(channelTasks, task)
 			}
 		}
-		err = model.TaskBulkUpdateByID(failedIDs, map[string]any{
-			"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
-			"status":      "FAILURE",
-			"progress":    "100%",
-		})
-		if err != nil {
-			common.SysLog(fmt.Sprintf("UpdateSunoTask error: %v", err))
+		detail := fmt.Sprintf("channel %d: %s", channelId, err.Error())
+		if recordErr := recordPollFailureForTasks(ctx, adaptor, channelTasks, pollClassChannelLookup, 0, detail); recordErr != nil {
+			common.SysLog(fmt.Sprintf("UpdateSunoTask error: %v", recordErr))
 		}
-		return err
+		return fmt.Errorf("CacheGetChannel failed: %w", err)
 	}
 	proxy := ch.GetSetting().Proxy
 	baseURL := ch.GetBaseURL()
@@ -417,28 +422,26 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 	if len(taskIds) == 0 {
 		return nil
 	}
-	cacheGetChannel, err := model.CacheGetChannel(channelId)
-	if err != nil {
-		// Collect DB primary key IDs for bulk update (taskIds are upstream IDs, not task_id column values)
-		var failedIDs []int64
-		for _, upstreamID := range taskIds {
-			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
-			}
-		}
-		errUpdate := model.TaskBulkUpdateByID(failedIDs, map[string]any{
-			"fail_reason": fmt.Sprintf("Failed to get channel info, channel ID: %d", channelId),
-			"status":      "FAILURE",
-			"progress":    "100%",
-		})
-		if errUpdate != nil {
-			common.SysLog(fmt.Sprintf("UpdateVideoTask error: %v", errUpdate))
-		}
-		return fmt.Errorf("CacheGetChannel failed: %w", err)
-	}
 	adaptor := GetTaskAdaptorFunc(platform)
 	if adaptor == nil {
 		return fmt.Errorf("video adaptor not found")
+	}
+	cacheGetChannel, err := model.CacheGetChannel(channelId)
+	if err != nil {
+		// 渠道信息读取失败既可能是瞬态抖动（DB/缓存），也可能是渠道确实被移除。
+		// 一律按瞬态失败计入轮询失败预算：预算内任务保持存活（渠道恢复后继续轮询），
+		// 预算耗尽后由 failTaskFromPoll 统一失败并退款，一次抖动不会静默判死整批任务。
+		channelTasks := make([]*model.Task, 0, len(taskIds))
+		for _, upstreamID := range taskIds {
+			if task := taskM[upstreamID]; task != nil {
+				channelTasks = append(channelTasks, task)
+			}
+		}
+		detail := fmt.Sprintf("channel %d: %s", channelId, err.Error())
+		if recordErr := recordPollFailureForTasks(ctx, adaptor, channelTasks, pollClassChannelLookup, 0, detail); recordErr != nil {
+			common.SysLog(fmt.Sprintf("UpdateVideoTask error: %v", recordErr))
+		}
+		return fmt.Errorf("CacheGetChannel failed: %w", err)
 	}
 	info := &relaycommon.RelayInfo{}
 	info.ChannelMeta = &relaycommon.ChannelMeta{
@@ -716,14 +719,15 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 }
 
 const (
-	pollClassOK           = "ok"
-	pollClassOtherClient  = "other_client"
-	pollClassNotFound     = "not_found"
-	pollClassAuth         = "auth"
-	pollClassTransient    = "transient"
-	pollClassUnrecognized = "unrecognized"
-	pollClassHookError    = "hook_error"
-	pollClassTransport    = "transport_error"
+	pollClassOK            = "ok"
+	pollClassOtherClient   = "other_client"
+	pollClassNotFound      = "not_found"
+	pollClassAuth          = "auth"
+	pollClassTransient     = "transient"
+	pollClassUnrecognized  = "unrecognized"
+	pollClassHookError     = "hook_error"
+	pollClassTransport     = "transport_error"
+	pollClassChannelLookup = "channel_lookup"
 )
 
 func classifyPollHTTP(statusCode int) string {

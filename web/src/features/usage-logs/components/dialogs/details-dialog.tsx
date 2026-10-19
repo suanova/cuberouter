@@ -59,6 +59,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
+import { formatModelDiscountPercent } from '@/features/pricing/lib/model-helpers'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
@@ -301,6 +302,21 @@ export function BillingBreakdown(props: {
     rows.push({
       label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
       value: `${formatRatio(effectiveGR)}x`,
+    })
+  }
+
+  // The ratio above already includes this discount; the row is written only
+  // while one applied, so it explains why that ratio dropped.
+  const userModelDiscount = other.user_model_discount
+  if (
+    userModelDiscount != null &&
+    Number.isFinite(userModelDiscount) &&
+    userModelDiscount > 0 &&
+    userModelDiscount < 1
+  ) {
+    rows.push({
+      label: t('User Model Discount'),
+      value: `${formatModelDiscountPercent(userModelDiscount)}%`,
     })
   }
 

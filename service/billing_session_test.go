@@ -30,9 +30,9 @@ import (
 
 func TestBillingSessionTokenQuotaTxHelpersRespectUnlimitedToken(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	limitedToken, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "tx-limited-key", ExpiredTime: -1, RemainQuota: 100})
+	limitedToken, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "tx-limited-key", ExpiredTime: -1, RemainQuota: 100})
 	require.NoError(t, err)
-	unlimitedToken, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "tx-unlimited-key", ExpiredTime: -1, UnlimitedQuota: true})
+	unlimitedToken, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "tx-unlimited-key", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 
 	limitedRelayInfo := organizationBillingRelayInfo(limitedToken, organization.Id)

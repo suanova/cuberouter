@@ -26,6 +26,8 @@ import {
   type OrganizationSurface,
 } from './lib/organization-surface'
 import type {
+  MemberModelAccess,
+  MemberQuota,
   OrganizationApiResponse,
   OrganizationAuditLogRow,
   OrganizationBillingMonthlySummaryResponse,
@@ -49,6 +51,7 @@ import type {
   OrganizationTaskRow,
   OrganizationTokenBatchCreateResult,
   OrganizationTokenRow,
+  UserModelDiscounts,
 } from './types'
 
 interface ApiEnvelope {
@@ -369,6 +372,188 @@ export async function removeOrganizationMember(
       return res.data
     }
   )
+}
+
+/**
+ * A member's per-model billing discounts, read through the organization.
+ *
+ * The record is stored on the user rather than on the membership, so this is
+ * the same table the platform administration edits from the users page; the
+ * organization's own endpoint is what limits the reach to the caller's active
+ * members and records the visit in the organization audit trail.
+ */
+export async function getOrganizationMemberModelDiscounts(
+  organizationId: number,
+  userId: number,
+  surface: OrganizationSurface
+): Promise<UserModelDiscounts> {
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/members/${userId}/model-discounts`
+  )
+  const payload = res.data as
+    | OrganizationApiResponse<{ discounts?: UserModelDiscounts }>
+    | undefined
+  // A refusal (member no longer active, no longer readable) is answered as
+  // HTTP 200 with `success: false`. Falling through to the empty record would
+  // present it as "this member has no discounts", and saving that shape would
+  // clear the record the caller never read.
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
+  return payload?.data?.discounts ?? {}
+}
+
+/**
+ * Replaces a member's per-model billing discounts; an empty record clears every
+ * discount of that member.
+ *
+ * A discount follows the member rather than the membership, so it applies to
+ * all of their calls — including those paid from their personal wallet, and
+ * including calls made with an organization key, which are attributed to the
+ * member responsible for it.
+ *
+ * A business-level refusal — a malformed model name, an out-of-range factor —
+ * is answered HTTP 200 with `success: false` and reported by the API client's
+ * interceptor, which is the same mechanism the platform administration's write
+ * uses; throwing here is what keeps the dialog from treating it as saved.
+ */
+export async function updateOrganizationMemberModelDiscounts(
+  organizationId: number,
+  userId: number,
+  discounts: UserModelDiscounts,
+  surface: OrganizationSurface
+): Promise<void> {
+  const res = await api.put(
+    `${organizationResourceBase(surface, organizationId)}/members/${userId}/model-discounts`,
+    { discounts }
+  )
+  if (res.data?.success === false) {
+    throw new Error(res.data.message || 'Request failed')
+  }
+}
+
+/**
+ * The models one member is allowed to use, as the organization's administrators
+ * see them.
+ *
+ * The answer carries both the member's own list and the site's candidate
+ * universe, so the caller never has to assemble the picker from two sources.
+ * An empty `access` means the member is unrestricted — it is not an empty
+ * allow-list — so an absent list is defaulted rather than required.
+ *
+ * A refusal (member no longer active, no longer readable) is answered as HTTP
+ * 200 with `success: false`, which must throw: defaulting on that envelope
+ * would present the member as unrestricted, and the full replacement this
+ * dialog saves would then clear the record the caller never read.
+ *
+ * The member's own record is read here through the organization, which is what
+ * limits the reach to the caller's active members and records the visit in the
+ * organization audit trail.
+ */
+export async function getOrganizationMemberModelAccess(
+  organizationId: number,
+  userId: number,
+  surface: OrganizationSurface
+): Promise<MemberModelAccess> {
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/members/${userId}/model-access`
+  )
+  const payload = res.data as
+    | OrganizationApiResponse<MemberModelAccess>
+    | undefined
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
+  return {
+    access: payload?.data?.access ?? [],
+    models: payload?.data?.models ?? [],
+  }
+}
+
+/**
+ * Replaces a member's model allow-list; an empty list removes the restriction
+ * and leaves every model available again.
+ *
+ * The list has to be the caller's complete answer for that member — the backend
+ * stores what it is given, not a merge — so the caller sends the whole
+ * selection rather than a delta.
+ *
+ * A business-level refusal — a malformed name, an out-of-range list — is
+ * answered HTTP 200 with `success: false`, which must throw: otherwise the
+ * dialog would close as if the rejected selection had been stored.
+ */
+export async function updateOrganizationMemberModelAccess(
+  organizationId: number,
+  userId: number,
+  models: string[],
+  surface: OrganizationSurface
+): Promise<void> {
+  const res = await api.put(
+    `${organizationResourceBase(surface, organizationId)}/members/${userId}/model-access`,
+    { models }
+  )
+  if (res.data?.success === false) {
+    throw new Error(res.data.message || 'Request failed')
+  }
+}
+
+/**
+ * A member's quota ceiling inside the organization, and the pool it draws from.
+ *
+ * Every field is in quota units; the dollar conversion belongs to the dialog
+ * that displays them. `limit` of `0` means unlimited, so a missing payload is
+ * defaulted to that safe reading — an absent number must not surface as `NaN`
+ * in the conversion or as a ceiling the member does not have.
+ *
+ * A refusal (member no longer active, no longer readable) is answered as HTTP
+ * 200 with `success: false`, which must throw: defaulting on that envelope
+ * would present a member the caller may not read as unrestricted.
+ */
+export async function getOrganizationMemberQuota(
+  organizationId: number,
+  userId: number,
+  surface: OrganizationSurface
+): Promise<MemberQuota> {
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/members/${userId}/quota`
+  )
+  const payload = res.data as OrganizationApiResponse<MemberQuota> | undefined
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
+  return {
+    limit: payload?.data?.limit ?? 0,
+    used: payload?.data?.used ?? 0,
+    organization_quota: payload?.data?.organization_quota ?? 0,
+    allocated: payload?.data?.allocated ?? 0,
+    over_allocated: payload?.data?.over_allocated ?? false,
+  }
+}
+
+/**
+ * Sets a member's quota ceiling inside the organization.
+ *
+ * The value is in quota units, not dollars — the dialog converts what the
+ * operator typed before calling this. `0` removes the ceiling; the backend
+ * rejects a negative limit.
+ *
+ * A business-level refusal — a negative limit, an owner's row — is answered
+ * HTTP 200 with `success: false`, which must throw: otherwise the dialog would
+ * close as if the rejected limit had been stored.
+ */
+export async function updateOrganizationMemberQuota(
+  organizationId: number,
+  userId: number,
+  limit: number,
+  surface: OrganizationSurface
+): Promise<void> {
+  const res = await api.put(
+    `${organizationResourceBase(surface, organizationId)}/members/${userId}/quota`,
+    { limit }
+  )
+  if (res.data?.success === false) {
+    throw new Error(res.data.message || 'Request failed')
+  }
 }
 
 /**

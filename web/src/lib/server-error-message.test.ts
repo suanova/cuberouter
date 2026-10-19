@@ -65,4 +65,22 @@ describe('server error message mapping', () => {
       })
     ).toBe(expected.TELEGRAM_BIND_INTERNAL_ERROR)
   })
+
+  test('maps the member quota refusal to the member-scoped message', () => {
+    // The organization-wide quota error describes a different condition: this
+    // one says the member's own limit was reached, so the two codes must not
+    // share a message.
+    expect(
+      getServerErrorMessageKey({
+        code: 'insufficient_organization_member_quota',
+      })
+    ).toBe('This member has reached their quota limit in this organization.')
+    expect(
+      getServerErrorMessageKey({ code: 'insufficient_organization_quota' })
+    ).not.toBe(
+      getServerErrorMessageKey({
+        code: 'insufficient_organization_member_quota',
+      })
+    )
+  })
 })

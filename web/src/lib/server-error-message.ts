@@ -47,10 +47,11 @@ const serverErrorMessageKeys = {
     'This organization has been dissolved and can no longer be used.',
   organization_limit_exceeded:
     'You have reached the maximum number of organizations you can create or join.',
-  organization_name_conflict:
-    'An organization with this name already exists.',
+  organization_name_conflict: 'An organization with this name already exists.',
   insufficient_organization_quota:
     'The organization does not have enough quota for this request.',
+  insufficient_organization_member_quota:
+    'This member has reached their quota limit in this organization.',
   organization_idempotency_conflict:
     'This request conflicts with an earlier one. Reload and try again.',
   organization_idempotency_key_required:

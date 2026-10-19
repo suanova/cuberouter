@@ -450,11 +450,79 @@ func selectPluginRoundChannel(subCtx *gin.Context, req *dto.GeneralOpenAIRequest
 	return middleware.SetupContextForSelectedChannel(subCtx, channel, req.Model)
 }
 
+// preparePluginRoundContext 为一次插件轮次准备子上下文：用户缓存、临时令牌与
+// 分组键，复刻真实 /pg 路由上 UserAuth 写入的上下文。
+//
+// 外层请求命中组织额度兜底时（PlaygroundOrganizationFallback 已把组织作用域写进
+// c），子上下文必须复制同一份组织作用域而不是挂个人临时令牌：每个轮次都会新建
+// 计费会话，个人作用域会把钱包已见底的用户直接 403 掉，兜底形同虚设。
+func preparePluginRoundContext(c *gin.Context, subCtx *gin.Context, userId int, group string) *types.NewAPIError {
+	userCache, err := model.GetUserCache(userId)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	}
+	// 先写用户缓存再写分组键，与 TokenAuth 的顺序一致（auth.go：WriteContext
+	// 在前，accountGroup 在后）。WriteContext 会把个人分组写进 user_group，
+	// 组织分支必须在此之后覆盖它——反过来会被改回个人分组。
+	userCache.WriteContext(subCtx)
+	subCtx.Set("id", userId)
+
+	if common.GetContextKeyString(c, constant.ContextKeyBillingAccountType) == model.AccountContextTypeOrganization {
+		billingAccountId := common.GetContextKeyInt(c, constant.ContextKeyBillingAccountId)
+		tempToken := &model.Token{
+			UserId:         userId,
+			Name:           "playground-plugin-org-" + group,
+			Group:          group,
+			ScopeType:      model.TokenScopeOrganization,
+			OrganizationId: billingAccountId,
+			Visibility:     model.TokenVisibilityPrivate,
+		}
+		// 作用域直接复制外层上下文的键，不再走 ValidateTokenScopeForRelay：
+		// 外层的兜底中间件已经校验过组织状态与责任成员，子上下文只是复用结论。
+		scopeContext := &service.TokenScopeContext{
+			ScopeType:          model.AccountContextTypeOrganization,
+			ScopeId:            billingAccountId,
+			BillingAccountType: model.AccountContextTypeOrganization,
+			BillingAccountId:   billingAccountId,
+			OrganizationId:     billingAccountId,
+			CreatorUserId:      common.GetContextKeyInt(c, constant.ContextKeyCreatorUserId),
+			ResponsibleUserId:  common.GetContextKeyInt(c, constant.ContextKeyResponsibleUserId),
+			ActorUserId:        common.GetContextKeyInt(c, constant.ContextKeyActorUserId),
+			OrganizationQuota:  common.GetContextKeyInt(c, constant.ContextKeyOrganizationQuota),
+			AccountGroup:       group,
+		}
+		if err := middleware.SetupContextForTokenWithScopeContext(subCtx, tempToken, scopeContext); err != nil {
+			return types.NewError(err, types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+		}
+		// 与 TokenAuth 的组织分支一致：user_group 决定「这个账户能用哪些分组」，
+		// using_group 决定「本次用哪个分组」，两者都取组织分组，否则分组倍率会拿
+		// 个人分组去配。
+		common.SetContextKey(subCtx, constant.ContextKeyUsingGroup, group)
+		common.SetContextKey(subCtx, constant.ContextKeyUserGroup, group)
+		return nil
+	}
+
+	tempToken := &model.Token{
+		UserId: userId,
+		Name:   fmt.Sprintf("playground-plugin-%s", group),
+		Group:  group,
+	}
+	if err := middleware.SetupContextForToken(subCtx, tempToken); err != nil {
+		return types.NewError(err, types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+	}
+	// Replicate the group key middleware.Distribute() resolves for /pg
+	// requests, consumed by GenRelayInfo. ("original_model" is seeded by
+	// SetupContextForSelectedChannel below, same as on the real route.)
+	common.SetContextKey(subCtx, constant.ContextKeyUsingGroup, group)
+	return nil
+}
+
 // invokeRelayRound performs one full Relay pass in a throwaway gin context
 // whose writer is an httptest recorder, then parses the non-stream response.
 // The sub-context replicates the middleware chain the real /pg route runs:
-// UserAuth (user cache + token context), then Distribute (model/group keys +
-// the pre-selected channel via selectPluginRoundChannel).
+// UserAuth (user cache + token context, organization scope included when the
+// outer request was switched by the playground fallback), then Distribute
+// (model/group keys + the pre-selected channel via selectPluginRoundChannel).
 func invokeRelayRound(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int, group string) (*dto.OpenAITextResponse, *types.NewAPIError) {
 	body, err := common.Marshal(req)
 	if err != nil {
@@ -473,26 +541,9 @@ func invokeRelayRound(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int,
 	}
 	subCtx.Set(common.KeyBodyStorage, bs)
 
-	userCache, err := model.GetUserCache(userId)
-	if err != nil {
-		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
+	if newAPIError := preparePluginRoundContext(c, subCtx, userId, group); newAPIError != nil {
+		return nil, newAPIError
 	}
-	userCache.WriteContext(subCtx)
-	subCtx.Set("id", userId)
-
-	tempToken := &model.Token{
-		UserId: userId,
-		Name:   fmt.Sprintf("playground-plugin-%s", group),
-		Group:  group,
-	}
-	if err := middleware.SetupContextForToken(subCtx, tempToken); err != nil {
-		return nil, types.NewError(err, types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
-	}
-
-	// Replicate the group key middleware.Distribute() resolves for /pg
-	// requests, consumed by GenRelayInfo. ("original_model" is seeded by
-	// SetupContextForSelectedChannel below, same as on the real route.)
-	common.SetContextKey(subCtx, constant.ContextKeyUsingGroup, group)
 
 	// Pre-select the channel for the first relay attempt, mirroring
 	// middleware.Distribute (distributor.go). Selection errors surface with

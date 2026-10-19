@@ -44,6 +44,18 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		organizationRoute.PATCH("/:id/members/:userId", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMembers), controller.UpdateOrganizationMember)
 		organizationRoute.DELETE("/:id/members/me", middleware.OrganizationAccountContextAuth(service.OrganizationCapabilityExitOrganization), controller.ExitOrganization)
 		organizationRoute.DELETE("/:id/members/:userId", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMembers), controller.RemoveOrganizationMember)
+		// 成员折扣挂在成员个人身上、跟随人走：读与成员名单同级，写是独立能力
+		// manage_member_discounts（owner/admin），不并入 manage_members。
+		organizationRoute.GET("/:id/members/:userId/model-discounts", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.GetOrganizationMemberModelDiscounts)
+		organizationRoute.PUT("/:id/members/:userId/model-discounts", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMemberDiscounts), controller.UpdateOrganizationMemberModelDiscounts)
+		// 模型白名单同样挂在成员个人身上：读与成员名单同级，写是独立能力
+		// manage_member_models（owner/admin），不并入 manage_members。
+		organizationRoute.GET("/:id/members/:userId/model-access", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.GetOrganizationMemberModelAccess)
+		organizationRoute.PUT("/:id/members/:userId/model-access", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMemberModels), controller.UpdateOrganizationMemberModelAccess)
+		// 成员配额同样挂在成员个人身上：读与成员名单同级，写是独立能力
+		// manage_member_quotas（owner/admin），不并入 manage_members。
+		organizationRoute.GET("/:id/members/:userId/quota", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.GetOrganizationMemberQuota)
+		organizationRoute.PUT("/:id/members/:userId/quota", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMemberQuotas), controller.UpdateOrganizationMemberQuota)
 		organizationRoute.GET("/:id/invitations", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewInvitations), controller.ListOrganizationInvites)
 		organizationRoute.GET("/:id/tokens", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.ListOrganizationTokens)
 		organizationRoute.GET("/:id/tokens/:tokenId", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.GetOrganizationToken)

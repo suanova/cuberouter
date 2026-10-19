@@ -105,6 +105,7 @@ type User struct {
 	DeletedAt             gorm.DeletedAt             `gorm:"index"`
 	LinuxDOId             string                     `json:"linux_do_id" gorm:"column:linux_do_id;index"`
 	Setting               string                     `json:"setting" gorm:"type:text;column:setting"`
+	ModelDiscounts        string                     `json:"-" gorm:"type:text;column:model_discounts"`
 	Remark                string                     `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	Phone                 string                     `json:"phone" gorm:"type:varchar(32);index" validate:"max=32"`
 	StripeCustomer        string                     `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
@@ -128,16 +129,17 @@ type User struct {
 
 func (user *User) ToBaseUser() *UserBase {
 	cache := &UserBase{
-		Id:          user.Id,
-		Group:       user.Group,
-		Quota:       user.Quota,
-		Status:      user.Status,
-		Role:        user.Role,
-		Username:    user.Username,
-		Setting:     user.Setting,
-		Email:       user.Email,
-		AuthVersion: user.AuthVersion,
-		CacheSchema: userCacheSchemaVersion,
+		Id:             user.Id,
+		Group:          user.Group,
+		Quota:          user.Quota,
+		Status:         user.Status,
+		Role:           user.Role,
+		Username:       user.Username,
+		Setting:        user.Setting,
+		ModelDiscounts: user.ModelDiscounts,
+		Email:          user.Email,
+		AuthVersion:    user.AuthVersion,
+		CacheSchema:    userCacheSchemaVersion,
 	}
 	return cache
 }
@@ -1034,6 +1036,9 @@ func (deleted *HardDeletedUser) Finalize() error {
 	if err := invalidateUserCache(deleted.Id); err != nil {
 		common.SysError(fmt.Sprintf("failed to invalidate user cache after hard deleting user %d: %v", deleted.Id, err))
 	}
+	if err := RefreshUserModelAllowListCache(deleted.Id); err != nil {
+		common.SysError(fmt.Sprintf("failed to invalidate model allow list cache after hard deleting user %d: %v", deleted.Id, err))
+	}
 	return nil
 }
 
@@ -1408,6 +1413,36 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 		Setting: setting,
 	}
 	return userBase.GetSetting(), nil
+}
+
+// GetUserModelDiscounts gets the model discount table from Redis first, falls
+// back to DB if needed
+func GetUserModelDiscounts(id int, fromDB bool) (discounts map[string]float64, err error) {
+	defer func() {
+		// Update Redis cache asynchronously on successful DB read
+		if shouldUpdateRedis(fromDB, err) {
+			goQuotaCacheUpdate(func() {
+				if err := RefreshUserModelDiscountsCache(id); err != nil {
+					common.SysLog("failed to update user model discounts cache: " + err.Error())
+				}
+			})
+		}
+	}()
+	if !fromDB && common.RedisEnabled {
+		userCache, cacheErr := cacheGetUserBase(id)
+		if cacheErr == nil {
+			return userCache.GetModelDiscounts(), nil
+		}
+		// Don't return error - fall through to DB
+	}
+	fromDB = true
+	// can be nil discounts (a row written before the column existed)
+	var safeDiscounts sql.NullString
+	err = DB.Model(&User{}).Where("id = ?", id).Select("model_discounts").Find(&safeDiscounts).Error
+	if err != nil {
+		return nil, err
+	}
+	return ParseUserModelDiscounts(safeDiscounts.String), nil
 }
 
 func IncreaseUserQuota(id int, quota int, db bool) (err error) {

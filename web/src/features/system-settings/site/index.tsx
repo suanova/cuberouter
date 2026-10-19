@@ -37,6 +37,9 @@ const defaultSiteSettings: SiteSettings = {
   'legal.privacy_policy': '',
   'general_setting.docs_link': '',
   'general_setting.admin_docs_link': '',
+  'site.counterpart_enabled': 'false',
+  'site.counterpart_url': '',
+  'site.counterpart_label': '',
   HeaderNavModules: '',
   SidebarModulesAdmin: '',
 }

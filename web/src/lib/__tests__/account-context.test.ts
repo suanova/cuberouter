@@ -19,12 +19,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { useAccountContextStore } from '@/stores/account-context-store'
+
 import {
   isOrganizationContext,
+  organizationCapabilitiesSchema,
   refreshAccountContexts,
   switchAccountContext,
 } from '../account-context'
-import { useAccountContextStore } from '@/stores/account-context-store'
 
 const { get, put } = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn() }))
 
@@ -33,7 +35,12 @@ vi.mock('@/lib/http-client', () => ({
 }))
 
 function organizationContext(id = 7) {
-  return { type: 'organization' as const, id, name: `Org ${id}`, role: 'member' }
+  return {
+    type: 'organization' as const,
+    id,
+    name: `Org ${id}`,
+    role: 'member',
+  }
 }
 
 function contextsResponse(current: unknown, contexts: unknown[]) {
@@ -81,7 +88,9 @@ describe('refreshAccountContexts', () => {
 
     await expect(refreshAccountContexts()).rejects.toBe(failure)
 
-    expect(useAccountContextStore.getState().accountContext.status).toBe('error')
+    expect(useAccountContextStore.getState().accountContext.status).toBe(
+      'error'
+    )
   })
 
   test('tolerates a response without a data envelope', async () => {
@@ -90,6 +99,48 @@ describe('refreshAccountContexts', () => {
     const payload = await refreshAccountContexts()
 
     expect(payload).toEqual({ current: null, contexts: [] })
+  })
+})
+
+describe('organizationCapabilitiesSchema', () => {
+  /** All-false base: the test opts into exactly the grant it exercises. */
+  function capabilities(overrides: Record<string, boolean> = {}) {
+    return {
+      can_view_organization: false,
+      can_view_organization_wide_data: false,
+      can_view_organization_usage: false,
+      can_view_organization_tokens: false,
+      can_view_organization_logs: false,
+      can_update_organization: false,
+      can_disable_organization: false,
+      can_enable_organization: false,
+      can_manage_members: false,
+      can_manage_member_discounts: false,
+      can_manage_member_models: false,
+      can_manage_member_quotas: false,
+      can_transfer_owner: false,
+      can_add_members_directly: false,
+      can_exit_organization: false,
+      can_view_invites: false,
+      can_create_invites: false,
+      can_revoke_invites: false,
+      can_manage_all_tokens: false,
+      can_modify_organization_group: false,
+      can_dissolve_organization: false,
+      can_view_audit: false,
+      can_view_organization_billing_summary: false,
+      show_return_organization_center: false,
+      show_return_personal_center: false,
+      ...overrides,
+    }
+  }
+
+  test('parses the member-quota management grant', () => {
+    const parsed = organizationCapabilitiesSchema.parse(
+      capabilities({ can_manage_member_quotas: true })
+    )
+
+    expect(parsed.can_manage_member_quotas).toBe(true)
   })
 })
 

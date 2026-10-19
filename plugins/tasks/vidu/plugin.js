@@ -10,16 +10,7 @@ export const meta = {
   version: "1.0.1",
   author: { name: "QuantumNous" },
   channelTypes: [52],
-  models: [
-    "viduq3-mix",
-    "viduq3-turbo",
-    "viduq3",
-    "viduq2-pro",
-    "viduq2",
-    "viduq1",
-    "vidu2.0",
-    "vidu1.5",
-  ],
+  models: ["viduq3-mix", "viduq3-turbo", "viduq3", "viduq2-pro", "viduq2", "viduq1", "vidu2.0", "vidu1.5"],
   fetchMode: "per_task",
   usageSchema: {
     credits: {

@@ -248,6 +248,16 @@ func ListModels(c *gin.Context, modelType int) {
 			tokenModelLimit = map[string]bool{}
 		}
 	}
+	// 组织成员模型白名单：与 distributor 同写法解析 actor（组织 Key 按责任成员）；
+	// 有效允许集非 nil（受限）时才收窄，nil 直通，未受限用户的响应逐字节不变。
+	actorUserId := common.GetContextKeyInt(c, constant.ContextKeyActorUserId)
+	if actorUserId <= 0 {
+		actorUserId = common.GetContextKeyInt(c, constant.ContextKeyUserId)
+	}
+	var memberAllow []string
+	if actorUserId > 0 {
+		memberAllow = model.GetUserModelAllowList(actorUserId)
+	}
 	models := service.GetGroupsEnabledModels(ownerGroups)
 	for _, modelName := range models {
 		if modelLimitEnable {
@@ -261,6 +271,8 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 		userModelNames = append(userModelNames, modelName)
 	}
+	// 白名单批量收窄：规范化集合只构建一次；nil（不受限）直通，顺序保持输入顺序。
+	userModelNames = model.FilterModelsByMemberAccess(memberAllow, userModelNames)
 
 	ownerByModel := map[string]string{}
 	if len(ownerGroups) > 0 {

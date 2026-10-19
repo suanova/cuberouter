@@ -45,6 +45,9 @@ const (
 	OrganizationCapabilityDissolveOrganization          = "dissolve_organization"
 	OrganizationCapabilityViewMembersFull               = "view_members_full"
 	OrganizationCapabilityManageMembers                 = "manage_members"
+	OrganizationCapabilityManageMemberDiscounts         = "manage_member_discounts"
+	OrganizationCapabilityManageMemberModels            = "manage_member_models"
+	OrganizationCapabilityManageMemberQuotas            = "manage_member_quotas"
 	OrganizationCapabilityTransferOwner                 = "transfer_owner"
 	OrganizationCapabilityViewInvitations               = "view_invitations"
 	OrganizationCapabilityManageInvitations             = "manage_invitations"
@@ -347,6 +350,9 @@ func capabilitiesForOrganizationRole(role string, input OrganizationPolicyInput,
 			OrganizationCapabilityDisableOrganization,
 			OrganizationCapabilityDissolveOrganization,
 			OrganizationCapabilityManageMembers,
+			OrganizationCapabilityManageMemberDiscounts,
+			OrganizationCapabilityManageMemberModels,
+			OrganizationCapabilityManageMemberQuotas,
 			OrganizationCapabilityTransferOwner,
 			OrganizationCapabilityViewInvitations,
 			OrganizationCapabilityManageInvitations,
@@ -361,6 +367,9 @@ func capabilitiesForOrganizationRole(role string, input OrganizationPolicyInput,
 			OrganizationCapabilityUpdateOrganization,
 			OrganizationCapabilityDisableOrganization,
 			OrganizationCapabilityManageMembers,
+			OrganizationCapabilityManageMemberDiscounts,
+			OrganizationCapabilityManageMemberModels,
+			OrganizationCapabilityManageMemberQuotas,
 			OrganizationCapabilityViewInvitations,
 			OrganizationCapabilityManageInvitations,
 			OrganizationCapabilityManageOrganizationTokens,
@@ -457,11 +466,14 @@ func applyTokenResourcePolicy(input OrganizationPolicyInput, decision Organizati
 	canViewAll := decision.HasCapability(OrganizationCapabilityViewMembersFull) || decision.HasCapability(OrganizationCapabilityManageOrganizationTokens)
 	canManageAll := !decision.ReadOnly && decision.HasCapability(OrganizationCapabilityManageOrganizationTokens)
 	isResponsible := input.Resource.ResponsibleUserId > 0 && input.Resource.ResponsibleUserId == input.CurrentUser.Id
-	isOwner := input.Resource.OwnerUserId > 0 && input.Resource.OwnerUserId == input.CurrentUser.Id
+	isCreator := input.Resource.OwnerUserId > 0 && input.Resource.OwnerUserId == input.CurrentUser.Id
 	isPublic := input.Resource.Visibility == model.TokenVisibilityPublic
 	isPrivate := !isPublic
-	canView := decision.HasCapability(OrganizationCapabilityViewOrganizationTokens) && (canViewAll || (isPrivate && (isResponsible || isOwner)) || isPublic)
-	canManage := canManageAll || (!decision.ReadOnly && (isResponsible || isOwner) && input.Resource.Visibility != model.TokenVisibilityPublic)
+	// 使用者（isResponsible）与创建者都能看到自己的 Key；而管理权只属于创建者——
+	// 转交只转移使用，不转移控制。管理权同样受 token 查看能力约束：禁用组织会摘掉
+	// 该能力，创建者分支不能把它恢复成可写。
+	canView := decision.HasCapability(OrganizationCapabilityViewOrganizationTokens) && (canViewAll || (isPrivate && (isResponsible || isCreator)) || isPublic)
+	canManage := canManageAll || (!decision.ReadOnly && decision.HasCapability(OrganizationCapabilityViewOrganizationTokens) && isCreator && input.Resource.Visibility != model.TokenVisibilityPublic)
 	capabilities := dedupeCapabilities(decision.Capabilities...)
 	if canView {
 		capabilities = capabilities.with(OrganizationCapabilityViewResource)
@@ -512,7 +524,7 @@ func organizationPolicyTokenResource(token *model.Token) OrganizationPolicyResou
 	}
 	return OrganizationPolicyResource{
 		Type:              OrganizationPolicyResourceToken,
-		OwnerUserId:       token.UserId,
+		OwnerUserId:       token.CreatorUserId,
 		ResponsibleUserId: token.ResponsibleUserId,
 		Visibility:        token.Visibility,
 		Status:            token.Status,

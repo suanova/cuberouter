@@ -298,6 +298,12 @@ func writeOrganizationError(c *gin.Context, err error) {
 	} else if errors.Is(err, service.ErrOrganizationTokenEnableForbidden) {
 		status = http.StatusForbidden
 		code = types.ErrorCodeOrganizationTokenEnableForbidden
+	} else if errors.Is(err, service.ErrOrganizationMemberQuotaExhausted) {
+		status = http.StatusForbidden
+		code = types.ErrorCodeInsufficientOrganizationMemberQuota
+	} else if errors.Is(err, service.ErrOrganizationQuotaUnavailable) {
+		status = http.StatusForbidden
+		code = types.ErrorCodeInsufficientOrganizationQuota
 	} else if errors.Is(err, service.ErrOrganizationNameConflict) {
 		status = http.StatusConflict
 		code = types.ErrorCodeOrganizationNameConflict

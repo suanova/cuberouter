@@ -49,6 +49,9 @@ function capabilities(
     can_disable_organization: false,
     can_enable_organization: false,
     can_manage_members: false,
+    can_manage_member_discounts: false,
+    can_manage_member_models: false,
+    can_manage_member_quotas: false,
     can_transfer_owner: false,
     can_add_members_directly: false,
     can_exit_organization: false,
@@ -401,7 +404,9 @@ describe('member actions', () => {
 describe('role changes', () => {
   test('demoting an admin to member requires a hand-over target', () => {
     expect(isOrganizationMemberDemotion({ role: 'admin' }, 'member')).toBe(true)
-    expect(isOrganizationMemberDemotion({ role: 'member' }, 'member')).toBe(false)
+    expect(isOrganizationMemberDemotion({ role: 'member' }, 'member')).toBe(
+      false
+    )
     expect(isOrganizationMemberDemotion({ role: 'admin' }, 'admin')).toBe(false)
 
     expect(
@@ -409,7 +414,11 @@ describe('role changes', () => {
         transferToUserId: 42,
         reason: '  stepping down  ',
       })
-    ).toEqual({ role: 'member', transfer_to_user_id: 42, reason: 'stepping down' })
+    ).toEqual({
+      role: 'member',
+      transfer_to_user_id: 42,
+      reason: 'stepping down',
+    })
   })
 
   test('a plain role change carries no transfer or reason fields', () => {
@@ -424,7 +433,9 @@ describe('role changes', () => {
 })
 
 describe('getOrganizationTransferMemberOptions', () => {
-  const members: Array<Partial<OrganizationMember> & { user_status?: number; username?: string }> = [
+  const members: Array<
+    Partial<OrganizationMember> & { user_status?: number; username?: string }
+  > = [
     {
       user_id: 1,
       role: 'owner',
@@ -471,7 +482,9 @@ describe('getOrganizationTransferMemberOptions', () => {
 
   test('excludes the outgoing owner', () => {
     expect(
-      getOrganizationTransferMemberOptions(members, 1).some((o) => o.value === 1)
+      getOrganizationTransferMemberOptions(members, 1).some(
+        (o) => o.value === 1
+      )
     ).toBe(false)
   })
 
@@ -479,7 +492,13 @@ describe('getOrganizationTransferMemberOptions', () => {
     expect(
       getOrganizationTransferMemberOptions(
         [
-          { user_id: 9, role: 'admin', status: 'active', user_status: 1, email: 'z@b.c' },
+          {
+            user_id: 9,
+            role: 'admin',
+            status: 'active',
+            user_status: 1,
+            email: 'z@b.c',
+          },
           {
             user_id: 10,
             role: 'admin',
@@ -526,6 +545,8 @@ describe('getOrganizationTokenBatchDeletePlan', () => {
   })
 
   test('an empty selection produces no request', () => {
-    expect(getOrganizationTokenBatchDeletePlan([], () => true).request).toBeNull()
+    expect(
+      getOrganizationTokenBatchDeletePlan([], () => true).request
+    ).toBeNull()
   })
 })

@@ -42,22 +42,23 @@ const (
 
 // Token related messages
 const (
-	MsgTokenNameTooLong          = "token.name_too_long"
-	MsgTokenQuotaNegative        = "token.quota_negative"
-	MsgTokenQuotaExceedMax       = "token.quota_exceed_max"
-	MsgTokenGenerateFailed       = "token.generate_failed"
-	MsgTokenGetInfoFailed        = "token.get_info_failed"
-	MsgTokenExpiredCannotEnable  = "token.expired_cannot_enable"
-	MsgTokenExhaustedCannotEable = "token.exhausted_cannot_enable"
-	MsgTokenInvalid              = "token.invalid"
-	MsgTokenNotProvided          = "token.not_provided"
-	MsgTokenExpired              = "token.expired"
-	MsgTokenExhausted            = "token.exhausted"
-	MsgTokenStatusUnavailable    = "token.status_unavailable"
-	MsgTokenDbError              = "token.db_error"
-	MsgTokenAutoGroupsTooMany    = "token.auto_groups_too_many"
-	MsgTokenAutoGroupsDuplicate  = "token.auto_groups_duplicate"
-	MsgTokenAutoGroupsInvalid    = "token.auto_groups_invalid"
+	MsgTokenNameTooLong              = "token.name_too_long"
+	MsgTokenQuotaNegative            = "token.quota_negative"
+	MsgTokenQuotaExceedMax           = "token.quota_exceed_max"
+	MsgTokenGenerateFailed           = "token.generate_failed"
+	MsgTokenGetInfoFailed            = "token.get_info_failed"
+	MsgTokenExpiredCannotEnable      = "token.expired_cannot_enable"
+	MsgTokenExhaustedCannotEable     = "token.exhausted_cannot_enable"
+	MsgTokenInvalid                  = "token.invalid"
+	MsgTokenNotProvided              = "token.not_provided"
+	MsgTokenExpired                  = "token.expired"
+	MsgTokenExhausted                = "token.exhausted"
+	MsgTokenStatusUnavailable        = "token.status_unavailable"
+	MsgTokenDbError                  = "token.db_error"
+	MsgTokenAutoGroupsTooMany        = "token.auto_groups_too_many"
+	MsgTokenAutoGroupsDuplicate      = "token.auto_groups_duplicate"
+	MsgTokenAutoGroupsInvalid        = "token.auto_groups_invalid"
+	MsgTokenModelOutsideMemberAccess = "token.model_outside_member_access"
 )
 
 // Redemption related messages
@@ -127,6 +128,10 @@ const (
 	MsgUserUsernameTooLong              = "user.username_too_long"
 	MsgUserDisplayNameTooLong           = "user.display_name_too_long"
 	MsgUserEmailTooLong                 = "user.email_too_long"
+	MsgModelDiscountOutOfRange          = "user.model_discount_out_of_range"
+	MsgModelDiscountNameInvalid         = "user.model_discount_name_invalid"
+	MsgModelDiscountTooMany             = "user.model_discount_too_many"
+	MsgModelDiscountTooLarge            = "user.model_discount_too_large"
 )
 
 // Ops (运营角色) related messages
@@ -383,6 +388,7 @@ const (
 	MsgDistributorAffinityChannelDisabled = "distributor.affinity_channel_disabled"
 	MsgDistributorTokenNoModelAccess      = "distributor.token_no_model_access"
 	MsgDistributorTokenModelForbidden     = "distributor.token_model_forbidden"
+	MsgDistributorMemberModelForbidden    = "distributor.member_model_forbidden"
 	MsgDistributorModelNameRequired       = "distributor.model_name_required"
 	MsgDistributorInvalidPlayground       = "distributor.invalid_playground_request"
 	MsgDistributorGroupAccessDenied       = "distributor.group_access_denied"

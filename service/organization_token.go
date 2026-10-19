@@ -21,6 +21,7 @@ package service
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -81,7 +82,35 @@ var (
 	ErrOrganizationTokenResponsibleMemberDisabled = errors.New("organization token responsible member disabled")
 	ErrOrganizationTokenResponsibleUserDisabled   = errors.New("organization token responsible user disabled")
 	ErrOrganizationTokenEnableForbidden           = errors.New("organization token enable forbidden")
+	ErrOrganizationMemberQuotaExhausted           = errors.New("organization member quota is exhausted")
+	ErrOrganizationQuotaUnavailable               = errors.New("organization quota is unavailable")
 )
+
+func maxOrganizationTokenQuotaValue() int {
+	return int(1000000000 * common.QuotaPerUnit)
+}
+
+// organizationMemberTokenDefaultQuota 计算普通成员新建组织 Key 的初始额度：
+// 已配置成员额度时取剩余成员额度；未配置时取组织总配额的 1%，且不超过组织剩余额度。
+func organizationMemberTokenDefaultQuota(organization *model.Organization, member *model.OrganizationMember) (int, error) {
+	if organization == nil || member == nil {
+		return 0, errors.New("invalid organization token request")
+	}
+	maxQuota := maxOrganizationTokenQuotaValue()
+	if member.QuotaLimit > 0 {
+		remaining := member.QuotaLimit - member.UsedQuota
+		if remaining <= 0 {
+			return 0, ErrOrganizationMemberQuotaExhausted
+		}
+		return min(remaining, maxQuota), nil
+	}
+	orgRemaining := organization.Quota - organization.UsedQuota
+	if organization.Quota <= 0 || orgRemaining <= 0 {
+		return 0, ErrOrganizationQuotaUnavailable
+	}
+	quota := max(1, min(orgRemaining, organization.Quota/100))
+	return min(quota, maxQuota), nil
+}
 
 type organizationTokenBatchCreateIdempotencyResult struct {
 	TokenIds   []int `json:"token_ids"`
@@ -111,7 +140,7 @@ func ListOrganizationTokens(operatorUserId, organizationId int, accessMode strin
 	}
 	query := model.DB.Model(&model.Token{}).Where("scope_type = ? AND organization_id = ?", model.TokenScopeOrganization, organizationId)
 	if !actor.Capabilities.CanViewOrganizationWideData {
-		query = query.Where("(responsible_user_id = ? AND visibility <> ?) OR visibility = ?", operatorUserId, model.TokenVisibilityPublic, model.TokenVisibilityPublic)
+		query = query.Where("(visibility <> ? AND (responsible_user_id = ? OR creator_user_id = ?)) OR visibility = ?", model.TokenVisibilityPublic, operatorUserId, operatorUserId, model.TokenVisibilityPublic)
 	} else if req.ResponsibleUserId > 0 {
 		query = query.Where("responsible_user_id = ?", req.ResponsibleUserId)
 	}
@@ -130,7 +159,7 @@ func ListOrganizationTokens(operatorUserId, organizationId int, accessMode strin
 	for _, token := range tokens {
 		model.NormalizeTokenScope(token)
 	}
-	if err := hydrateOrganizationTokenResponsibleUsers(tokens); err != nil {
+	if err := hydrateOrganizationTokenUserNames(tokens); err != nil {
 		return nil, 0, err
 	}
 	if err := hydrateOrganizationTokenAvailability(tokens); err != nil {
@@ -188,24 +217,31 @@ func applyOrganizationTokenStatusFilter(query *gorm.DB, status int) *gorm.DB {
 	}
 }
 
-func hydrateOrganizationTokenResponsibleUsers(tokens []*model.Token) error {
+// hydrateOrganizationTokenUserNames 用一次用户查询补全责任人与创建者的用户名/显示名，
+// 两者常常是同一人。
+func hydrateOrganizationTokenUserNames(tokens []*model.Token) error {
 	if len(tokens) == 0 {
 		return nil
 	}
-	responsibleUserIds := make([]int, 0, len(tokens))
+	userIds := make([]int, 0, len(tokens)*2)
 	seen := map[int]bool{}
 	for _, token := range tokens {
-		if token == nil || token.ResponsibleUserId <= 0 || seen[token.ResponsibleUserId] {
+		if token == nil {
 			continue
 		}
-		seen[token.ResponsibleUserId] = true
-		responsibleUserIds = append(responsibleUserIds, token.ResponsibleUserId)
+		for _, userId := range []int{token.ResponsibleUserId, token.CreatorUserId} {
+			if userId <= 0 || seen[userId] {
+				continue
+			}
+			seen[userId] = true
+			userIds = append(userIds, userId)
+		}
 	}
-	if len(responsibleUserIds) == 0 {
+	if len(userIds) == 0 {
 		return nil
 	}
 	var users []model.User
-	if err := model.DB.Select("id", "username", "display_name").Where("id IN ?", responsibleUserIds).Find(&users).Error; err != nil {
+	if err := model.DB.Select("id", "username", "display_name").Where("id IN ?", userIds).Find(&users).Error; err != nil {
 		return err
 	}
 	userById := make(map[int]model.User, len(users))
@@ -213,12 +249,14 @@ func hydrateOrganizationTokenResponsibleUsers(tokens []*model.Token) error {
 		userById[user.Id] = user
 	}
 	for _, token := range tokens {
-		user, ok := userById[token.ResponsibleUserId]
-		if !ok {
-			continue
+		if user, ok := userById[token.ResponsibleUserId]; ok {
+			token.ResponsibleUsername = user.Username
+			token.ResponsibleDisplayName = user.DisplayName
 		}
-		token.ResponsibleUsername = user.Username
-		token.ResponsibleDisplayName = user.DisplayName
+		if user, ok := userById[token.CreatorUserId]; ok {
+			token.CreatorUsername = user.Username
+			token.CreatorDisplayName = user.DisplayName
+		}
 	}
 	return nil
 }
@@ -463,12 +501,34 @@ func GetOrganizationToken(operatorUserId, organizationId int, accessMode string,
 	return token, nil
 }
 
+func isRestrictedOrganizationTokenActor(actor *OrganizationActorContext) bool {
+	return actor != nil && !actor.Capabilities.CanManageAllTokens && !actor.IsPlatformAdmin
+}
+
+// normalizeOrganizationMemberTokenRequest 把普通成员建 Key 的受控字段覆盖为安全默认值。
+// 调用方必须传入锁定的责任成员行：额度按写入时的 used_quota 计算。
+func normalizeOrganizationMemberTokenRequest(req *OrganizationTokenRequest, organization *model.Organization, member *model.OrganizationMember) error {
+	quota, err := organizationMemberTokenDefaultQuota(organization, member)
+	if err != nil {
+		return err
+	}
+	emptyAllowIps := ""
+	req.ExpiredTime = -1
+	req.RemainQuota = quota
+	req.UnlimitedQuota = false
+	req.ModelLimitsEnabled = false
+	req.ModelLimits = ""
+	req.AllowIps = &emptyAllowIps
+	req.Group = ""
+	req.CrossGroupRetry = false
+	req.Visibility = model.TokenVisibilityPrivate
+	req.ResponsibleUserId = member.UserId
+	return nil
+}
+
 func CreateOrganizationToken(operatorUserId, organizationId int, accessMode string, req OrganizationTokenRequest, auditMetadata ...OrganizationAuditRequestMetadata) (*model.Token, error) {
 	if operatorUserId <= 0 || organizationId <= 0 {
 		return nil, errors.New("invalid organization token request")
-	}
-	if err := validateOrganizationTokenRequest(req, false); err != nil {
-		return nil, err
 	}
 	key, err := common.GenerateKey()
 	if err != nil {
@@ -500,9 +560,6 @@ func CreateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 		if organization.Status == model.OrganizationStatusDissolved {
 			return errors.New("organization dissolved")
 		}
-		if err := validateOrganizationTokenGroup(organization.Group, req.Group); err != nil {
-			return err
-		}
 		responsibleUserId := req.ResponsibleUserId
 		if responsibleUserId == 0 {
 			if organizationActorHasPlatformAuthority(actor) {
@@ -510,7 +567,23 @@ func CreateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 			}
 			responsibleUserId = operatorUserId
 		}
-		if err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, normalizeOrganizationTokenVisibility(req.Visibility), responsibleUserId); err != nil {
+		responsibleMember, err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, normalizeOrganizationTokenVisibility(req.Visibility), responsibleUserId)
+		if err != nil {
+			return err
+		}
+		if isRestrictedOrganizationTokenActor(actor) {
+			if err := normalizeOrganizationMemberTokenRequest(&req, organization, responsibleMember); err != nil {
+				return err
+			}
+			responsibleUserId = responsibleMember.UserId
+		}
+		if err := validateOrganizationTokenRequest(req, false); err != nil {
+			return err
+		}
+		if err := validateOrganizationTokenGroup(organization.Group, req.Group); err != nil {
+			return err
+		}
+		if err := ensureOrganizationTokenModelLimitsWithinMemberAccess(responsibleUserId, req); err != nil {
 			return err
 		}
 		count, err := countOrganizationTokensWithTx(tx, organizationId)
@@ -571,9 +644,6 @@ func BatchCreateOrganizationTokens(operatorUserId, organizationId int, accessMod
 	if req.TokenCount > 100 {
 		return nil, errors.New("token count exceeds maximum")
 	}
-	if err := validateOrganizationTokenRequest(req.Token, false); err != nil {
-		return nil, err
-	}
 	requestHash, err := organizationTokenBatchCreateRequestHash(operatorUserId, organizationId, req)
 	if err != nil {
 		return nil, err
@@ -602,11 +672,11 @@ func BatchCreateOrganizationTokens(operatorUserId, organizationId int, accessMod
 		if err := ensureOrganizationTokenVisibilityAllowed(actor.Capabilities.CanManageAllTokens, req.Token.Visibility); err != nil {
 			return err
 		}
+		if isRestrictedOrganizationTokenActor(actor) && req.TokenCount > 1 {
+			return errors.New("member cannot create multiple keys at once")
+		}
 		if organization.Status == model.OrganizationStatusDissolved {
 			return errors.New("organization dissolved")
-		}
-		if err := validateOrganizationTokenGroup(organization.Group, req.Token.Group); err != nil {
-			return err
 		}
 		var idempotencyRecord *model.OrganizationIdempotencyRecord
 		if req.IdempotencyKey != "" {
@@ -630,7 +700,23 @@ func BatchCreateOrganizationTokens(operatorUserId, organizationId int, accessMod
 			}
 			responsibleUserId = operatorUserId
 		}
-		if err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, normalizeOrganizationTokenVisibility(req.Token.Visibility), responsibleUserId); err != nil {
+		responsibleMember, err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, normalizeOrganizationTokenVisibility(req.Token.Visibility), responsibleUserId)
+		if err != nil {
+			return err
+		}
+		if isRestrictedOrganizationTokenActor(actor) {
+			if err := normalizeOrganizationMemberTokenRequest(&req.Token, organization, responsibleMember); err != nil {
+				return err
+			}
+			responsibleUserId = responsibleMember.UserId
+		}
+		if err := validateOrganizationTokenRequest(req.Token, false); err != nil {
+			return err
+		}
+		if err := validateOrganizationTokenGroup(organization.Group, req.Token.Group); err != nil {
+			return err
+		}
+		if err := ensureOrganizationTokenModelLimitsWithinMemberAccess(responsibleUserId, req.Token); err != nil {
 			return err
 		}
 		count, err := countOrganizationTokensWithTx(tx, organizationId)
@@ -702,9 +788,6 @@ func UpdateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 	if operatorUserId <= 0 || organizationId <= 0 || tokenId <= 0 {
 		return nil, errors.New("invalid organization token request")
 	}
-	if err := validateOrganizationTokenRequest(req, true); err != nil {
-		return nil, err
-	}
 	now := common.GetTimestamp()
 	var updated model.Token
 	var affectedKey string
@@ -723,9 +806,6 @@ func UpdateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 		if organization.Status == model.OrganizationStatusDissolved {
 			return errors.New("organization dissolved")
 		}
-		if err := validateOrganizationTokenGroup(organization.Group, req.Group); err != nil {
-			return err
-		}
 		if !actor.Capabilities.CanManageAllTokens {
 			if err := ensureActiveOrganizationMemberLockedWithTx(tx, organizationId, operatorUserId); err != nil {
 				return err
@@ -737,7 +817,7 @@ func UpdateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 		}
 		affectedKey = token.Key
 		if !actor.Capabilities.CanManageAllTokens {
-			if token.ResponsibleUserId != operatorUserId || token.Visibility == model.TokenVisibilityPublic {
+			if !organizationPolicyCanManageTokenResource(actor, token) {
 				return errors.New("permission denied")
 			}
 			if req.ResponsibleUserId != 0 && req.ResponsibleUserId != token.ResponsibleUserId {
@@ -745,6 +825,23 @@ func UpdateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 			}
 		}
 		if err := ensureOrganizationTokenVisibilityAllowed(actor.Capabilities.CanManageAllTokens, req.Visibility); err != nil {
+			return err
+		}
+		if isRestrictedOrganizationTokenActor(actor) {
+			req.ExpiredTime = token.ExpiredTime
+			req.RemainQuota = token.RemainQuota
+			req.UnlimitedQuota = token.UnlimitedQuota
+			req.ModelLimitsEnabled = token.ModelLimitsEnabled
+			req.ModelLimits = token.ModelLimits
+			req.AllowIps = token.AllowIps
+			req.Group = token.Group
+			req.CrossGroupRetry = token.CrossGroupRetry
+			req.ResponsibleUserId = token.ResponsibleUserId
+		}
+		if err := validateOrganizationTokenRequest(req, true); err != nil {
+			return err
+		}
+		if err := validateOrganizationTokenGroup(organization.Group, req.Group); err != nil {
 			return err
 		}
 		before := *token
@@ -767,11 +864,20 @@ func UpdateOrganizationToken(operatorUserId, organizationId int, accessMode stri
 		}
 		visibility = normalizeOrganizationTokenVisibility(visibility)
 		if actor.Capabilities.CanManageAllTokens {
-			if err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, visibility, responsibleUserId); err != nil {
+			if _, err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, visibility, responsibleUserId); err != nil {
 				return err
 			}
 		} else if responsibleUserId != token.ResponsibleUserId {
 			return errors.New("permission denied")
+		}
+		// 只有本次请求实际改动了 model limits 或责任成员才按白名单校验：白名单可能
+		// 在 Key 建好之后收窄，存量 limits 原样回传（状态切换/改名/改额度）不该因此
+		// 被拒，否则这把 Key 会永久无法禁用或修复。换责任成员则必须重查——限制来自
+		// 新成员的允许集，而不是请求里的 limits。
+		if responsibleUserId != token.ResponsibleUserId || organizationTokenModelLimitsChanged(token, req) {
+			if err := ensureOrganizationTokenModelLimitsWithinMemberAccess(responsibleUserId, req); err != nil {
+				return err
+			}
 		}
 		if req.Status == common.TokenStatusDisabled {
 			if err := ensureOrganizationTokenSystemBlockerWithTx(tx, token, organizationTokenBlockerReasonManualDisabled, organizationTokenBlockerRefTypeOperator, operatorUserId, operatorUserId, organizationTokenBlockerClearanceForActor(actor), now); err != nil {
@@ -930,7 +1036,7 @@ func BatchDeleteOrganizationTokens(operatorUserId, organizationId int, accessMod
 		}
 		query = query.Where("scope_type = ? AND organization_id = ? AND id IN ?", model.TokenScopeOrganization, organizationId, ids)
 		if !actor.Capabilities.CanManageAllTokens {
-			query = query.Where("responsible_user_id = ? AND visibility = ?", operatorUserId, model.TokenVisibilityPrivate)
+			query = query.Where("creator_user_id = ? AND visibility = ?", operatorUserId, model.TokenVisibilityPrivate)
 		}
 		var tokens []model.Token
 		if err := query.Find(&tokens).Error; err != nil {
@@ -1001,7 +1107,7 @@ func UpdateOrganizationTokenResponsibility(operatorUserId, organizationId int, a
 		if err != nil {
 			return err
 		}
-		if err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, token.Visibility, req.ResponsibleUserId); err != nil {
+		if _, err := ensureOrganizationTokenResponsibleUserWithTx(tx, organization, token.Visibility, req.ResponsibleUserId); err != nil {
 			return err
 		}
 		affectedKey = token.Key
@@ -1047,7 +1153,7 @@ func validateOrganizationTokenRequest(req OrganizationTokenRequest, requireStatu
 		if req.RemainQuota < 0 {
 			return errors.New("token quota cannot be negative")
 		}
-		maxQuotaValue := int(1000000000 * common.QuotaPerUnit)
+		maxQuotaValue := maxOrganizationTokenQuotaValue()
 		if req.RemainQuota > maxQuotaValue {
 			return errors.New("token quota exceeds maximum")
 		}
@@ -1074,20 +1180,78 @@ func ensureOrganizationTokenVisibilityAllowed(canManageAllTokens bool, visibilit
 	return nil
 }
 
-func ensureOrganizationTokenResponsibleUserWithTx(tx *gorm.DB, organization *model.Organization, visibility string, targetUserId int) error {
+// ensureOrganizationTokenModelLimitsWithinMemberAccess 拒绝把组织 Key 的 model limits 设到
+// 责任成员的有效模型白名单之外：不启用或为空的 limits 按「未设置」放行，白名单为 nil
+// （成员不受限）一律放行。错误经控制器既有的 writeOrganizationError 通道以 400 返回；
+// 运行时 distributor 的成员白名单交集仍是最终闸门，这里只是把越界提前到建/改 key 时反馈。
+func ensureOrganizationTokenModelLimitsWithinMemberAccess(responsibleUserId int, req OrganizationTokenRequest) error {
+	if !req.ModelLimitsEnabled {
+		return nil
+	}
+	allow := model.GetUserModelAllowList(responsibleUserId)
+	if allow == nil {
+		return nil
+	}
+	for _, entry := range req.GetModelLimits() {
+		if !model.IsModelAllowedByMemberAccess(allow, entry) {
+			return fmt.Errorf("model %s is not in the organization's allowed list for the responsible member's account", entry)
+		}
+	}
+	return nil
+}
+
+// organizationTokenModelLimitsChanged reports whether an update would change the
+// token's stored model limits. Updates that leave them untouched (status
+// toggles, renames, quota edits) must not be revalidated: a member allow list
+// narrowed after the key was created already restricts the key at runtime, and
+// rejecting every other edit would make the key impossible to disable or
+// repair.
+func organizationTokenModelLimitsChanged(token *model.Token, req OrganizationTokenRequest) bool {
+	if token.ModelLimitsEnabled != req.ModelLimitsEnabled {
+		return true
+	}
+	return !sameModelLimitNames(token.GetModelLimits(), req.GetModelLimits())
+}
+
+// sameModelLimitNames compares two model limit lists as sets of trimmed,
+// non-empty names, so reordering or surrounding whitespace alone is not a
+// change.
+func sameModelLimitNames(a, b []string) bool {
+	toSet := func(models []string) map[string]struct{} {
+		set := make(map[string]struct{}, len(models))
+		for _, name := range models {
+			if name = strings.TrimSpace(name); name != "" {
+				set[name] = struct{}{}
+			}
+		}
+		return set
+	}
+	setA, setB := toSet(a), toSet(b)
+	if len(setA) != len(setB) {
+		return false
+	}
+	for name := range setA {
+		if _, ok := setB[name]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func ensureOrganizationTokenResponsibleUserWithTx(tx *gorm.DB, organization *model.Organization, visibility string, targetUserId int) (*model.OrganizationMember, error) {
 	if organization == nil || targetUserId <= 0 {
-		return errOrganizationTokenResponsibleUserInactive
+		return nil, errOrganizationTokenResponsibleUserInactive
 	}
 	var member model.OrganizationMember
 	if err := model.LockForUpdate(activeOrganizationMemberWithEnabledUserQuery(tx)).
 		Where("organization_members.organization_id = ? AND organization_members.user_id = ? AND organization_members.status = ?", organization.Id, targetUserId, model.OrganizationMemberStatusActive).
 		First(&member).Error; err != nil {
-		return errOrganizationTokenResponsibleUserInactive
+		return nil, errOrganizationTokenResponsibleUserInactive
 	}
 	if normalizeOrganizationTokenVisibility(visibility) == model.TokenVisibilityPublic && organization.OwnerUserId != targetUserId && member.Role != model.OrganizationRoleAdmin {
-		return errors.New("public token responsible user must be organization owner or admin")
+		return nil, errors.New("public token responsible user must be organization owner or admin")
 	}
-	return nil
+	return &member, nil
 }
 
 func lockOrganizationTokenWriteWithTx(tx *gorm.DB, organizationId int) error {

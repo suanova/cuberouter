@@ -11,6 +11,10 @@ type GroupRatioInfo struct {
 	GroupRatio        float64
 	GroupSpecialRatio float64
 	HasSpecialRatio   bool
+	// UserModelDiscount 是折叠进 GroupRatio 的用户×模型折扣（1=无折扣），
+	// HasUserModelDiscount 仅在折扣真实生效（d != 1）时为 true。
+	UserModelDiscount    float64
+	HasUserModelDiscount bool
 }
 
 type PriceData struct {
@@ -40,7 +44,8 @@ type PreConsumeDetail struct {
 	RequestMaxTokens      int     `json:"request_max_tokens"`      // 请求携带的 max_tokens（0=未携带）
 	PreConsumedTokens     int     `json:"pre_consumed_tokens"`     // max(估算, 保底) + max_tokens（未携带时按 defaultPreConsumeMaxTokens 兜底）
 	ModelRatio            float64 `json:"model_ratio"`             // 模型倍率
-	GroupRatio            float64 `json:"group_ratio"`             // 分组倍率
+	GroupRatio            float64 `json:"group_ratio"`             // 有效倍率（分组倍率 × 用户模型折扣）
+	UserModelDiscount     float64 `json:"user_model_discount"`     // 用户×模型折扣（1=无折扣），已折叠进 GroupRatio
 	UsePrice              bool    `json:"use_price"`               // true=按次计费（quota = 单价 × QuotaPerUnit × 分组倍率）
 	Quota                 int     `json:"quota"`                   // 最终预扣额度
 	// 估算构成分解（CountToken 关闭时为 nil）

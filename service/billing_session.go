@@ -412,6 +412,9 @@ func organizationBillingAPIError(err error) *types.NewAPIError {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeOrganizationBillingSessionConflict, http.StatusConflict, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}
 	errMsg := err.Error()
+	if strings.Contains(errMsg, "organization member quota is not enough") {
+		return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientOrganizationMemberQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+	}
 	if strings.Contains(errMsg, "organization quota is not enough") {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeInsufficientOrganizationQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 	}

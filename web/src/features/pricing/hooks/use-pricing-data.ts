@@ -63,10 +63,18 @@ export function usePricingData(enabled = true) {
     })
   }, [data])
 
+  // Kept stable across renders: the card grid is memo-rendered, so a fresh
+  // empty object would re-render every card on each pricing page update.
+  const userModelDiscounts = useMemo(
+    () => data?.user_model_discounts ?? {},
+    [data]
+  )
+
   return {
     models,
     vendors: data?.vendors ?? [],
     groupRatio: data?.group_ratio ?? {},
+    userModelDiscounts,
     usableGroup: data?.usable_group ?? {},
     endpointMap: data?.supported_endpoint ?? {},
     autoGroups: data?.auto_groups ?? [],

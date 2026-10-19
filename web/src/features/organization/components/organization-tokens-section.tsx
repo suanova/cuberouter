@@ -48,13 +48,14 @@ import {
   listOrganizationTokens,
   updateOrganizationToken,
 } from '../api'
-import { useOrganizationPagedSection } from '../hooks/use-organization-paged-query'
 import { useOrganizationTokenResponsibleOptions } from '../hooks/use-organization-member-options'
+import { useOrganizationPagedSection } from '../hooks/use-organization-paged-query'
 import {
   buildOrganizationGroupOptions,
   buildOrganizationTokenStatusPayload,
   getOrganizationTokenActionFlags,
   organizationTokenErrorText,
+  organizationTokenOwnerName,
   organizationTokenStatusMeta,
   organizationTokenVisibilityMeta,
   ORGANIZATION_TOKEN_STATUS,
@@ -65,20 +66,21 @@ import {
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationTokenRow } from '../types'
 import {
+  useOrganizationSectionRoute,
+  useOrganizationSurface,
+} from './organization-page-provider'
+import {
   OrganizationSection,
   OrganizationSectionEmpty,
   OrganizationSectionRefresh,
 } from './organization-section'
-import { OrganizationTokenKeyCell } from './organization-token-key-cell'
 import { OrganizationTokensBulkActions } from './organization-token-bulk-actions'
 import { OrganizationTokenDeleteDialog } from './organization-token-delete-dialogs'
 import { OrganizationTokenFormDialog } from './organization-token-form-dialog'
-import {
-  useOrganizationSectionRoute,
-  useOrganizationSurface,
-} from './organization-page-provider'
+import { OrganizationTokenKeyCell } from './organization-token-key-cell'
 
-const TOKENS_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-tokens-column-visibility'
+const TOKENS_COLUMN_VISIBILITY_STORAGE_KEY =
+  'organization-tokens-column-visibility'
 
 /** The backend filters on one value per field, so a multi-select sends its first. */
 function firstFilterValue(
@@ -98,6 +100,8 @@ type OrganizationTokensSectionProps = {
   canView: boolean
   /** The caller may publish keys and hand them to anyone; otherwise only their own. */
   canManageAllTokens: boolean
+  /** The caller is a platform administrator, even when the workspace role hides that. */
+  isPlatformAdministrator?: boolean
   /**
    * The caller may create keys in this organization.
    *
@@ -127,7 +131,9 @@ type OrganizationTokensSectionProps = {
  * actions follow the same split: a member may change a private key they hold,
  * but a public key is usable by all and editable by none of them.
  */
-export function OrganizationTokensSection(props: OrganizationTokensSectionProps) {
+export function OrganizationTokensSection(
+  props: OrganizationTokensSectionProps
+) {
   const { t } = useTranslation()
   const { search, navigate } = useOrganizationSectionRoute()
   const surface = useOrganizationSurface()
@@ -167,7 +173,9 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
     p: pagination.pageIndex + 1,
     page_size: pagination.pageSize,
     keyword: globalFilter || undefined,
-    status: Number.parseInt(firstFilterValue(columnFilters, 'status') ?? '', 10) || undefined,
+    status:
+      Number.parseInt(firstFilterValue(columnFilters, 'status') ?? '', 10) ||
+      undefined,
     visibility: firstFilterValue(columnFilters, 'visibility'),
     group: firstFilterValue(columnFilters, 'group'),
     responsible_user_id:
@@ -339,9 +347,7 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
         isLoading={tokens.isLoading}
         isFetching={tokens.isFetching}
         emptyTitle={t('No keys yet')}
-        emptyDescription={t(
-          'No organization keys match the current filters.'
-        )}
+        emptyDescription={t('No organization keys match the current filters.')}
         skeletonKeyPrefix='organization-tokens-skeleton'
         applyHeaderSize
         toolbarProps={{
@@ -352,10 +358,12 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
               columnId: 'status',
               title: t('Status'),
               singleSelect: true,
-              options: ORGANIZATION_TOKEN_STATUS_FILTER_OPTIONS.map((option) => ({
-                value: option.value,
-                label: t(option.labelKey),
-              })),
+              options: ORGANIZATION_TOKEN_STATUS_FILTER_OPTIONS.map(
+                (option) => ({
+                  value: option.value,
+                  label: t(option.labelKey),
+                })
+              ),
             },
             {
               columnId: 'visibility',
@@ -418,6 +426,7 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
           onOpenChange={setCreating}
           editing={null}
           canManageAllTokens={props.canManageAllTokens}
+          isPlatformAdministrator={props.isPlatformAdministrator}
           currentUserId={props.currentUserId}
           isOrganizationMember={props.isOrganizationMember}
           groupOptions={groupOptions}
@@ -431,6 +440,7 @@ export function OrganizationTokensSection(props: OrganizationTokensSectionProps)
         onOpenChange={(open) => !open && setEditing(null)}
         editing={editing}
         canManageAllTokens={props.canManageAllTokens}
+        isPlatformAdministrator={props.isPlatformAdministrator}
         currentUserId={props.currentUserId}
         isOrganizationMember={props.isOrganizationMember}
         groupOptions={groupOptions}
@@ -451,9 +461,9 @@ type TokenColumnContext = {
   t: (key: string) => string
   organizationGroup: string
   groupOptions: OrganizationGroupOption[]
-  flagsFor: (token: OrganizationTokenRow) => ReturnType<
-    typeof getOrganizationTokenActionFlags
-  >
+  flagsFor: (
+    token: OrganizationTokenRow
+  ) => ReturnType<typeof getOrganizationTokenActionFlags>
   onEdit: (token: OrganizationTokenRow) => void
   onDelete: (token: OrganizationTokenRow) => void
   onChangeStatus: (token: OrganizationTokenRow, status: number) => void
@@ -473,7 +483,9 @@ function buildTokenColumns(
       cell: ({ row }) => (
         <div className='min-w-0'>
           <div className='truncate font-medium'>{row.original.name || '-'}</div>
-          <div className='text-muted-foreground text-xs'>#{row.original.id}</div>
+          <div className='text-muted-foreground text-xs'>
+            #{row.original.id}
+          </div>
         </div>
       ),
     },
@@ -519,6 +531,17 @@ function buildTokenColumns(
       ),
     },
     {
+      accessorKey: 'creator_user_id',
+      header: t('Owner'),
+      enableSorting: false,
+      size: 140,
+      cell: ({ row }) => (
+        <span className='truncate font-medium'>
+          {organizationTokenOwnerName(row.original)}
+        </span>
+      ),
+    },
+    {
       accessorKey: 'visibility',
       header: t('Visibility'),
       enableSorting: false,
@@ -535,7 +558,8 @@ function buildTokenColumns(
       enableSorting: false,
       size: 140,
       cell: ({ row }) => {
-        const group = row.original.group || context.organizationGroup || 'default'
+        const group =
+          row.original.group || context.organizationGroup || 'default'
         const option = context.groupOptions.find((item) => item.value === group)
         return (
           <div className='min-w-0'>
@@ -582,14 +606,20 @@ function buildTokenColumns(
       cell: ({ row }) => {
         if (!row.original.model_limits_enabled || !row.original.model_limits) {
           return (
-            <span className='text-muted-foreground text-xs'>{t('No limit')}</span>
+            <span className='text-muted-foreground text-xs'>
+              {t('No limit')}
+            </span>
           )
         }
         const models = row.original.model_limits.split(',').filter(Boolean)
         return (
           <BadgeListCell
             items={models.map((model) => (
-              <Badge key={model} variant='outline' className='font-mono text-xs'>
+              <Badge
+                key={model}
+                variant='outline'
+                className='font-mono text-xs'
+              >
                 {model}
               </Badge>
             ))}
@@ -609,7 +639,9 @@ function buildTokenColumns(
           .filter(Boolean)
         if (ips.length === 0) {
           return (
-            <span className='text-muted-foreground text-xs'>{t('No limit')}</span>
+            <span className='text-muted-foreground text-xs'>
+              {t('No limit')}
+            </span>
           )
         }
         return (

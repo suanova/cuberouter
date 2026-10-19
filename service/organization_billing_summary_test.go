@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -111,7 +111,7 @@ func TestOrganizationBillingSummaryIgnoresLogsWithoutBillingRecords(t *testing.T
 
 func TestOrganizationBillingSummariesUseSessionSettledRecordUsage(t *testing.T) {
 	admin, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "summary-session-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "summary-session-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "summary-session-settle"
@@ -193,7 +193,7 @@ func TestOrganizationBillingSummariesUseRecordTokenUsageWithoutLogs(t *testing.T
 		common.LogConsumeEnabled = previousLogConsumeEnabled
 	})
 	admin, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "summary-token-usage-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "summary-token-usage-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "summary-record-token-usage"

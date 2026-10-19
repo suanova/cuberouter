@@ -183,7 +183,7 @@ export function transformOrganizationTokenFormToPayload(
 }
 
 /** The member a key currently belongs to. Zero is "nobody", not a match. */
-function responsibleUserIdOf(token: OrganizationTokenRow): number {
+export function responsibleUserIdOf(token: OrganizationTokenRow): number {
   return token.responsible_user_id || token.user_id || 0
 }
 

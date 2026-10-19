@@ -501,8 +501,31 @@ func TokenAuth() func(c *gin.Context) {
 		if err != nil {
 			return
 		}
+		// 组织 key 的调用者 = 责任成员：折扣跟随人，用责任成员的折扣覆盖
+		// 令牌属主（组织）的折扣。个人令牌 actor==属主，无需重复读取。
+		if scopeCtx.ActorUserId > 0 && scopeCtx.ActorUserId != token.UserId {
+			setActorModelDiscountContext(c, scopeCtx.ActorUserId)
+		}
 		c.Next()
 	}
+}
+
+// setActorModelDiscountContext 载入实际调用者（责任成员）的模型折扣并覆盖
+// 令牌属主的 context key。组织 key 账走组织、折扣跟随人，因此责任成员的折扣
+// 表必须替换属主的。读取失败时 fail-open：写入空表（按原价，且 key 已载入，
+// 下游不会对同一用户重复回源）。
+func setActorModelDiscountContext(c *gin.Context, actorUserId int) {
+	if actorUserId <= 0 {
+		common.SetContextKey(c, constant.ContextKeyUserModelDiscounts, map[string]float64{})
+		return
+	}
+	actorCache, err := model.GetUserCache(actorUserId)
+	if err != nil {
+		common.SysError(fmt.Sprintf("TokenAuth GetUserCache error for actor user %d: %v", actorUserId, err))
+		common.SetContextKey(c, constant.ContextKeyUserModelDiscounts, map[string]float64{})
+		return
+	}
+	common.SetContextKey(c, constant.ContextKeyUserModelDiscounts, actorCache.GetModelDiscounts())
 }
 
 // SetupContextForToken 在作用域未知时重新解析令牌作用域，然后写入上下文。

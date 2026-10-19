@@ -20,6 +20,7 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { LanguageSwitcher } from '@/components/language-switcher'
+import { SiteRegionSwitcher } from '@/components/site-region-switcher'
 import { ThemeSwitch } from '@/components/theme-switch'
 
 import { useSystemConfig } from '@/hooks/use-system-config'
@@ -44,6 +45,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       <div className='absolute top-4 right-4 z-10 flex items-center gap-2 sm:top-6 sm:right-6'>
         <ThemeSwitch />
         <LanguageSwitcher />
+        <SiteRegionSwitcher />
       </div>
 
       {/* Centered shell: logo above the card */}

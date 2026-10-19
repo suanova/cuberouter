@@ -185,6 +185,9 @@ export interface LogOtherData {
   model_price?: number
   group_ratio?: number
   user_group_ratio?: number
+  // Per-model discount of the calling user, written only while a real discount
+  // (0 < d < 1) was folded into the effective ratio above.
+  user_model_discount?: number
   cache_ratio?: number
   cache_creation_ratio?: number
   cache_creation_ratio_5m?: number

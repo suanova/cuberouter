@@ -39,7 +39,7 @@ import (
 
 func TestOrganizationBillingSettledRefundRestoresSettledQuotaAndTokenOnce(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "settled-refund-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "settled-refund-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "settled-refund"
@@ -83,7 +83,7 @@ func TestOrganizationBillingSettledRefundRestoresSettledQuotaAndTokenOnce(t *tes
 
 func TestOrganizationSettleSameActualReplaySucceeds(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "settle-same-actual-replay", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "settle-same-actual-replay", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "settle-same-actual-replay"
@@ -110,7 +110,7 @@ func TestOrganizationSettleSameActualReplaySucceeds(t *testing.T) {
 
 func TestOrganizationSettleDifferentActualReplayConflictsInMemory(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "settle-different-actual-in-memory", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "settle-different-actual-in-memory", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "settle-different-actual-in-memory"
@@ -137,7 +137,7 @@ func TestOrganizationSettleDifferentActualReplayConflictsInMemory(t *testing.T) 
 func TestOrganizationViolationFeeUsesDedicatedIdempotentBillingSession(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
 	feeQuota := configureViolationFeeQuota(t, 25)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "violation-fee-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "violation-fee-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	require.NotNil(t, token)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
@@ -191,7 +191,7 @@ func TestOrganizationViolationFeeReplayFillsMissingLogWithoutDoubleCharge(t *tes
 	common.LogConsumeEnabled = true
 	common.DataExportEnabled = false
 	t.Cleanup(func() { common.DataExportEnabled = previousDataExportEnabled })
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "violation-fee-replay-key", ExpiredTime: -1, RemainQuota: 1000})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "violation-fee-replay-key", ExpiredTime: -1, RemainQuota: 1000})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "violation-fee-replay"
@@ -259,7 +259,7 @@ func TestOrganizationViolationFeeReplayFillsMissingLogWithoutDoubleCharge(t *tes
 func TestOrganizationViolationFeeTokenFailureRollsBackOrganizationQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
 	feeQuota := configureViolationFeeQuota(t, 25)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "violation-fee-low-token", ExpiredTime: -1, RemainQuota: feeQuota - 1})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "violation-fee-low-token", ExpiredTime: -1, RemainQuota: feeQuota - 1})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "violation-fee-token-failure"
@@ -285,7 +285,7 @@ func TestOrganizationViolationFeeTokenFailureRollsBackOrganizationQuota(t *testi
 func TestOrganizationViolationFeeUnlimitedTokenOnlyChargesOrganization(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
 	feeQuota := configureViolationFeeQuota(t, 25)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "violation-fee-unlimited", ExpiredTime: -1, UnlimitedQuota: true})
+	token, err := insertOrganizationTokenForTest(t, organization, member, OrganizationTokenRequest{Name: "violation-fee-unlimited", ExpiredTime: -1, UnlimitedQuota: true})
 	require.NoError(t, err)
 	relayInfo := organizationBillingRelayInfo(token, organization.Id)
 	relayInfo.RequestId = "violation-fee-unlimited"

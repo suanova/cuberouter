@@ -81,6 +81,17 @@ describe('getModelEndpointLabels', () => {
     expect(labels).toEqual(['t:Video'])
   })
 
+  test('reads the task-plugin video endpoint as the video label', () => {
+    const labels = getModelEndpointLabels(
+      model({
+        supported_endpoint_types: [ENDPOINT_TYPES.VIDEO_GENERATION],
+      }),
+      t
+    )
+
+    expect(labels).toEqual(['t:Video'])
+  })
+
   test('reads a per-second video model as the video endpoint only', () => {
     const labels = getModelEndpointLabels(
       model({

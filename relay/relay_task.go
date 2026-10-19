@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay/channel"
@@ -90,6 +91,22 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 				info.OriginModelName = m
 			}
 		}
+	}
+
+	// 组织成员模型白名单：remix/continuation 是空模型的提交类路径，Distribute 的
+	// 空模型跳过覆盖不到它，这里按源任务模型单点补判（与令牌限制在 remix 上
+	// 空模型 miss 即拒绝的既有行为对称）。
+	actorUserId := info.ActorUserId
+	if actorUserId <= 0 {
+		actorUserId = info.UserId
+	}
+	var allow []string
+	if actorUserId > 0 {
+		allow = model.GetUserModelAllowList(actorUserId)
+	}
+	if allow != nil && !model.IsModelAllowedByMemberAccess(allow, info.OriginModelName) {
+		message := i18n.T(c, i18n.MsgDistributorMemberModelForbidden, map[string]any{"Model": info.OriginModelName})
+		return service.TaskErrorWrapperLocal(errors.New(message), "member_model_forbidden", http.StatusForbidden)
 	}
 
 	// 锁定到原始任务的渠道（重试时复用同一渠道，轮换 key）

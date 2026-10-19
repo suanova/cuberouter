@@ -119,6 +119,23 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 		actualGroupRatio = userGroupRatio
 	}
 
+	// 用户×模型折扣：这条路径不走 HandleGroupRatio，必须在这里自行应用，
+	// 与 relay/helper/price.go 的合成口径一致（基准分组倍率 × 折扣）。
+	// 令牌未带折扣快照（nil）时按 actor 回源；没有用户(<=0)时保持原价。
+	discounts := relayInfo.UserModelDiscounts
+	if discounts == nil {
+		actorUserId := relayInfo.ActorUserId
+		if actorUserId <= 0 {
+			actorUserId = relayInfo.UserId
+		}
+		if actorUserId > 0 {
+			if loaded, err := model.GetUserModelDiscounts(actorUserId, false); err == nil {
+				discounts = loaded
+			}
+		}
+	}
+	actualGroupRatio *= model.LookupModelDiscount(discounts, relayInfo.GetBillingModelName())
+
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{
 			TextTokens:  textInputTokens,
