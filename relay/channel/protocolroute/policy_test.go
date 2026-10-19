@@ -304,6 +304,35 @@ func TestDetectRejectedNativeProtocolTreatsNotFoundAsRejection(t *testing.T) {
 	})
 }
 
+// TestInternalCleartextUpstream 锁定明文豁免的目标范围: 只有内网地址(私网 IP、
+// 集群内域名、单标签主机名)在允许列表内; 公网 http 上游不在内, 仍会被 HTTPS 校验拒绝。
+func TestInternalCleartextUpstream(t *testing.T) {
+	tests := []struct {
+		baseURL string
+		want    bool
+	}{
+		{baseURL: "http://10.0.0.7:5001", want: true},
+		{baseURL: "http://172.16.3.4", want: true},
+		{baseURL: "http://172.31.255.1", want: true},
+		{baseURL: "http://192.168.1.5:8000", want: true},
+		{baseURL: "http://127.0.0.1:5001", want: true},
+		{baseURL: "http://qwen38-27b.default.svc:5001", want: true},
+		{baseURL: "http://vllm.ns.svc.cluster.local", want: true},
+		{baseURL: "http://model-server:5001", want: true},
+		{baseURL: "http://model.internal", want: true},
+		{baseURL: "http://api.example.com", want: false},
+		{baseURL: "http://8.8.8.8", want: false},
+		{baseURL: "http://172.15.1.1", want: false},
+		{baseURL: "http://172.32.1.1", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.baseURL, func(t *testing.T) {
+			assert.Equal(t, tt.want, internalCleartextUpstream(tt.baseURL))
+		})
+	}
+}
+
 // TestDetectRejectedNativeProtocolSkipsDeclaredPromiseBaseline 锁定: 未声明模型且
 // 基线不受记忆约束(AstraFlow 的 responses)时, 上游拒绝不写入记忆。否则这条记录会在
 // 运营者事后声明该协议时立刻生效, 让新配置背上一次并不存在的"已拒绝"。

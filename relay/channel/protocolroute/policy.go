@@ -52,11 +52,11 @@ type Policy struct {
 	// SkipEmptyBearer 为真时,渠道 key 为空就不发 Authorization 头
 	// (上游无鉴权,如本地 SGLang/vLLM)。
 	SkipEmptyBearer bool
-	// AllowCleartextUpstream 为真时允许明文 http 上游通过传输安全校验(安全设置
-	// security_setting.require_https_channel_base_url 对该渠道不再生效)。只用于
-	// 不携带凭证的本地/内网 SGLang·vLLM——那类上游的 base URL 就是
-	// http://<内网IP>:port,回环豁免覆盖不到。渠道一旦会发出 Authorization
-	// (API key 或头覆盖), 校验照常生效, 避免凭证明文出网。默认 false 即保持校验。
+	// AllowCleartextUpstream 为真时,指向内网地址的明文 http 上游跳过传输安全校验
+	// (security_setting.require_https_channel_base_url 对它们不再生效): 私网/回环 IP、
+	// 集群内域名(<service>.<ns>.svc[.cluster.local])与单标签主机名。内网 SGLang·vLLM
+	// 的 base URL 正是这些形式,回环豁免覆盖不到;流量不出内网,带渠道 key 也放行。
+	// 指向公网 http:// 的上游仍按安全设置校验,避免凭证明文出网。默认 false 即全部校验。
 	AllowCleartextUpstream bool
 	// MessagesPathPrefix 是原生 Anthropic Messages 会话在渠道 base URL 之后追加的
 	// 路径前缀。上游把 Anthropic API 挂在独立前缀(如 /anthropic)下、而 OpenAI 协议

@@ -23,7 +23,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -42,6 +44,45 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// internalCleartextUpstream 报告 base URL 是否指向内网地址——AllowCleartextUpstream
+// 的豁免只覆盖这类目标。判定不解析 DNS（上游地址可能只在集群内可解析）：
+//   - 私网/回环 IP（10/8、172.16/12、192.168/16、127/8、link-local 等）；
+//   - 集群内域名：<service>.<ns>.svc、<...>.svc.cluster.local、.cluster.local；
+//   - 常见内网后缀：.local、.internal、.lan、.home.arpa；
+//   - 不含点的单标签主机名（不是公网 FQDN）。
+//
+// 指向公网 http:// 的上游不在豁免内，仍由 ValidateHTTPSChannelBaseURL 拒绝，
+// 避免渠道 API key 明文出网。
+func internalCleartextUpstream(baseURL string) bool {
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.Hostname()), ".")
+	if host == "" {
+		return false
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return common.IsPrivateIP(ip)
+	}
+	if !strings.Contains(host, ".") {
+		return true
+	}
+	for _, suffix := range []string{
+		".svc",
+		".cluster.local",
+		".local",
+		".internal",
+		".lan",
+		".home.arpa",
+	} {
+		if strings.HasSuffix(host, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
 // GetRequestURL 按本次会话实际要发的协议选上游地址: 原生协议透传客户端路径,
 // 降级会话则指向 chat 端点(请求体已由 ConvertXxxRequest 转成 chat)。
 func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -53,9 +94,10 @@ func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	// 非任务中继会把渠道 API key 作为 Bearer 凭证发送到上游，拒绝明文上游
 	// （https 或回环地址除外），避免凭证被明文传输（CWE-319）。AllowCleartextUpstream
-	// 只豁免不携带凭证的上游——本地 SGLang/vLLM 惯例是无鉴权；只要渠道会发出
-	// Authorization(API key 或头覆盖)，仍按安全设置校验，见该字段。
-	if !p.AllowCleartextUpstream || info.ApiKey != "" || hasAuthorizationOverride(info) {
+	// 只豁免指向内网地址的上游（见 internalCleartextUpstream）：这类上游的 base URL
+	// 就是 http://<内网IP>:port 或集群内域名，回环豁免覆盖不到；即使配置了渠道 key，
+	// 流量也不出内网。指向公网 http:// 的上游仍按安全设置校验。
+	if !p.AllowCleartextUpstream || !internalCleartextUpstream(info.ChannelBaseUrl) {
 		if err := common.ValidateHTTPSChannelBaseURL(info.ChannelBaseUrl, security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL); err != nil {
 			return "", fmt.Errorf("%s: %w", p.ChannelLabel, err)
 		}
@@ -103,25 +145,19 @@ func (p Policy) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestPath, info.ChannelType), nil
 }
 
-// hasAuthorizationOverride 报告渠道是否配置了 Authorization 头覆盖。覆盖值本身就是
-// 凭证, 因此明文上游校验必须把它和 API key 同等对待。
-func hasAuthorizationOverride(info *relaycommon.RelayInfo) bool {
-	if info == nil {
-		return false
-	}
-	for k := range info.HeadersOverride {
-		if strings.EqualFold(k, "Authorization") {
-			return true
-		}
-	}
-	return false
-}
-
 func (p Policy) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	// 非任务模式（chat/responses/embeddings/image）需要携带渠道鉴权头；
 	// 若渠道已配置 Authorization Header Override 则跳过默认 Bearer，避免覆盖自定义鉴权。
-	hasAuthOverride := hasAuthorizationOverride(info)
+	hasAuthOverride := false
+	if len(info.HeadersOverride) > 0 {
+		for k := range info.HeadersOverride {
+			if strings.EqualFold(k, "Authorization") {
+				hasAuthOverride = true
+				break
+			}
+		}
+	}
 	// SkipEmptyBearer 的上游本来就不校验凭证(本地 SGLang/vLLM),空 key 时不要把
 	// 一个空的 Bearer 送到上游。
 	if !hasAuthOverride && !(p.SkipEmptyBearer && info.ApiKey == "") {

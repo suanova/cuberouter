@@ -362,9 +362,9 @@ func TestCubeStackDowngradesOnEndpointNotFound(t *testing.T) {
 
 // TestGetRequestURLAcceptsCleartextUpstream 锁定本渠道对明文上游的豁免边界：全局安全
 // 开关(默认开启)要求渠道 base URL 用 https 或回环地址，但内网 SGLang·vLLM 的 base
-// URL 就是 http://<内网IP>:port，回环豁免覆盖不到。无鉴权的本地上游照常可用；一旦
-// 渠道会携带凭证(API key 或 Authorization 头覆盖)，仍受全局开关约束，拒绝凭证明文出网。
-// AstraFlow 等渠道没有该豁免，见 astraflow 的同名用例。
+// URL 是 http://<内网IP>:port、集群内域名(http://<service>.<ns>.svc)或单标签主机名，
+// 回环豁免覆盖不到。这些内网目标即使配置了渠道 key 也照常可用；指向公网 http:// 的
+// 上游仍被拒绝。AstraFlow 等渠道没有该豁免，一律受全局开关约束。
 func TestGetRequestURLAcceptsCleartextUpstream(t *testing.T) {
 	old := security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL
 	security_setting.GetSecuritySetting().RequireHTTPSChannelBaseURL = true
@@ -372,30 +372,34 @@ func TestGetRequestURLAcceptsCleartextUpstream(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 
-	newInfo := func() *relaycommon.RelayInfo {
+	newInfo := func(baseURL string) *relaycommon.RelayInfo {
 		return &relaycommon.RelayInfo{
 			ChannelMeta: &relaycommon.ChannelMeta{
-				ChannelBaseUrl:    "http://10.0.0.7:5001",
+				ChannelBaseUrl:    baseURL,
 				ChannelType:       constant.ChannelTypeCubeStack,
+				ApiKey:            "sk-test",
 				UpstreamModelName: "qwen38-27b",
 			},
 			RequestURLPath: "/v1/chat/completions",
 		}
 	}
 
-	url, err := (&Adaptor{}).GetRequestURL(newInfo())
-	require.NoError(t, err, "a keyless private-network cleartext upstream must stay usable")
-	assert.Equal(t, "http://10.0.0.7:5001/v1/chat/completions", url)
+	for _, baseURL := range []string{
+		"http://10.0.0.7:5001",
+		"http://qwen38-27b.default.svc:5001",
+		"http://model-server:5001",
+	} {
+		t.Run("internal "+baseURL, func(t *testing.T) {
+			url, err := (&Adaptor{}).GetRequestURL(newInfo(baseURL))
+			require.NoError(t, err, "an internal cleartext upstream must stay usable even with a channel key")
+			assert.Equal(t, baseURL+"/v1/chat/completions", url)
+		})
+	}
 
-	keyed := newInfo()
-	keyed.ApiKey = "sk-test"
-	_, err = (&Adaptor{}).GetRequestURL(keyed)
-	require.Error(t, err, "a channel sending an API key must not bypass the HTTPS requirement")
-
-	overridden := newInfo()
-	overridden.HeadersOverride = map[string]interface{}{"Authorization": "Bearer sk-test"}
-	_, err = (&Adaptor{}).GetRequestURL(overridden)
-	require.Error(t, err, "a channel sending an Authorization override must not bypass the HTTPS requirement")
+	t.Run("a public target still requires https", func(t *testing.T) {
+		_, err := (&Adaptor{}).GetRequestURL(newInfo("http://api.example.com"))
+		require.Error(t, err, "the exemption must not cover public cleartext upstreams")
+	})
 }
 
 // runRelayChain 执行一次完整链路：DoRequest 打向假上游并断言请求契约，
