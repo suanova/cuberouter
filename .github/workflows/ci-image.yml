@@ -9,10 +9,6 @@ on:
 
 permissions: {}
 
-concurrency:
-  group: ci-image-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   changes:
     permissions:
@@ -63,6 +59,11 @@ jobs:
     permissions:
       contents: read
     runs-on: ubuntu-latest
+    # Cancel only the build phase; the notify job below must survive a newer
+    # push so an already-moved latest still reaches the installer.
+    concurrency:
+      group: ci-image-${{ github.ref }}
+      cancel-in-progress: true
     outputs:
       latest_moved: ${{ steps.publish.outputs.latest_moved }}
     steps:
