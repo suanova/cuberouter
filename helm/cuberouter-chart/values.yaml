@@ -99,7 +99,9 @@ cubeRouter:
   replicaCount: 2
   image:
     repository: harbor.isuanova.com/suanova/cuberouter
-    tag: latest
+    # Empty means the chart's appVersion, so a released chart pulls the image
+    # released with it. Set a tag to point the chart somewhere else.
+    tag: ""
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP

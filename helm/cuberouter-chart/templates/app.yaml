@@ -137,7 +137,7 @@ spec:
       {{- end }}
       containers:
         - name: cuberouter
-          image: "{{ .Values.cubeRouter.image.repository }}:{{ .Values.cubeRouter.image.tag }}"
+          image: "{{ .Values.cubeRouter.image.repository }}:{{ default .Chart.AppVersion .Values.cubeRouter.image.tag }}"
           imagePullPolicy: {{ .Values.cubeRouter.image.pullPolicy }}
           {{- with .Values.cubeRouter.command }}
           command:

@@ -6,8 +6,8 @@ subcharts are vendored under `charts/`, so it can be installed offline without `
 
 | | |
 |---|---|
-| Chart | `cuberouter-chart` **1.1.0** |
-| App version | `v1.0.0` |
+| Chart | `cuberouter-chart` **2.0.0** |
+| App version | `v2.0.0` |
 | Components | CubeRouter app (user + admin docs bundled), PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
 
 ## Contents
@@ -61,7 +61,7 @@ rolling updates).
 
 | Component | Default image | Values key |
 |---|---|---|
-| App | `harbor.isuanova.com/suanova/cuberouter:latest` | `cubeRouter.image.repository` / `.tag` |
+| App | `harbor.isuanova.com/suanova/cuberouter:<appVersion>` (empty `.tag` follows the chart appVersion) | `cubeRouter.image.repository` / `.tag` |
 | PostgreSQL instances | `ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie` (tag encodes the PG version) | `postgresql.image` |
 | Redis instances | `quay.io/opstree/redis:v7.0.15` | `redis.image.repository` / `.tag` |
 | Redis sentinel | `quay.io/opstree/redis-sentinel:v7.0.15` | `redis.sentinelImage.repository` / `.tag` |
