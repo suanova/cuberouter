@@ -1,12 +1,12 @@
 name: CI Chart
 
 # Push-only so the chart publish job never appears in pull request checks —
-# same as the image workflow. This workflow publishes the packaged chart as
-# an OCI artifact when a merge to main touches chart content or this
-# workflow file.
+# same as the image workflow. A merge to main publishes the rolling
+# <version>-latest chart; a v* tag publishes the release version it names.
 on:
   push:
     branches: [main]
+    tags: ['v*']
 
 permissions: {}
 
@@ -16,6 +16,8 @@ concurrency:
 
 jobs:
   changes:
+    # A tag has no diff base, and a release publishes regardless of what changed.
+    if: github.ref_type != 'tag'
     permissions:
       contents: read
       pull-requests: read
@@ -39,10 +41,9 @@ jobs:
               - '.github/workflows/ci-chart.yml'
 
   build-push-chart:
-    # Publish the chart as an OCI artifact only when a merge lands on main
-    # with chart-content-relevant changes.
+    # A release publishes every tag; a merge publishes only when the chart changed.
     needs: changes
-    if: needs.changes.outputs.chart == 'true'
+    if: always() && (github.ref_type == 'tag' || needs.changes.outputs.chart == 'true')
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -68,18 +69,22 @@ jobs:
         working-directory: helm/cuberouter-chart
         run: |
           set -euo pipefail
-          # Package next to the chart dir and push as an OCI artifact.
-          # helm push derives the repository path from the chart metadata name
-          # (cuberouter-chart, from Chart.yaml) — not from the local file name
-          # — so pushing to oci://harbor.isuanova.com/suanova stores the chart
-          # at suanova/cuberouter-chart, next to but separate from the app
-          # image repo suanova/cuberouter.
-          # The OCI version tag is the Chart.yaml version, and helm package
-          # names the file after the chart (cuberouter-chart-<version>.tgz) —
-          # derive the name from it so a version bump needs no workflow edit.
-          CHART_VERSION="$(helm show chart . | awk '/^version:/{print $2}')"
-          helm package . \
-            --version "$CHART_VERSION-latest" --app-version latest
+          # helm push derives the OCI path from the chart name, not the file
+          # name, so the package name below must follow the version.
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            APP_VERSION="${GITHUB_REF_NAME}"
+            SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?$'
+            if ! printf '%s' "$VERSION" | grep -Eq "$SEMVER"; then
+              echo "::error::tag '${GITHUB_REF_NAME}' is not a release version; expected vX.Y.Z or vX.Y.Z-<prerelease>"
+              exit 1
+            fi
+          else
+            CHART_VERSION="$(helm show chart . | awk '/^version:/{print $2}')"
+            VERSION="${CHART_VERSION}-latest"
+            APP_VERSION=latest
+          fi
 
-          helm push "cuberouter-chart-${CHART_VERSION}-latest.tgz" \
+          helm package . --version "$VERSION" --app-version "$APP_VERSION"
+          helm push "cuberouter-chart-${VERSION}.tgz" \
             oci://harbor.isuanova.com/suanova
