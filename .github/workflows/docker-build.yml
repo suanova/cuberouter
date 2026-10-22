@@ -53,8 +53,11 @@ jobs:
           else
             TAG=${GITHUB_REF#refs/tags/}
           fi
+          # The Git tag keeps its v (release/binary version); image tags do not.
+          IMAGE_TAG="${TAG#v}"
           echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "${TAG}" > VERSION
           echo "Building tag: ${TAG} for ${{ matrix.arch }}"
 
@@ -82,7 +85,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            harbor.isuanova.com/suanova/cuberouter:${{ env.TAG }}-${{ matrix.arch }}
+            harbor.isuanova.com/suanova/cuberouter:${{ env.IMAGE_TAG }}-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -99,7 +102,7 @@ jobs:
         run: |
           echo "### Docker Image Digest (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "harbor.isuanova.com/suanova/cuberouter:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "harbor.isuanova.com/suanova/cuberouter:${IMAGE_TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
