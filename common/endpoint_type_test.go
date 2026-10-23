@@ -65,6 +65,16 @@ func TestAstraFlowMultiModelEndpointTypes(t *testing.T) {
 			wantTypes: []constant.EndpointType{constant.EndpointTypeArkVideo},
 		},
 		{
+			name:      "minimax h3 video model uses ark-video",
+			model:     "MiniMax-H3",
+			wantTypes: []constant.EndpointType{constant.EndpointTypeArkVideo},
+		},
+		{
+			name:      "minimax h3 context ir text model keeps chat endpoints",
+			model:     "minimax-h3-context-ir",
+			wantTypes: []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse},
+		},
+		{
 			name:      "chat model exposes openai and openai-response",
 			model:     "deepseek-v3",
 			wantTypes: []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse},

@@ -33,6 +33,7 @@ var (
 		"sora",
 		"kling",
 		"wan3.0-video",
+		"minimax-h3",
 	}
 )
 
@@ -97,6 +98,10 @@ func IsOpenAITextModel(modelName string) bool {
 // 用于 AstraFlow 等多模态渠道在端点类型映射时区分视频模型与普通模型。
 func IsOpenAIVideoModel(modelName string) bool {
 	modelName = strings.ToLower(modelName)
+	// minimax-h3-context-ir 是按 token 计费的文本模型，不属于同名视频生成家族。
+	if strings.Contains(modelName, "minimax-h3-context-ir") {
+		return false
+	}
 	for _, m := range VideoGenerationModels {
 		if strings.Contains(modelName, m) {
 			return true
