@@ -55,6 +55,11 @@ func runChannelImportCLI(args []string) int {
 	if err := flags.Parse(args); err != nil {
 		return 2
 	}
+	if flags.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "error: unexpected arguments: %q\n", flags.Args())
+		flags.Usage()
+		return 2
+	}
 	if strings.TrimSpace(file) == "" {
 		fmt.Fprintln(os.Stderr, "error: -f <config.yaml> is required")
 		flags.Usage()

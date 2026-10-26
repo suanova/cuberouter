@@ -77,6 +77,12 @@ func ApplyModelPrices(prices map[string]channelconfig.ModelPrice) (*ModelPriceAp
 			modelPrices[name] = *price.PerRequest
 			continue
 		}
+		if existingPrice, ok := ratio_setting.GetModelPrice(name, false); ok {
+			result.Warnings = append(result.Warnings, fmt.Sprintf(
+				"model %q: existing ModelPrice $%.6g per request takes precedence over the configured token prices; token ratios will be applied but ModelPrice will be preserved",
+				name, existingPrice,
+			))
+		}
 		modelRatios[name] = price.ModelRatio
 		completionRatios[name] = price.CompletionRatio
 		if price.CacheRatio != nil {
