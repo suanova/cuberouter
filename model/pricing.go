@@ -3,6 +3,7 @@ package model
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"sync"
@@ -66,7 +67,11 @@ var (
 
 var (
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
-	modelSupportEndpointsLock = sync.RWMutex{}
+	// 同一个模型名在不同分组可能挂在不同渠道上（例如一组走 OpenAI 对话渠道、
+	// 另一组走视频渠道），按模型名合并后的端点会掩盖单个分组的真实能力，
+	// 因此再按分组记录一份，接口见 GetModelSupportEndpointTypesByGroups。
+	modelGroupSupportEndpointTypes = make(map[string]map[string][]constant.EndpointType)
+	modelSupportEndpointsLock      = sync.RWMutex{}
 )
 
 func GetPricing() []Pricing {
@@ -111,6 +116,28 @@ func GetModelSupportEndpointTypes(model string) []constant.EndpointType {
 		return endpoints
 	}
 	return make([]constant.EndpointType, 0)
+}
+
+// GetModelSupportEndpointTypesByGroups 按分组汇总模型的可用端点类型。价目表按
+// 模型名合并了全部分组的能力，调用方需要判断「这个分组里能不能用」时必须走这里：
+// 同一个模型名在不同分组可能挂在不同渠道上，用合并后的端点会误判。模型级元数据
+// （models 表的端点声明、text-to-image 标签）对模型本身生效，会计入每个分组。
+func GetModelSupportEndpointTypesByGroups(groups []string) map[string][]constant.EndpointType {
+	// 分组端点跟随价目表缓存一起重建，这里先按同样的节奏保证缓存新鲜。
+	GetPricing()
+	modelSupportEndpointsLock.RLock()
+	defer modelSupportEndpointsLock.RUnlock()
+	result := make(map[string][]constant.EndpointType)
+	for _, group := range groups {
+		for modelName, endpointsByGroup := range modelGroupSupportEndpointTypes {
+			for _, endpoint := range endpointsByGroup[group] {
+				if !slices.Contains(result[modelName], endpoint) {
+					result[modelName] = append(result[modelName], endpoint)
+				}
+			}
+		}
+	}
+	return result
 }
 
 func getPricingEndpointTypesForAbility(ability AbilityWithChannel, advancedCustomConfigs map[int]*dto.AdvancedCustomConfig) []constant.EndpointType {
@@ -181,6 +208,14 @@ func appendPricingEndpoint(endpoints []string, endpoint string) []string {
 		return endpoints
 	}
 	return append(endpoints, endpoint)
+}
+
+func parsePricingEndpointTypes(endpoints []string) []constant.EndpointType {
+	endpointTypes := make([]constant.EndpointType, 0, len(endpoints))
+	for _, endpoint := range endpoints {
+		endpointTypes = append(endpointTypes, constant.EndpointType(endpoint))
+	}
+	return endpointTypes
 }
 
 func updatePricing() {
@@ -277,19 +312,30 @@ func updatePricing() {
 
 	//这里使用切片而不是Set，因为一个模型可能支持多个端点类型，并且第一个端点是优先使用端点
 	modelSupportEndpointsStr := make(map[string][]string)
+	modelGroupEndpointsStr := make(map[string]map[string][]string)
 	advancedCustomConfigs := loadPricingAdvancedCustomConfigs(enableAbilities)
 
 	// 先根据已有能力填充原生端点
 	for _, ability := range enableAbilities {
 		endpoints := modelSupportEndpointsStr[ability.Model]
+		groupEndpoints, ok := modelGroupEndpointsStr[ability.Model]
+		if !ok {
+			groupEndpoints = make(map[string][]string)
+			modelGroupEndpointsStr[ability.Model] = groupEndpoints
+		}
 		channelTypes := getPricingEndpointTypesForAbility(ability, advancedCustomConfigs)
 		for _, channelType := range channelTypes {
 			if !common.StringsContains(endpoints, string(channelType)) {
 				endpoints = append(endpoints, string(channelType))
 			}
+			groupEndpoints[ability.Group] = appendPricingEndpoint(groupEndpoints[ability.Group], string(channelType))
 		}
 		modelSupportEndpointsStr[ability.Model] = endpoints
 	}
+
+	// 模型级元数据（端点声明、text-to-image 标签）描述模型本身，对它在每个分组里
+	// 的能力都生效，先单独收集，最后合并进全局与分组两份视图。
+	modelMetaEndpoints := make(map[string][]string)
 
 	// 再补充模型自定义端点：若配置有效则追加到已有推断，不再裁剪渠道真实能力
 	for modelName, meta := range metaMap {
@@ -299,12 +345,15 @@ func updatePricing() {
 		var raw map[string]interface{}
 		if err := common.Unmarshal([]byte(meta.Endpoints), &raw); err == nil {
 			endpoints := modelSupportEndpointsStr[modelName]
+			metaEndpoints := modelMetaEndpoints[modelName]
 			for k, v := range raw {
 				switch v.(type) {
 				case string, map[string]interface{}:
 					endpoints = appendPricingEndpoint(endpoints, k)
+					metaEndpoints = appendPricingEndpoint(metaEndpoints, k)
 				}
 			}
+			modelMetaEndpoints[modelName] = metaEndpoints
 			if len(endpoints) > 0 {
 				modelSupportEndpointsStr[modelName] = endpoints
 			}
@@ -322,6 +371,11 @@ func updatePricing() {
 		if !common.HasModelTag(meta.Tags, common.ModelTagTextToImage) {
 			continue
 		}
+		metaEndpoints := modelMetaEndpoints[modelName]
+		if !common.StringsContains(metaEndpoints, string(constant.EndpointTypeImageGeneration)) {
+			modelMetaEndpoints[modelName] = append(
+				[]string{string(constant.EndpointTypeImageGeneration)}, metaEndpoints...)
+		}
 		endpoints := modelSupportEndpointsStr[modelName]
 		if common.StringsContains(endpoints, string(constant.EndpointTypeImageGeneration)) {
 			continue
@@ -330,14 +384,27 @@ func updatePricing() {
 			[]string{string(constant.EndpointTypeImageGeneration)}, endpoints...)
 	}
 
+	for modelName, metaEndpoints := range modelMetaEndpoints {
+		for group, groupEndpoints := range modelGroupEndpointsStr[modelName] {
+			for _, metaEndpoint := range metaEndpoints {
+				groupEndpoints = appendPricingEndpoint(groupEndpoints, metaEndpoint)
+			}
+			modelGroupEndpointsStr[modelName][group] = groupEndpoints
+		}
+	}
+
 	modelSupportEndpointTypes = make(map[string][]constant.EndpointType)
 	for model, endpoints := range modelSupportEndpointsStr {
-		supportedEndpoints := make([]constant.EndpointType, 0)
-		for _, endpointStr := range endpoints {
-			endpointType := constant.EndpointType(endpointStr)
-			supportedEndpoints = append(supportedEndpoints, endpointType)
+		modelSupportEndpointTypes[model] = parsePricingEndpointTypes(endpoints)
+	}
+
+	modelGroupSupportEndpointTypes = make(map[string]map[string][]constant.EndpointType)
+	for modelName, groupEndpoints := range modelGroupEndpointsStr {
+		endpointsByGroup := make(map[string][]constant.EndpointType, len(groupEndpoints))
+		for group, endpoints := range groupEndpoints {
+			endpointsByGroup[group] = parsePricingEndpointTypes(endpoints)
 		}
-		modelSupportEndpointTypes[model] = supportedEndpoints
+		modelGroupSupportEndpointTypes[modelName] = endpointsByGroup
 	}
 
 	// 构建全局 supportedEndpointMap（默认 + 自定义覆盖）

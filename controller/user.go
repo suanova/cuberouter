@@ -722,12 +722,11 @@ func isChatCapableEndpoints(endpoints []constant.EndpointType) bool {
 	return hasChatEndpoint
 }
 
-// filterChatModels 只保留能走聊天补全的模型，供 Playground 使用。
-func filterChatModels(models []string) []string {
-	endpointsByModel := make(map[string][]constant.EndpointType)
-	for _, pricing := range model.GetPricing() {
-		endpointsByModel[pricing.ModelName] = pricing.SupportedEndpointTypes
-	}
+// filterChatModels 只保留在给定分组里能走聊天补全的模型，供 Playground 使用。
+// 端点能力必须按分组取：同一个模型名在不同分组可能挂在不同渠道上，用按模型名
+// 合并后的全局端点，会把「这组能聊、那组只能生成媒体」的模型一并判死。
+func filterChatModels(models []string, groups []string) []string {
+	endpointsByModel := model.GetModelSupportEndpointTypesByGroups(groups)
 
 	filtered := make([]string, 0, len(models))
 	for _, modelName := range models {
@@ -772,7 +771,7 @@ func GetUserModels(c *gin.Context) {
 	// Playground 只该列出能真正聊天的模型：图片/视频生成模型与 responses-only
 	// 模型走不了 chat/completions，选中后必然报错。其他调用方不传该参数，行为不变。
 	if c.Query("endpoint") == "chat" {
-		models = filterChatModels(models)
+		models = filterChatModels(models, groupsToQuery)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

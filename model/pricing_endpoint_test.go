@@ -6,8 +6,8 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -454,4 +454,52 @@ func TestPricingModelTagDeclaresImageGenerationEndpoint(t *testing.T) {
 		constant.EndpointTypeImageGeneration,
 		constant.EndpointTypeOpenAI,
 	}, byModel["both-modes-model"])
+}
+
+// TestPricingEndpointTypesPerGroupFollowAbilities 覆盖同名模型跨分组挂不同渠道：
+// 价目表按模型名合并全部分组的能力，但判断「这个分组里能不能用」必须看本组能力，
+// 否则一组能聊天、另一组只能生成视频的同名模型会被一并判死。模型级元数据
+// （text-to-image 标签）描述模型本身，对每个分组都生效。
+func TestPricingEndpointTypesPerGroupFollowAbilities(t *testing.T) {
+	resetPricingEndpointTestTables(t)
+
+	// 渠道自身的 Group 也要与能力一致：InitChannelCache 按渠道分组建索引，
+	// 分组缺索引会直接 panic。
+	for _, channel := range []Channel{
+		{Id: 701, Type: constant.ChannelTypeOpenAI, Key: "key-701", Name: "channel-701", Status: common.ChannelStatusEnabled, Group: "chat-group"},
+		{Id: 702, Type: constant.ChannelTypeSora, Key: "key-702", Name: "channel-702", Status: common.ChannelStatusEnabled, Group: "video-group"},
+	} {
+		require.NoError(t, DB.Create(&channel).Error)
+	}
+	for _, ability := range []Ability{
+		{Group: "chat-group", Model: "shared-model", ChannelId: 701, Enabled: true},
+		{Group: "video-group", Model: "shared-model", ChannelId: 702, Enabled: true},
+		{Group: "chat-group", Model: "tagged-image-model", ChannelId: 701, Enabled: true},
+	} {
+		require.NoError(t, DB.Create(&ability).Error)
+	}
+	require.NoError(t, DB.Create(&Model{
+		ModelName: "tagged-image-model", Tags: "text-to-image", Status: 1, NameRule: NameRuleExact,
+	}).Error)
+
+	global := pricingEndpointTypesByModel(t)["shared-model"]
+	require.ElementsMatch(t, []constant.EndpointType{
+		constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIVideo,
+	}, global, "价目表仍按模型名合并全部分组")
+
+	chatGroup := GetModelSupportEndpointTypesByGroups([]string{"chat-group"})
+	require.ElementsMatch(t, []constant.EndpointType{constant.EndpointTypeOpenAI},
+		chatGroup["shared-model"], "聊天分组只看本组渠道")
+	require.ElementsMatch(t, []constant.EndpointType{
+		constant.EndpointTypeOpenAI, constant.EndpointTypeImageGeneration,
+	}, chatGroup["tagged-image-model"], "模型级标签对每个分组都生效")
+
+	videoGroup := GetModelSupportEndpointTypesByGroups([]string{"video-group"})
+	require.ElementsMatch(t, []constant.EndpointType{constant.EndpointTypeOpenAIVideo},
+		videoGroup["shared-model"])
+
+	bothGroups := GetModelSupportEndpointTypesByGroups([]string{"chat-group", "video-group"})
+	require.ElementsMatch(t, []constant.EndpointType{
+		constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIVideo,
+	}, bothGroups["shared-model"], "多分组取并集")
 }
