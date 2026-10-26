@@ -179,3 +179,21 @@ func TestFilterPricingByGroupKeepsOnlyOwnGroup(t *testing.T) {
 	require.Len(t, onlyAll, 1)
 	require.Equal(t, "all-group-model", onlyAll[0].ModelName)
 }
+
+// TestCollectPricingGroupsExpandsAdminView 管理员的可用分组来自价目表本身：
+// all 是特殊标记不算业务分组，已配置描述的分组沿用配置，未配置的退回分组名。
+func TestCollectPricingGroupsExpandsAdminView(t *testing.T) {
+	pricing := []model.Pricing{
+		{ModelName: "all-group-model", EnableGroup: []string{"all"}},
+		{ModelName: "default-model", EnableGroup: []string{"default"}},
+		{ModelName: "yeebo-model", EnableGroup: []string{"yeebo", "default"}},
+	}
+
+	groups := collectPricingGroups(pricing)
+	require.Len(t, groups, 2)
+	require.NotEmpty(t, groups["default"])
+	require.Equal(t, "yeebo", groups["yeebo"], "未配置描述时退回分组名")
+	require.NotContains(t, groups, "all")
+
+	require.Empty(t, collectPricingGroups(nil))
+}

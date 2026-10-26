@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +55,25 @@ func filterPricingByGroup(pricing []model.Pricing, accountGroup string) []model.
 		}
 	}
 	return filtered
+}
+
+// collectPricingGroups 汇总价目表里出现的全部业务分组，供平台管理员的全量视图使用。
+//
+// 管理员的可用分组不来自本人分组，而是价目表本身：只看本人分组会把管理视角
+// 收窄到自己那一组，看不到其他分组配了什么模型。
+func collectPricingGroups(pricing []model.Pricing) map[string]string {
+	groups := make(map[string]string)
+	for _, item := range pricing {
+		for _, group := range item.EnableGroup {
+			if group == "" || group == "all" {
+				continue
+			}
+			if _, ok := groups[group]; !ok {
+				groups[group] = setting.GetUsableGroupDescription(group)
+			}
+		}
+	}
+	return groups
 }
 
 // pricingAccountGroup 解析当前生效的分组：组织上下文用组织的分组，否则用用户自己的。
@@ -116,10 +136,17 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	usableGroup = service.GetAccountUsableGroups(group)
-	pricing = filterPricingByUsableGroups(pricing, usableGroup)
-	// 价目表只描述本人分组能用的模型；匿名请求没有本人分组，保持可用分组视图。
-	pricing = filterPricingByGroup(pricing, group)
+	// 平台管理员看全量价目表：他们不属于某个业务分组，按本人分组收窄会让
+	// 管理视角只剩自己那一组。分组筛选项与倍率也按价目表里出现的分组展开，
+	// 否则管理员看到的模型和分组筛选项会自相矛盾。
+	if c.GetInt("role") >= common.RoleAdminUser {
+		usableGroup = collectPricingGroups(pricing)
+	} else {
+		usableGroup = service.GetAccountUsableGroups(group)
+		pricing = filterPricingByUsableGroups(pricing, usableGroup)
+		// 价目表只描述本人分组能用的模型；匿名请求没有本人分组，保持可用分组视图。
+		pricing = filterPricingByGroup(pricing, group)
+	}
 	// 组织成员模型白名单：受限成员只看到白名单内的模型价目（平台管理员与无成员
 	// 限制的用户 allow 为 nil，整段跳过）。只按本请求重建切片，绝不改写共享缓存
 	// 元素——否则会串到其他用户的价目表。
