@@ -700,6 +700,44 @@ func generateDefaultSidebarConfig(userRole int) string {
 
 	return string(configBytes)
 }
+
+// isChatCapableEndpoints 判断一组端点类型能否承载聊天补全。
+//
+// 图片/视频生成模型挂在 OpenAI 渠道上时也会带上 openai 端点，只判断「有没有
+// 对话端点」会把它们漏进 Playground；所以媒体生成端点一旦出现就整体排除。
+// responses-only 模型（只有 openai-response）没有 chat/completions 入口，同样
+// 不算能聊天。
+func isChatCapableEndpoints(endpoints []constant.EndpointType) bool {
+	hasChatEndpoint := false
+	for _, endpoint := range endpoints {
+		switch endpoint {
+		case constant.EndpointTypeImageGeneration, constant.EndpointTypeOpenAIVideo,
+			constant.EndpointTypeArkVideo, constant.EndpointTypeVideoGeneration:
+			return false
+		case constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic,
+			constant.EndpointTypeGemini:
+			hasChatEndpoint = true
+		}
+	}
+	return hasChatEndpoint
+}
+
+// filterChatModels 只保留能走聊天补全的模型，供 Playground 使用。
+func filterChatModels(models []string) []string {
+	endpointsByModel := make(map[string][]constant.EndpointType)
+	for _, pricing := range model.GetPricing() {
+		endpointsByModel[pricing.ModelName] = pricing.SupportedEndpointTypes
+	}
+
+	filtered := make([]string, 0, len(models))
+	for _, modelName := range models {
+		if isChatCapableEndpoints(endpointsByModel[modelName]) {
+			filtered = append(filtered, modelName)
+		}
+	}
+	return filtered
+}
+
 func GetUserModels(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -731,6 +769,11 @@ func GetUserModels(c *gin.Context) {
 	// 无成员限制）原样直通，响应与过滤前逐字节一致。
 	models := service.GetGroupsEnabledModels(groupsToQuery)
 	models = model.FilterModelsByMemberAccess(model.GetUserModelAllowList(id), models)
+	// Playground 只该列出能真正聊天的模型：图片/视频生成模型与 responses-only
+	// 模型走不了 chat/completions，选中后必然报错。其他调用方不传该参数，行为不变。
+	if c.Query("endpoint") == "chat" {
+		models = filterChatModels(models)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
