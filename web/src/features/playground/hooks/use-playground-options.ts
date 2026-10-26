@@ -123,9 +123,12 @@ export function usePlaygroundOptions({
   }, [queryGroup, currentGroup, updateConfig])
 
   useEffect(() => {
-    if (!SHOW_PLAYGROUND_GROUP_SELECTOR || !groupsData) return
+    if (!groupsData) return
 
+    // 分组列表始终写入：选择器隐藏时它仍决定模型选择器是否可用。
     setGroups(groupsData)
+    if (!SHOW_PLAYGROUND_GROUP_SELECTOR) return
+
     const fallback = getGroupFallback(groupsData, currentGroup)
 
     if (fallback) {

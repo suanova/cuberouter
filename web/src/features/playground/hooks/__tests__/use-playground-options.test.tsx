@@ -25,6 +25,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getUserGroups, getUserModels } from '../../api'
+import type { GroupOption } from '../../types'
 import { usePlaygroundOptions } from '../use-playground-options'
 
 vi.mock('../../api', () => ({
@@ -39,6 +40,7 @@ function renderOptions(params: {
   currentGroup: string
   currentModel: string
   onGroupChange: (group: string) => void
+  setGroups?: (groups: GroupOption[]) => void
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -54,7 +56,7 @@ function renderOptions(params: {
       usePlaygroundOptions({
         currentGroup: params.currentGroup,
         currentModel: params.currentModel,
-        setGroups: vi.fn(),
+        setGroups: params.setGroups ?? vi.fn(),
         setModels: vi.fn(),
         updateConfig: (key, value) => {
           if (key === 'group') params.onGroupChange(String(value))
@@ -82,20 +84,27 @@ describe('playground options', () => {
     mockedGetUserModels.mockResolvedValue([
       { label: 'yeebo-model', value: 'yeebo-model' },
     ])
-    mockedGetUserGroups.mockResolvedValue([
+    const groups: GroupOption[] = [
       { label: 'default', value: 'default', ratio: 1 },
       { label: 'yeebo', value: 'yeebo', ratio: 1 },
-    ])
+    ]
+    mockedGetUserGroups.mockResolvedValue(groups)
     const onGroupChange = vi.fn()
+    const setGroups = vi.fn()
 
     renderOptions({
       currentGroup: 'default',
       currentModel: 'yeebo-model',
       onGroupChange,
+      setGroups,
     })
 
     await waitFor(() => {
       expect(mockedGetUserModels).toHaveBeenCalledWith('yeebo')
+    })
+    // 选择器隐藏时也写入分组，否则模型选择器会因为 groups 为空而禁用。
+    await waitFor(() => {
+      expect(setGroups).toHaveBeenCalledWith(groups)
     })
     await waitFor(() => {
       expect(onGroupChange).toHaveBeenCalledWith('yeebo')
