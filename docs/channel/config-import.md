@@ -24,7 +24,7 @@ services:
 - Web 完成首次 setup 后，服务端立即执行一次导入：建渠道、拉取模型。结果随 setup 响应返回（`channel_config`）。
 - 文件不存在时静默忽略，setup 正常成功；其他组件稍后写入文件后会自动导入，不需要重新 setup。
 - 服务端每 60 秒检查一次文件，内容变化时自动重新执行完整导入，无需重启 Pod（见下节 Kubernetes）；内容没变则不会重复写库。
-- 渠道页「上游更新」的检测/应用（单个或全部）会更新模型列表，并重新应用文件中配置的定价，可能覆盖你在模型定价页面维护的价格。
+- 渠道页「上游更新」的检测/应用（单个或全部）会更新模型列表。
 - 每次检查或导入时都会重新读取文件，按渠道名匹配；文件里没有同名渠道时跳过并记录日志。
 - 未设置 `CHANNEL_CONFIG_FILE` 时不会自动执行；设置该变量并重启服务后生效。
 
@@ -109,7 +109,6 @@ channels:
 |---|---|---|
 | `version` | int | 目前只支持 `1`，省略时按 1 处理 |
 | `channels` | list | 渠道列表，见下，必填且至少一个 |
-| `pricing` | object | 全局定价规则，见下 |
 
 ### channels[]
 
@@ -135,7 +134,6 @@ channels:
 | `settings` | map | 额外 `ChannelSettings`（如 `force_format`、`http_protocol`） |
 | `other_settings` | map | 额外 `ChannelOtherSettings`（如 `upstream_model_update_check_enabled`） |
 | `other` | string | 原样写入渠道 `other` 字段（Vertex AI 地区等特殊渠道使用） |
-| `pricing` | object | 当前渠道的定价规则，结构同顶层 `pricing`，见下 |
 
 ### channels[].models
 
@@ -147,49 +145,6 @@ channels:
 | `exclude` | list | 排除匹配的拉取结果，glob 语法 |
 
 `fetch: false` 时 `list` 必填。最终模型列表会去重并排序。
-
-### pricing / channels[].pricing
-
-定价以模型名为单位写入全局价格表，同名模型在所有渠道共用价格。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `defaults` | object | 默认价格；顶层配置应用于所有渠道的模型，渠道内配置仅应用于该渠道的模型 |
-| `models` | map | 按模型名指定完整价格对象；只对配置渠道最终模型列表中的模型生效，未知模型名会产生警告 |
-
-价格对象支持以下字段，所有金额均为美元：
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `input` | number | 每 100 万输入 token 的价格；按 token 计费时必填，必须大于 0 |
-| `output` | number | 每 100 万输出 token 的价格；按 token 计费时必填，必须大于 0 |
-| `cache_read` | number | 每 100 万缓存读取 token 的价格，可选且不小于 0；省略时保留已有缓存倍率或使用系统默认值 |
-| `cache_write` | number | 每 100 万缓存写入 token 的价格，可选且不小于 0；省略时保留已有缓存倍率或使用系统默认值 |
-| `per_request` | number | 每次请求的价格，必须大于 0，不能与上述 token 价格字段同时使用 |
-
-所有数值必须有限。定价优先级从低到高为：顶层 `pricing.defaults` → 渠道 `pricing.defaults` →
-渠道 `pricing.models` → 顶层 `pricing.models`。每层替换完整价格对象，不会逐字段继承；
-因此每个 token 价格对象都必须同时提供 `input` 和 `output`。多个渠道为同一模型配置不同价格时，
-后面的渠道优先，并产生警告；顶层 `pricing.models` 最后统一覆盖。
-
-```yaml
-pricing:
-  defaults:
-    input: 2
-    output: 4
-    cache_read: 0.2
-    cache_write: 2.5
-  models:
-    qwen3-32b:
-      input: 4
-      output: 8
-    request-priced-model:
-      per_request: 0.01
-```
-
-上例可放在顶层，也可放在某个渠道内；模型名需出现在相应渠道的最终模型列表中。
-导入和「上游更新」会重新应用配置价格。已有按次计费的 `ModelPrice` 优先于 token 倍率；
-此时导入会保留 `ModelPrice`、写入配置的 token 倍率并给出警告。部分模型的内置输出倍率也可能优先于配置值，导入时会给出警告。
 
 ### overrides
 

@@ -30,11 +30,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func pointerTo[T any](value T) *T {
-	return &value
-}
-
-func TestParseNormalizesAndConvertsPrices(t *testing.T) {
+func TestParseNormalizesConfig(t *testing.T) {
 	t.Setenv("TEST_CUBESTACK_KEY", "sk-from-env")
 	raw := `
 version: 1
@@ -49,16 +45,6 @@ channels:
       exclude: ["*-embedding"]
     overrides:
       temperature: 0.7
-    pricing:
-      defaults:
-        input: 0.5
-        output: 1.5
-        cache_read: 0.05
-pricing:
-  models:
-    qwen3-32b:
-      input: 0.2
-      output: 0.8
 `
 	config, err := Parse([]byte(raw))
 	require.NoError(t, err)
@@ -71,27 +57,6 @@ pricing:
 	require.NotNil(t, channel.Models.Fetch)
 	assert.True(t, *channel.Models.Fetch)
 	assert.Equal(t, []string{"sk-from-env"}, channel.ChannelKeys())
-
-	plan, unknown, err := BuildPricePlan(
-		[]string{"qwen3-32b", "glm-4.6"},
-		[]PriceLayer{
-			{Defaults: config.Channels[0].Pricing.Defaults},
-			{Models: config.Pricing.Models},
-		},
-	)
-	require.NoError(t, err)
-	assert.Empty(t, unknown)
-
-	qwen := plan["qwen3-32b"]
-	assert.Equal(t, 0.1, qwen.ModelRatio)
-	assert.Equal(t, 4.0, qwen.CompletionRatio)
-	assert.Nil(t, qwen.CacheRatio)
-
-	glm := plan["glm-4.6"]
-	assert.Equal(t, 0.25, glm.ModelRatio)
-	assert.Equal(t, 3.0, glm.CompletionRatio)
-	require.NotNil(t, glm.CacheRatio)
-	assert.Equal(t, 0.1, *glm.CacheRatio)
 }
 
 func mustChannelType(t *testing.T, value any) int {
@@ -132,74 +97,6 @@ func TestResolveChannelType(t *testing.T) {
 			assert.Equal(t, test.want, got)
 		})
 	}
-}
-
-func TestBuildPricePlanPrecedence(t *testing.T) {
-	globalDefault := &Price{Input: pointerTo(1.0), Output: pointerTo(2.0)}
-	channelDefault := &Price{Input: pointerTo(2.0), Output: pointerTo(6.0)}
-	channelModel := Price{Input: pointerTo(3.0), Output: pointerTo(15.0)}
-	globalModel := Price{Input: pointerTo(4.0), Output: pointerTo(20.0)}
-
-	models := []string{"alpha", "beta", "gamma"}
-	plan, unknown, err := BuildPricePlan(models, []PriceLayer{
-		{Defaults: globalDefault},
-		{Defaults: channelDefault},
-		{Models: map[string]Price{"beta": channelModel}},
-		{Models: map[string]Price{"gamma": globalModel, "absent": globalModel}},
-	})
-	require.NoError(t, err)
-	assert.Equal(t, []string{"absent"}, unknown)
-	require.Len(t, plan, 3)
-
-	assert.Equal(t, 1.0, plan["alpha"].ModelRatio)
-	assert.Equal(t, 1.5, plan["beta"].ModelRatio)
-	assert.Equal(t, 5.0, plan["beta"].CompletionRatio)
-	assert.Equal(t, 2.0, plan["gamma"].ModelRatio)
-	assert.Equal(t, 5.0, plan["gamma"].CompletionRatio)
-}
-
-func TestModelPriceToPriceRoundTrip(t *testing.T) {
-	price := Price{
-		Input:      pointerTo(0.5),
-		Output:     pointerTo(1.5),
-		CacheRead:  pointerTo(0.05),
-		CacheWrite: pointerTo(0.125),
-	}
-	converted, err := price.toModelPrice()
-	require.NoError(t, err)
-	restored := converted.ToPrice()
-	require.NotNil(t, restored.Input)
-	require.NotNil(t, restored.Output)
-	require.NotNil(t, restored.CacheRead)
-	require.NotNil(t, restored.CacheWrite)
-	assert.InDelta(t, 0.5, *restored.Input, 1e-12)
-	assert.InDelta(t, 1.5, *restored.Output, 1e-12)
-	assert.InDelta(t, 0.05, *restored.CacheRead, 1e-12)
-	assert.InDelta(t, 0.125, *restored.CacheWrite, 1e-12)
-
-	perRequest, err := (Price{PerRequest: pointerTo(0.04)}).toModelPrice()
-	require.NoError(t, err)
-	restored = perRequest.ToPrice()
-	require.NotNil(t, restored.PerRequest)
-	assert.Equal(t, 0.04, *restored.PerRequest)
-	assert.Nil(t, restored.Input)
-}
-
-func TestPerRequestPriceConversion(t *testing.T) {
-	price := Price{PerRequest: pointerTo(0.04)}
-	converted, err := price.toModelPrice()
-	require.NoError(t, err)
-	require.NotNil(t, converted.PerRequest)
-	assert.Equal(t, 0.04, *converted.PerRequest)
-	assert.Zero(t, converted.ModelRatio)
-
-	conflicting := Price{PerRequest: pointerTo(0.04), Input: pointerTo(1.0), Output: pointerTo(2.0)}
-	_, err = conflicting.toModelPrice()
-	require.ErrorContains(t, err, "per_request cannot be combined")
-
-	negative := Price{PerRequest: pointerTo(-1.0)}
-	_, err = negative.toModelPrice()
-	require.ErrorContains(t, err, "positive")
 }
 
 func TestFilterModels(t *testing.T) {
@@ -281,11 +178,6 @@ channels:
 			name:    "condition missing path",
 			raw:     base + "    overrides:\n      operations:\n        - path: output_config.effort\n          mode: set\n          conditions:\n            - mode: full\n              value: high\n",
 			wantErr: "conditions[0].path is required",
-		},
-		{
-			name:    "incomplete price",
-			raw:     base + "    pricing:\n      defaults:\n        input: 1\n",
-			wantErr: "input and output prices are required",
 		},
 		{
 			name:    "unsupported version",

@@ -25,7 +25,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -35,8 +34,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/channelconfig"
 	"github.com/QuantumNous/new-api/relaykit/dto"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 )
 
 // ChannelConfigApplyOptions controls one declarative channel import.
@@ -60,21 +57,10 @@ type ChannelConfigChannelResult struct {
 	Error   string   `json:"error,omitempty"`
 }
 
-// ChannelConfigPricingResult is the pricing part of the plan.
-type ChannelConfigPricingResult struct {
-	Models   int            `json:"models"`
-	Written  map[string]int `json:"written,omitempty"`
-	Warnings []string       `json:"warnings,omitempty"`
-	// Detail is the price plan in USD per 1M tokens, keyed by model name.
-	Detail map[string]channelconfig.Price `json:"detail,omitempty"`
-}
-
 // ChannelConfigApplyResult is the full outcome of one import.
 type ChannelConfigApplyResult struct {
 	DryRun   bool                         `json:"dry_run"`
 	Channels []ChannelConfigChannelResult `json:"channels"`
-	Pricing  ChannelConfigPricingResult   `json:"pricing"`
-	Warnings []string                     `json:"warnings"`
 }
 
 type preparedChannelConfig struct {
@@ -87,8 +73,8 @@ type preparedChannelConfig struct {
 
 const (
 	// ChannelConfigEnvFile names the bootstrap file that is applied after the
-	// initial setup, watched for ConfigMap updates, and used to refresh prices
-	// after upstream model updates. When it is empty all three are disabled.
+	// initial setup and watched for ConfigMap updates. When it is empty both are
+	// disabled.
 	ChannelConfigEnvFile = "CHANNEL_CONFIG_FILE"
 )
 
@@ -233,16 +219,7 @@ func logChannelConfigApplied(result *ChannelConfigApplyResult) {
 		return
 	}
 	message := fmt.Sprintf("channel config applied from %s: channels=%d", channelConfigPath(), len(result.Channels))
-	if result.Pricing.Models > 0 {
-		message += fmt.Sprintf(" priced_models=%d", result.Pricing.Models)
-	}
 	common.SysLog(message)
-	for _, warning := range result.Warnings {
-		common.SysLog("channel config warning: " + warning)
-	}
-	for _, warning := range result.Pricing.Warnings {
-		common.SysLog("channel config warning: " + warning)
-	}
 }
 
 // ApplyChannelConfigFile reads and applies a channel bootstrap file.
@@ -271,7 +248,6 @@ func ApplyChannelConfig(config *channelconfig.Config, options ChannelConfigApply
 	result := &ChannelConfigApplyResult{
 		DryRun:   options.DryRun,
 		Channels: make([]ChannelConfigChannelResult, 0, len(config.Channels)),
-		Warnings: []string{},
 	}
 
 	prepared := make([]*preparedChannelConfig, 0, len(config.Channels))
@@ -305,16 +281,7 @@ func ApplyChannelConfig(config *channelconfig.Config, options ChannelConfigApply
 		})
 	}
 
-	prices, priceWarnings, err := buildPricePlan(config, prepared)
-	if err != nil {
-		return nil, err
-	}
-	result.Warnings = append(result.Warnings, priceWarnings...)
-	result.Pricing = ChannelConfigPricingResult{Models: len(prices)}
-	plannedPrices := prices
-
 	var applyErrors []error
-	applied := make([]*preparedChannelConfig, 0, len(prepared))
 	for _, item := range prepared {
 		channelResult := ChannelConfigChannelResult{
 			Name:     item.source.Name,
@@ -357,40 +324,8 @@ func ApplyChannelConfig(config *channelconfig.Config, options ChannelConfigApply
 		}
 		if channelResult.Error != "" {
 			applyErrors = append(applyErrors, fmt.Errorf("channel %q: %s", item.source.Name, channelResult.Error))
-		} else {
-			applied = append(applied, item)
 		}
 		result.Channels = append(result.Channels, channelResult)
-	}
-
-	if !options.DryRun {
-		appliedModels := make(map[string]struct{})
-		for _, item := range applied {
-			for _, name := range item.models {
-				appliedModels[name] = struct{}{}
-			}
-		}
-		appliedPrices := make(map[string]channelconfig.ModelPrice, len(prices))
-		for name, price := range prices {
-			if _, ok := appliedModels[name]; ok {
-				appliedPrices[name] = price
-			}
-		}
-		plannedPrices = appliedPrices
-		priceResult, err := service.ApplyModelPrices(appliedPrices)
-		if priceResult != nil {
-			result.Pricing.Models = priceResult.Models
-			result.Pricing.Written = priceResult.Written
-			result.Pricing.Warnings = priceResult.Warnings
-		}
-		if err != nil {
-			applyErrors = append(applyErrors, fmt.Errorf("apply model prices: %w", err))
-		}
-	}
-
-	result.Pricing.Detail = make(map[string]channelconfig.Price, len(plannedPrices))
-	for name, price := range plannedPrices {
-		result.Pricing.Detail[name] = price.ToPrice()
 	}
 
 	return result, errors.Join(applyErrors...)
@@ -621,244 +556,4 @@ func buildChannelOtherSettings(settings map[string]any) (string, error) {
 		return "", fmt.Errorf("other_settings: %w", err)
 	}
 	return string(normalized), nil
-}
-
-// priceLayersForChannel returns the price layers that belong to one channel,
-// from the global defaults up to that channel's per-model overrides. The global
-// pricing.models layer is applied separately because it spans all channels.
-func priceLayersForChannel(config *channelconfig.Config, source *channelconfig.Channel) []channelconfig.PriceLayer {
-	layers := make([]channelconfig.PriceLayer, 0, 3)
-	if config.Pricing != nil && config.Pricing.Defaults != nil {
-		layers = append(layers, channelconfig.PriceLayer{Defaults: config.Pricing.Defaults})
-	}
-	if source.Pricing != nil {
-		if source.Pricing.Defaults != nil {
-			layers = append(layers, channelconfig.PriceLayer{Defaults: source.Pricing.Defaults})
-		}
-		if len(source.Pricing.Models) > 0 {
-			layers = append(layers, channelconfig.PriceLayer{Models: source.Pricing.Models})
-		}
-	}
-	return layers
-}
-
-func buildPricePlan(config *channelconfig.Config, prepared []*preparedChannelConfig) (map[string]channelconfig.ModelPrice, []string, error) {
-	overall := make(map[string]channelconfig.ModelPrice)
-	owner := make(map[string]string)
-	warnings := []string{}
-	allModels := make([]string, 0)
-	unknownModels := make(map[string]struct{})
-
-	for _, item := range prepared {
-		plan, unknown, err := channelconfig.BuildPricePlan(item.models, priceLayersForChannel(config, item.source))
-		if err != nil {
-			return nil, nil, fmt.Errorf("channel %q: %w", item.source.Name, err)
-		}
-		for _, name := range unknown {
-			unknownModels[name] = struct{}{}
-		}
-		for name, price := range plan {
-			if previous, exists := overall[name]; exists && !previous.Equal(price) {
-				warnings = append(warnings, fmt.Sprintf(
-					"model %q is priced differently by channels %q and %q; the later channel wins",
-					name, owner[name], item.source.Name,
-				))
-			}
-			overall[name] = price
-			owner[name] = item.source.Name
-		}
-		allModels = append(allModels, item.models...)
-	}
-
-	allModels = uniqueSortedStrings(allModels)
-	scope := make(map[string]struct{}, len(allModels))
-	for _, name := range allModels {
-		scope[name] = struct{}{}
-	}
-	for _, name := range sortedStringSet(unknownModels) {
-		if _, ok := scope[name]; !ok {
-			warnings = append(warnings, fmt.Sprintf("pricing.model %q is not served by any configured channel", name))
-		}
-	}
-
-	if config.Pricing != nil && len(config.Pricing.Models) > 0 {
-		plan, unknown, err := channelconfig.BuildPricePlan(allModels, []channelconfig.PriceLayer{{Models: config.Pricing.Models}})
-		if err != nil {
-			return nil, nil, fmt.Errorf("pricing: %w", err)
-		}
-		for name, price := range plan {
-			overall[name] = price
-		}
-		for _, name := range unknown {
-			warnings = append(warnings, fmt.Sprintf("pricing.model %q is not served by any configured channel", name))
-		}
-	}
-
-	if configHasPricing(config) {
-		for _, name := range allModels {
-			if _, ok := overall[name]; ok {
-				continue
-			}
-			if ratio_setting.IsRegisteredModel(name) {
-				continue
-			}
-			if _, ok := ratio_setting.GetImagePrice(name); ok {
-				continue
-			}
-			if _, ok := ratio_setting.GetVideoPrice(name); ok {
-				continue
-			}
-			warnings = append(warnings, fmt.Sprintf(
-				"model %q has no configured price and no built-in price; requests for it fail with \"model price is not configured\"",
-				name,
-			))
-		}
-	}
-	return overall, warnings, nil
-}
-
-// configHasPricing reports whether the file configures any price at all. When
-// it does not, model prices are maintained elsewhere and import must not warn
-// about every unpriced model.
-func configHasPricing(config *channelconfig.Config) bool {
-	has := func(pricing *channelconfig.Pricing) bool {
-		return pricing != nil && (pricing.Defaults != nil || len(pricing.Models) > 0)
-	}
-	if has(config.Pricing) {
-		return true
-	}
-	for index := range config.Channels {
-		if has(config.Channels[index].Pricing) {
-			return true
-		}
-	}
-	return false
-}
-
-// refreshChannelConfigPrices re-applies the price rules of CHANNEL_CONFIG_FILE
-// to the channel's current model list. It runs after upstream discovery changes
-// a channel's models, so newly added models are priced immediately without
-// rerunning the whole import. Only prices are touched; keys, addresses and
-// other admin edits are left alone.
-func refreshChannelConfigPrices(channel *model.Channel) (int, []string, error) {
-	path := channelConfigPath()
-	if path == "" {
-		return 0, nil, nil
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return 0, nil, fmt.Errorf("read channel config %s: %w", path, err)
-	}
-	config, err := channelconfig.Parse(data)
-	if err != nil {
-		return 0, nil, fmt.Errorf("parse channel config %s: %w", path, err)
-	}
-
-	var source *channelconfig.Channel
-	for index := range config.Channels {
-		if config.Channels[index].Name == channel.Name {
-			source = &config.Channels[index]
-			break
-		}
-	}
-	if source == nil {
-		return 0, []string{fmt.Sprintf("channel %q is not defined in %s; prices were not refreshed", channel.Name, path)}, nil
-	}
-
-	models, err := channelconfig.FilterModels(channel.GetModels(), nil, nil, nil)
-	if err != nil {
-		return 0, nil, err
-	}
-	if len(models) == 0 {
-		return 0, nil, nil
-	}
-
-	plan, unknown, err := channelconfig.BuildPricePlan(models, priceLayersForChannel(config, source))
-	if err != nil {
-		return 0, nil, fmt.Errorf("build price plan for channel %q: %w", channel.Name, err)
-	}
-	warnings := make([]string, 0, len(unknown))
-	for _, name := range unknown {
-		warnings = append(warnings, fmt.Sprintf("channel %q: pricing.model %q is not served by the channel", channel.Name, name))
-	}
-	if config.Pricing != nil && len(config.Pricing.Models) > 0 {
-		globalPlan, _, err := channelconfig.BuildPricePlan(models, []channelconfig.PriceLayer{{Models: config.Pricing.Models}})
-		if err != nil {
-			return 0, warnings, fmt.Errorf("build global price plan for channel %q: %w", channel.Name, err)
-		}
-		for name, price := range globalPlan {
-			plan[name] = price
-		}
-	}
-	if len(plan) == 0 {
-		return 0, warnings, nil
-	}
-	for _, name := range models {
-		if _, ok := plan[name]; ok {
-			continue
-		}
-		if ratio_setting.IsRegisteredModel(name) {
-			continue
-		}
-		if _, ok := ratio_setting.GetImagePrice(name); ok {
-			continue
-		}
-		if _, ok := ratio_setting.GetVideoPrice(name); ok {
-			continue
-		}
-		warnings = append(warnings, fmt.Sprintf(
-			"channel %q: model %q has no configured price and no built-in price; requests for it fail with \"model price is not configured\"",
-			channel.Name, name,
-		))
-	}
-
-	result, err := service.ApplyModelPrices(plan)
-	if err != nil {
-		return 0, warnings, err
-	}
-	if result == nil {
-		return 0, warnings, nil
-	}
-	warnings = append(warnings, result.Warnings...)
-	return result.Models, warnings, nil
-}
-
-// refreshChannelConfigPricesAfterUpstreamChange is the non-fatal hook used by
-// the upstream model update flows: a broken bootstrap file must not block the
-// model list update the admin explicitly asked for.
-func refreshChannelConfigPricesAfterUpstreamChange(channel *model.Channel) {
-	priced, warnings, err := refreshChannelConfigPrices(channel)
-	for _, warning := range warnings {
-		common.SysLog(fmt.Sprintf("channel config price refresh: channel_id=%d channel_name=%s %s", channel.Id, channel.Name, warning))
-	}
-	if err != nil {
-		common.SysError(fmt.Sprintf("channel config price refresh failed: channel_id=%d channel_name=%s err=%v", channel.Id, channel.Name, err))
-		return
-	}
-	if priced > 0 {
-		common.SysLog(fmt.Sprintf("channel config price refresh applied: channel_id=%d channel_name=%s models=%d", channel.Id, channel.Name, priced))
-	}
-}
-
-func uniqueSortedStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]string, 0, len(values))
-	for _, value := range values {
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result
-}
-
-func sortedStringSet(values map[string]struct{}) []string {
-	result := make([]string, 0, len(values))
-	for value := range values {
-		result = append(result, value)
-	}
-	sort.Strings(result)
-	return result
 }

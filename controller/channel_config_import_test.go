@@ -26,7 +26,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/channelconfig"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -150,91 +149,4 @@ channels:
 	assert.Equal(t, constant.GetChannelBaseURL(constant.ChannelTypeOpenAI), *channel.BaseURL)
 	require.NotNil(t, channel.ParamOverride)
 	assert.Equal(t, "{}", *channel.ParamOverride)
-}
-
-func TestBuildPricePlanResolvesConfiguredPrices(t *testing.T) {
-	ratio_setting.InitRatioSettings()
-	raw := `
-version: 1
-channels:
-  - name: primary
-    type: cubestack
-    base_url: http://127.0.0.1:8000
-    key: sk-test
-    models:
-      fetch: false
-      list: [priced-model]
-    pricing:
-      defaults:
-        input: 2
-        output: 4
-  - name: secondary
-    type: cubestack
-    base_url: http://127.0.0.1:8001
-    key: sk-test
-    models:
-      fetch: false
-      list: [unpriced-model-xyz]
-pricing:
-  models:
-    priced-model:
-      input: 4
-      output: 8
-`
-	config, err := channelconfig.Parse([]byte(raw))
-	require.NoError(t, err)
-	prepared := []*preparedChannelConfig{
-		{source: &config.Channels[0], models: []string{"priced-model"}},
-		{source: &config.Channels[1], models: []string{"unpriced-model-xyz"}},
-	}
-
-	plan, warnings, err := buildPricePlan(config, prepared)
-	require.NoError(t, err)
-	require.Contains(t, plan, "priced-model")
-	assert.Equal(t, 2.0, plan["priced-model"].ModelRatio)
-	assert.Equal(t, 2.0, plan["priced-model"].CompletionRatio)
-	assert.NotContains(t, plan, "unpriced-model-xyz")
-
-	assert.Contains(t, warnings, `model "unpriced-model-xyz" has no configured price and no built-in price; requests for it fail with "model price is not configured"`)
-}
-
-func TestBuildPricePlanWarnsAboutCrossChannelPriceConflicts(t *testing.T) {
-	ratio_setting.InitRatioSettings()
-	raw := `
-version: 1
-channels:
-  - name: first
-    type: cubestack
-    base_url: http://127.0.0.1:8000
-    key: sk-test
-    models:
-      fetch: false
-      list: [shared-model]
-    pricing:
-      defaults:
-        input: 2
-        output: 4
-  - name: second
-    type: cubestack
-    base_url: http://127.0.0.1:8001
-    key: sk-test
-    models:
-      fetch: false
-      list: [shared-model]
-    pricing:
-      defaults:
-        input: 3
-        output: 6
-`
-	config, err := channelconfig.Parse([]byte(raw))
-	require.NoError(t, err)
-	prepared := []*preparedChannelConfig{
-		{source: &config.Channels[0], models: []string{"shared-model"}},
-		{source: &config.Channels[1], models: []string{"shared-model"}},
-	}
-
-	plan, warnings, err := buildPricePlan(config, prepared)
-	require.NoError(t, err)
-	assert.Equal(t, 1.5, plan["shared-model"].ModelRatio)
-	assert.Contains(t, warnings, `model "shared-model" is priced differently by channels "first" and "second"; the later channel wins`)
 }
