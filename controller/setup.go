@@ -163,7 +163,7 @@ func PostSetup(c *gin.Context) {
 	// Apply the declarative channel bootstrap so a fresh instance has channels
 	// right after setup. A failure does not undo the completed setup; it is
 	// surfaced in the response and in the logs.
-	bootstrap, bootstrapErr := ApplyChannelConfigFromEnv(ChannelConfigApplyOptions{})
+	bootstrap, bootstrapErr := ApplyChannelConfigFromEnv()
 	response := gin.H{
 		"success": true,
 		"message": "系统初始化成功",

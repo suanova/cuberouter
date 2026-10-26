@@ -36,13 +36,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 )
 
-// ChannelConfigApplyOptions controls one declarative channel import.
-type ChannelConfigApplyOptions struct {
-	// DryRun builds the full plan, including upstream model discovery, but
-	// writes nothing to the database.
-	DryRun bool
-}
-
 // ChannelConfigChannelResult reports one channel of the plan.
 type ChannelConfigChannelResult struct {
 	Name     string `json:"name"`
@@ -59,7 +52,6 @@ type ChannelConfigChannelResult struct {
 
 // ChannelConfigApplyResult is the full outcome of one import.
 type ChannelConfigApplyResult struct {
-	DryRun   bool                         `json:"dry_run"`
 	Channels []ChannelConfigChannelResult `json:"channels"`
 }
 
@@ -94,7 +86,7 @@ var (
 
 // ApplyChannelConfigFromEnv applies the file named by CHANNEL_CONFIG_FILE. It
 // returns (nil, nil) when the variable is not set.
-func ApplyChannelConfigFromEnv(options ChannelConfigApplyOptions) (*ChannelConfigApplyResult, error) {
+func ApplyChannelConfigFromEnv() (*ChannelConfigApplyResult, error) {
 	path := channelConfigPath()
 	if path == "" {
 		return nil, nil
@@ -108,7 +100,7 @@ func ApplyChannelConfigFromEnv(options ChannelConfigApplyOptions) (*ChannelConfi
 		}
 		return nil, fmt.Errorf("read channel config %s: %w", path, err)
 	}
-	return applyChannelConfigBytes(path, data, options)
+	return applyChannelConfigBytes(path, data)
 }
 
 func channelConfigPath() string {
@@ -116,24 +108,22 @@ func channelConfigPath() string {
 }
 
 // applyChannelConfigBytes parses and applies one snapshot of the file. The
-// applied hash is recorded only after a successful non-dry-run so a failed
-// attempt is retried on the next watcher tick.
-func applyChannelConfigBytes(path string, data []byte, options ChannelConfigApplyOptions) (*ChannelConfigApplyResult, error) {
+// applied hash is recorded only after a successful apply so a failed attempt is
+// retried on the next watcher tick.
+func applyChannelConfigBytes(path string, data []byte) (*ChannelConfigApplyResult, error) {
 	config, err := channelconfig.Parse(data)
 	if err != nil {
 		return nil, fmt.Errorf("parse channel config %s: %w", path, err)
 	}
-	result, err := ApplyChannelConfig(config, options)
+	result, err := applyChannelConfig(config)
 	if err != nil {
 		return result, err
 	}
-	if !options.DryRun {
-		hash := sha256.Sum256(data)
-		channelConfigStateMu.Lock()
-		channelConfigApplied = true
-		channelConfigAppliedHash = hash
-		channelConfigStateMu.Unlock()
-	}
+	hash := sha256.Sum256(data)
+	channelConfigStateMu.Lock()
+	channelConfigApplied = true
+	channelConfigAppliedHash = hash
+	channelConfigStateMu.Unlock()
 	return result, nil
 }
 
@@ -143,7 +133,7 @@ func applyChannelConfigBytes(path string, data []byte, options ChannelConfigAppl
 //
 // Only the master node applies the file; other replicas pick the result up
 // through the regular channel/option sync loops. This avoids every replica
-// writing the same channels and prices when the ConfigMap changes.
+// writing the same channels when the ConfigMap changes.
 func StartChannelConfigSync() {
 	path := channelConfigPath()
 	if path == "" || !common.IsMasterNode {
@@ -186,7 +176,7 @@ func syncChannelConfigFile() {
 		return
 	}
 
-	result, err := applyChannelConfigBytes(path, data, ChannelConfigApplyOptions{})
+	result, err := applyChannelConfigBytes(path, data)
 	if err != nil {
 		if !alreadyLogged {
 			common.SysError(fmt.Sprintf("channel config sync failed: %v", err))
@@ -222,31 +212,17 @@ func logChannelConfigApplied(result *ChannelConfigApplyResult) {
 	common.SysLog(message)
 }
 
-// ApplyChannelConfigFile reads and applies a channel bootstrap file.
-func ApplyChannelConfigFile(path string, options ChannelConfigApplyOptions) (*ChannelConfigApplyResult, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read channel config %s: %w", path, err)
-	}
-	config, err := channelconfig.Parse(data)
-	if err != nil {
-		return nil, err
-	}
-	return ApplyChannelConfig(config, options)
-}
-
-// ApplyChannelConfig creates or updates the channels described by the config.
+// applyChannelConfig creates or updates the channels described by the config.
 //
 // Model discovery is a preflight step: if any channel cannot be built or its
 // upstream model list cannot be fetched, nothing is written. Failures while
 // writing individual channels are collected so the remaining channels can
 // still be applied; the import is idempotent and can be rerun.
-func ApplyChannelConfig(config *channelconfig.Config, options ChannelConfigApplyOptions) (*ChannelConfigApplyResult, error) {
+func applyChannelConfig(config *channelconfig.Config) (*ChannelConfigApplyResult, error) {
 	channelConfigApplyMu.Lock()
 	defer channelConfigApplyMu.Unlock()
 
 	result := &ChannelConfigApplyResult{
-		DryRun:   options.DryRun,
 		Channels: make([]ChannelConfigChannelResult, 0, len(config.Channels)),
 	}
 
@@ -293,33 +269,29 @@ func ApplyChannelConfig(config *channelconfig.Config, options ChannelConfigApply
 		if item.existing != nil {
 			channelResult.ID = item.existing.Id
 			channelResult.Action = "updated"
-			if !options.DryRun {
-				applyChannelConfigToExisting(item.existing, item.channel, item.source)
-				if err := item.existing.Save(); err != nil {
-					channelResult.Action = "failed"
-					channelResult.Error = fmt.Sprintf("save channel: %v", err)
-				} else if err := item.existing.UpdateAbilities(nil); err != nil {
-					channelResult.Action = "failed"
-					channelResult.Error = fmt.Sprintf("rebuild abilities: %v", err)
-				}
+			applyChannelConfigToExisting(item.existing, item.channel, item.source)
+			if err := item.existing.Save(); err != nil {
+				channelResult.Action = "failed"
+				channelResult.Error = fmt.Sprintf("save channel: %v", err)
+			} else if err := item.existing.UpdateAbilities(nil); err != nil {
+				channelResult.Action = "failed"
+				channelResult.Error = fmt.Sprintf("rebuild abilities: %v", err)
 			}
 		} else {
 			channelResult.Action = "created"
-			if !options.DryRun {
-				if item.channel.Priority == nil {
-					zero := int64(0)
-					item.channel.Priority = &zero
-				}
-				if item.channel.Weight == nil {
-					one := uint(1)
-					item.channel.Weight = &one
-				}
-				if err := item.channel.Insert(); err != nil {
-					channelResult.Action = "failed"
-					channelResult.Error = fmt.Sprintf("create channel: %v", err)
-				} else {
-					channelResult.ID = item.channel.Id
-				}
+			if item.channel.Priority == nil {
+				zero := int64(0)
+				item.channel.Priority = &zero
+			}
+			if item.channel.Weight == nil {
+				one := uint(1)
+				item.channel.Weight = &one
+			}
+			if err := item.channel.Insert(); err != nil {
+				channelResult.Action = "failed"
+				channelResult.Error = fmt.Sprintf("create channel: %v", err)
+			} else {
+				channelResult.ID = item.channel.Id
 			}
 		}
 		if channelResult.Error != "" {
