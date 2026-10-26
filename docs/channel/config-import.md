@@ -1,24 +1,11 @@
-# cuberouter 渠道引导配置（channels import）
+# cuberouter 渠道引导配置
 
 一个 YAML 文件就能完成「建渠道 → 拉取上游模型」。
-cuberouter 直接读取该文件执行，适合首次部署和重复声明式同步。
+cuberouter 在首次 setup 后读取 `CHANNEL_CONFIG_FILE` 指向的文件，并在文件变化时自动同步，适合首次部署和声明式维护。
 
-```bash
-# 先演练：解析 + 真实拉取上游模型，但不写数据库
-./cuberouter channels import -f channels.yaml --dry-run
+## setup 后自动执行
 
-# 同时打印上游拉取到的模型列表
-./cuberouter channels import -f channels.yaml --dry-run --verbose
-
-# 正式执行
-./cuberouter channels import -f channels.yaml
-```
-
-`import` 是 `channels import` 的简写，两种写法等价。
-
-## setup 后自动执行（推荐）
-
-在服务端进程设置环境变量即可，不需要手动执行 CLI：
+在服务端进程设置环境变量：
 
 ```bash
 CHANNEL_CONFIG_FILE=/data/channels.yaml
@@ -38,8 +25,8 @@ services:
 - 文件不存在时静默忽略，setup 正常成功；其他组件稍后写入文件后会自动导入，不需要重新 setup。
 - 服务端每 60 秒检查一次文件，内容变化时自动重新执行完整导入，无需重启 Pod（见下节 Kubernetes）；内容没变则不会重复写库。
 - 渠道页「上游更新」的检测/应用（单个或全部）会更新模型列表，并重新应用文件中配置的定价，可能覆盖你在模型定价页面维护的价格。
-- 文件在每次操作时重新读取，按渠道名匹配；文件里没有同名渠道时跳过并记录日志。
-- 未设置 `CHANNEL_CONFIG_FILE` 时不会自动执行，只能手动 `channels import`。
+- 每次检查或导入时都会重新读取文件，按渠道名匹配；文件里没有同名渠道时跳过并记录日志。
+- 未设置 `CHANNEL_CONFIG_FILE` 时不会自动执行；设置该变量并重启服务后生效。
 
 ### Kubernetes / ConfigMap
 
@@ -93,25 +80,8 @@ spec:
 - `include` / `exclude` 只过滤**拉取结果**，语法是 glob（`*`、`?`）。
 - `models.list` 是**手工追加**的模型，不参与过滤；上游没有 `/v1/models` 时用它兜底。
 - 最终列表去重排序后写入渠道 `models` 字段，并同步重建 `abilities`；管理后台的渠道详情里看到的也是这份列表。
-- 上游新增模型时重跑一次即可；上游删除的模型会从渠道列表移除。
-- 渠道页的「上游更新」检测/应用（单个或全部）会直接更新模型列表，不需要重跑 CLI。
-
-查看实际拉取结果：
-
-```bash
-./cuberouter channels import -f channels.yaml --dry-run --verbose
-```
-
-```
-[updated] cubestack-local  type=64 (CubeStack)  models=2 (fetched 3)  id=1
-        models (2):
-          - Qwen3-32B
-          - Qwen3-8B
-        filtered out by include/exclude (1):
-          - text-embedding-v3
-```
-
-不写 `--verbose` 时只显示汇总行（`models=2 (fetched 3)`），避免模型很多时刷屏。
+- 上游新增或删除模型时，可使用渠道页的「上游更新」检测/应用，不需要重新导入配置文件。
+- 最终模型列表可在管理后台的渠道详情中查看。
 
 ## 完整示例
 
@@ -129,12 +99,6 @@ channels:
       exclude: ["*-embedding"]
     overrides:
       temperature: 0.7
-```
-
-执行成功后的输出：
-
-```
-[created] cubestack-local  type=64 (CubeStack)  models=2 (fetched 2)  id=1
 ```
 
 ## 字段说明
@@ -268,8 +232,8 @@ overrides:
 - 渠道按 `name` 幂等；重复执行只会更新，不会重复创建。
 - 更新渠道时，配置文件**负责的字段**（类型、Key、地址、模型、分组、覆盖参数）会以文件为准；
   未出现的字段（如 `status`、`priority`、`remark`）保持数据库中的原值。
-- 在运行中的实例上执行导入时，服务端通过常规数据库同步循环（默认 `SYNC_FREQUENCY` 秒）感知
-  新渠道。若希望立即生效，可在启动前执行，或等待一个同步周期。
-- 这是对数据库的直接写入，请确保执行环境能访问同一数据库（`SQL_DSN` / `SQLITE_PATH` 等环境变量一致）。
-- 首次运行时命令会像启动服务一样执行数据库迁移；`--dry-run` 也会连接并迁移数据库，但不写入渠道。
-- 任一步失败时命令以非 0 退出：预检（配置、上游模型）失败不会写库；写库阶段单渠道失败会被收集，其余渠道仍会继续处理，修复后重跑即可收敛。
+- setup 完成时立即导入一次；之后文件内容变化（包括 kubelet 刷新 ConfigMap）会在下一次检查时生效，
+  最长等待一个 60 秒周期，不需要重启服务。
+- 预检（配置、上游模型）失败时整次导入不会写库；写库阶段单个渠道失败会被记录，其余渠道继续处理，
+  下一次内容变化时重试。
+- 导入失败只记录日志，不改变 setup 结果；可在服务端日志中查看渠道配置相关错误。

@@ -3,11 +3,6 @@
 # 让服务端在 setup 后自动执行，并监听 ConfigMap 变化：
 #   export CHANNEL_CONFIG_FILE=/path/to/channels.yaml
 #
-# 手动演练（不写库，打印上游模型）：
-#   ./cuberouter channels import -f docs/channel/channels.example.yaml --dry-run --verbose
-# 执行：
-#   ./cuberouter channels import -f docs/channel/channels.example.yaml
-#
 # 说明见 docs/channel/config-import.md。
 
 version: 1

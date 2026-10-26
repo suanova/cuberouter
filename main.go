@@ -48,19 +48,8 @@ var buildFS embed.FS
 var indexPage []byte
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "plugin":
-			os.Exit(jsplugin.RunCLI(os.Args[2:], os.Stdout, os.Stderr))
-		case "channels":
-			args := os.Args[2:]
-			if len(args) > 0 && args[0] == "import" {
-				args = args[1:]
-			}
-			os.Exit(runChannelImportCLI(args))
-		case "import":
-			os.Exit(runChannelImportCLI(os.Args[2:]))
-		}
+	if len(os.Args) > 1 && os.Args[1] == "plugin" {
+		os.Exit(jsplugin.RunCLI(os.Args[2:], os.Stdout, os.Stderr))
 	}
 	startTime := time.Now()
 	kitutil.SetLogging(common.SysLog, func(message string) {

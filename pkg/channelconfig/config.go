@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 // Package channelconfig parses and validates the declarative channel
-// bootstrap file consumed by `cuberouter channels import`.
+// bootstrap file read by CubeRouter at setup and from ConfigMap updates.
 //
 // One file describes channels and how their models are discovered. Optional
 // price rules are parsed here as well. The file is data only: parsing,
