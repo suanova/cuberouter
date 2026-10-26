@@ -552,6 +552,7 @@ func checkAndPersistChannelUpstreamModelUpdates(
 		if err = channel.UpdateAbilities(nil); err != nil {
 			return true, autoAdded, err
 		}
+		refreshChannelConfigPricesAfterUpstreamChange(channel)
 	}
 	return modelsChanged, autoAdded, nil
 }
@@ -998,6 +999,7 @@ func applyChannelUpstreamModelUpdates(
 		if err := channel.UpdateAbilities(nil); err != nil {
 			return addModels, removeModels, remainingModels, remainingRemoveModels, true, err
 		}
+		refreshChannelConfigPricesAfterUpstreamChange(channel)
 	}
 	return addModels, removeModels, remainingModels, remainingRemoveModels, modelsChanged, nil
 }

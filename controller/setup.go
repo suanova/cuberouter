@@ -160,10 +160,26 @@ func PostSetup(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{
+	// Apply the declarative channel bootstrap so a fresh instance has channels
+	// right after setup. A failure does not undo the completed setup; it is
+	// surfaced in the response and in the logs.
+	bootstrap, bootstrapErr := ApplyChannelConfigFromEnv(ChannelConfigApplyOptions{})
+	response := gin.H{
 		"success": true,
 		"message": "系统初始化成功",
-	})
+	}
+	if bootstrap != nil {
+		response["channel_config"] = bootstrap
+	}
+	if bootstrapErr != nil {
+		response["message"] = "系统初始化成功，但渠道配置导入失败: " + bootstrapErr.Error()
+		response["channel_config_error"] = bootstrapErr.Error()
+		common.SysError("channel config bootstrap after setup failed: " + bootstrapErr.Error())
+	} else if bootstrap != nil {
+		logChannelConfigApplied(bootstrap)
+	}
+
+	c.JSON(200, response)
 }
 
 func boolToString(b bool) string {

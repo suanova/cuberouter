@@ -1,0 +1,38 @@
+# cuberouter 渠道引导配置示例。
+#
+# 让服务端在 setup 后自动执行，并监听 ConfigMap 变化：
+#   export CHANNEL_CONFIG_FILE=/path/to/channels.yaml
+#
+# 手动演练（不写库，打印上游模型）：
+#   ./cuberouter channels import -f docs/channel/channels.example.yaml --dry-run --verbose
+# 执行：
+#   ./cuberouter channels import -f docs/channel/channels.example.yaml
+#
+# 说明见 docs/channel/config-import.md。
+
+version: 1
+
+channels:
+  - name: cubestack-local
+    # 渠道类型支持名称或数字 ID：cubestack == 64。
+    type: cubestack
+    # 即 api-address；cubestack 没有公网默认地址，必须填写。
+    base_url: http://127.0.0.1:8000
+    # 上游 Key 从环境变量读取，避免把密钥写进文件：
+    #   export CUBESTACK_API_KEY=sk-...
+    # 本地 SGLang / vLLM 通常不校验 Key，可填任意占位值。
+    key_env: CUBESTACK_API_KEY
+    group: default
+
+    models:
+      # true：请求上游 /v1/models 自动获取模型列表。
+      fetch: true
+      # 仅保留匹配项 / 排除匹配项（glob，作用于拉取结果）。
+      include: []
+      exclude: ["*-embedding"]
+      # 手工追加、不参与过滤的模型（上游不暴露 /v1/models 时使用）：
+      # list: ["qwen3-32b"]
+
+    # 渠道级参数覆盖（JSON 路径 → 值），也支持 operations 写法。
+    overrides:
+      temperature: 0.7
