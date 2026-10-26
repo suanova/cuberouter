@@ -44,6 +44,17 @@ export const API_ENDPOINTS = {
 // only selected when the backend confirms it is available for the user.
 export const DEFAULT_GROUP = 'default' as const
 
+/**
+ * Whether the playground offers a group picker.
+ *
+ * Hidden for now: a deployment routes by group, so the picker only let users
+ * wander into other groups' models and pick the wrong one. The playground then
+ * follows the account's own group (GET /api/user/models?group=<own group>), and
+ * that group stays in the chat payload. The group list, its options and the
+ * fallback all stay wired, so flipping this to true restores the picker.
+ */
+export const SHOW_PLAYGROUND_GROUP_SELECTOR = false
+
 // Default configuration
 export const DEFAULT_CONFIG: PlaygroundConfig = {
   model: 'gpt-4o',

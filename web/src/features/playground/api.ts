@@ -45,7 +45,8 @@ export async function sendChatCompletion(
  */
 export async function getUserModels(group: string): Promise<ModelOption[]> {
   const res = await api.get(API_ENDPOINTS.USER_MODELS, {
-    params: { group },
+    // 只要聊天模型：图片/视频生成模型走不了 chat/completions。
+    params: { group, endpoint: 'chat' },
   })
   const { data } = res
 
