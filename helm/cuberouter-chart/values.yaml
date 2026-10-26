@@ -126,6 +126,10 @@ cubeRouter:
       memory: 2Gi
   # Extra env entries: [{name: X, value: "1"}]
   envVars: []
+  # Extra volumes / mounts for the app container, e.g. a ConfigMap holding the
+  # declarative channel import file consumed through CHANNEL_CONFIG_FILE.
+  extraVolumes: []
+  extraVolumeMounts: []
   # Optional entrypoint override (useful for smoke/stub images)
   command: []
   args: []

@@ -370,7 +370,7 @@ Computed connection strings:
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`, `BASE_PATH` (empty = serve from the site root); extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
 | `mediaStudio` | `enabled: false`; `s3.endpoint` / `s3.bucket` / `s3.region` (ConfigMap) and `s3.access_key` / `s3.secret_key` (Secret) for Image-to-image reference uploads |
-| `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
+| `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `extraVolumes` / `extraVolumeMounts`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
 | `postgresql` | `auth.database/username`, `image` (PostgreSQL 16.14), `replicas: 2`, `storage: 20Gi`, `resources`, `backups.*`, `pgBouncer.*` |

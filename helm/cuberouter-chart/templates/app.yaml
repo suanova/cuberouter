@@ -199,6 +199,9 @@ spec:
             - name: cuberouter-logs
               mountPath: {{ .Values.cubeRouter.persistence.logs.mountPath }}
             {{- end }}
+            {{- with .Values.cubeRouter.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           readinessProbe:
             httpGet:
               path: /api/status
@@ -234,6 +237,9 @@ spec:
         - name: cuberouter-logs
           persistentVolumeClaim:
             claimName: {{ $f }}-app-logs
+        {{- end }}
+        {{- with .Values.cubeRouter.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- with .Values.cubeRouter.nodeSelector }}
       nodeSelector:
