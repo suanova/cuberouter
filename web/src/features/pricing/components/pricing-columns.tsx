@@ -24,6 +24,7 @@ import {
   BadgeListCell,
   DataTableColumnHeader,
 } from '@/components/data-table'
+import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
@@ -450,6 +451,25 @@ export function usePricingColumns(
                 copyable={false}
               />
             ))}
+          />
+        )
+      },
+      size: 130,
+      enableSorting: false,
+    },
+
+    // Enable Groups column
+    {
+      accessorKey: 'enable_groups',
+      header: t('Groups'),
+      cell: ({ row }) => {
+        const groups = row.original.enable_groups || []
+        return (
+          <BadgeListCell
+            items={groups.map((group) => (
+              <GroupBadge key={group} group={group} size='sm' />
+            ))}
+            tooltipClassName='max-w-[280px] p-2'
           />
         )
       },
