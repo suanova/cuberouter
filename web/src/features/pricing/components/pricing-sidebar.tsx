@@ -255,7 +255,9 @@ export function PricingSidebar(props: PricingSidebarProps) {
         count: countBy(props.models, (model) =>
           matchesEndpointType(model, value)
         ),
-      })),
+      }))
+      // 只列本人分组里真的能用到的端点类型，避免出现 0 个模型的选项。
+      .filter((option) => option.count > 0),
   ]
 
   return (

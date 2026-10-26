@@ -23,6 +23,7 @@ import { useTranslation } from 'react-i18next'
 import { PromptInputButton } from '@/components/ai-elements/prompt-input'
 import { ModelGroupSelector } from '@/components/model-group-selector'
 
+import { SHOW_PLAYGROUND_GROUP_SELECTOR } from '../../constants'
 import { getInputControlState } from '../../lib'
 import type { GroupOption, ModelOption } from '../../types'
 
@@ -76,6 +77,7 @@ export function PlaygroundInputControls({
       groups={groups}
       onGroupChange={onGroupChange}
       disabled={isSelectorDisabled}
+      showGroupList={SHOW_PLAYGROUND_GROUP_SELECTOR}
     />
   )
 

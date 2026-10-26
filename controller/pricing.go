@@ -37,6 +37,25 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
+// filterPricingByGroup 只保留在 accountGroup 分组启用的价目条目。
+//
+// 可用分组是「用户能选择的分组」，价目表却只该描述「用户自己的分组能用的模型」：
+// 分组在部署里承担渠道路由，让 yeebo 分组的用户看到 default 分组的模型只会让
+// 人挑错。标了 all 的模型对任何分组可见。
+func filterPricingByGroup(pricing []model.Pricing, accountGroup string) []model.Pricing {
+	if accountGroup == "" || len(pricing) == 0 {
+		return pricing
+	}
+
+	filtered := make([]model.Pricing, 0, len(pricing))
+	for _, item := range pricing {
+		if common.StringsContains(item.EnableGroup, "all") || common.StringsContains(item.EnableGroup, accountGroup) {
+			filtered = append(filtered, item)
+		}
+	}
+	return filtered
+}
+
 // pricingAccountGroup 解析当前生效的分组：组织上下文用组织的分组，否则用用户自己的。
 //
 // 组织密钥按组织的分组倍率计费，价目表也必须按组织的可用分组过滤，
@@ -99,6 +118,8 @@ func GetPricing(c *gin.Context) {
 
 	usableGroup = service.GetAccountUsableGroups(group)
 	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	// 价目表只描述本人分组能用的模型；匿名请求没有本人分组，保持可用分组视图。
+	pricing = filterPricingByGroup(pricing, group)
 	// 组织成员模型白名单：受限成员只看到白名单内的模型价目（平台管理员与无成员
 	// 限制的用户 allow 为 nil，整段跳过）。只按本请求重建切片，绝不改写共享缓存
 	// 元素——否则会串到其他用户的价目表。

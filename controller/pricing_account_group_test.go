@@ -159,3 +159,23 @@ func TestFilterPricingByUsableGroupsKeepsAllGroup(t *testing.T) {
 	require.Empty(t, filterPricingByUsableGroups(pricing, map[string]string{}))
 	require.Empty(t, filterPricingByUsableGroups([]model.Pricing{}, map[string]string{"default": "default"}))
 }
+
+// TestFilterPricingByGroupKeepsOnlyOwnGroup 价目表只描述本人分组能用的模型：
+// 其他分组的模型不出现，标了 all 的模型对任何分组可见，空分组退回不按分组过滤。
+func TestFilterPricingByGroupKeepsOnlyOwnGroup(t *testing.T) {
+	pricing := []model.Pricing{
+		{ModelName: "all-group-model", EnableGroup: []string{"all"}},
+		{ModelName: "yeebo-model", EnableGroup: []string{"yeebo"}},
+		{ModelName: "default-model", EnableGroup: []string{"default", "vip"}},
+	}
+
+	filtered := filterPricingByGroup(pricing, "yeebo")
+	require.Len(t, filtered, 2)
+	require.Equal(t, "all-group-model", filtered[0].ModelName)
+	require.Equal(t, "yeebo-model", filtered[1].ModelName)
+
+	require.Len(t, filterPricingByGroup(pricing, ""), 3, "解析不出本人分组时不收窄")
+	onlyAll := filterPricingByGroup(pricing, "internal")
+	require.Len(t, onlyAll, 1)
+	require.Equal(t, "all-group-model", onlyAll[0].ModelName)
+}

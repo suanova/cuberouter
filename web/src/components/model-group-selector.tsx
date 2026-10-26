@@ -568,6 +568,8 @@ export interface ModelGroupSelectorProps {
   // Common props
   className?: string
   disabled?: boolean
+  /** Whether the group column is offered; model-only pickers pass false. */
+  showGroupList?: boolean
 }
 
 /**
@@ -583,6 +585,7 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
   onGroupChange,
   className,
   disabled = false,
+  showGroupList = true,
 }) => {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -676,9 +679,11 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
       <span className='min-w-0 truncate text-xs'>
         {currentModel?.label || t('Model')}
       </span>
-      <span className='bg-muted text-muted-foreground hidden max-w-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] sm:inline-flex'>
-        {currentGroup?.label || t('Group')}
-      </span>
+      {showGroupList && (
+        <span className='bg-muted text-muted-foreground hidden max-w-20 shrink-0 rounded px-1.5 py-0.5 text-[10px] sm:inline-flex'>
+          {currentGroup?.label || t('Group')}
+        </span>
+      )}
       <ChevronsUpDown className='text-muted-foreground ml-auto size-3.5 shrink-0 opacity-60' />
     </Button>
   )
@@ -800,25 +805,30 @@ export const ModelGroupSelector: React.FC<ModelGroupSelectorProps> = ({
     </Command>
   )
 
-  const renderContent = () => (
-    <div
-      className={
-        isMobile
-          ? 'grid gap-3 p-2 md:grid-cols-[9.5rem_minmax(0,1fr)]'
-          : modelGroupSelectorLayoutClasses.desktopContent
-      }
-    >
-      {renderGroupList()}
-      <div
-        className={cn(
-          'min-w-0 overflow-hidden rounded-lg border',
-          !isMobile && modelGroupSelectorLayoutClasses.modelColumn
-        )}
-      >
-        {renderModelList()}
+  const renderContent = () => {
+    let contentClassName = 'grid gap-3 p-2'
+    if (showGroupList) {
+      contentClassName = isMobile
+        ? 'grid gap-3 p-2 md:grid-cols-[9.5rem_minmax(0,1fr)]'
+        : modelGroupSelectorLayoutClasses.desktopContent
+    } else if (!isMobile) {
+      contentClassName = modelGroupSelectorLayoutClasses.desktopModelOnlyContent
+    }
+
+    return (
+      <div className={contentClassName}>
+        {showGroupList && renderGroupList()}
+        <div
+          className={cn(
+            'min-w-0 overflow-hidden rounded-lg border',
+            !isMobile && modelGroupSelectorLayoutClasses.modelColumn
+          )}
+        >
+          {renderModelList()}
+        </div>
       </div>
-    </div>
-  )
+    )
+  }
 
   return isMobile ? (
     <Drawer open={open} onOpenChange={setOpen}>
