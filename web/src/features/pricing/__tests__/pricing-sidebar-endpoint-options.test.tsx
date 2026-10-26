@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, test, vi } from 'vitest'
 
 import { PricingSidebar } from '../components/pricing-sidebar'
@@ -37,16 +37,20 @@ const chatOnlyModel: PricingModel = {
   supported_endpoint_types: ['openai'],
 }
 
-function renderSidebar(models: PricingModel[]) {
+function renderSidebar(
+  models: PricingModel[],
+  endpointTypeFilter = 'all',
+  onEndpointTypeChange = vi.fn()
+) {
   return render(
     <PricingSidebar
       quotaTypeFilter='all'
-      endpointTypeFilter='all'
+      endpointTypeFilter={endpointTypeFilter}
       vendorFilter='all'
       groupFilter='all'
       tagFilter='all'
       onQuotaTypeChange={vi.fn()}
-      onEndpointTypeChange={vi.fn()}
+      onEndpointTypeChange={onEndpointTypeChange}
       onVendorChange={vi.fn()}
       onGroupChange={vi.fn()}
       onTagChange={vi.fn()}
@@ -61,6 +65,28 @@ function renderSidebar(models: PricingModel[]) {
 }
 
 describe('pricing sidebar endpoint type options', () => {
+  test('keeps the selected endpoint available with zero matches and allows clearing it', () => {
+    const onEndpointTypeChange = vi.fn()
+    renderSidebar([chatOnlyModel], 'embeddings', onEndpointTypeChange)
+
+    expect(
+      screen.getByRole('button', { name: 'Embeddings0' })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Chat1' })).toBeInTheDocument()
+    expect(screen.queryByText('Image')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'All Types1' }))
+    expect(onEndpointTypeChange).toHaveBeenCalledWith('all')
+  })
+
+  test('keeps all types available when the model list is empty', () => {
+    renderSidebar([])
+
+    expect(
+      screen.getByRole('button', { name: 'All Types0' })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Chat')).not.toBeInTheDocument()
+  })
+
   test('offers only endpoint types that the listed models can use', () => {
     renderSidebar([chatOnlyModel])
 

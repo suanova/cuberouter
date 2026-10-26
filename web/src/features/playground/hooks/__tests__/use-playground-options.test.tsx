@@ -18,14 +18,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
 import { getUserGroups, getUserModels } from '../../api'
-import type { GroupOption } from '../../types'
+import type { GroupOption, ModelOption } from '../../types'
 import { usePlaygroundOptions } from '../use-playground-options'
 
 vi.mock('../../api', () => ({
@@ -41,6 +41,7 @@ function renderOptions(params: {
   currentModel: string
   onGroupChange: (group: string) => void
   setGroups?: (groups: GroupOption[]) => void
+  setModels?: (models: ModelOption[]) => void
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -57,7 +58,7 @@ function renderOptions(params: {
         currentGroup: params.currentGroup,
         currentModel: params.currentModel,
         setGroups: params.setGroups ?? vi.fn(),
-        setModels: vi.fn(),
+        setModels: params.setModels ?? vi.fn(),
         updateConfig: (key, value) => {
           if (key === 'group') params.onGroupChange(String(value))
         },
@@ -102,13 +103,11 @@ describe('playground options', () => {
     await waitFor(() => {
       expect(mockedGetUserModels).toHaveBeenCalledWith('yeebo')
     })
-    // 选择器隐藏时也写入分组，否则模型选择器会因为 groups 为空而禁用。
-    await waitFor(() => {
-      expect(setGroups).toHaveBeenCalledWith(groups)
-    })
     await waitFor(() => {
       expect(onGroupChange).toHaveBeenCalledWith('yeebo')
     })
+    expect(mockedGetUserGroups).not.toHaveBeenCalled()
+    expect(setGroups).not.toHaveBeenCalled()
   })
 
   test('keeps following the account group when it changes', async () => {
@@ -118,28 +117,46 @@ describe('playground options', () => {
         user: { id: 1, username: 'switching-user', role: 1, group: 'yeebo' },
       },
     }))
-    mockedGetUserModels.mockResolvedValue([])
+    const yeeboModels: ModelOption[] = [
+      { label: 'yeebo-model', value: 'yeebo-model' },
+    ]
+    const suanovaModels: ModelOption[] = [
+      { label: 'suanova-model', value: 'suanova-model' },
+    ]
+    mockedGetUserModels.mockImplementation(async (group) =>
+      group === 'suanova' ? suanovaModels : yeeboModels
+    )
+    const setModels = vi.fn()
     mockedGetUserGroups.mockResolvedValue([])
 
     const { rerender } = renderOptions({
       currentGroup: 'yeebo',
       currentModel: '',
+      setModels,
       onGroupChange: vi.fn(),
     })
     await waitFor(() => {
-      expect(mockedGetUserModels).toHaveBeenCalledWith('yeebo')
+      expect(setModels).toHaveBeenLastCalledWith(yeeboModels)
     })
 
-    useAuthStore.setState((state) => ({
-      auth: {
-        ...state.auth,
-        user: { id: 1, username: 'switching-user', role: 1, group: 'suanova' },
-      },
-    }))
+    act(() => {
+      useAuthStore.setState((state) => ({
+        auth: {
+          ...state.auth,
+          user: {
+            id: 1,
+            username: 'switching-user',
+            role: 1,
+            group: 'suanova',
+          },
+        },
+      }))
+    })
     rerender()
 
     await waitFor(() => {
       expect(mockedGetUserModels).toHaveBeenCalledWith('suanova')
+      expect(setModels).toHaveBeenLastCalledWith(suanovaModels)
     })
   })
 })

@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -27,8 +28,10 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
@@ -161,7 +164,7 @@ func TestFilterPricingByUsableGroupsKeepsAllGroup(t *testing.T) {
 }
 
 // TestFilterPricingByGroupKeepsOnlyOwnGroup 价目表只描述本人分组能用的模型：
-// 其他分组的模型不出现，标了 all 的模型对任何分组可见，空分组退回不按分组过滤。
+// 其他分组的模型不出现，标了 all 的模型对任何分组可见，空分组只保留公共条目。
 func TestFilterPricingByGroupKeepsOnlyOwnGroup(t *testing.T) {
 	pricing := []model.Pricing{
 		{ModelName: "all-group-model", EnableGroup: []string{"all"}},
@@ -174,7 +177,7 @@ func TestFilterPricingByGroupKeepsOnlyOwnGroup(t *testing.T) {
 	require.Equal(t, "all-group-model", filtered[0].ModelName)
 	require.Equal(t, "yeebo-model", filtered[1].ModelName)
 
-	require.Len(t, filterPricingByGroup(pricing, ""), 3, "解析不出本人分组时不收窄")
+	assert.Equal(t, pricing[:1], filterPricingByGroup(pricing, ""), "解析不出本人分组时只保留公共条目")
 	onlyAll := filterPricingByGroup(pricing, "internal")
 	require.Len(t, onlyAll, 1)
 	require.Equal(t, "all-group-model", onlyAll[0].ModelName)
@@ -196,4 +199,42 @@ func TestCollectPricingGroupsExpandsAdminView(t *testing.T) {
 	require.NotContains(t, groups, "all")
 
 	require.Empty(t, collectPricingGroups(nil))
+}
+
+// A successful personal-context lookup must not turn a later user-cache failure
+// into anonymous pricing access.
+func TestGetPricingRestrictsModelsWhenFinalUserLookupFails(t *testing.T) {
+	db := setupPricingModelAccessTestDB(t)
+	user := createPricingTestUser(t, db, "pricing-lookup-failure", "yeebo")
+	previousGroups := setting.UserUsableGroups2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousGroups))
+	})
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","yeebo":"Yeebo"}`))
+	for i, group := range []string{"default", "yeebo", "all"} {
+		require.NoError(t, db.Create(&model.Ability{
+			Group: group, Model: "zz-pricing-" + group, ChannelId: i + 1, Enabled: true,
+		}).Error)
+	}
+	require.Len(t, model.GetPricing(), 3)
+
+	userLookups := 0
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("pricing_second_user_lookup_failure", func(tx *gorm.DB) {
+		if tx.Statement.Table != "users" {
+			return
+		}
+		userLookups++
+		if userLookups == 2 {
+			tx.AddError(errors.New("user lookup unavailable"))
+		}
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, db.Callback().Query().Remove("pricing_second_user_lookup_failure"))
+	})
+
+	payload := decodePricingPageResponse(t, performGetPricingRequest(t, user.Id))
+
+	require.GreaterOrEqual(t, userLookups, 2, "the final group lookup must have failed")
+	require.Len(t, payload.Data.Pricings, 1)
+	assert.Equal(t, "zz-pricing-all", payload.Data.Pricings[0].ModelName)
 }

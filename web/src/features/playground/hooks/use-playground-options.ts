@@ -76,6 +76,7 @@ export function usePlaygroundOptions({
   } = useQuery({
     queryKey: ['playground-groups'],
     queryFn: getUserGroups,
+    enabled: SHOW_PLAYGROUND_GROUP_SELECTOR,
   })
 
   useEffect(() => {
@@ -125,7 +126,6 @@ export function usePlaygroundOptions({
   useEffect(() => {
     if (!groupsData) return
 
-    // 分组列表始终写入：选择器隐藏时它仍决定模型选择器是否可用。
     setGroups(groupsData)
     if (!SHOW_PLAYGROUND_GROUP_SELECTOR) return
 

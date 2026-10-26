@@ -65,6 +65,7 @@ export function PlaygroundInputControls({
       isGenerating,
       isModelLoading,
       models,
+      showGroupList: SHOW_PLAYGROUND_GROUP_SELECTOR,
       text,
     })
 

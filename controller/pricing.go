@@ -42,15 +42,15 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 //
 // 可用分组是「用户能选择的分组」，价目表却只该描述「用户自己的分组能用的模型」：
 // 分组在部署里承担渠道路由，让 yeebo 分组的用户看到 default 分组的模型只会让
-// 人挑错。标了 all 的模型对任何分组可见。
+// 人挑错。标了 all 的模型对任何分组可见；解析不出分组时只保留这些公共条目。
 func filterPricingByGroup(pricing []model.Pricing, accountGroup string) []model.Pricing {
-	if accountGroup == "" || len(pricing) == 0 {
+	if len(pricing) == 0 {
 		return pricing
 	}
 
 	filtered := make([]model.Pricing, 0, len(pricing))
 	for _, item := range pricing {
-		if common.StringsContains(item.EnableGroup, "all") || common.StringsContains(item.EnableGroup, accountGroup) {
+		if common.StringsContains(item.EnableGroup, "all") || (accountGroup != "" && common.StringsContains(item.EnableGroup, accountGroup)) {
 			filtered = append(filtered, item)
 		}
 	}
@@ -80,7 +80,7 @@ func collectPricingGroups(pricing []model.Pricing) map[string]string {
 //
 // 组织密钥按组织的分组倍率计费，价目表也必须按组织的可用分组过滤，
 // 否则用户在组织上下文里会看到自己根本用不了（或者价钱不对）的模型。
-// 解析不出组织时退回个人分组——切换上下文失败不该让人看不到价目表。
+// 解析不出组织时退回个人分组；个人分组也读不到时返回空串，由调用方限制价目表。
 func pricingAccountGroup(userId int) string {
 	context, err := service.ResolveCurrentAccountContext(userId)
 	if err == nil && context != nil && context.Type == model.AccountContextTypeOrganization {
@@ -97,19 +97,20 @@ func pricingAccountGroup(userId int) string {
 	if err == nil {
 		return user.Group
 	}
+	common.SysError("failed to load user pricing group: " + err.Error())
 	return ""
 }
 
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
-	userId, exists := c.Get("id")
+	userId, authenticated := c.Get("id")
 	usableGroup := map[string]string{}
 	groupRatio := map[string]float64{}
 	for s, f := range ratio_setting.GetGroupRatioCopy() {
 		groupRatio[s] = f
 	}
 	var group string
-	if exists {
+	if authenticated {
 		if id, ok := userId.(int); ok {
 			group = pricingAccountGroup(id)
 			for g := range groupRatio {
@@ -123,7 +124,7 @@ func GetPricing(c *gin.Context) {
 	// 当前用户的模型折扣随价目表一起下发，前端据此展示折后价。折扣只能进这个
 	// 独立响应字段：pricing 切片是共享缓存对象，改写元素会串到其他用户。
 	userModelDiscounts := map[string]float64{}
-	if exists {
+	if authenticated {
 		if id, ok := userId.(int); ok {
 			// 读不出折扣就按无折扣处理，价目表不该因为折扣读取失败而 500；但失败
 			// 必须留痕——前端据此展示折后价与徽标，静默降级会让折扣「看起来没配」。
@@ -144,13 +145,15 @@ func GetPricing(c *gin.Context) {
 	} else {
 		usableGroup = service.GetAccountUsableGroups(group)
 		pricing = filterPricingByUsableGroups(pricing, usableGroup)
-		// 价目表只描述本人分组能用的模型；匿名请求没有本人分组，保持可用分组视图。
-		pricing = filterPricingByGroup(pricing, group)
+		// 登录状态独立于分组解析结果：读取失败时只保留公共条目，匿名请求保持可用分组视图。
+		if authenticated {
+			pricing = filterPricingByGroup(pricing, group)
+		}
 	}
 	// 组织成员模型白名单：受限成员只看到白名单内的模型价目（平台管理员与无成员
 	// 限制的用户 allow 为 nil，整段跳过）。只按本请求重建切片，绝不改写共享缓存
 	// 元素——否则会串到其他用户的价目表。
-	if viewerId, ok := userId.(int); exists && ok {
+	if viewerId, ok := userId.(int); authenticated && ok {
 		if allow := model.GetUserModelAllowList(viewerId); allow != nil {
 			// 一次请求内只为整张价目表构建一次规范化集合。
 			memberAccess := model.BuildMemberModelAccessSet(allow)
