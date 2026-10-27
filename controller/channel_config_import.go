@@ -139,6 +139,14 @@ func StartChannelConfigSync() {
 	if path == "" || !common.IsMasterNode {
 		return
 	}
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			common.SysLog(fmt.Sprintf("channel config file not found, sync disabled: %s", path))
+		} else {
+			common.SysError(fmt.Sprintf("stat channel config %s: %v", path, err))
+		}
+		return
+	}
 	common.SysLog(fmt.Sprintf("channel config sync enabled: file=%s interval=%s", path, channelConfigSyncInterval))
 	go func() {
 		syncChannelConfigFile()
