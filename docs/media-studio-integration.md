@@ -72,18 +72,21 @@ Object-store settings are not required for editing, and their absence no longer 
 
 ## Declaring image capability with labels
 
-The model selector reads the **Tags** field on the Model Metadata page (`/models/metadata`). Two labels are recognised:
+The model selector reads the **Tags** field on the Model Metadata page (`/models/metadata`). Three labels are recognised:
 
 | Label | Meaning | Media Studio mode | Relay |
 | --- | --- | --- | --- |
 | `text-to-image` | prompt produces an image | Text to image | `POST /pg/images/generations` |
 | `image-to-image` | prompt plus a reference produces an image | Image to image | `POST /pg/images/edits` |
+| `image-mask` | a reference edit restricted to boxed areas | Image to image, with the region editor | `POST /pg/images/edits` with `mask` |
 
-Labels are comma-separated, matched as whole items and case-insensitively, so `text-to-imagex` is not `text-to-image`. A model carrying neither label never appears in Media Studio.
+Labels are comma-separated, matched as whole items and case-insensitively, so `text-to-imagex` is not `text-to-image`. A model carrying none of the image labels never appears in an image mode of Media Studio.
 
 - `text-to-image` also adds the `image-generation` endpoint type to `/api/pricing` and `/v1/models`, first in the list, so the pricing page and channel test dialog pick the image example.
 - `image-to-image` adds **no** endpoint type. There is no edit endpoint type; edit requests are relayed by path. Advertising one would present an edit-only model as a generator, and `/v1/images/generations` fails upstream for it.
 - A model tagged `image-to-image` still needs a channel that understands the inline-base64 contract. Channel selection is by model name as usual; the **channel type** decides the wire format, so put the model on an **Image Edit (Base64)** channel (63) unless its provider genuinely accepts JSON edits with remote URLs.
+- `image-mask` is an addition to `image-to-image`, not a replacement: tag a model with both. It shows the region editor in Image to image mode, where dragging boxes sends `mask`, a PNG data URL the same pixel size as the reference whose **transparent** pixels mark the areas to repaint. Boxed areas live only in the frontend draft; an edit with no boxes sends no `mask` and behaves as an ordinary whole-image edit.
+- The mask is only as good as the channel. Channel type 63 forwards `mask` verbatim, as does the stock OpenAI channel's JSON edit path. A custom channel or multipart path that rebuilds the edit request field by field may drop it, which silently turns a region edit into a whole-image edit — check what the provider actually receives before tagging a model `image-mask`.
 - Tag edits take effect immediately; model metadata writes refresh the pricing cache.
 - **Use an exact-name metadata row.** A row with a prefix/contains/suffix matching rule applies its label to every model it matches. A *contains* row on `qwen-image` tagged `text-to-image` would label both `qwen-image-2512` and `qwen-image-edit-2511` and reintroduce exactly the failure these labels prevent.
 - A model with no metadata row cannot carry a label.

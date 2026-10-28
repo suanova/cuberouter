@@ -105,17 +105,133 @@ test('image requests always carry the quality tier with the machine-native defau
 test('edit requests inline the references as base64 under "image"', () => {
   // 编辑渠道只认 base64。单张发字符串，多张发字符串数组；原来的 images[].image_url
   // 形状会被上游按 base64 解码，报 `Incorrect padding`。
-  const base = { ...initialDraft, mode: 'edit' as const, model: 'm', prompt: 'Cat' }
+  const base = {
+    ...initialDraft,
+    mode: 'edit' as const,
+    model: 'm',
+    prompt: 'Cat',
+  }
   expect(imageRequest(base, [reference.url])).toMatchObject({
     image: reference.url,
   })
-  expect(imageRequest(base, [reference.url, 'data:image/png;base64,Yg=='])).toMatchObject({
+  expect(
+    imageRequest(base, [reference.url, 'data:image/png;base64,Yg=='])
+  ).toMatchObject({
     image: [reference.url, 'data:image/png;base64,Yg=='],
   })
   expect(imageRequest(base, [])).not.toHaveProperty('image')
   expect(
-    imageRequest({ ...initialDraft, model: 'm', prompt: 'Cat' }, [reference.url])
+    imageRequest({ ...initialDraft, model: 'm', prompt: 'Cat' }, [
+      reference.url,
+    ])
   ).not.toHaveProperty('image')
+})
+test('explicit machine settings override the tier and the machine defaults', () => {
+  // 高级设置是覆盖而非新增字段：填了就原样下发，没填才回落到档位/默认值。
+  expect(
+    imageRequest({
+      ...initialDraft,
+      model: 'image-model',
+      prompt: 'Cat',
+      quality: 'fast',
+      steps: 12,
+      cfg: 6.5,
+      seed: 7,
+    })
+  ).toMatchObject({
+    num_inference_steps: 12,
+    true_cfg_scale: 6.5,
+    seed: 7,
+  })
+})
+test('applying a template carries its reproducible machine settings', () => {
+  const template = catalog.templates[0] as StudioTemplate
+  const draft = templateDraft(template, {}, initialDraft)
+  expect(draft.steps).toBe(template.steps)
+  expect(draft.cfg).toBe(template.cfg)
+  expect(draft.seed).toBe(template.seed)
+  expect(imageRequest(draft)).toMatchObject({
+    num_inference_steps: template.steps,
+    true_cfg_scale: template.cfg,
+    seed: template.seed,
+  })
+})
+test('ten reference images are accepted and eleven are rejected', () => {
+  const references = (count: number) =>
+    Array.from({ length: count }, (_, index) => ({
+      id: `ref-${index}`,
+      mime: 'image/png',
+      url: reference.url,
+    }))
+  const base = {
+    ...initialDraft,
+    mode: 'edit' as const,
+    model: 'm',
+    prompt: 'Cat',
+  }
+  expect(
+    draftSchema.safeParse({ ...base, references: references(10) }).success
+  ).toBe(true)
+  expect(
+    draftSchema.safeParse({ ...base, references: references(11) }).success
+  ).toBe(false)
+})
+test('only ten references are inlined into the edit request', () => {
+  const urls = Array.from(
+    { length: 10 },
+    (_, index) => `data:image/png;base64,${index}`
+  )
+  expect(
+    imageRequest(
+      { ...initialDraft, mode: 'edit', model: 'm', prompt: 'Cat' },
+      urls
+    ).image
+  ).toEqual(urls)
+})
+test('the rasterized mask rides along with the edit only when a region was boxed', () => {
+  // mask 与 image 是一体的：没有参考图就没有可对齐的蒙版，文生图更不能带。
+  const edit = {
+    ...initialDraft,
+    mode: 'edit' as const,
+    model: 'm',
+    prompt: 'Cat',
+  }
+  const mask = 'data:image/png;base64,TUFTSw=='
+  expect(imageRequest(edit, [reference.url], mask)).toMatchObject({
+    image: reference.url,
+    mask,
+  })
+  expect(imageRequest(edit, [reference.url])).not.toHaveProperty('mask')
+  expect(
+    imageRequest({ ...initialDraft, model: 'm', prompt: 'Cat' }, [], mask)
+  ).not.toHaveProperty('mask')
+})
+test('boxes outside the image or beyond the cap are rejected before sending', () => {
+  // 归一化坐标只允许 0..1；框太多说明是误拖，挡住比让上游报错便宜。
+  const boxes = (count: number) =>
+    Array.from({ length: count }, () => ({
+      x: 0.1,
+      y: 0.1,
+      width: 0.2,
+      height: 0.2,
+    }))
+  const base = {
+    ...initialDraft,
+    mode: 'edit' as const,
+    model: 'm',
+    prompt: 'Cat',
+    references: [reference],
+  }
+  expect(draftSchema.safeParse({ ...base, mask: boxes(20) }).success).toBe(true)
+  expect(draftSchema.safeParse({ ...base, mask: boxes(21) }).success).toBe(
+    false
+  )
+  expect(
+    draftSchema.safeParse({
+      ...base,
+      mask: [{ x: -0.1, y: 0, width: 0.2, height: 0.2 }],
+    }).success
+  ).toBe(false)
 })
 test('counts above four are rejected', () =>
   expect(

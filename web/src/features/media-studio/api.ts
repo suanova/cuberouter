@@ -22,6 +22,7 @@ import { api } from '@/lib/api'
 import {
   API_ENDPOINTS,
   GENERATION_TIMEOUT_MS,
+  STUDIO_TAG_IMAGE_MASK,
   STUDIO_TAG_IMAGE_TO_IMAGE,
   STUDIO_TAG_IMAGE_TO_VIDEO,
   STUDIO_TAG_TEXT_TO_IMAGE,
@@ -77,6 +78,7 @@ export async function getStudioModels(): Promise<StudioModelCatalog> {
   const imageToImage = new Set<string>()
   const textToVideo = new Set<string>()
   const imageToVideo = new Set<string>()
+  const imageMask = new Set<string>()
   for (const item of pricings) {
     if (!item || typeof item.model_name !== 'string' || item.model_name === '') {
       continue
@@ -94,6 +96,10 @@ export async function getStudioModels(): Promise<StudioModelCatalog> {
     if (tags.includes(STUDIO_TAG_IMAGE_TO_VIDEO)) {
       imageToVideo.add(item.model_name)
     }
+    // 蒙版能力是 image-to-image 的附加项：只有编辑模型才谈得上框选重绘。
+    if (tags.includes(STUDIO_TAG_IMAGE_MASK)) {
+      imageMask.add(item.model_name)
+    }
   }
 
   return {
@@ -101,6 +107,7 @@ export async function getStudioModels(): Promise<StudioModelCatalog> {
     imageToImage: [...imageToImage].sort((a, b) => a.localeCompare(b)),
     textToVideo: [...textToVideo].sort((a, b) => a.localeCompare(b)),
     imageToVideo: [...imageToVideo].sort((a, b) => a.localeCompare(b)),
+    imageMask: [...imageMask].sort((a, b) => a.localeCompare(b)),
   }
 }
 

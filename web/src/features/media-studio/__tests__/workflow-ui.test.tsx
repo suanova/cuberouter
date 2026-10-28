@@ -18,43 +18,82 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-
 import { useState } from 'react'
 import { expect, test, vi } from 'vitest'
 
 import { TemplateGallery } from '../components/template-gallery'
 import { WorkflowComposer } from '../components/workflow-composer'
 import { initialDraft } from '../lib/workflow'
+import type { StudioAsset, WorkflowDraft } from '../workflow-types'
 
-function Composer(props: { generate: () => void }) {
+const reference: StudioAsset = {
+  id: 'photo',
+  mime: 'image/png',
+  url: 'data:image/png;base64,YQ==',
+}
+
+function Composer(props: {
+  generate: () => void
+  draft?: Partial<WorkflowDraft>
+  maskModels?: string[]
+  probe?: boolean
+}) {
   const [draft, setDraft] = useState({
     ...initialDraft,
     model: 'image-model',
     prompt: 'Cat',
+    ...props.draft,
   })
   return (
-    <WorkflowComposer
-      draft={draft}
-      textToImageModels={['image-model']}
-      imageToImageModels={['image-edit']}
-      busy={false}
-      loading={false}
-      onChange={setDraft}
-      onUpload={vi.fn()}
-      onGenerate={props.generate}
-      onReset={vi.fn()}
-    />
+    <>
+      {props.probe && <p>{`boxes: ${draft.mask?.length ?? 0}`}</p>}
+      <WorkflowComposer
+        draft={draft}
+        textToImageModels={['image-model']}
+        imageToImageModels={['image-edit']}
+        maskModels={props.maskModels ?? []}
+        busy={false}
+        loading={false}
+        onChange={setDraft}
+        onUpload={vi.fn()}
+        onGenerate={props.generate}
+        onReset={vi.fn()}
+      />
+    </>
   )
 }
-test('the composer offers quality tiers instead of model-specific numeric settings', () => {
+test('the composer keeps quality tiers and adds optional machine settings', () => {
+  // Steps/CFG/Seed 曾经被刻意藏起来，只能靠画质档位推导；现在作为可选覆盖暴露，
+  // 但初始必须留空，请求体才继续回落到档位与机器默认值。
   render(<Composer generate={vi.fn()} />)
-  expect(
-    screen.queryByLabelText('Send model-specific advanced settings')
-  ).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Steps')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('CFG')).not.toBeInTheDocument()
-  expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument()
+  expect(screen.getByText('Advanced Settings')).toBeInTheDocument()
+  expect(screen.getByLabelText('Steps')).toHaveValue(null)
+  expect(screen.getByLabelText('Steps')).toHaveAttribute('placeholder', '30')
+  expect(screen.getByLabelText('CFG')).toHaveValue(null)
+  expect(screen.getByLabelText('CFG')).toHaveAttribute('placeholder', '4')
+  expect(screen.getByLabelText('Seed')).toHaveValue(null)
+  expect(screen.getByLabelText('Seed')).toHaveAttribute('placeholder', '42')
   expect(screen.getByRole('radio', { name: 'Standard' })).toBeChecked()
+  // 步数的占位符跟随画质档位，告诉用户留空时实际会下发多少步。
+  fireEvent.click(screen.getByRole('radio', { name: 'High' }))
+  expect(screen.getByLabelText('Steps')).toHaveAttribute('placeholder', '50')
+})
+test('advanced settings keep a typed value and drop it when cleared', () => {
+  render(<Composer generate={vi.fn()} />)
+  const steps = screen.getByLabelText('Steps')
+  fireEvent.change(steps, { target: { value: '12' } })
+  expect(steps).toHaveValue(12)
+  fireEvent.change(steps, { target: { value: '' } })
+  expect(steps).toHaveValue(null)
+})
+test('out-of-range machine settings are marked invalid and block generation', () => {
+  // 超范围时草稿校验失败、按钮变灰；aria-invalid 让用户看得见是哪个输入框出了问题。
+  render(<Composer generate={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('Steps'), {
+    target: { value: '999' },
+  })
+  expect(screen.getByLabelText('Steps')).toHaveAttribute('aria-invalid', 'true')
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
 })
 test('selecting a quality tier marks the chosen tier and keeps generation enabled', async () => {
   const generate = vi.fn()
@@ -95,6 +134,26 @@ test('reference images can be attached without any upload service configured', (
   ).not.toBeInTheDocument()
   expect(screen.getByLabelText('Upload reference images')).toBeEnabled()
 })
+test('reference uploads stop once ten images are attached', () => {
+  // 上限提升到 10 张后仍要挡住第 11 张：不挡住就只能等服务端按请求体大小报错。
+  const references = Array.from({ length: 10 }, (_, index) => ({
+    id: `ref-${index}`,
+    mime: 'image/png',
+    url: 'data:image/png;base64,YQ==',
+  }))
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={{ mode: 'edit', model: 'image-edit', references }}
+    />
+  )
+  expect(screen.getByLabelText('Upload reference images')).toBeDisabled()
+  expect(
+    screen.getByText(
+      'PNG, JPEG or WebP · up to 10 MB each · maximum 10 references'
+    )
+  ).toBeInTheDocument()
+})
 test('animal template browsing does not submit a generation', () => {
   const apply = vi.fn()
   render(<TemplateGallery disabled={false} onApply={apply} />)
@@ -102,4 +161,87 @@ test('animal template browsing does not submit a generation', () => {
   expect(screen.getByAltText('Pet comic strip')).toBeInTheDocument()
   expect(screen.queryByAltText('Studio product photo')).not.toBeInTheDocument()
   expect(apply).not.toHaveBeenCalled()
+})
+
+const editDraft = {
+  mode: 'edit' as const,
+  model: 'image-edit',
+  references: [reference],
+}
+
+/** 在被测元素上模拟一次指针拖拽；jsdom 没有布局，所以先固定元素尺寸。 */
+function dragBox(
+  surface: HTMLElement,
+  from: [number, number],
+  to: [number, number]
+) {
+  vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 100,
+  } as DOMRect)
+  const at = (point: [number, number]) => ({
+    clientX: point[0],
+    clientY: point[1],
+  })
+  fireEvent.pointerDown(surface, at(from))
+  fireEvent.pointerMove(surface, at(to))
+  fireEvent.pointerUp(surface, at(to))
+}
+
+test('the box tool is offered only for models declared to support masks', () => {
+  // 没声明 image-mask 的上游会丢掉 mask：宁可不显示工具，也不要给出框了区域却整图重绘的错觉。
+  const view = render(<Composer generate={vi.fn()} draft={editDraft} />)
+  expect(screen.queryByLabelText('Selection area')).not.toBeInTheDocument()
+  view.rerender(
+    <Composer
+      generate={vi.fn()}
+      draft={editDraft}
+      maskModels={['image-edit']}
+    />
+  )
+  expect(screen.getByLabelText('Selection area')).toBeInTheDocument()
+})
+
+test('dragging on the reference image records a box that undo and clear remove', () => {
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={editDraft}
+      maskModels={['image-edit']}
+      probe
+    />
+  )
+  const surface = screen.getByLabelText('Selection area')
+  dragBox(surface, [20, 10], [120, 60])
+  expect(screen.getByText('boxes: 1')).toBeInTheDocument()
+  expect(screen.getByText('1 boxed area(s)')).toBeInTheDocument()
+
+  dragBox(surface, [0, 0], [40, 20])
+  expect(screen.getByText('boxes: 2')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Undo box' }))
+  expect(screen.getByText('boxes: 1')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Clear boxes' }))
+  expect(screen.getByText('boxes: 0')).toBeInTheDocument()
+  expect(screen.queryByText('boxed area(s)', { exact: false })).toBeNull()
+})
+
+test('removing the reference image drops the boxes drawn on it', () => {
+  // 框选坐标相对第一张参考图：图没了，坐标就没有意义，不能留到下一张图上。
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={editDraft}
+      maskModels={['image-edit']}
+      probe
+    />
+  )
+  dragBox(screen.getByLabelText('Selection area'), [20, 10], [120, 60])
+  expect(screen.getByText('boxes: 1')).toBeInTheDocument()
+
+  fireEvent.click(screen.getByRole('button', { name: 'Remove reference image' }))
+  expect(screen.getByText('boxes: 0')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Selection area')).not.toBeInTheDocument()
 })

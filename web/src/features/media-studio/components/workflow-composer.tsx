@@ -26,15 +26,26 @@ import { Input } from '@/components/ui/input'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Textarea } from '@/components/ui/textarea'
 
-import { QUALITY_OPTIONS } from '../constants'
+import {
+  CFG_RANGE,
+  COUNT_OPTIONS,
+  DEFAULT_PARAMS,
+  LIMITS,
+  QUALITY_OPTIONS,
+  qualitySteps,
+  STEPS_RANGE,
+} from '../constants'
 import { draftSchema } from '../lib/workflow'
 import type { Quality } from '../types'
 import type { WorkflowDraft } from '../workflow-types'
+import { MaskEditor } from './mask-editor'
 
 export function WorkflowComposer(props: {
   draft: WorkflowDraft
   textToImageModels: string[]
   imageToImageModels: string[]
+  /** 声明了 image-mask 的模型：只有它们接受蒙版，才显示框选工具。 */
+  maskModels: string[]
   busy: boolean
   loading: boolean
   onChange: (draft: WorkflowDraft) => void
@@ -45,12 +56,29 @@ export function WorkflowComposer(props: {
   const { t } = useTranslation()
   const editing = props.draft.mode === 'edit'
   const models = editing ? props.imageToImageModels : props.textToImageModels
+  // 框选只对声明了 image-mask 的编辑模型开放；其他上游会静默丢掉 mask。
+  const maskable = editing && props.maskModels.includes(props.draft.model)
   const form = useForm<WorkflowDraft>({
     values: props.draft,
     resolver: zodResolver(draftSchema),
   })
   const update = (patch: Partial<WorkflowDraft>) =>
     props.onChange({ ...props.draft, ...patch })
+  // 数字输入清空即撤销覆盖：undefined 不会进入请求体，回落到档位或机器默认值。
+  const numeric = (value: string): number | undefined =>
+    value === '' ? undefined : Number(value)
+  // 超范围时草稿校验失败、生成按钮变灰，这里把原因直接标在输入框上。
+  const outOfRange = (
+    value: number | undefined,
+    min: number,
+    max: number,
+    integer = true
+  ) =>
+    value !== undefined &&
+    (!Number.isFinite(value) ||
+      value < min ||
+      value > max ||
+      (integer && !Number.isInteger(value)))
   const valid =
     draftSchema.safeParse(props.draft).success &&
     models.includes(props.draft.model)
@@ -85,6 +113,8 @@ export function WorkflowComposer(props: {
                   ? props.draft.model
                   : (eligible[0] ?? ''),
                 references: mode === 'edit' ? props.draft.references : [],
+                // 文生图没有参考图，框选区域随之作废。
+                mask: mode === 'edit' ? props.draft.mask : undefined,
                 parent_id: undefined,
               })
             }}
@@ -137,6 +167,11 @@ export function WorkflowComposer(props: {
                       references: props.draft.references.filter(
                         (item) => item.id !== asset.id
                       ),
+                      // 框选坐标是相对第一张参考图的：删掉它，蒙版也失效。
+                      mask:
+                        props.draft.references[0]?.id === asset.id
+                          ? undefined
+                          : props.draft.mask,
                     })
                   }
                 >
@@ -152,7 +187,8 @@ export function WorkflowComposer(props: {
               accept='image/png,image/jpeg,image/webp'
               multiple
               disabled={
-                props.busy || props.draft.references.length >= 3
+                props.busy ||
+                props.draft.references.length >= LIMITS.maxReferences
               }
               onChange={(event) => {
                 props.onUpload([...(event.target.files ?? [])])
@@ -161,8 +197,21 @@ export function WorkflowComposer(props: {
             />
           </label>
           <p className='text-muted-foreground text-xs'>
-            {t('PNG, JPEG or WebP · up to 10 MB each · maximum 3 references')}
+            {t(
+              'PNG, JPEG or WebP · up to 10 MB each · maximum {{max}} references',
+              { max: LIMITS.maxReferences }
+            )}
           </p>
+          {maskable && !!props.draft.references.length && (
+            <MaskEditor
+              image={props.draft.references[0]}
+              regions={props.draft.mask ?? []}
+              disabled={props.busy}
+              onChange={(regions) =>
+                update({ mask: regions.length ? regions : undefined })
+              }
+            />
+          )}
         </section>
       )}
       {props.draft.parent_id && (
@@ -175,7 +224,7 @@ export function WorkflowComposer(props: {
         <Textarea
           value={props.draft.prompt}
           disabled={props.busy}
-          maxLength={16000}
+          maxLength={LIMITS.promptMax}
           className='min-h-36'
           onChange={(event) => update({ prompt: event.target.value })}
         />
@@ -199,7 +248,7 @@ export function WorkflowComposer(props: {
             disabled={props.busy}
             onChange={(event) => update({ count: Number(event.target.value) })}
           >
-            {[1, 2, 3, 4].map((count) => (
+            {COUNT_OPTIONS.map((count) => (
               <option key={count}>{count}</option>
             ))}
           </select>
@@ -233,6 +282,70 @@ export function WorkflowComposer(props: {
           ))}
         </RadioGroup>
       </div>
+      <details className='space-y-2 text-sm'>
+        <summary className='cursor-pointer'>{t('Advanced Settings')}</summary>
+        <div className='grid grid-cols-3 gap-2 pt-2'>
+          <label className='text-xs'>
+            {t('Steps')}
+            <Input
+              type='number'
+              min={STEPS_RANGE.min}
+              max={STEPS_RANGE.max}
+              value={props.draft.steps ?? ''}
+              placeholder={String(qualitySteps(props.draft.quality))}
+              aria-invalid={outOfRange(
+                props.draft.steps,
+                STEPS_RANGE.min,
+                STEPS_RANGE.max
+              )}
+              disabled={props.busy}
+              onChange={(event) =>
+                update({ steps: numeric(event.target.value) })
+              }
+            />
+          </label>
+          <label className='text-xs'>
+            {t('CFG')}
+            <Input
+              type='number'
+              min={CFG_RANGE.min}
+              max={CFG_RANGE.max}
+              step='0.1'
+              value={props.draft.cfg ?? ''}
+              placeholder={String(DEFAULT_PARAMS.cfg)}
+              aria-invalid={outOfRange(
+                props.draft.cfg,
+                CFG_RANGE.min,
+                CFG_RANGE.max,
+                false
+              )}
+              disabled={props.busy}
+              onChange={(event) => update({ cfg: numeric(event.target.value) })}
+            />
+          </label>
+          <label className='text-xs'>
+            {t('Seed')}
+            <Input
+              type='number'
+              min={0}
+              value={props.draft.seed ?? ''}
+              placeholder={String(DEFAULT_PARAMS.seed)}
+              aria-invalid={outOfRange(
+                props.draft.seed,
+                0,
+                Number.MAX_SAFE_INTEGER
+              )}
+              disabled={props.busy}
+              onChange={(event) =>
+                update({ seed: numeric(event.target.value) })
+              }
+            />
+          </label>
+        </div>
+        <p className='text-muted-foreground text-xs'>
+          {t('Leave blank to use the default for the selected quality.')}
+        </p>
+      </details>
       <Button
         type='submit'
         className='w-full'

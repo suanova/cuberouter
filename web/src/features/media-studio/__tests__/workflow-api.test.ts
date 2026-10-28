@@ -19,8 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { beforeEach, afterEach, expect, test, vi } from 'vitest'
 
-import { initialDraft } from '../lib/workflow'
+import { maskImage } from '../lib/mask'
 import { normalizeReferences } from '../lib/reference-image'
+import { initialDraft } from '../lib/workflow'
 import { workflowAPI } from '../workflow-api'
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }))
@@ -28,6 +29,8 @@ vi.mock('@/lib/api', () => ({ api: http }))
 // 归一化的真实行为依赖 canvas，这里只在模块边界上换成 spy：没有单独指定的用例仍然跑
 // 真实实现（jsdom 下就是原样返回，正是部署到无 canvas 环境的降级路径）。
 vi.mock('../lib/reference-image', { spy: true })
+// 蒙版栅格化同样依赖 canvas；spy 让未指定返回值的用例走真实实现（jsdom 下返回 undefined）。
+vi.mock('../lib/mask', { spy: true })
 const reference = {
   id: 'photo',
   url: 'data:image/png;base64,iVBORw0KGgoAAAAB',
@@ -42,6 +45,7 @@ const draft = {
 }
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.mocked(maskImage).mockReset()
   http.post.mockResolvedValue({
     data: { data: [{ b64_json: 'iVBORw0KGgoAAAAB' }] },
     headers: { 'x-request-id': 'request-1' },
@@ -80,6 +84,25 @@ test('several references are sent as an array of base64 strings', async () => {
 test('text-to-image requests never carry a reference field', async () => {
   await workflowAPI.generate({ ...initialDraft, model: 'image', prompt: 'Cat' })
   expect(http.post.mock.calls[0][1]).not.toHaveProperty('image')
+})
+test('a boxed edit sends the rasterized mask next to the reference', async () => {
+  // 蒙版按下发的那张参考图栅格化：尺寸一致，框选位置才对得上。
+  const mask = 'data:image/png;base64,TUFTSw=='
+  vi.mocked(maskImage).mockResolvedValue(mask)
+  const regions = [{ x: 0.1, y: 0.1, width: 0.4, height: 0.4 }]
+  await workflowAPI.generate({ ...draft, mask: regions })
+  expect(maskImage).toHaveBeenCalledWith(reference.url, regions)
+  expect(http.post).toHaveBeenCalledWith(
+    '/pg/images/edits',
+    expect.objectContaining({ image: reference.url, mask }),
+    expect.anything()
+  )
+})
+test('an edit without boxes never asks for a mask', async () => {
+  // 没框选就退回整图编辑：不白跑一次解码，也不给上游发空蒙版。
+  await workflowAPI.generate(draft)
+  expect(maskImage).not.toHaveBeenCalled()
+  expect(http.post.mock.calls[0][1]).not.toHaveProperty('mask')
 })
 test('an edit sends the normalized reference while the saved job keeps the uploaded bytes', async () => {
   // 归一化只作用于下发的那一份：draft 与本地历史留的仍是用户原始字节，「原图对照」

@@ -19,8 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import { GENERATION_TIMEOUT_MS } from './constants'
+import { GENERATION_TIMEOUT_MS, LIMITS } from './constants'
 import { extractImages, type ImageResponseBody } from './lib/image-response'
+import { maskImage } from './lib/mask'
 import { normalizeReferences } from './lib/reference-image'
 import { imageRequest } from './lib/workflow'
 import type { StudioAsset, WorkflowDraft, WorkflowJob } from './workflow-types'
@@ -51,7 +52,7 @@ export async function referenceAsset(file: Blob): Promise<StudioAsset> {
   if (
     !['image/png', 'image/jpeg', 'image/webp'].includes(file.type) ||
     file.size <= 0 ||
-    file.size > 10 * 1024 * 1024
+    file.size > LIMITS.maxReferenceBytes
   ) {
     throw new Error('Upload PNG, JPEG or WebP files of at most 10 MB each.')
   }
@@ -156,9 +157,15 @@ export const workflowAPI = {
       draft.mode === 'edit'
         ? await normalizeReferences(draft.references.map((asset) => asset.url))
         : []
+    // 蒙版必须与真正下发的那张参考图同尺寸，所以按归一化之后的图栅格化，而不是用户
+    // 原图。栅格化不了（无 canvas、解码失败）时 mask 为 undefined，退化成整图编辑。
+    const mask =
+      draft.mode === 'edit' && draft.mask?.length
+        ? await maskImage(referenceURLs[0] ?? '', draft.mask)
+        : undefined
     const response = await api.post<ImageResponseBody>(
       `/pg/images/${draft.mode === 'edit' ? 'edits' : 'generations'}`,
-      imageRequest(draft, referenceURLs),
+      imageRequest(draft, referenceURLs, mask),
       { timeout: GENERATION_TIMEOUT_MS, skipErrorHandler: true }
     )
     const output = extractImages(response.data)

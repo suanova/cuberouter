@@ -18,6 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { VideoJob } from '../video-types'
+import { requestStudioPersistence } from './storage-persistence'
 
 const MAX_ENTRIES = 20
 const MAX_BYTES = 400 * 1024 * 1024
@@ -33,7 +34,11 @@ async function database(owner: number): Promise<IDBDatabase> {
     const request = indexedDB.open(`cuberouter-video-studio-${owner}`, 1)
     request.onupgradeneeded = () =>
       request.result.createObjectStore('jobs', { keyPath: 'id' })
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      // 每次打开都会走到这里，请求内部用 persisted() 与标记位去重。
+      void requestStudioPersistence()
+      resolve(request.result)
+    }
     request.onerror = () => reject(request.error)
   })
 }

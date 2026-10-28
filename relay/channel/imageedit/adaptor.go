@@ -59,6 +59,11 @@ type imageEditRequest struct {
 	NumInferenceSteps *int            `json:"num_inference_steps,omitempty"`
 	Seed              *int64          `json:"seed,omitempty"`
 	TrueCfgScale      *float64        `json:"true_cfg_scale,omitempty"`
+	// Mask is the optional PNG data URL whose transparent pixels mark the area to
+	// repaint. It is forwarded verbatim: the provider decodes it the same way it
+	// decodes Image, and dropping it would silently turn a region edit into a
+	// whole-image edit.
+	Mask json.RawMessage `json:"mask,omitempty"`
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
@@ -96,6 +101,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		Model:             request.Model,
 		Prompt:            request.Prompt,
 		Image:             image,
+		Mask:              request.Mask,
 		Size:              request.Size,
 		N:                 request.N,
 		Quality:           request.Quality,

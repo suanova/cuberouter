@@ -84,6 +84,11 @@ describe('getStudioModels', () => {
         },
         { model_name: 'chat-model', tags: 'chat' },
         { model_name: 'qwen-image-2512', tags: 'text-to-image' },
+        // 蒙版能力单独声明：只有它进框选工具，其他编辑模型仍是整图重绘。
+        {
+          model_name: 'mask-edit-model',
+          tags: 'image-to-image, image-mask',
+        },
         // 视频标签与图片标签互不推断：只声明 text-to-video 的模型
         // 只能进文生视频列表，不能混进任何图片列表。
         { model_name: 'viduq3-pro', tags: 'text-to-video' },
@@ -95,9 +100,14 @@ describe('getStudioModels', () => {
 
     await expect(getStudioModels()).resolves.toEqual({
       textToImage: ['both-modes-model', 'case-tag-model', 'qwen-image-2512'],
-      imageToImage: ['both-modes-model', 'qwen-image-edit-2511'],
+      imageToImage: [
+        'both-modes-model',
+        'mask-edit-model',
+        'qwen-image-edit-2511',
+      ],
       textToVideo: ['kling-v2', 'viduq3-pro'],
       imageToVideo: ['i2v-only-model', 'kling-v2'],
+      imageMask: ['mask-edit-model'],
     })
     expect(get).toHaveBeenCalledWith('/api/pricing')
   })
@@ -114,6 +124,7 @@ describe('getStudioModels', () => {
       imageToImage: [],
       textToVideo: [],
       imageToVideo: [],
+      imageMask: [],
     })
   })
 
@@ -125,6 +136,7 @@ describe('getStudioModels', () => {
       imageToImage: [],
       textToVideo: [],
       imageToVideo: [],
+      imageMask: [],
     })
   })
 })

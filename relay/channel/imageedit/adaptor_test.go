@@ -89,6 +89,35 @@ func TestConvertImageRequestForwardsBase64ReferenceArray(t *testing.T) {
 	assert.JSONEq(t, `{"model":"qwen-image-edit-2511","prompt":"merge","image":["`+base64Reference+`","`+base64Reference+`"]}`, string(body))
 }
 
+// A region edit carries the mask next to the reference. This adaptor rebuilds
+// the wire struct field by field, so a missing field is not a cosmetic
+// difference: the provider would repaint the whole image and quietly ignore the
+// boxes the user drew.
+func TestConvertImageRequestForwardsMaskVerbatim(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	mask := "data:image/png;base64," + base64Reference
+	converted, err := convertJSON(t, `{"model":"qwen-image-edit-2511","prompt":"invert","image":"`+base64Reference+`","mask":"`+mask+`"}`)
+	require.NoError(t, err)
+
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"model":"qwen-image-edit-2511","prompt":"invert","image":"`+base64Reference+`","mask":"`+mask+`"}`, string(body))
+}
+
+func TestConvertImageRequestOmitsAbsentMask(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	converted, err := convertJSON(t, `{"model":"qwen-image-edit-2511","prompt":"invert","image":"`+base64Reference+`"}`)
+	require.NoError(t, err)
+
+	body, err := common.Marshal(converted)
+	require.NoError(t, err)
+	var fields map[string]json.RawMessage
+	require.NoError(t, common.Unmarshal(body, &fields))
+	assert.NotContains(t, fields, "mask")
+}
+
 // The provider base64-decodes `image` unconditionally, so a URL there surfaces
 // as an unrelated "Incorrect padding" from its decoder. Reject it here instead.
 func TestConvertImageRequestRejectsRemoteImageURL(t *testing.T) {

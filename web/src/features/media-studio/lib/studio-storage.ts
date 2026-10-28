@@ -18,9 +18,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { WorkflowJob } from '../workflow-types'
+import { requestStudioPersistence } from './storage-persistence'
 
 const MAX_ENTRIES = 50
 const MAX_BYTES = 100 * 1024 * 1024
+
 // A separate database per signed-in account prevents history appearing after account switches.
 async function database(owner: number): Promise<IDBDatabase> {
   if (!Number.isSafeInteger(owner) || owner <= 0) {
@@ -30,7 +32,11 @@ async function database(owner: number): Promise<IDBDatabase> {
     const request = indexedDB.open(`cuberouter-studio-${owner}`, 1)
     request.onupgradeneeded = () =>
       request.result.createObjectStore('jobs', { keyPath: 'id' })
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      // 每次打开都会走到这里，函数内部用 persisted() 与标记位去重。
+      void requestStudioPersistence()
+      resolve(request.result)
+    }
     request.onerror = () => reject(request.error)
   })
 }

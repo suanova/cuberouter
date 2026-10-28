@@ -74,7 +74,7 @@ export function referenceScale(
  * 既不会触发 load 也不会触发 error——只监听这两个事件的 promise 会永久 pending。真实
  * 浏览器里 data: URL 一定会 settle（解码失败走 error）。
  */
-function canDecodeImages(): boolean {
+export function canDecodeImages(): boolean {
   if (typeof document === 'undefined') {
     return false
   }
@@ -82,7 +82,7 @@ function canDecodeImages(): boolean {
 }
 
 /** 解码 data URL；失败或本环境解不了时返回 null。 */
-function decode(dataURL: string): Promise<HTMLImageElement | null> {
+export function decodeImage(dataURL: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const image = new Image()
     // 监听器必须先于 src 注册，否则事件可能在注册前就派发掉了。
@@ -193,7 +193,7 @@ export async function normalizeReference(dataURL: string): Promise<string> {
     return dataURL
   }
   try {
-    const image = await decode(dataURL)
+    const image = await decodeImage(dataURL)
     if (!image) {
       return dataURL
     }

@@ -29,6 +29,7 @@ import { TemplateGallery } from './components/template-gallery'
 import { WorkflowComposer } from './components/workflow-composer'
 import { WorkflowHistory } from './components/workflow-history'
 import { WorkflowResults } from './components/workflow-results'
+import { LIMITS } from './constants'
 import { useWorkflow } from './hooks/use-workflow'
 import { initialDraft, templateDraft, workflowError } from './lib/workflow'
 import { localImage, referenceAsset } from './workflow-api'
@@ -48,6 +49,7 @@ export function WorkflowStudio(props: { owner: number }) {
     imageToImage: [],
     textToVideo: [],
     imageToVideo: [],
+    imageMask: [],
   }
   const eligible =
     draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
@@ -58,10 +60,21 @@ export function WorkflowStudio(props: { owner: number }) {
   const workflow = useWorkflow(props.owner)
   const references = useMutation({
     mutationFn: async (files: Blob[]) => {
-      if (files.length + draft.references.length > 3) {
-        throw new Error('Choose at most three reference images.')
+      if (files.length + draft.references.length > LIMITS.maxReferences) {
+        // 文案走 t() 查表，不能拼数字：错误信息在组件外生成，插值无法本地化。
+        throw new Error('Too many reference images for one result.')
       }
-      return Promise.all(files.map(referenceAsset))
+      const assets = await Promise.all(files.map(referenceAsset))
+      // data URL 的 payload 约为原始字节的 4/3，用它估算新老参考图的合计大小；
+      // 归一化会再把每张缩到长边 1024，但总量必须在提交前就挡住。
+      const bytes = [...draft.references, ...assets].reduce((total, asset) => {
+        const payload = asset.url.length - asset.url.indexOf(',') - 1
+        return total + Math.ceil(payload * 0.75)
+      }, 0)
+      if (bytes > LIMITS.maxReferenceTotalBytes) {
+        throw new Error('Reference images are too large in total.')
+      }
+      return assets
     },
     onSuccess: (assets) =>
       setDraft((value) => ({
@@ -108,6 +121,7 @@ export function WorkflowStudio(props: { owner: number }) {
           draft={current}
           textToImageModels={catalog.textToImage}
           imageToImageModels={catalog.imageToImage}
+          maskModels={catalog.imageMask}
           busy={busy}
           loading={models.isPending}
           onChange={setDraft}

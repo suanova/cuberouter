@@ -18,6 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { HistoryEntry } from '../types'
+import { requestStudioPersistence } from './storage-persistence'
 
 const DB_NAME = 'media-studio-history'
 const DB_VERSION = 1
@@ -39,7 +40,11 @@ function openDatabase(): Promise<IDBDatabase> {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' })
       }
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      // 每次打开都会走到这里，请求内部用 persisted() 与标记位去重。
+      void requestStudioPersistence()
+      resolve(request.result)
+    }
     request.onerror = () => {
       request.result?.close()
       reject(request.error ?? new Error('Failed to open history database'))

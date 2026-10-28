@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { MaskRegion } from './lib/mask'
 import type { Quality } from './types'
 
 export interface StudioAsset {
@@ -30,6 +31,8 @@ export interface StudioModelCatalog {
   imageToImage: string[]
   textToVideo: string[]
   imageToVideo: string[]
+  /** 支持蒙版区域重绘（image-mask 标签）的编辑模型。 */
+  imageMask: string[]
 }
 export interface WorkflowDraft {
   mode: 'create' | 'edit'
@@ -39,6 +42,17 @@ export interface WorkflowDraft {
   count: number
   quality: Quality
   references: StudioAsset[]
+  /** 留空时按画质档位推导（fast/standard/high → 20/30/50）。 */
+  steps?: number
+  /** 留空时使用机器默认值。 */
+  cfg?: number
+  /** 留空时使用机器默认值；指定后同一提示词可复现同一张图。 */
+  seed?: number
+  /**
+   * 框选重绘区域（归一化坐标），作用于第一张参考图。留空即整图编辑，
+   * 请求体不带 mask。
+   */
+  mask?: MaskRegion[]
   parent_id?: string
 }
 export interface WorkflowJob {

@@ -33,6 +33,12 @@ export const STUDIO_TAG_TEXT_TO_IMAGE = 'text-to-image'
 export const STUDIO_TAG_IMAGE_TO_IMAGE = 'image-to-image'
 export const STUDIO_TAG_TEXT_TO_VIDEO = 'text-to-video'
 export const STUDIO_TAG_IMAGE_TO_VIDEO = 'image-to-video'
+/**
+ * 比 image-to-image 多一个能力：接受 mask 蒙版并按透明区域局部重绘。声明了它的模型
+ * 才在编辑模式显示框选工具——没有声明的上游会把 mask 当未知字段丢掉，用户框了区域
+ * 却得到整图重绘，比不显示这个工具更难排查。
+ */
+export const STUDIO_TAG_IMAGE_MASK = 'image-mask'
 
 /**
  * 视频时长选项（秒）。各供应商支持的档位不同（如 Kling 5/10、Vidu 5/10），
@@ -87,8 +93,18 @@ export function qualitySteps(quality: Quality): number {
   return option.steps
 }
 
+/** 机器原生参数的可调范围；留空时仍按画质档位与机器默认值下发。 */
+export const STEPS_RANGE = { min: 1, max: 60 } as const
+export const CFG_RANGE = { min: 0, max: 10 } as const
+
 export const LIMITS = {
   promptMax: 16000,
+  maxReferences: 10,
+  maxReferenceBytes: 10 * 1024 * 1024,
+  // 归一化后参考图通常每张 200~400 KB，10 张仍要留出请求体余量。
+  maxReferenceTotalBytes: 11 * 1024 * 1024,
+  // 一次框选是一块重绘区域；再多的框已经没法用一句话描述，只说明是误拖。
+  maxMaskRegions: 20,
 } as const
 
 export const DEFAULT_PARAMS: StudioParams = {
