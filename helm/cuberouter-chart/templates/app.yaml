@@ -163,14 +163,10 @@ spec:
             {{- range .Values.cubeRouter.envVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- with .Values.cubeRouter.extraVolumeMounts }}
           volumeMounts:
-            {{- if .Values.cubeRouter.persistence.data.enabled }}
-            - name: cuberouter-data
-              mountPath: {{ .Values.cubeRouter.persistence.data.mountPath }}
-            {{- end }}
-            {{- with .Values.cubeRouter.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /api/status
@@ -196,16 +192,10 @@ spec:
             failureThreshold: 30
           resources:
             {{- toYaml .Values.cubeRouter.resources | nindent 12 }}
+      {{- with .Values.cubeRouter.extraVolumes }}
       volumes:
-        {{- if .Values.cubeRouter.persistence.data.enabled }}
-        # Ephemeral (emptyDir): /data holds transient app state only, so it
-        # must not pin replicas to a single node via a ReadWriteOnce PVC.
-        - name: cuberouter-data
-          emptyDir: {}
-        {{- end }}
-        {{- with .Values.cubeRouter.extraVolumes }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       {{- with .Values.cubeRouter.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
