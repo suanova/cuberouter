@@ -168,10 +168,6 @@ spec:
             - name: cuberouter-data
               mountPath: {{ .Values.cubeRouter.persistence.data.mountPath }}
             {{- end }}
-            {{- if .Values.cubeRouter.persistence.logs.enabled }}
-            - name: cuberouter-logs
-              mountPath: {{ .Values.cubeRouter.persistence.logs.mountPath }}
-            {{- end }}
             {{- with .Values.cubeRouter.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -205,12 +201,6 @@ spec:
         # Ephemeral (emptyDir): /data holds transient app state only, so it
         # must not pin replicas to a single node via a ReadWriteOnce PVC.
         - name: cuberouter-data
-          emptyDir: {}
-        {{- end }}
-        {{- if .Values.cubeRouter.persistence.logs.enabled }}
-        # Ephemeral (emptyDir): /app/logs is transient per-pod logging; keep
-        # logs persistent independently if your deployment requires it.
-        - name: cuberouter-logs
           emptyDir: {}
         {{- end }}
         {{- with .Values.cubeRouter.extraVolumes }}
