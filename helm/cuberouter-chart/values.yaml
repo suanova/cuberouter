@@ -107,16 +107,23 @@ cubeRouter:
     type: ClusterIP
     port: 80
   persistence:
+    # Ephemeral per-pod volumes (emptyDir). The app's /data and /app/logs
+    # hold only transient state, so they no longer use ReadWriteOnce PVCs that
+    # would pin every replica to whichever node attached the claim first and
+    # block HA replicas on other nodes from starting. Disable a mount entirely
+    # with enabled=false, or tune the mountPath. Persist /app/logs or /data
+    # externally via extraVolumes if your deployment requires it.
     data:
       enabled: true
-      size: 10Gi
-      storageClassName: ""
       mountPath: /data
     logs:
       enabled: true
-      size: 10Gi
-      storageClassName: ""
       mountPath: /app/logs
+  # Soft (preferred) pod anti-affinity over node (kubernetes.io/hostname): the
+  # scheduler tries to spread app replicas across different nodes so an HA
+  # deployment survives a node failure, but will still place multiple replicas
+  # on one node if the cluster has too few nodes.
+  podAntiAffinity: true
   resources:
     requests:
       cpu: 500m

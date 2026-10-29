@@ -50,11 +50,12 @@ rolling updates).
 
 - **Helm 3.x** and **kubectl**
 - A Kubernetes cluster with a **StorageClass** capable of `ReadWriteOnce` volumes (default sizes:
-  app data 10Gi, app logs 10Gi, PostgreSQL 20Gi — each tunable) and, with the default
+  PostgreSQL 20Gi — tunable) and, with the default
   `postgresql.backups.enabled: true`, a **default `VolumeSnapshotClass`** for volume-snapshot
   backups (disable backups if the cluster has none)
-- Multi-node clusters recommended so HA replicas spread across hosts (the CloudNativePG operator
-  applies a soft pod anti-affinity to the instance pods)
+- Multi-node clusters recommended so HA replicas spread across hosts (the app uses a soft
+  pod anti-affinity, and the CloudNativePG operator applies a soft pod anti-affinity to the
+  instance pods)
 - Network access from the cluster to the container registries hosting the images (see next section)
 
 ## Images and registry access
@@ -102,10 +103,6 @@ override first:
 deployMode: base              # app 1, 1 PG instance, 1 redis + 1 sentinel
 ingress:
   enabled: false              # you'll reach the app via port-forward instead
-cubeRouter:
-  persistence:
-    data: { size: 5Gi }
-    logs: { size: 2Gi }
 postgresql:
   storage: 10Gi
   backups:
@@ -342,7 +339,6 @@ point `secret.existingSecret` at a pre-created secret that carries the same six 
 | Resource | Name (`<f>` = `<fullname>`) |
 |---|---|
 | App Service / Deployment | `<f>` (same name, different kinds) |
-| App data / logs PVCs | `<f>-app-data`, `<f>-app-logs` |
 | App PDB | `<f>-app-pdb` (only in high mode) |
 | ConfigMap / Secret | `<f>-config`, `<f>-secret` |
 | App Ingress | `<f>-ingress` |
@@ -370,7 +366,7 @@ Computed connection strings:
 | `config` | App env in the ConfigMap: `BATCH_UPDATE_ENABLED`, `ERROR_LOG_ENABLED`, `NODE_TYPE: master`, `PORT: 3000`, `TZ`, `BASE_PATH` (empty = serve from the site root); extend via `config.extra` |
 | `secret` / `secrets` | see [Secrets and credentials](#secrets-and-credentials) |
 | `mediaStudio` | `enabled: false`; `s3.endpoint` / `s3.bucket` / `s3.region` (ConfigMap) and `s3.access_key` / `s3.secret_key` (Secret) for Image-to-image reference uploads |
-| `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence `/data` + `/app/logs`, probes on `/api/status`, `resources`, `envVars`, `extraVolumes` / `extraVolumeMounts`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
+| `cubeRouter` | `replicaCount: 2`, image, `service.port: 80`, persistence mountPaths `/data` + `/app/logs` (ephemeral `emptyDir`), `podAntiAffinity: true` (spreads replicas across nodes), probes on `/api/status`, `resources`, `envVars`, `extraVolumes` / `extraVolumeMounts`, `waitForPostgres` / `waitForRedis` (init containers), `nodeSelector` / `tolerations` |
 | `pdb` | `enabled: true`, `minAvailable: 1` for the app (not rendered in base mode) |
 | `ingress` | `enabled: true`, `className: nginx`, production hosts + TLS secrets — **override for your cluster** |
 | `postgresql` | `auth.database/username`, `image` (PostgreSQL 16.14), `replicas: 2`, `storage: 20Gi`, `resources`, `backups.*`, `pgBouncer.*` |
@@ -379,6 +375,19 @@ Computed connection strings:
 | `redis-operator` | OpsTree control plane (always installed), image |
 
 ## HA details
+
+### App (CubeRouter)
+
+- The app's `/data` and `/app/logs` are **ephemeral** (`emptyDir`, one per pod): they hold only
+  transient state, so no `ReadWriteOnce` PVC pins every replica to the node that attached the
+  claim first. Replicas can then start on any node, which is what makes the app truly HA.
+- A **preferred** (soft) pod anti-affinity (`cubeRouter.podAntiAffinity`, on by default, over the
+  `kubernetes.io/hostname` topology key) asks the scheduler to spread app replicas across
+  different nodes, so an HA deployment survives a node failure; on a single-node cluster the
+  replicas simply pack onto that node. Set `cubeRouter.podAntiAffinity: false` to disable.
+- Keep app state that must survive a rollout (e.g. media files, audit logs you need) on a
+  persistent store, and extend the chart with `cubeRouter.extraVolumes` /
+  `cubeRouter.extraVolumeMounts` if you need a dedicated PVC for them.
 
 ### PostgreSQL (CloudNativePG)
 
