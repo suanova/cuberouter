@@ -27,9 +27,10 @@ import type { WalletOrganization } from '../types'
 /**
  * The organizations whose balances the wallet can show.
  *
- * `GET /api/organizations` already carries the pool figures, so one request
- * covers the whole card. The query key includes the account context because the
- * backend resolves the rows against it.
+ * `GET /api/organizations` already carries both the organization pool and the
+ * signed-in member's own quota figures, so one request covers the whole card.
+ * The query key includes the account context because the backend resolves the
+ * rows against it.
  */
 export function useWalletOrganizations() {
   return useQuery({
@@ -43,7 +44,8 @@ export function useWalletOrganizations() {
         id: organization.id,
         name: organization.name,
         quota: organization.quota,
-        used_quota: organization.used_quota,
+        member_quota_limit: organization.member_quota_limit,
+        member_used_quota: organization.member_used_quota,
       }))
     },
   })

@@ -60,6 +60,12 @@ export function OrganizationStatsCard(props: OrganizationStatsCardProps) {
       (organization) => organization.id === contextOrganizationId
     ) ??
     props.organizations[0]
+  // A member without a configured limit draws from the organization's pool,
+  // so the pool total is the ceiling shown for them.
+  const quotaLimit =
+    selected.member_quota_limit > 0
+      ? selected.member_quota_limit
+      : selected.quota
   const items = props.organizations.map((organization) => ({
     value: String(organization.id),
     label: organization.name,
@@ -104,7 +110,7 @@ export function OrganizationStatsCard(props: OrganizationStatsCardProps) {
             {t('Organization Quota')}
           </div>
           <div className='text-foreground mt-1.5 font-mono text-sm font-bold tracking-tight break-all tabular-nums sm:mt-2.5 sm:text-2xl'>
-            {formatQuota(selected.quota)}
+            {formatQuota(quotaLimit)}
           </div>
         </div>
         <div className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
@@ -112,7 +118,7 @@ export function OrganizationStatsCard(props: OrganizationStatsCardProps) {
             {t('Used')}
           </div>
           <div className='text-foreground mt-1.5 font-mono text-sm font-bold tracking-tight break-all tabular-nums sm:mt-2.5 sm:text-2xl'>
-            {formatQuota(selected.used_quota)}
+            {formatQuota(selected.member_used_quota)}
           </div>
         </div>
       </div>

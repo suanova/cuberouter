@@ -34,14 +34,16 @@ const research: WalletOrganization = {
   id: 7,
   name: 'Research',
   quota: 5_000_000,
-  used_quota: 2_000_000,
+  member_quota_limit: 3_000_000,
+  member_used_quota: 1_000_000,
 }
 
 const platform: WalletOrganization = {
   id: 9,
   name: 'Platform',
   quota: 1_000_000,
-  used_quota: 500_000,
+  member_quota_limit: 0,
+  member_used_quota: 500_000,
 }
 
 beforeEach(() => {
@@ -58,17 +60,27 @@ describe('wallet organization statistics', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  test("shows the organization's total quota and organization-wide usage", () => {
+  test("shows the signed-in member's quota limit and usage", () => {
     render(<OrganizationStatsCard organizations={[research]} />)
 
     expect(screen.getByText('Organization')).toBeInTheDocument()
     expect(screen.getByText('Organization Quota')).toBeInTheDocument()
-    expect(screen.getByText('$10')).toBeInTheDocument()
+    expect(screen.getByText('$6')).toBeInTheDocument()
     expect(screen.getByText('Used')).toBeInTheDocument()
-    expect(screen.getByText('$4')).toBeInTheDocument()
+    expect(screen.getByText('$2')).toBeInTheDocument()
+    expect(screen.queryByText('$10')).not.toBeInTheDocument()
+    expect(screen.queryByText('$4')).not.toBeInTheDocument()
     expect(
       screen.getByRole('combobox', { name: 'Select organization' })
     ).toBeInTheDocument()
+  })
+
+  test("falls back to the organization's total quota when the member has no limit", () => {
+    render(<OrganizationStatsCard organizations={[platform]} />)
+
+    expect(screen.getByText('$2')).toBeInTheDocument()
+    expect(screen.getByText('$1')).toBeInTheDocument()
+    expect(screen.queryByText('$1.50')).not.toBeInTheDocument()
   })
 
   test('defaults to the organization in the active account context', () => {
@@ -82,13 +94,13 @@ describe('wallet organization statistics', () => {
 
     expect(screen.getByText('$2')).toBeInTheDocument()
     expect(screen.getByText('$1')).toBeInTheDocument()
-    expect(screen.queryByText('$10')).not.toBeInTheDocument()
+    expect(screen.queryByText('$6')).not.toBeInTheDocument()
   })
 
   test('switching the organization updates both figures', async () => {
     render(<OrganizationStatsCard organizations={[research, platform]} />)
 
-    expect(screen.getByText('$10')).toBeInTheDocument()
+    expect(screen.getByText('$6')).toBeInTheDocument()
 
     await userEvent.click(
       screen.getByRole('combobox', { name: 'Select organization' })
@@ -99,6 +111,6 @@ describe('wallet organization statistics', () => {
 
     expect(screen.getByText('$2')).toBeInTheDocument()
     expect(screen.getByText('$1')).toBeInTheDocument()
-    expect(screen.queryByText('$10')).not.toBeInTheDocument()
+    expect(screen.queryByText('$6')).not.toBeInTheDocument()
   })
 })

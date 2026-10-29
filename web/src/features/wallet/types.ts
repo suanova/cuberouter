@@ -247,17 +247,20 @@ export interface UserWalletData {
  * One organization whose balance the wallet shows.
  *
  * Narrower than the organization feature's `UserOrganization` on purpose: the
- * wallet only needs the pool figures, not roles or capabilities.
+ * wallet only needs the figures shown for the signed-in member, not roles or
+ * capabilities.
  */
 export interface WalletOrganization {
   /** Organization ID */
   id: number
   /** Organization name */
   name: string
-  /** Total quota granted to the whole organization */
+  /** Total quota granted to the whole organization; the ceiling when the member has no limit */
   quota: number
-  /** Quota consumed by the whole organization */
-  used_quota: number
+  /** Quota limit configured for the signed-in member; 0 means no limit */
+  member_quota_limit: number
+  /** Quota the signed-in member consumed from the organization */
+  member_used_quota: number
 }
 
 /**

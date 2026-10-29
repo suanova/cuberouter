@@ -94,6 +94,8 @@ function userOrganization(
     status: 'active',
     quota: 1000,
     used_quota: 100,
+    member_quota_limit: 0,
+    member_used_quota: 0,
     request_count: 3,
     owner_user_id: 1,
     created_by: 1,

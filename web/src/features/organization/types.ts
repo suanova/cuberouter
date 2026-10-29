@@ -88,6 +88,10 @@ export type OrganizationDisableState = z.infer<
  */
 export const userOrganizationSchema = organizationSchema.extend({
   role: organizationRoleSchema,
+  /** Quota limit this member may consume inside the organization; 0 = no limit. */
+  member_quota_limit: z.number(),
+  /** Quota this member consumed from the organization. */
+  member_used_quota: z.number(),
   disable_state: organizationDisableStateSchema,
   can_self_enable: z.boolean(),
   capabilities: organizationCapabilitiesSchema,
