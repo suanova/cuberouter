@@ -73,7 +73,11 @@ test('edits send the reference inline as base64 without an object-store round tr
   expect(job.request_id).toBe('request-1')
 })
 test('several references are sent as an array of base64 strings', async () => {
-  const second = { ...reference, id: 'photo-2', url: 'data:image/png;base64,YQ==' }
+  const second = {
+    ...reference,
+    id: 'photo-2',
+    url: 'data:image/png;base64,YQ==',
+  }
   await workflowAPI.generate({ ...draft, references: [reference, second] })
   expect(http.post).toHaveBeenCalledWith(
     '/pg/images/edits',
@@ -103,6 +107,18 @@ test('an edit without boxes never asks for a mask', async () => {
   await workflowAPI.generate(draft)
   expect(maskImage).not.toHaveBeenCalled()
   expect(http.post.mock.calls[0][1]).not.toHaveProperty('mask')
+})
+test('a boxed edit is refused when no mask can be produced', async () => {
+  // maskImage 返回 undefined 时请求体里就没有 mask，上游会按整图重绘处理——用户框的
+  // 区域完全没生效，费用照付。这里必须中止，并且一个请求都不能发出去。
+  vi.mocked(maskImage).mockResolvedValue(undefined)
+  await expect(
+    workflowAPI.generate({
+      ...draft,
+      mask: [{ x: 0.1, y: 0.1, width: 0.4, height: 0.4 }],
+    })
+  ).rejects.toThrow('could not be turned into a mask')
+  expect(http.post).not.toHaveBeenCalled()
 })
 test('an edit sends the normalized reference while the saved job keeps the uploaded bytes', async () => {
   // 归一化只作用于下发的那一份：draft 与本地历史留的仍是用户原始字节，「原图对照」
@@ -200,7 +216,9 @@ test('a non-secure origin without crypto.randomUUID still returns renderable ima
     model: 'image',
     prompt: 'Cat',
   })
-  expect(output.job.images[0].url).toBe('data:image/png;base64,iVBORw0KGgoAAAAB')
+  expect(output.job.images[0].url).toBe(
+    'data:image/png;base64,iVBORw0KGgoAAAAB'
+  )
   expect(output.job.images[0].id).toBeTruthy()
   expect(output.warning).toBeUndefined()
 })

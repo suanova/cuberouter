@@ -129,7 +129,17 @@ export function WorkflowComposer(props: {
           className='bg-background h-9 w-full rounded-lg border px-2'
           value={props.draft.model}
           disabled={props.busy || props.loading}
-          onChange={(event) => update({ model: event.target.value })}
+          onChange={(event) => {
+            const model = event.target.value
+            update({
+              model,
+              // 框选只对声明了 image-mask 的模型成立：换到别的模型必须把框一起丢掉，
+              // 否则草稿编辑器消失了，蒙版却仍会随请求发出去。
+              mask: props.maskModels.includes(model)
+                ? props.draft.mask
+                : undefined,
+            })
+          }}
         >
           {!models.length && (
             <option value=''>
@@ -310,7 +320,8 @@ export function WorkflowComposer(props: {
               type='number'
               min={CFG_RANGE.min}
               max={CFG_RANGE.max}
-              step='0.1'
+              // 草稿接受 0..10 的任意小数（如 6.55）；固定 0.1 步长会让原生校验拦下合法值。
+              step='any'
               value={props.draft.cfg ?? ''}
               placeholder={String(DEFAULT_PARAMS.cfg)}
               aria-invalid={outOfRange(
@@ -343,7 +354,9 @@ export function WorkflowComposer(props: {
           </label>
         </div>
         <p className='text-muted-foreground text-xs'>
-          {t('Leave blank to use the default for the selected quality.')}
+          {t(
+            'Leave blank to use the default: Steps follows the selected quality; CFG and Seed use fixed defaults.'
+          )}
         </p>
       </details>
       <Button

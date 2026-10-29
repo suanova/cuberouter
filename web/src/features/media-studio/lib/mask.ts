@@ -93,8 +93,8 @@ export function regionPixels(
  * 所以这里先铺满不透明黑，再用 destination-out 把框选区域擦成透明——不能画白块，
  * 白块在不透明画布上等于「整张图都不重绘」。
  *
- * 解不出图或本环境没有 canvas（jsdom 测试）时返回 undefined：调用方不下发 mask，
- * 退化成整图编辑，绝不发一张尺寸对不上或全不透明的蒙版让上游静默改错区域。
+ * 解不出图、本环境没有 canvas（jsdom 测试）、或所有框都落不到像素上时返回 undefined：
+ * 绝不发一张尺寸对不上或全不透明的蒙版让上游静默改错区域（全不透明等于「整张都不重绘」）。
  */
 export async function maskImage(
   baseURL: string,
@@ -118,11 +118,18 @@ export async function maskImage(
     context.fillStyle = '#000000'
     context.fillRect(0, 0, canvas.width, canvas.height)
     context.globalCompositeOperation = 'destination-out'
+    // 只有真的擦掉过像素，蒙版才是「局部重绘」。草稿里可能出现一条都落不到画布上的框
+    // （例如 x/y 都是 1），此时整张图仍然不透明，发出去等于让上游什么都不改。
+    let cleared = false
     for (const region of regions) {
       const box = regionPixels(region, canvas.width, canvas.height)
       if (box) {
         context.fillRect(box.x, box.y, box.width, box.height)
+        cleared = true
       }
+    }
+    if (!cleared) {
+      return undefined
     }
     return canvas.toDataURL('image/png')
   } catch {

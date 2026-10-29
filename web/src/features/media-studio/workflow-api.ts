@@ -37,7 +37,9 @@ export function newId(): string {
     return crypto.randomUUID()
   }
   const bytes = crypto.getRandomValues(new Uint8Array(16))
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
+    ''
+  )
 }
 
 export function blobDataURL(blob: Blob): Promise<string> {
@@ -158,11 +160,18 @@ export const workflowAPI = {
         ? await normalizeReferences(draft.references.map((asset) => asset.url))
         : []
     // 蒙版必须与真正下发的那张参考图同尺寸，所以按归一化之后的图栅格化，而不是用户
-    // 原图。栅格化不了（无 canvas、解码失败）时 mask 为 undefined，退化成整图编辑。
-    const mask =
-      draft.mode === 'edit' && draft.mask?.length
-        ? await maskImage(referenceURLs[0] ?? '', draft.mask)
-        : undefined
+    // 原图。栅格化失败（无 canvas、解码失败、框全部落不到像素上）时必须中止：那说明
+    // 用户框的区域根本无法下发，继续发就是悄悄整图重绘，出来的图和框选意图不符还照常
+    // 计费。这里直接报错：用户要么重试，要么清掉框选改整图编辑。
+    const boxes = draft.mode === 'edit' ? (draft.mask ?? []) : []
+    const mask = boxes.length
+      ? await maskImage(referenceURLs[0] ?? '', boxes)
+      : undefined
+    if (boxes.length && !mask) {
+      throw new Error(
+        'The selected areas could not be turned into a mask, so nothing was generated. Retry, or clear the boxes to edit the whole image.'
+      )
+    }
     const response = await api.post<ImageResponseBody>(
       `/pg/images/${draft.mode === 'edit' ? 'edits' : 'generations'}`,
       imageRequest(draft, referenceURLs, mask),

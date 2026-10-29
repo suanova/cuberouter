@@ -18,7 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -53,9 +52,18 @@ export function WorkflowStudio(props: { owner: number }) {
   }
   const eligible =
     draft.mode === 'create' ? catalog.textToImage : catalog.imageToImage
+  const model = eligible.includes(draft.model)
+    ? draft.model
+    : (eligible[0] ?? '')
   const current = {
     ...draft,
-    model: eligible.includes(draft.model) ? draft.model : (eligible[0] ?? ''),
+    model,
+    // 模型被回退替换后可能不再声明 image-mask：草稿里的框选必须一起作废，
+    // 否则生成时仍会把蒙版发给不认识它的模型，而页面上已经看不到框了。
+    mask:
+      draft.mode === 'edit' && catalog.imageMask.includes(model)
+        ? draft.mask
+        : undefined,
   }
   const workflow = useWorkflow(props.owner)
   const references = useMutation({

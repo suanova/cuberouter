@@ -17,9 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { maskImage, maskRegion, regionPixels } from '../lib/mask'
+import { canDecodeImages, decodeImage } from '../lib/reference-image'
+
+// 画布与解码在 jsdom 里不存在；spy 让未指定返回值的用例走真实实现（返回 undefined）。
+vi.mock('../lib/reference-image', { spy: true })
+
+afterEach(() => vi.restoreAllMocks())
 
 test('a drag becomes a normalized box no matter which corner it starts from', () => {
   // 右下往左上拖与左上往右下拖必须是同一个框：用户不关心方向。
@@ -74,4 +80,45 @@ test('no mask is produced when this environment cannot rasterize one', async () 
   await expect(
     maskImage('data:image/png;base64,YQ==', [])
   ).resolves.toBeUndefined()
+})
+
+test('a box that clears no pixel produces no mask at all', async () => {
+  // 有 canvas 时也要挡住「一条框都落不到画布上」的草稿：整张蒙版仍然不透明，
+  // 发出去等于让上游什么都不改。
+  const fillRect = vi.fn()
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => ({
+      fillStyle: '',
+      globalCompositeOperation: '',
+      fillRect,
+    }),
+    toDataURL: () => 'data:image/png;base64,TUFTSw==',
+  }
+  const original = document.createElement.bind(document)
+  vi.spyOn(document, 'createElement').mockImplementation((tag: string) =>
+    tag === 'canvas' ? (canvas as unknown as HTMLElement) : original(tag)
+  )
+  vi.mocked(canDecodeImages).mockReturnValue(true)
+  vi.mocked(decodeImage).mockResolvedValue({
+    naturalWidth: 100,
+    naturalHeight: 100,
+  } as HTMLImageElement)
+
+  // x 与 y 都是 1：换算后右边与下边都不超过左上角，regionPixels 为 null。
+  await expect(
+    maskImage('data:image/png;base64,YQ==', [
+      { x: 1, y: 1, width: 0.01, height: 0.5 },
+    ])
+  ).resolves.toBeUndefined()
+
+  // 有框真的擦到像素时才产出 PNG：一次铺底，一次擦除。
+  fillRect.mockClear()
+  await expect(
+    maskImage('data:image/png;base64,YQ==', [
+      { x: 0.1, y: 0.1, width: 0.2, height: 0.2 },
+    ])
+  ).resolves.toBe('data:image/png;base64,TUFTSw==')
+  expect(fillRect).toHaveBeenCalledTimes(2)
 })

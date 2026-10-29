@@ -36,6 +36,7 @@ function Composer(props: {
   generate: () => void
   draft?: Partial<WorkflowDraft>
   maskModels?: string[]
+  imageToImageModels?: string[]
   probe?: boolean
 }) {
   const [draft, setDraft] = useState({
@@ -50,7 +51,7 @@ function Composer(props: {
       <WorkflowComposer
         draft={draft}
         textToImageModels={['image-model']}
-        imageToImageModels={['image-edit']}
+        imageToImageModels={props.imageToImageModels ?? ['image-edit']}
         maskModels={props.maskModels ?? []}
         busy={false}
         loading={false}
@@ -241,7 +242,89 @@ test('removing the reference image drops the boxes drawn on it', () => {
   dragBox(screen.getByLabelText('Selection area'), [20, 10], [120, 60])
   expect(screen.getByText('boxes: 1')).toBeInTheDocument()
 
-  fireEvent.click(screen.getByRole('button', { name: 'Remove reference image' }))
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Remove reference image' })
+  )
   expect(screen.getByText('boxes: 0')).toBeInTheDocument()
   expect(screen.queryByLabelText('Selection area')).not.toBeInTheDocument()
+})
+
+test('keyboard users can place a box with the arrow keys and Enter', () => {
+  // 只能靠键盘的用户原本能撤销、清空，却画不出框：框选区域必须可获得焦点，
+  // 方向键移动光标、Enter 落框。
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={editDraft}
+      maskModels={['image-edit']}
+      probe
+    />
+  )
+  const surface = screen.getByLabelText('Selection area')
+  expect(surface).toHaveAttribute('tabindex', '0')
+  surface.focus()
+  fireEvent.keyDown(surface, { key: 'ArrowRight' })
+  fireEvent.keyDown(surface, { key: 'Enter' })
+  expect(screen.getByText('boxes: 1')).toBeInTheDocument()
+  expect(screen.getByText('1 boxed area(s)')).toBeInTheDocument()
+})
+
+test('the editor refuses to draw more boxes than a draft may carry', () => {
+  // 超过上限的框会让 draftSchema 校验失败，生成按钮跟着变灰且没有任何解释；
+  // 所以在编辑阶段就挡住，并说明上限。
+  const regions = Array.from({ length: 20 }, (_, index) => ({
+    x: index / 40,
+    y: 0.1,
+    width: 0.02,
+    height: 0.02,
+  }))
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={{ ...editDraft, mask: regions }}
+      maskModels={['image-edit']}
+      probe
+    />
+  )
+  expect(screen.getByText('boxes: 20')).toBeInTheDocument()
+  dragBox(screen.getByLabelText('Selection area'), [20, 10], [120, 60])
+  expect(screen.getByText('boxes: 20')).toBeInTheDocument()
+  expect(screen.getByText('At most 20 boxes per image.')).toBeInTheDocument()
+})
+
+test('switching to a model without image-mask drops the boxes', () => {
+  // 换到没有声明 image-mask 的模型后编辑器就隐藏了，框却还留在草稿里，
+  // 生成时会把蒙版发给不认识它的上游。
+  const draft = {
+    ...editDraft,
+    mask: [{ x: 0.1, y: 0.1, width: 0.4, height: 0.4 }],
+  }
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={draft}
+      maskModels={['image-edit']}
+      imageToImageModels={['image-edit', 'plain-edit']}
+      probe
+    />
+  )
+  expect(screen.getByText('boxes: 1')).toBeInTheDocument()
+
+  fireEvent.change(screen.getByLabelText('Model'), {
+    target: { value: 'plain-edit' },
+  })
+  expect(screen.getByText('boxes: 0')).toBeInTheDocument()
+  expect(screen.queryByLabelText('Selection area')).not.toBeInTheDocument()
+})
+
+test('a CFG value the schema accepts is not blocked by native step validation', async () => {
+  // 草稿接受 0..10 的任意小数；输入框固定 0.1 步长会把 6.55 判成非法，
+  // 生成按钮仍可点、浏览器却拦下提交。
+  const generate = vi.fn()
+  render(<Composer generate={generate} />)
+  const cfg = screen.getByLabelText('CFG')
+  expect(cfg).toHaveAttribute('step', 'any')
+  fireEvent.change(cfg, { target: { value: '6.55' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(generate).toHaveBeenCalledTimes(1))
 })

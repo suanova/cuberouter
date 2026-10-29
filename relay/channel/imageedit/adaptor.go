@@ -97,11 +97,15 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil, badRequest(err)
 	}
+	mask, err := normalizeMask(request.Mask)
+	if err != nil {
+		return nil, badRequest(err)
+	}
 	return imageEditRequest{
 		Model:             request.Model,
 		Prompt:            request.Prompt,
 		Image:             image,
-		Mask:              request.Mask,
+		Mask:              mask,
 		Size:              request.Size,
 		N:                 request.N,
 		Quality:           request.Quality,
@@ -220,4 +224,28 @@ func validateImageValue(image string) error {
 		return errors.New("this channel does not fetch remote images: send the reference image as base64 or as a data URL")
 	}
 	return nil
+}
+
+// normalizeMask validates the optional mask and returns its JSON bytes
+// unchanged. The mask is a PNG data URL, or bare base64 for the same bytes, as
+// large as the reference image, so re-encoding it would only copy that buffer.
+// The provider base64-decodes this field unconditionally: an object, a number
+// or a remote URL would reach its decoder and fail there with an error that
+// says nothing about the mask, so reject those shapes here.
+func normalizeMask(raw json.RawMessage) (json.RawMessage, error) {
+	if isEmptyJSON(raw) {
+		return nil, nil
+	}
+	var mask string
+	if err := common.Unmarshal(raw, &mask); err != nil {
+		return nil, errors.New("mask must be a base64 PNG string or a PNG data URL")
+	}
+	if strings.TrimSpace(mask) == "" {
+		return nil, errors.New("mask must not be empty: omit it to edit the whole image")
+	}
+	lower := strings.ToLower(mask)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return nil, errors.New("this channel does not fetch remote masks: send the mask as base64 or as a data URL")
+	}
+	return raw, nil
 }

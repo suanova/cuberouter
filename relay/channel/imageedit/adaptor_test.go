@@ -118,6 +118,30 @@ func TestConvertImageRequestOmitsAbsentMask(t *testing.T) {
 	assert.NotContains(t, fields, "mask")
 }
 
+// The provider base64-decodes the mask unconditionally, so a shape this channel
+// cannot serve must be rejected here rather than forwarded into an opaque
+// decoding error from the upstream.
+func TestConvertImageRequestRejectsMaskThatIsNotAString(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for name, mask := range map[string]string{
+		"object": `{"image_url":"https://objects.test/mask.png"}`,
+		"number": `42`,
+		"empty":  `""`,
+		"url":    `"https://objects.test/mask.png"`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := convertJSON(t, `{"model":"qwen-image-edit-2511","prompt":"invert","image":"`+base64Reference+`","mask":`+mask+`}`)
+
+			require.Error(t, err)
+			var apiError *types.NewAPIError
+			require.ErrorAs(t, err, &apiError)
+			assert.Equal(t, http.StatusBadRequest, apiError.StatusCode)
+			assert.Equal(t, types.ErrorCodeInvalidRequest, apiError.GetErrorCode())
+		})
+	}
+}
+
 // The provider base64-decodes `image` unconditionally, so a URL there surfaces
 // as an unrelated "Incorrect padding" from its decoder. Reject it here instead.
 func TestConvertImageRequestRejectsRemoteImageURL(t *testing.T) {

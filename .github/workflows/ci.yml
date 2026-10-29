@@ -16,7 +16,9 @@ jobs:
     name: Backend vet, build, and test
     if: github.event.action != 'closed' || github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The race-enabled suite alone takes about 12–13 minutes; vet and build add
+    # roughly two more, so a 15-minute cap cancels healthy runs on slower runners.
+    timeout-minutes: 30
     env:
       GOWORK: 'off'
 
