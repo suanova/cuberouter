@@ -229,6 +229,35 @@ test('dragging on the reference image records a box that undo and clear remove',
   expect(screen.queryByText('boxed area(s)', { exact: false })).toBeNull()
 })
 
+test('a second touch cannot rewrite the box being drawn', () => {
+  // 两个手指同时落在画布上时，后落下那根的手指不能再开一个框，它的 move/up 也不能
+  // 参与第一个框——否则松手的先后顺序会拼出一个谁都没画过的框。
+  render(
+    <Composer
+      generate={vi.fn()}
+      draft={editDraft}
+      maskModels={['image-edit']}
+      probe
+    />
+  )
+  const surface = screen.getByLabelText('Selection area')
+  vi.spyOn(surface, 'getBoundingClientRect').mockReturnValue({
+    left: 0,
+    top: 0,
+    width: 200,
+    height: 100,
+  } as DOMRect)
+  fireEvent.pointerDown(surface, { pointerId: 1, clientX: 20, clientY: 10 })
+  fireEvent.pointerDown(surface, { pointerId: 2, clientX: 180, clientY: 90 })
+  fireEvent.pointerMove(surface, { pointerId: 2, clientX: 190, clientY: 95 })
+  fireEvent.pointerUp(surface, { pointerId: 2, clientX: 190, clientY: 95 })
+  expect(screen.getByText('boxes: 0')).toBeInTheDocument()
+
+  fireEvent.pointerMove(surface, { pointerId: 1, clientX: 120, clientY: 60 })
+  fireEvent.pointerUp(surface, { pointerId: 1, clientX: 120, clientY: 60 })
+  expect(screen.getByText('boxes: 1')).toBeInTheDocument()
+})
+
 test('removing the reference image drops the boxes drawn on it', () => {
   // 框选坐标相对第一张参考图：图没了，坐标就没有意义，不能留到下一张图上。
   render(
