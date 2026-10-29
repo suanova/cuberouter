@@ -101,7 +101,7 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 	if err != nil {
 		return nil, badRequest(err)
 	}
-	return imageEditRequest{
+	converted := imageEditRequest{
 		Model:             request.Model,
 		Prompt:            request.Prompt,
 		Image:             image,
@@ -112,7 +112,11 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		NumInferenceSteps: request.NumInferenceSteps,
 		Seed:              request.Seed,
 		TrueCfgScale:      request.TrueCfgScale,
-	}, nil
+	}
+	if usesMultipartUpstream(info) {
+		return buildMultipartImageEdit(c, info, converted)
+	}
+	return converted, nil
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {

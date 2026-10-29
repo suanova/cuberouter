@@ -20,6 +20,7 @@ import { z } from 'zod'
 
 import {
   CLAUDE_FIELD_PASSTHROUGH_TYPES,
+  CHANNEL_TYPE_IMAGE_EDIT,
   CHANNEL_TYPE_NEW_API,
   CHANNEL_TYPE_TASK_PLUGIN,
   CHANNEL_STATUS,
@@ -263,6 +264,7 @@ export const channelFormSchema = z
       .refine(isOptionalProxyURL, ERROR_MESSAGES.INVALID_PROXY),
     http_protocol: z.enum(['auto', 'http1']).optional(),
     http2_connection_shards: z.number().int().optional(),
+    image_edit_upstream_format: z.enum(['json', 'multipart']).optional(),
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
@@ -444,6 +446,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   proxy: '',
   http_protocol: HTTP_PROTOCOL_AUTO,
   http2_connection_shards: 1,
+  image_edit_upstream_format: 'json',
   pass_through_body_enabled: false,
   system_prompt: '',
   system_prompt_override: false,
@@ -485,6 +488,7 @@ export function transformChannelToFormDefaults(
     proxy: '',
     http_protocol: HTTP_PROTOCOL_AUTO as 'auto' | 'http1',
     http2_connection_shards: 1,
+    image_edit_upstream_format: 'json' as 'json' | 'multipart',
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
@@ -504,6 +508,10 @@ export function transformChannelToFormDefaults(
         proxy: parsed.proxy || '',
         http_protocol: protocol,
         http2_connection_shards: protocol === HTTP_PROTOCOL_HTTP1 ? 1 : shards,
+        image_edit_upstream_format:
+          parsed.image_edit_upstream_format === 'multipart'
+            ? 'multipart'
+            : 'json',
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
@@ -641,6 +649,15 @@ export function buildSettingJSON(formData: ChannelFormValues): string {
     settingObj.http_protocol = HTTP_PROTOCOL_HTTP1
   } else if (shards > 1) {
     settingObj.http2_connection_shards = shards
+  }
+
+  // multipart is the non-default wire format: only persist it when the operator
+  // picked it, so every other channel keeps byte-identical settings JSON.
+  if (
+    formData.type === CHANNEL_TYPE_IMAGE_EDIT &&
+    formData.image_edit_upstream_format === 'multipart'
+  ) {
+    settingObj.image_edit_upstream_format = 'multipart'
   }
 
   return JSON.stringify(settingObj)

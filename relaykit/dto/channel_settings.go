@@ -25,6 +25,12 @@ type ChannelSettings struct {
 	// HTTP2ConnectionShards spreads HTTP/2 traffic across N independent transports
 	// (1-8). Zero/unset means 1. Ignored when HTTPProtocol is "http1".
 	HTTP2ConnectionShards int `json:"http2_connection_shards,omitempty"`
+	// ImageEditUpstreamFormat selects how an Image Edit (Base64) channel encodes
+	// /v1/images/edits towards the upstream. Accepted values: "", "json"
+	// (default, base64 fields inline) and "multipart" (form-data with image/mask
+	// as file parts, for upstreams such as sglang whose edits endpoint only
+	// declares Form/File fields and answers 422 to a JSON body).
+	ImageEditUpstreamFormat string `json:"image_edit_upstream_format,omitempty"`
 }
 
 const (
@@ -32,6 +38,25 @@ const (
 	HTTPProtocolHTTP1        = "http1"
 	MaxHTTP2ConnectionShards = 8
 )
+
+const (
+	ImageEditUpstreamJSON      = "json"
+	ImageEditUpstreamMultipart = "multipart"
+)
+
+// ValidateImageEditUpstreamFormat validates save-time image edit encoding
+// settings. Empty keeps the JSON default.
+func (s *ChannelSettings) ValidateImageEditUpstreamFormat() error {
+	if s == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(s.ImageEditUpstreamFormat)) {
+	case "", ImageEditUpstreamJSON, ImageEditUpstreamMultipart:
+		return nil
+	default:
+		return fmt.Errorf("invalid image_edit_upstream_format: %s (expected %q or %q)", s.ImageEditUpstreamFormat, ImageEditUpstreamJSON, ImageEditUpstreamMultipart)
+	}
+}
 
 // ValidateHTTPTransport validates save-time HTTP transport channel settings.
 func (s *ChannelSettings) ValidateHTTPTransport() error {

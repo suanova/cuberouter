@@ -142,6 +142,7 @@ import {
   ADD_MODE_OPTIONS,
   CLAUDE_FIELD_PASSTHROUGH_TYPES,
   CHANNEL_STATUS_LABELS,
+  CHANNEL_TYPE_IMAGE_EDIT,
   CHANNEL_TYPE_OPTIONS,
   CHANNEL_TYPE_TASK_PLUGIN,
   channelTypeOptionsForTaskPluginBind,
@@ -4294,6 +4295,69 @@ export function ChannelMutateDrawer({
                                 </FormItem>
                               )}
                             />
+
+                            {currentType === CHANNEL_TYPE_IMAGE_EDIT && (
+                              <FormField
+                                control={form.control}
+                                name='image_edit_upstream_format'
+                                render={({ field }) => {
+                                  const options = [
+                                    {
+                                      value: 'json',
+                                      label: t('JSON (base64)'),
+                                    },
+                                    {
+                                      value: 'multipart',
+                                      label: t('Multipart form-data'),
+                                    },
+                                  ]
+                                  return (
+                                    <FormItem>
+                                      <FormLabel>
+                                        {t('Upstream Edit Format')}
+                                      </FormLabel>
+                                      <Select
+                                        items={options}
+                                        value={field.value || 'json'}
+                                        onValueChange={(value) =>
+                                          field.onChange(
+                                            value === 'multipart'
+                                              ? 'multipart'
+                                              : 'json'
+                                          )
+                                        }
+                                      >
+                                        <FormControl>
+                                          <SelectTrigger>
+                                            <SelectValue />
+                                          </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent
+                                          alignItemWithTrigger={false}
+                                        >
+                                          <SelectGroup>
+                                            {options.map((option) => (
+                                              <SelectItem
+                                                key={option.value}
+                                                value={option.value}
+                                              >
+                                                {option.label}
+                                              </SelectItem>
+                                            ))}
+                                          </SelectGroup>
+                                        </SelectContent>
+                                      </Select>
+                                      <FormDescription>
+                                        {t(
+                                          'Clients always send the reference image as base64 JSON. Choose Multipart form-data when the upstream only accepts /v1/images/edits as files (for example SGLang diffusion).'
+                                        )}
+                                      </FormDescription>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )
+                                }}
+                              />
+                            )}
 
                             <FormField
                               control={form.control}
