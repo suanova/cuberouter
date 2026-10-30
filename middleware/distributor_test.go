@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"bytes"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
@@ -194,5 +197,69 @@ func TestGetModelRequestPgVideoGenerations(t *testing.T) {
 		require.True(t, shouldSelectChannel)
 		assert.Equal(t, "kling-v2", modelRequest.Model)
 		assert.Equal(t, relayconstant.RelayModeVideoSubmit, c.GetInt("relay_mode"))
+	})
+}
+
+// TestGetModelRequestPgImagesEditsMultipart 保护图生图 multipart 上报的渠道路由契约：
+// 前端把参考图/蒙版作为 file、标量走 multipart 表单字段直发 /pg/images/edits（不走
+// type-63），发行器必须能从 multipart 表单里读出 model 参与渠道选择；否则 model 为空，
+// Distribute 会以 "model name cannot be empty"(distributor.model_name_required) 400 拒绝。
+func TestGetModelRequestPgImagesEditsMultipart(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	makeMultipart := func(model string) (string, string) {
+		var buf bytes.Buffer
+		w := multipart.NewWriter(&buf)
+		_ = w.WriteField("model", model)
+		_ = w.WriteField("prompt", "a blue coat")
+		part, _ := w.CreateFormFile("image", "reference.png")
+		_, _ = part.Write([]byte("PNG"))
+		_ = w.Close()
+		return buf.String(), w.FormDataContentType()
+	}
+
+	t.Run("multipart /pg/images/edits yields the model", func(t *testing.T) {
+		body, ct := makeMultipart("Qwen-Image-2.1")
+		req := httptest.NewRequest(http.MethodPost, "/pg/images/edits", strings.NewReader(body))
+		req.Header.Set("Content-Type", ct)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = req
+
+		modelRequest, shouldSelectChannel, err := getModelRequest(c)
+		require.NoError(t, err)
+		require.True(t, shouldSelectChannel)
+		assert.Equal(t, "Qwen-Image-2.1", modelRequest.Model)
+	})
+
+	t.Run("multipart doesn't consume the body for later replay", func(t *testing.T) {
+		body, ct := makeMultipart("Qwen-Image-2.1")
+		req := httptest.NewRequest(http.MethodPost, "/pg/images/edits", strings.NewReader(body))
+		req.Header.Set("Content-Type", ct)
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = req
+
+		_, _, err := getModelRequest(c)
+		require.NoError(t, err)
+
+		// 读完后请求体仍是可重放的完整 multipart（参考图文件 part 保留）。
+		storage, sErr := common.GetBodyStorage(c)
+		require.NoError(t, sErr)
+		rest, sErr := storage.Bytes()
+		require.NoError(t, sErr)
+		assert.Contains(t, string(rest), "Qwen-Image-2.1")
+		assert.Contains(t, string(rest), "PNG")
+	})
+
+	t.Run("JSON body edit keeps reading model via json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/pg/images/edits",
+			strings.NewReader(`{"model":"Qwen-Image-2.1","prompt":"a blue coat"}`))
+		req.Header.Set("Content-Type", "application/json")
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = req
+
+		modelRequest, shouldSelectChannel, err := getModelRequest(c)
+		require.NoError(t, err)
+		require.True(t, shouldSelectChannel)
+		assert.Equal(t, "Qwen-Image-2.1", modelRequest.Model)
 	})
 }
