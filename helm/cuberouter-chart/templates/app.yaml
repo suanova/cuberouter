@@ -1,41 +1,5 @@
 {{- $f := include "cuberouter.fullname" . }}
 {{- $secretName := include "cuberouter.secretName" . }}
-{{- if .Values.cubeRouter.persistence.data.enabled }}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ $f }}-app-data
-  labels:
-    {{- include "cuberouter.labels" . | nindent 4 }}
-spec:
-  accessModes:
-    - ReadWriteOnce
-  {{- if .Values.cubeRouter.persistence.data.storageClassName }}
-  storageClassName: {{ .Values.cubeRouter.persistence.data.storageClassName }}
-  {{- end }}
-  resources:
-    requests:
-      storage: {{ .Values.cubeRouter.persistence.data.size }}
----
-{{- end }}
-{{- if .Values.cubeRouter.persistence.logs.enabled }}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ $f }}-app-logs
-  labels:
-    {{- include "cuberouter.labels" . | nindent 4 }}
-spec:
-  accessModes:
-    - ReadWriteOnce
-  {{- if .Values.cubeRouter.persistence.logs.storageClassName }}
-  storageClassName: {{ .Values.cubeRouter.persistence.logs.storageClassName }}
-  {{- end }}
-  resources:
-    requests:
-      storage: {{ .Values.cubeRouter.persistence.logs.size }}
----
-{{- end }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -67,8 +31,6 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       {{- if eq .Values.deployMode "base" }}
-      # One replica sharing ReadWriteOnce claims: a surge pod could never
-      # attach the volume (Multi-Attach), so replace the pod in place.
       maxUnavailable: 1
       maxSurge: 0
       {{- else }}
@@ -80,6 +42,17 @@ spec:
       labels:
         {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 8 }}
     spec:
+      {{- if .Values.cubeRouter.podAntiAffinity }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    {{- include "cuberouter.selectorLabels" (dict "root" . "component" "app") | nindent 20 }}
+                topologyKey: kubernetes.io/hostname
+      {{- end }}
       {{- if or .Values.cubeRouter.waitForPostgres .Values.cubeRouter.waitForRedis }}
       # Blocks pod startup until the managed stores are usable by the app
       # (the pod stays in the Init state until every enabled check passes,
@@ -190,18 +163,10 @@ spec:
             {{- range .Values.cubeRouter.envVars }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- with .Values.cubeRouter.extraVolumeMounts }}
           volumeMounts:
-            {{- if .Values.cubeRouter.persistence.data.enabled }}
-            - name: cuberouter-data
-              mountPath: {{ .Values.cubeRouter.persistence.data.mountPath }}
-            {{- end }}
-            {{- if .Values.cubeRouter.persistence.logs.enabled }}
-            - name: cuberouter-logs
-              mountPath: {{ .Values.cubeRouter.persistence.logs.mountPath }}
-            {{- end }}
-            {{- with .Values.cubeRouter.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
-            {{- end }}
+          {{- end }}
           readinessProbe:
             httpGet:
               path: /api/status
@@ -227,20 +192,10 @@ spec:
             failureThreshold: 30
           resources:
             {{- toYaml .Values.cubeRouter.resources | nindent 12 }}
+      {{- with .Values.cubeRouter.extraVolumes }}
       volumes:
-        {{- if .Values.cubeRouter.persistence.data.enabled }}
-        - name: cuberouter-data
-          persistentVolumeClaim:
-            claimName: {{ $f }}-app-data
-        {{- end }}
-        {{- if .Values.cubeRouter.persistence.logs.enabled }}
-        - name: cuberouter-logs
-          persistentVolumeClaim:
-            claimName: {{ $f }}-app-logs
-        {{- end }}
-        {{- with .Values.cubeRouter.extraVolumes }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       {{- with .Values.cubeRouter.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

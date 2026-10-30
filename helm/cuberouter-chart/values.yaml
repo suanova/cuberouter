@@ -106,17 +106,15 @@ cubeRouter:
   service:
     type: ClusterIP
     port: 80
-  persistence:
-    data:
-      enabled: true
-      size: 10Gi
-      storageClassName: ""
-      mountPath: /data
-    logs:
-      enabled: true
-      size: 10Gi
-      storageClassName: ""
-      mountPath: /app/logs
+  # The app is fully stateless: channel/user/config live in PostgreSQL + Redis,
+  # and it logs to stdout. No volume mounts are needed, so no `persistence`
+  # block is rendered. If a specific deployment does need a local dir, attach it
+  # via cubeRouter.extraVolumes/extraVolumeMounts.
+  # Soft (preferred) pod anti-affinity over node (kubernetes.io/hostname): the
+  # scheduler tries to spread app replicas across different nodes so an HA
+  # deployment survives a node failure, but will still place multiple replicas
+  # on one node if the cluster has too few nodes.
+  podAntiAffinity: true
   resources:
     requests:
       cpu: 500m
