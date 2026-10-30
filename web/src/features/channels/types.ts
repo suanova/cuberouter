@@ -88,9 +88,6 @@ export interface ChannelSettings {
   system_prompt_override?: boolean
   http_protocol?: 'auto' | 'http1' | string
   http2_connection_shards?: number
-  // Image Edit (Base64) channels only: 'json' (default) or 'multipart' when the
-  // upstream accepts /v1/images/edits as form-data only (e.g. SGLang).
-  image_edit_upstream_format?: 'json' | 'multipart' | string
 }
 
 export interface ChannelOtherSettings {

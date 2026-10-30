@@ -654,31 +654,3 @@ func TestChannelOtherSettingsValidateToolLossPolicy(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "tool_loss_policy")
 }
-
-func TestChannelSettingsValidateImageEditUpstreamFormat(t *testing.T) {
-	assert.NoError(t, (*ChannelSettings)(nil).ValidateImageEditUpstreamFormat())
-	assert.NoError(t, (&ChannelSettings{}).ValidateImageEditUpstreamFormat())
-	assert.NoError(t, (&ChannelSettings{ImageEditUpstreamFormat: ImageEditUpstreamJSON}).ValidateImageEditUpstreamFormat())
-	assert.NoError(t, (&ChannelSettings{ImageEditUpstreamFormat: "MULTIPART"}).ValidateImageEditUpstreamFormat())
-	assert.NoError(t, (&ChannelSettings{ImageEditUpstreamFormat: " multipart "}).ValidateImageEditUpstreamFormat())
-
-	err := (&ChannelSettings{ImageEditUpstreamFormat: "form-data"}).ValidateImageEditUpstreamFormat()
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "image_edit_upstream_format")
-}
-
-func TestChannelSettingsImageEditUpstreamFormatRoundTrip(t *testing.T) {
-	encoded, err := json.Marshal(ChannelSettings{ImageEditUpstreamFormat: ImageEditUpstreamMultipart})
-	require.NoError(t, err)
-	assert.Contains(t, string(encoded), `"image_edit_upstream_format":"multipart"`)
-
-	var decoded ChannelSettings
-	require.NoError(t, json.Unmarshal([]byte(`{"image_edit_upstream_format":"multipart"}`), &decoded))
-	assert.Equal(t, ImageEditUpstreamMultipart, decoded.ImageEditUpstreamFormat)
-
-	// The default stays unset on the wire so existing channel settings JSON is
-	// byte-identical after a save.
-	encoded, err = json.Marshal(ChannelSettings{})
-	require.NoError(t, err)
-	assert.NotContains(t, string(encoded), "image_edit_upstream_format")
-}
