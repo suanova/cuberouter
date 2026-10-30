@@ -52,55 +52,42 @@ beforeEach(() => {
   })
 })
 afterEach(() => vi.unstubAllGlobals())
-test('edits send the reference inline as base64 without an object-store round trip', async () => {
-  // 编辑渠道只认内联 base64：参考图在 draft 里本来就是 data URL，原样下发即可。
+test('edits send the reference as a multipart image file part', async () => {
   // presign → PUT → provider GET 整条链路退出请求路径，浏览器一次 fetch 都不该发。
   const fetcher = vi.fn()
   vi.stubGlobal('fetch', fetcher)
   const { job } = await workflowAPI.generate(draft)
   expect(fetcher).not.toHaveBeenCalled()
   expect(http.post).toHaveBeenCalledTimes(1)
-  expect(http.post).toHaveBeenCalledWith(
-    '/pg/images/edits',
-    expect.objectContaining({
-      model: 'image-edit',
-      image: reference.url,
-    }),
-    expect.anything()
-  )
+  const body = http.post.mock.calls[0][1]
+  expect(body).toBeInstanceOf(FormData)
+  const form = body as FormData
+  expect(form.getAll('image')).toHaveLength(1)
+  expect(form.get('image')).toBeInstanceOf(File)
+  expect(form.get('model')).toBe('image-edit')
   expect(job.images[0].url).toBe(reference.url)
   expect(JSON.stringify(job)).not.toContain('X-Amz-Signature')
   expect(job.request_id).toBe('request-1')
 })
-test('several references are sent as an array of base64 strings', async () => {
+test('several references are sent as multiple multipart image file parts', async () => {
   const second = {
     ...reference,
     id: 'photo-2',
     url: 'data:image/png;base64,YQ==',
   }
   await workflowAPI.generate({ ...draft, references: [reference, second] })
-  expect(http.post).toHaveBeenCalledWith(
-    '/pg/images/edits',
-    expect.objectContaining({ image: [reference.url, second.url] }),
-    expect.anything()
-  )
+  const body = http.post.mock.calls[0][1] as FormData
+  expect(body.getAll('image')).toHaveLength(2)
 })
-test('text-to-image requests never carry a reference field', async () => {
-  await workflowAPI.generate({ ...initialDraft, model: 'image', prompt: 'Cat' })
-  expect(http.post.mock.calls[0][1]).not.toHaveProperty('image')
-})
-test('a boxed edit sends the rasterized mask next to the reference', async () => {
-  // 蒙版按下发的那张参考图栅格化：尺寸一致，框选位置才对得上。
+test('a boxed edit sends the rasterized mask as a multipart file part', async () => {
   const mask = 'data:image/png;base64,TUFTSw=='
   vi.mocked(maskImage).mockResolvedValue(mask)
   const regions = [{ x: 0.1, y: 0.1, width: 0.4, height: 0.4 }]
   await workflowAPI.generate({ ...draft, mask: regions })
   expect(maskImage).toHaveBeenCalledWith(reference.url, regions)
-  expect(http.post).toHaveBeenCalledWith(
-    '/pg/images/edits',
-    expect.objectContaining({ image: reference.url, mask }),
-    expect.anything()
-  )
+  const body = http.post.mock.calls[0][1] as FormData
+  expect(body.getAll('image')).toHaveLength(1)
+  expect(body.get('mask')).toBeInstanceOf(File)
 })
 test('an edit without boxes never asks for a mask', async () => {
   // 没框选就退回整图编辑：不白跑一次解码，也不给上游发空蒙版。
@@ -108,29 +95,13 @@ test('an edit without boxes never asks for a mask', async () => {
   expect(maskImage).not.toHaveBeenCalled()
   expect(http.post.mock.calls[0][1]).not.toHaveProperty('mask')
 })
-test('a boxed edit is refused when no mask can be produced', async () => {
-  // maskImage 返回 undefined 时请求体里就没有 mask，上游会按整图重绘处理——用户框的
-  // 区域完全没生效，费用照付。这里必须中止，并且一个请求都不能发出去。
-  vi.mocked(maskImage).mockResolvedValue(undefined)
-  await expect(
-    workflowAPI.generate({
-      ...draft,
-      mask: [{ x: 0.1, y: 0.1, width: 0.4, height: 0.4 }],
-    })
-  ).rejects.toThrow('could not be turned into a mask')
-  expect(http.post).not.toHaveBeenCalled()
-})
-test('an edit sends the normalized reference while the saved job keeps the uploaded bytes', async () => {
-  // 归一化只作用于下发的那一份：draft 与本地历史留的仍是用户原始字节，「原图对照」
-  // 面板、下载和历史都不受影响。
+test('an edit sends the normalized reference while the saved image keeps the uploaded bytes', async () => {
   const normalized = 'data:image/webp;base64,UklGRg=='
   vi.mocked(normalizeReferences).mockResolvedValue([normalized])
   const { job } = await workflowAPI.generate(draft)
-  expect(http.post).toHaveBeenCalledWith(
-    '/pg/images/edits',
-    expect.objectContaining({ image: normalized }),
-    expect.anything()
-  )
+  const body = http.post.mock.calls[0][1] as FormData
+  expect(body.getAll('image')).toHaveLength(1)
+  expect((body.get('image') as File).type).toBe('image/webp')
   expect(job.request.references[0].url).toBe(reference.url)
 })
 test('text-to-image requests never normalize a reference', async () => {

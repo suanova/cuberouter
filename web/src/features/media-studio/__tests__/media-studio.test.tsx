@@ -116,12 +116,12 @@ test('standard channel generation saves actual bytes locally and reloads history
   fireEvent.click(screen.getByRole('button', { name: 'Result' }))
   await screen.findByRole('button', { name: 'Open creation: A cat' })
 })
-test('a reference attached in the composer reaches the relay as inline base64', async () => {
-  // 图生图的成败全在这条契约上：参考图必须以 data URL 原样进 `image` 字段，且整个
-  // 提交过程不碰对象存储。上传功能没有配置也不影响（见 workflow-ui.test.tsx）。
+test('a reference attached in the composer reaches the relay as multipart', async () => {
+  // 图生图的成败全在这条契约上：参考图作为 multipart 的 image 文件 part 提交,
+  // 标量模型/提示走 form 字段, 全程不碰对象存储。
   page()
   await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
-  // 「Image to image」在模版图库的筛选条里也有一个同名按钮，必须限定在写作台的
+  // 「Image to image」在模版图库的筛选里也有同名按钮，必须限定在写作台的
   // 模式切换组里点，否则拿到的是图库的筛选。
   fireEvent.click(
     within(screen.getByLabelText('Creation mode')).getByRole('button', {
@@ -140,18 +140,14 @@ test('a reference attached in the composer reaches the relay as inline base64', 
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByAltText('Generated image')
   expect(http.post).toHaveBeenCalledTimes(1)
-  expect(http.post).toHaveBeenCalledWith(
-    '/pg/images/edits',
-    expect.objectContaining({
-      model: 'edit-model',
-      prompt: 'Blue coat',
-      // data URL 前缀之外是 FileReader 对 'PNG' 的 base64 编码。
-      image: 'data:image/png;base64,UE5H',
-    }),
-    expect.anything()
-  )
+  const [url, body] = http.post.mock.calls[0] as [string, FormData]
+  expect(url).toBe('/pg/images/edits')
+  expect(body).toBeInstanceOf(FormData)
+  expect(body.get('model')).toBe('edit-model')
+  expect(body.get('prompt')).toBe('Blue coat')
+  expect(body.get('image')).toBeInstanceOf(File)
   expect(
-    http.post.mock.calls.some(([path]) => String(path).includes('presign'))
+    http.post.mock.calls.some(([p]) => String(p).includes('presign'))
   ).toBe(false)
 })
 test('continuing from a generated image preserves the original and switches to reference editing', async () => {

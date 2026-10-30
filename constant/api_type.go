@@ -40,7 +40,6 @@ const (
 	APITypeAdvancedCustom
 	APITypeSub2API
 	APITypeNewAPI
-	APITypeImageEdit
 	APITypeCubeStack
 	APITypeDummy // this one is only for count, do not add any channel after this
 )
