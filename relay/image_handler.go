@@ -116,6 +116,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
+	if reviewErr := service.GateStudioImageResponse(c, httpResp); reviewErr != nil {
+		return types.NewErrorWithStatusCode(reviewErr, types.ErrorCode("studio_output_review"), http.StatusUnprocessableEntity, types.ErrOptionWithSkipRetry())
+	}
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码

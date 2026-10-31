@@ -35,6 +35,8 @@ func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
 		constraints := service.GetChannelConstraints(c)
+		constraints.AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterStudioCapacity,
+			StudioChannelIDs: service.StudioImageChannelIDs(), StudioExecution: c.GetString(service.StudioExecutionContext) != ""})
 		constraints.AddFilter(taskdto.ChannelFilter{
 			Kind:        taskdto.FilterRequestPath,
 			RequestPath: c.Request.URL.Path,
@@ -606,6 +608,9 @@ func getTaskOriginModelName(c *gin.Context) string {
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {
+	if channel != nil && channel.Type == constant.ChannelTypeStudioReview {
+		return types.NewError(errors.New("private image reviewers cannot relay requests"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
 	c.Set("original_model", modelName) // for retry
 	expectedPlugin := c.GetString("expected_task_plugin_key")
 	if channel == nil {

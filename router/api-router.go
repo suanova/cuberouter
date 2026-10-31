@@ -30,6 +30,14 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	studio := apiRouter.Group("/media-studio", middleware.UserAuth())
 	studio.GET("/config", controller.MediaStudioConfig)
 	studio.POST("/uploads/presign", middleware.UserCriticalRateLimit("studio-upload"), controller.MediaStudioUpload)
+	imageJobs := studio.Group("/image-jobs", middleware.StudioImageIPRateLimit(), middleware.StudioImageUserRateLimit(), controller.StudioImageAccess)
+	imageJobs.GET("/session", controller.StudioImageSession)
+	imageJobs.POST("", controller.SubmitStudioImageJob)
+	imageJobs.GET("/:job", controller.GetStudioImageJob)
+	imageJobs.POST("/:job/cancel", controller.CancelStudioImageJob)
+	imageJobs.GET("/:job/result", controller.GetStudioImageResult)
+	imageJobs.POST("/:job/ack", controller.AckStudioImageResult)
+	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.GetStudioImageAudit)
 	{
 		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据
 		// perf_metrics_setting.export_enabled/export_token 自鉴权。

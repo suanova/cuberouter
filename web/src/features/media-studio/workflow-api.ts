@@ -23,6 +23,7 @@ import { GENERATION_TIMEOUT_MS, LIMITS } from './constants'
 import { extractImages, type ImageResponseBody } from './lib/image-response'
 import { maskImage } from './lib/mask'
 import { normalizeReferences } from './lib/reference-image'
+import { renderReferenceMarkup } from './lib/reference-markup'
 import { imageRequest } from './lib/workflow'
 import type { StudioAsset, WorkflowDraft, WorkflowJob } from './workflow-types'
 
@@ -40,6 +41,11 @@ export function newId(): string {
   return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join(
     ''
   )
+}
+
+export function newEditingSeed(previous?: number): number {
+  const value = crypto.getRandomValues(new Uint32Array(1))[0]
+  return value === previous ? (value + 1) % 4294967296 : value
 }
 
 export function blobDataURL(blob: Blob): Promise<string> {
@@ -148,33 +154,70 @@ export async function localImage(url: string): Promise<StudioAsset> {
     url: await blobDataURL(blob),
   }
 }
+export async function prepareWorkflowRequest(
+  draft: WorkflowDraft,
+  preserveReferences = false
+): Promise<Record<string, unknown>> {
+  // 参考图在这里才缩到长边 1024 并重编码：draft 与本地历史留着用户原始字节，所以
+  // 「原图对照」、下载和历史都不受影响，同一份原始字节每次下发的编码结果也一致。
+  let referenceURLs: string[] = []
+  if (draft.mode === 'edit') {
+    referenceURLs = draft.references.map((asset) => asset.url)
+    if (!preserveReferences || draft.markup || draft.mask?.length) {
+      referenceURLs = await normalizeReferences(referenceURLs)
+    }
+  }
+
+  // 蒙版必须与真正下发的那张参考图同尺寸，所以按归一化之后的图栅格化，而不是用户
+  // 原图。栅格化失败（无 canvas、解码失败、框全部落不到像素上）时必须中止：那说明
+  // 用户框的区域根本无法下发，继续发就是悄悄整图重绘，出来的图和框选意图不符还照常
+  // 计费。这里直接报错：用户要么重试，要么清掉框选改整图编辑。
+  const boxes = draft.mode === 'edit' ? (draft.mask ?? []) : []
+  let mask = boxes.length
+    ? await maskImage(referenceURLs[0] ?? '', boxes)
+    : undefined
+  if (boxes.length && !mask) {
+    throw new Error(
+      'The selected areas could not be turned into a mask, so nothing was generated. Retry, or clear the boxes to edit the whole image.'
+    )
+  }
+  let effective = draft
+  if (draft.markup) {
+    if (
+      draft.mode !== 'edit' ||
+      draft.references[0]?.id !== draft.markup.referenceID
+    ) {
+      throw new Error(
+        'The reference drawing is invalid. Review it before generating.'
+      )
+    }
+    const rendered = await renderReferenceMarkup(referenceURLs[0], draft.markup)
+    if (draft.markup.kind === 'region') mask = rendered
+    else {
+      referenceURLs[0] = rendered
+      effective = {
+        ...draft,
+        prompt: `${draft.prompt}\nRemove all colored guide marks from the first reference in the finished image.`,
+      }
+      if (effective.prompt.length > LIMITS.promptMax) {
+        throw new Error(
+          'The annotated prompt is too long. Shorten it before generating.'
+        )
+      }
+    }
+  }
+  return imageRequest(effective, referenceURLs, mask)
+}
+
 export const workflowAPI = {
   generate: async (
     draft: WorkflowDraft
   ): Promise<{ job: WorkflowJob; warning?: string }> => {
     const started = Date.now()
-    // 参考图在这里才缩到长边 1024 并重编码：draft 与本地历史留着用户原始字节，所以
-    // 「原图对照」、下载和历史都不受影响，同一份原始字节每次下发的编码结果也一致。
-    const referenceURLs =
-      draft.mode === 'edit'
-        ? await normalizeReferences(draft.references.map((asset) => asset.url))
-        : []
-    // 蒙版必须与真正下发的那张参考图同尺寸，所以按归一化之后的图栅格化，而不是用户
-    // 原图。栅格化失败（无 canvas、解码失败、框全部落不到像素上）时必须中止：那说明
-    // 用户框的区域根本无法下发，继续发就是悄悄整图重绘，出来的图和框选意图不符还照常
-    // 计费。这里直接报错：用户要么重试，要么清掉框选改整图编辑。
-    const boxes = draft.mode === 'edit' ? (draft.mask ?? []) : []
-    const mask = boxes.length
-      ? await maskImage(referenceURLs[0] ?? '', boxes)
-      : undefined
-    if (boxes.length && !mask) {
-      throw new Error(
-        'The selected areas could not be turned into a mask, so nothing was generated. Retry, or clear the boxes to edit the whole image.'
-      )
-    }
+    const request = await prepareWorkflowRequest(draft)
     const response = await api.post<ImageResponseBody>(
       `/pg/images/${draft.mode === 'edit' ? 'edits' : 'generations'}`,
-      imageRequest(draft, referenceURLs, mask),
+      request,
       { timeout: GENERATION_TIMEOUT_MS, skipErrorHandler: true }
     )
     const output = extractImages(response.data)

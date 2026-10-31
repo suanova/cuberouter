@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -23,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/security_setting"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/net/http/httpguts"
 	"gorm.io/gorm"
 )
 
@@ -477,6 +479,15 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
 	}
+	if channel.Type == constant.ChannelTypeStudioReview {
+		trimmedKey := strings.TrimSpace(channel.Key)
+		if channel.ChannelInfo.IsMultiKey || len(trimmedKey) < 32 || strings.IndexFunc(trimmedKey, unicode.IsSpace) >= 0 || !httpguts.ValidHeaderFieldValue(channel.Key) {
+			return fmt.Errorf("image review channels require one service key of at least 32 characters")
+		}
+		if _, err := service.StudioPrivateClient(channel.GetBaseURL(), channel.Other, 45*time.Second); err != nil {
+			return err
+		}
+	}
 
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
@@ -653,13 +664,19 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 
-	// 使用统一的校验函数
-	if err := validateChannel(addChannelRequest.Channel, true); err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
+	if addChannelRequest.Mode == "multi_to_single" && addChannelRequest.Channel != nil {
+		addChannelRequest.Channel.ChannelInfo.IsMultiKey = true
+	}
+	// Review batch keys are validated individually after splitting the lines.
+	isReviewerBatch := addChannelRequest.Mode == "batch" && addChannelRequest.Channel != nil && addChannelRequest.Channel.Type == constant.ChannelTypeStudioReview
+	if !isReviewerBatch {
+		if err := validateChannel(addChannelRequest.Channel, true); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	}
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
@@ -721,8 +738,15 @@ func AddChannel(c *gin.Context) {
 		if key == "" {
 			continue
 		}
-		localChannel := addChannelRequest.Channel
+		channelCopy := *addChannelRequest.Channel
+		localChannel := &channelCopy
 		localChannel.Key = key
+		if localChannel.Type == constant.ChannelTypeStudioReview {
+			if err := validateChannel(localChannel, true); err != nil {
+				c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+				return
+			}
+		}
 		if addChannelRequest.BatchAddSetKeyPrefix2Name && len(keys) > 1 {
 			keyPrefix := localChannel.Key
 			if len(localChannel.Key) > 8 {
@@ -731,6 +755,10 @@ func AddChannel(c *gin.Context) {
 			localChannel.Name = fmt.Sprintf("%s %s", localChannel.Name, keyPrefix)
 		}
 		channels = append(channels, *localChannel)
+	}
+	if isReviewerBatch && len(channels) == 0 {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": "image review batch requires at least one service key"})
+		return
 	}
 	err = model.BatchInsertChannels(channels)
 	if err != nil {
@@ -1009,14 +1037,6 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 
-	// 使用统一的校验函数
-	if err := validateChannel(&channel.Channel, false); err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
 	// Preserve existing ChannelInfo to ensure multi-key channels keep correct state even if the client does not send ChannelInfo in the request.
 	originChannel, err := model.GetChannelById(channel.Id, true)
 	if err != nil {
@@ -1036,6 +1056,25 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	validationChannel := channel.Channel
+	if validationChannel.Type == constant.ChannelTypeStudioReview || (validationChannel.Type == 0 && originChannel.Type == constant.ChannelTypeStudioReview) {
+		validationChannel.Type = constant.ChannelTypeStudioReview
+		// GORM's struct update preserves zero-valued strings/type and nil URLs.
+		// Validate the effective reviewer without expanding the persisted patch.
+		if validationChannel.Key == "" {
+			validationChannel.Key = originChannel.Key
+		}
+		if validationChannel.BaseURL == nil {
+			validationChannel.BaseURL = originChannel.BaseURL
+		}
+		if validationChannel.Other == "" {
+			validationChannel.Other = originChannel.Other
+		}
+	}
+	if err := validateChannel(&validationChannel, false); err != nil {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 
 	if channelHasSensitiveChanges(&channel, originChannel, requestData) &&
 		!authz.Can(c.GetInt("id"), c.GetInt("role"), authz.ChannelSensitiveWrite) {

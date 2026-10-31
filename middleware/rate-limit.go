@@ -189,6 +189,14 @@ func UserCriticalRateLimit(scope string) func(c *gin.Context) {
 	)
 }
 
+func StudioImageIPRateLimit() gin.HandlerFunc {
+	return rateLimitFactory(2400, 60, "studio-images")
+}
+
+func StudioImageUserRateLimit() gin.HandlerFunc {
+	return userRateLimitFactory(120, 60, "studio-images")
+}
+
 func DownloadRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }

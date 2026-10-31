@@ -193,6 +193,12 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.SUPER_ADMIN,
           },
           {
+            title: t('Image output audit'),
+            url: '/admin/image-output-audit',
+            icon: ScrollText,
+            requiredRole: ROLE.SUPER_ADMIN,
+          },
+          {
             title: t('Task Plugins'),
             url: '/task-plugins',
             icon: PlugZap,

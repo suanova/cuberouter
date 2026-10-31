@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -33,7 +34,13 @@ import (
 func MediaStudioConfig(c *gin.Context) {
 	_, err := service.LoadStudioUploadConfig()
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, gin.H{"upload_enabled": err == nil})
+	allowed := false
+	if service.StudioImageEnabled() && c.GetInt("id") > 0 {
+		user, userErr := model.GetUserById(c.GetInt("id"), false)
+		allowed = userErr == nil && user != nil && user.Status == common.UserStatusEnabled && service.StudioImageGroupAllowed(user.Group)
+	}
+	c.JSON(http.StatusOK, gin.H{"upload_enabled": err == nil,
+		"image_queue_enabled": service.StudioImageEnabled(), "image_queue_models": service.StudioImageModels(), "image_queue_access": allowed})
 }
 
 func MediaStudioUpload(c *gin.Context) {

@@ -182,6 +182,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *relaycommon.RelayInfo) error {
+	if id := c.GetString(service.StudioExecutionContext); id != "" {
+		header.Set("X-Image-Execution-ID", id)
+	}
 	channel.SetupApiRequestHeader(info, c, header)
 	if info.ChannelType == constant.ChannelTypeAzure {
 		header.Set("api-key", info.ApiKey)

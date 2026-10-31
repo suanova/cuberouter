@@ -2228,6 +2228,26 @@ export function ChannelMutateDrawer({
                             className='space-y-4 disabled:opacity-60'
                           >
                             {/* Azure (type 3) */}
+                            {currentType === 65 && (
+                              <FormField
+                                control={form.control}
+                                name='other'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Reviewer CA certificate (optional)')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        {...field}
+                                        placeholder='-----BEGIN CERTIFICATE-----'
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                             {currentType === 3 && (
                               <>
                                 <FormField

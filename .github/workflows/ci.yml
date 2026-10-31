@@ -12,6 +12,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  studio-databases:
+    name: Image Studio database contracts
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: studio-ci-only
+          MYSQL_DATABASE: studio_ci
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -h localhost -pstudio-ci-only" --health-interval=5s --health-timeout=5s --health-retries=30
+      postgres:
+        image: postgres:16.15
+        env:
+          POSTGRES_PASSWORD: studio-ci-only
+          POSTGRES_DB: studio_ci
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U postgres" --health-interval=5s --health-timeout=5s --health-retries=30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version-file: go.mod
+      - run: mkdir -p web/dist && touch web/dist/index.html
+      - name: Fresh schema, representative upgrade, repeated migrations and lease ownership
+        env:
+          TEST_MYSQL_DSN: root:studio-ci-only@tcp(127.0.0.1:3306)/studio_ci?charset=utf8mb4&parseTime=true
+          TEST_POSTGRES_DSN: postgres://postgres:studio-ci-only@127.0.0.1:5432/studio_ci?sslmode=disable
+        run: go test ./model -run '^TestStudioImageDatabaseContracts$' -count=1 -v
   backend:
     name: Backend vet, build, and test
     if: github.event.action != 'closed' || github.event.pull_request.merged == true

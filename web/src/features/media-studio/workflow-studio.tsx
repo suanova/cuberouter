@@ -24,6 +24,9 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 
 import { getStudioModels } from './api'
+import { ImageJobPanel } from './components/image-job-panel'
+import { OfficialSamples } from './components/official-samples'
+import { ReferenceEditor } from './components/reference-editor'
 import { TemplateGallery } from './components/template-gallery'
 import { WorkflowComposer } from './components/workflow-composer'
 import { WorkflowHistory } from './components/workflow-history'
@@ -31,13 +34,14 @@ import { WorkflowResults } from './components/workflow-results'
 import { LIMITS } from './constants'
 import { useWorkflow } from './hooks/use-workflow'
 import { initialDraft, templateDraft, workflowError } from './lib/workflow'
-import { localImage, referenceAsset } from './workflow-api'
+import { localImage, referenceAsset, newEditingSeed } from './workflow-api'
 import type { WorkflowDraft } from './workflow-types'
 
 export function WorkflowStudio(props: { owner: number }) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState<WorkflowDraft>({ ...initialDraft })
   const [view, setView] = useState<'templates' | 'result'>('templates')
+  const [editingReference, setEditingReference] = useState(false)
   const models = useQuery({
     queryKey: ['studio-models', props.owner],
     queryFn: getStudioModels,
@@ -55,9 +59,23 @@ export function WorkflowStudio(props: { owner: number }) {
   const model = eligible.includes(draft.model)
     ? draft.model
     : (eligible[0] ?? '')
+  const workflow = useWorkflow(props.owner)
+  const config = workflow.configuration.data
+  const queued = !!(
+    config?.image_queue_enabled && config.image_queue_models?.includes(model)
+  )
   const current = {
     ...draft,
     model,
+    count: queued ? 1 : draft.count,
+    markup:
+      draft.mode === 'edit' &&
+      draft.markup?.referenceID === draft.references[0]?.id &&
+      (draft.markup?.kind !== 'region' ||
+        queued ||
+        catalog.imageMask.includes(model))
+        ? draft.markup
+        : undefined,
     // 模型被回退替换后可能不再声明 image-mask：草稿里的框选必须一起作废，
     // 否则生成时仍会把蒙版发给不认识它的模型，而页面上已经看不到框了。
     mask:
@@ -65,7 +83,6 @@ export function WorkflowStudio(props: { owner: number }) {
         ? draft.mask
         : undefined,
   }
-  const workflow = useWorkflow(props.owner)
   const references = useMutation({
     mutationFn: async (files: Blob[]) => {
       if (files.length + draft.references.length > LIMITS.maxReferences) {
@@ -87,12 +104,20 @@ export function WorkflowStudio(props: { owner: number }) {
     onSuccess: (assets) =>
       setDraft((value) => ({
         ...value,
+        seed:
+          queued && !value.references.length
+            ? newEditingSeed(value.seed)
+            : value.seed,
         references: [...value.references, ...assets],
       })),
     retry: false,
   })
   const continuation = useMutation({
-    mutationFn: async (args: { url: string; parent: string }) => {
+    mutationFn: async (args: {
+      url: string
+      parent: string
+      request: WorkflowDraft
+    }) => {
       const asset = await localImage(args.url)
       if (
         !['image/png', 'image/jpeg', 'image/webp'].includes(asset.mime) ||
@@ -102,16 +127,25 @@ export function WorkflowStudio(props: { owner: number }) {
       }
       return { ...args, asset }
     },
-    onSuccess: ({ asset, parent }) =>
+    onSuccess: ({ asset, parent, request }) =>
       setDraft({
-        ...initialDraft,
+        ...request,
         mode: 'edit',
+        model: catalog.imageToImage.includes(request.model)
+          ? request.model
+          : (catalog.imageToImage[0] ?? ''),
+        prompt: '',
+        seed: newEditingSeed(request.seed),
+        markup: undefined,
+        mask: undefined,
         references: [asset],
         parent_id: parent,
       }),
     retry: false,
   })
   const busy =
+    workflow.recovering ||
+    workflow.configuration.isPending ||
     workflow.generation.isPending ||
     references.isPending ||
     continuation.isPending
@@ -121,15 +155,23 @@ export function WorkflowStudio(props: { owner: number }) {
     continuation.error,
     workflow.generation.error,
     workflow.deletion.error,
+    workflow.configuration.error,
+    workflow.cancellation.error,
   ].filter(Boolean)
   return (
     <div className='grid items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)]'>
       <aside className='bg-card rounded-2xl border p-4'>
         <WorkflowComposer
+          generating={workflow.generation.isPending}
+          queued={queued}
+          queueAccess={config?.image_queue_access}
+          onEditReference={() => setEditingReference(true)}
           draft={current}
           textToImageModels={catalog.textToImage}
           imageToImageModels={catalog.imageToImage}
-          maskModels={catalog.imageMask}
+          maskModels={
+            queued ? [...catalog.imageMask, model] : catalog.imageMask
+          }
           busy={busy}
           loading={models.isPending}
           onChange={setDraft}
@@ -140,6 +182,34 @@ export function WorkflowStudio(props: { owner: number }) {
           }}
           onReset={() => setDraft({ ...initialDraft })}
         />
+        <ImageJobPanel
+          workflow={workflow}
+          onRestore={(value) => setDraft(value)}
+        />
+        {workflow.storageLimited && (
+          <p role='status' className='mt-3 text-sm'>
+            {t(
+              'Less than 50 MB of browser storage remains. Download important images before generating more.'
+            )}
+          </p>
+        )}
+        {queued && !config?.image_queue_access && (
+          <p role='alert' className='mt-3 text-sm'>
+            {t('Your account does not have access to the image queue.')}
+          </p>
+        )}
+        {editingReference && current.references[0] && (
+          <ReferenceEditor
+            image={current.references[0]}
+            value={current.markup}
+            regional={queued || catalog.imageMask.includes(model)}
+            onClose={() => setEditingReference(false)}
+            onApply={(markup) => {
+              setDraft({ ...current, markup, mask: undefined })
+              setEditingReference(false)
+            }}
+          />
+        )}
       </aside>
       <main className='min-w-0 space-y-4'>
         <nav
@@ -185,24 +255,44 @@ export function WorkflowStudio(props: { owner: number }) {
           </p>
         )}
         {view === 'templates' && (
-          <TemplateGallery
-            disabled={busy}
-            onApply={(template, fields) =>
-              setDraft(templateDraft(template, fields, current))
-            }
-          />
+          <div className='space-y-6'>
+            <OfficialSamples
+              disabled={busy}
+              onApply={(patch, edit) => {
+                const models = edit ? catalog.imageToImage : catalog.textToImage
+                setDraft({
+                  ...current,
+                  ...patch,
+                  model: models.includes(current.model)
+                    ? current.model
+                    : (models[0] ?? ''),
+                })
+              }}
+            />
+            <TemplateGallery
+              disabled={busy}
+              onApply={(template, fields) =>
+                setDraft(templateDraft(template, fields, current))
+              }
+            />
+          </div>
         )}
         {view === 'result' && (
           // 结果与本地历史合并在同一视图：结果在上，历史列表在下。
           <div className='space-y-4'>
             <div className='bg-card rounded-2xl border p-4'>
               <WorkflowResults
+                queued={queued || !!workflow.pending}
                 job={workflow.selected}
                 busy={workflow.generation.isPending}
                 count={workflow.generation.variables?.count ?? 1}
                 elapsed={workflow.elapsed}
                 onEdit={(asset, job) =>
-                  continuation.mutate({ url: asset.url, parent: job.id })
+                  continuation.mutate({
+                    url: asset.url,
+                    parent: job.id,
+                    request: job.request,
+                  })
                 }
               />
             </div>

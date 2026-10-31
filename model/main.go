@@ -356,6 +356,8 @@ func migrateDB() error {
 	}
 
 	err := DB.AutoMigrate(
+		&StudioImageAudit{},
+		&StudioImageLease{},
 		&Channel{},
 		&Token{},
 		&User{},
@@ -471,6 +473,8 @@ func migrateDBFast() error {
 		name  string
 	}{
 		{&Channel{}, "Channel"},
+		{&StudioImageAudit{}, "StudioImageAudit"},
+		{&StudioImageLease{}, "StudioImageLease"},
 		{&Token{}, "Token"},
 		{&User{}, "User"},
 		{&UserSession{}, "UserSession"},

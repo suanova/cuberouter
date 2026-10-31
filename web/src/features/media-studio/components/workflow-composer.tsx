@@ -33,6 +33,7 @@ import {
   LIMITS,
   QUALITY_OPTIONS,
   qualitySteps,
+  serverImageSteps,
   STEPS_RANGE,
 } from '../constants'
 import { draftSchema } from '../lib/workflow'
@@ -41,6 +42,10 @@ import type { WorkflowDraft } from '../workflow-types'
 import { MaskEditor } from './mask-editor'
 
 export function WorkflowComposer(props: {
+  generating?: boolean
+  onEditReference?: () => void
+  queued?: boolean
+  queueAccess?: boolean
   draft: WorkflowDraft
   textToImageModels: string[]
   imageToImageModels: string[]
@@ -56,6 +61,18 @@ export function WorkflowComposer(props: {
   const { t } = useTranslation()
   const editing = props.draft.mode === 'edit'
   const models = editing ? props.imageToImageModels : props.textToImageModels
+  const [width, height] = props.draft.size.split('x').map(Number)
+  const sizeValid =
+    !props.queued ||
+    (Number.isInteger(width) &&
+      Number.isInteger(height) &&
+      width >= 256 &&
+      width <= 1664 &&
+      height >= 256 &&
+      height <= 1664 &&
+      width % 32 === 0 &&
+      height % 32 === 0 &&
+      width * height <= 2097152)
   // 框选只对声明了 image-mask 的编辑模型开放；其他上游会静默丢掉 mask。
   const maskable = editing && props.maskModels.includes(props.draft.model)
   const form = useForm<WorkflowDraft>({
@@ -81,7 +98,9 @@ export function WorkflowComposer(props: {
       (integer && !Number.isInteger(value)))
   const valid =
     draftSchema.safeParse(props.draft).success &&
-    models.includes(props.draft.model)
+    sizeValid &&
+    models.includes(props.draft.model) &&
+    (!props.queued || !!props.queueAccess)
   return (
     <form
       className='space-y-4'
@@ -222,6 +241,16 @@ export function WorkflowComposer(props: {
               }
             />
           )}
+          {!!props.draft.references.length && props.onEditReference && (
+            <Button
+              type='button'
+              variant='outline'
+              disabled={props.busy}
+              onClick={props.onEditReference}
+            >
+              {t('Edit reference image')}
+            </Button>
+          )}
         </section>
       )}
       {props.draft.parent_id && (
@@ -246,7 +275,9 @@ export function WorkflowComposer(props: {
             value={props.draft.size}
             placeholder='1024x1024'
             disabled={props.busy}
-            aria-invalid={!/^\d{2,4}x\d{2,4}$/.test(props.draft.size)}
+            aria-invalid={
+              !sizeValid || !/^\d{2,4}x\d{2,4}$/.test(props.draft.size)
+            }
             onChange={(event) => update({ size: event.target.value })}
           />
         </label>
@@ -258,14 +289,18 @@ export function WorkflowComposer(props: {
             disabled={props.busy}
             onChange={(event) => update({ count: Number(event.target.value) })}
           >
-            {COUNT_OPTIONS.map((count) => (
+            {(props.queued ? [1] : COUNT_OPTIONS).map((count) => (
               <option key={count}>{count}</option>
             ))}
           </select>
         </label>
       </div>
       <p className='text-muted-foreground text-xs'>
-        {t('Supported sizes and image counts depend on the selected provider.')}
+        {t(
+          props.queued
+            ? 'Use 256–1664 pixels per side, multiples of 32, and at most 2,097,152 pixels in total.'
+            : 'Supported sizes and image counts depend on the selected provider.'
+        )}
       </p>
       <div className='space-y-1'>
         <span className='block text-sm'>{t('Quality')}</span>
@@ -302,7 +337,11 @@ export function WorkflowComposer(props: {
               min={STEPS_RANGE.min}
               max={STEPS_RANGE.max}
               value={props.draft.steps ?? ''}
-              placeholder={String(qualitySteps(props.draft.quality))}
+              placeholder={String(
+                props.queued
+                  ? serverImageSteps(props.draft.quality)
+                  : qualitySteps(props.draft.quality)
+              )}
               aria-invalid={outOfRange(
                 props.draft.steps,
                 STEPS_RANGE.min,
@@ -323,7 +362,7 @@ export function WorkflowComposer(props: {
               // 草稿接受 0..10 的任意小数（如 6.55）；固定 0.1 步长会让原生校验拦下合法值。
               step='any'
               value={props.draft.cfg ?? ''}
-              placeholder={String(DEFAULT_PARAMS.cfg)}
+              placeholder={String(props.queued ? 1 : DEFAULT_PARAMS.cfg)}
               aria-invalid={outOfRange(
                 props.draft.cfg,
                 CFG_RANGE.min,
@@ -364,7 +403,11 @@ export function WorkflowComposer(props: {
         className='w-full'
         disabled={!valid || props.busy || props.loading}
       >
-        {t(props.busy ? 'Generation in progress…' : 'Generate image')}
+        {t(
+          (props.generating ?? props.busy)
+            ? 'Generation in progress…'
+            : 'Generate image'
+        )}
       </Button>
       <Button
         type='button'

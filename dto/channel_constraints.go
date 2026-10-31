@@ -38,6 +38,7 @@ type ChannelFilterKind string
 const (
 	FilterRequestPath        ChannelFilterKind = "request_path"
 	FilterTaskPluginIdentity ChannelFilterKind = "task_plugin_identity"
+	FilterStudioCapacity     ChannelFilterKind = "studio_capacity"
 )
 
 type ChannelFilter struct {
@@ -45,6 +46,8 @@ type ChannelFilter struct {
 	RequestPath            string
 	TaskPluginKey          string
 	TaskPluginChannelTypes []int
+	StudioChannelIDs       []int
+	StudioExecution        bool
 }
 
 type ChannelConstraints struct {

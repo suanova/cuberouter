@@ -8,6 +8,7 @@ import (
 )
 
 var filterEvalOrder = []dto.ChannelFilterKind{
+	dto.FilterStudioCapacity,
 	dto.FilterRequestPath,
 	dto.FilterTaskPluginIdentity,
 }
@@ -88,6 +89,8 @@ func candidatePassesKindFilters(ch *Channel, exists bool, modelName string, kind
 
 func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilter) bool {
 	switch filter.Kind {
+	case dto.FilterStudioCapacity:
+		return ch.Type != constant.ChannelTypeStudioReview && (filter.StudioExecution || !slices.Contains(filter.StudioChannelIDs, ch.Id))
 	case dto.FilterRequestPath:
 		if filter.RequestPath == "" {
 			return true

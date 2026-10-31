@@ -18,7 +18,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ImageIcon } from 'lucide-react'
-
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -37,6 +36,7 @@ function formatElapsed(ms: number): string {
 }
 
 export function WorkflowResults(props: {
+  queued?: boolean
   job?: WorkflowJob
   busy: boolean
   count: number
@@ -61,7 +61,9 @@ export function WorkflowResults(props: {
         </p>
         <p className='text-muted-foreground max-w-sm text-xs'>
           {t(
-            'Generation is synchronous and usually takes 40 seconds to 5 minutes. Keep this page open.'
+            props.queued
+              ? 'This job runs on the server. You may refresh and reconnect without generating again.'
+              : 'Generation is synchronous and usually takes 40 seconds to 5 minutes. Keep this page open.'
           )}
         </p>
       </div>

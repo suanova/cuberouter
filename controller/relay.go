@@ -386,6 +386,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	if c.GetString(service.StudioExecutionContext) != "" {
+		return false
+	}
 	if openaiErr == nil {
 		return false
 	}
