@@ -21,7 +21,6 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ConfigDrawer } from '@/components/config-drawer'
 import { Header } from '@/components/layout'
 import { ProfileDropdown } from '@/components/profile-dropdown'
-import { Search } from '@/components/search'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { ForbiddenError } from '@/features/errors/forbidden'
 import { GeneralError } from '@/features/errors/general-error'
@@ -48,7 +47,6 @@ function RouteComponent() {
   return (
     <>
       <Header>
-        <Search />
         <div className='ms-auto flex items-center md:space-x-4'>
           <ThemeSwitch />
           <ConfigDrawer />
