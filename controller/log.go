@@ -22,7 +22,9 @@ func GetAllLogs(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId)
+	billingAccountType := c.Query("billing_account_type")
+	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, billingAccountType, organizationId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -107,7 +109,9 @@ func GetLogsStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	billingAccountType := c.Query("billing_account_type")
+	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, billingAccountType, organizationId)
 	if err != nil {
 		common.ApiError(c, err)
 		return

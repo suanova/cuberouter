@@ -58,6 +58,12 @@ export function buildSearchParams(
         ...(commonFilters.upstreamRequestId && {
           upstreamRequestId: commonFilters.upstreamRequestId,
         }),
+        ...(commonFilters.billingAccountType && {
+          billingAccountType: commonFilters.billingAccountType,
+        }),
+        ...(commonFilters.organizationId && {
+          organizationId: commonFilters.organizationId,
+        }),
       }
     }
     case 'drawing': {

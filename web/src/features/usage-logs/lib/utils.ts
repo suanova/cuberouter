@@ -179,6 +179,14 @@ export function buildApiParams(config: {
     return undefined
   }
 
+  // Only the two billing scopes are meaningful; a stale or hand-edited URL
+  // value must not reach the API as a filter.
+  const billingAccountType =
+    searchParams.billingAccountType === 'personal' ||
+    searchParams.billingAccountType === 'organization'
+      ? searchParams.billingAccountType
+      : undefined
+
   // Build base params from search params
   const params: GetLogsParams = {
     p: page,
@@ -198,6 +206,12 @@ export function buildApiParams(config: {
       : {}),
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
+      : {}),
+    ...(isAdmin && billingAccountType
+      ? { billing_account_type: billingAccountType }
+      : {}),
+    ...(isAdmin && searchParams.organizationId
+      ? { organization_id: Number(searchParams.organizationId) || 0 }
       : {}),
     ...buildTimeRangeParams(searchParams, false),
   }

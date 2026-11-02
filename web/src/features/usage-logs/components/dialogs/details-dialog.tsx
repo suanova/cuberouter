@@ -71,6 +71,8 @@ import {
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
+  getLogBillingAccount,
+  getLogResponsibleUserName,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   isViolationFeeLog,
@@ -444,11 +446,7 @@ export function BillingBreakdown(props: {
           ))}
         </>
       )}
-      <DetailRow
-        label={t('Total Cost')}
-        value={formatLogQuota(quota)}
-        mono
-      />
+      <DetailRow label={t('Total Cost')} value={formatLogQuota(quota)} mono />
     </DetailSection>
   )
 }
@@ -615,9 +613,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   // descriptor (shared by audit type=3 and login type=7).
   const operationText = renderAuditContent(other, t)
   const manageRemark =
-    isManage &&
-    props.isAdmin &&
-    typeof other?.op?.params?.remark === 'string'
+    isManage && props.isAdmin && typeof other?.op?.params?.remark === 'string'
       ? other.op.params.remark
       : ''
   const auditRoute = isManage && props.isAdmin ? other?.audit_info : undefined
@@ -673,6 +669,14 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const reasoningEffortVariant = getReasoningEffortVariant(
     other?.reasoning_effort
   )
+  const billingAccount = getLogBillingAccount(props.log)
+  const responsibleUserName = getLogResponsibleUserName(props.log)
+  let billingAccountLabel = t('Personal')
+  if (billingAccount.type === 'organization') {
+    billingAccountLabel = billingAccount.name
+      ? `${billingAccount.name} (#${billingAccount.id})`
+      : `#${billingAccount.id}`
+  }
 
   return (
     <Dialog
@@ -750,6 +754,19 @@ export function DetailsDialog(props: DetailsDialogProps) {
               label={t('Group')}
               value={props.log.group || other?.group || ''}
               mono
+            />
+          )}
+
+          {props.isAdmin && (
+            <DetailRow
+              label={t('Billing Account')}
+              value={billingAccountLabel}
+            />
+          )}
+          {props.isAdmin && (
+            <DetailRow
+              label={t('Responsible user')}
+              value={responsibleUserName || '-'}
             />
           )}
 

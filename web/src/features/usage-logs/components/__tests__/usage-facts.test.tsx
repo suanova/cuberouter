@@ -61,6 +61,19 @@ function makeLog(other: LogOtherData): UsageLog {
     other: JSON.stringify(other),
     request_id: 'req-1',
     upstream_request_id: '',
+    scope_type: '',
+    scope_id: 0,
+    billing_account_type: '',
+    billing_account_id: 0,
+    organization_id: 0,
+    organization_name: '',
+    actor_user_id: 0,
+    creator_user_id: 0,
+    creator_name: '',
+    responsible_user_id: 0,
+    responsible_name: '',
+    responsible_username: '',
+    responsible_display_name: '',
   }
 }
 

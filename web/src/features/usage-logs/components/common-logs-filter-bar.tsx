@@ -42,7 +42,6 @@ import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
-import { CommonLogsExportButton } from './common-logs-export-button'
 import { CommonLogsStats } from './common-logs-stats'
 import { CompactDateTimeRangePicker } from './compact-date-time-range-picker'
 import {
@@ -88,6 +87,8 @@ function buildSearchSourceKey(values: {
   username?: unknown
   requestId?: unknown
   upstreamRequestId?: unknown
+  billingAccountType?: unknown
+  organizationId?: unknown
   type?: unknown
 }) {
   return [
@@ -100,6 +101,8 @@ function buildSearchSourceKey(values: {
     values.username,
     values.requestId,
     values.upstreamRequestId,
+    values.billingAccountType,
+    values.organizationId,
     Array.isArray(values.type) ? values.type.join(',') : values.type,
   ]
     .map((value) => String(value ?? ''))
@@ -108,8 +111,6 @@ function buildSearchSourceKey(values: {
 
 interface CommonLogsFilterBarProps<TData> {
   table: Table<TData>
-  /** The filtered set's total, used to disable an empty export. */
-  total: number
 }
 
 export function CommonLogsFilterBar<TData>(
@@ -135,6 +136,8 @@ export function CommonLogsFilterBar<TData>(
       username: searchParams.username,
       requestId: searchParams.requestId,
       upstreamRequestId: searchParams.upstreamRequestId,
+      billingAccountType: searchParams.billingAccountType,
+      organizationId: searchParams.organizationId,
       type: searchParams.type,
     }
     const filters: CommonLogFilters = {
@@ -149,6 +152,12 @@ export function CommonLogsFilterBar<TData>(
       username: searchParams.username || undefined,
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
+      billingAccountType:
+        searchParams.billingAccountType === 'personal' ||
+        searchParams.billingAccountType === 'organization'
+          ? searchParams.billingAccountType
+          : undefined,
+      organizationId: searchParams.organizationId || undefined,
     }
     return {
       sourceKey: buildSearchSourceKey(sourceValues),
@@ -165,6 +174,8 @@ export function CommonLogsFilterBar<TData>(
     searchParams.username,
     searchParams.requestId,
     searchParams.upstreamRequestId,
+    searchParams.billingAccountType,
+    searchParams.organizationId,
     searchParams.type,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
@@ -236,24 +247,33 @@ export function CommonLogsFilterBar<TData>(
     [handleApply]
   )
 
-  const hasExpandedFilters =
-    !!filters.token ||
-    !!filters.username ||
-    !!filters.channel ||
-    !!filters.requestId ||
-    !!filters.upstreamRequestId
-
   const hasTypeFilter = logType !== LOG_TYPE_ALL_VALUE
-  const hasAdditionalFilters =
-    !!filters.model || !!filters.group || hasTypeFilter || hasExpandedFilters
-
-  const expandedFilterCount = [
+  const activeFilters = [
+    filters.model,
+    filters.group,
+    hasTypeFilter ? 'type' : undefined,
+    isAdmin ? filters.billingAccountType : undefined,
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
+    isAdmin ? filters.organizationId : undefined,
     filters.requestId,
     filters.upstreamRequestId,
-  ].filter(Boolean).length
+  ].filter(Boolean)
+  const hasActiveFilters = activeFilters.length > 0
+  const activeFilterCount = activeFilters.length
+  const advancedActiveFilters = [
+    filters.model,
+    filters.group,
+    filters.token,
+    isAdmin ? filters.username : undefined,
+    isAdmin ? filters.channel : undefined,
+    isAdmin ? filters.organizationId : undefined,
+    filters.requestId,
+    filters.upstreamRequestId,
+  ].filter(Boolean)
+  const hasAdvancedActiveFilters = advancedActiveFilters.length > 0
+  const advancedFilterCount = advancedActiveFilters.length
   const sensitiveInputClass = sensitiveVisible
     ? undefined
     : '[-webkit-text-security:disc]'
@@ -267,6 +287,19 @@ export function CommonLogsFilterBar<TData>(
   )
   const logTypeLabel =
     logTypeItems.find((type) => type.value === logType)?.label ?? t('All Types')
+  const billingAccountTypeValue = filters.billingAccountType || 'all'
+  const billingAccountTypeItems = useMemo(
+    () => [
+      { value: 'all', label: t('All Billing Types') },
+      { value: 'personal', label: t('Personal') },
+      { value: 'organization', label: t('Organization') },
+    ],
+    [t]
+  )
+  const billingAccountTypeLabel =
+    billingAccountTypeItems.find(
+      (item) => item.value === billingAccountTypeValue
+    )?.label ?? t('All Billing Types')
 
   const statsBar = (
     <div className='flex flex-wrap items-center gap-2'>
@@ -295,15 +328,7 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const actionStart = (
-    <div className='flex items-center gap-2'>
-      <CommonLogsExportButton
-        isAdmin={isAdmin}
-        total={props.total}
-        searchParams={searchParams}
-        columnFilters={props.table.getState().columnFilters}
-      />
-      {sensitiveToggle}
-    </div>
+    <div className='flex items-center gap-2'>{sensitiveToggle}</div>
   )
 
   const dateRangeFilter = (
@@ -375,8 +400,43 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
-  const advancedFilters = (
+  const billingAccountTypeFilter = isAdmin ? (
+    <LogsFilterField>
+      <Select
+        items={billingAccountTypeItems}
+        value={billingAccountTypeValue}
+        onValueChange={(value) => {
+          handleChange(
+            'billingAccountType',
+            value === null || value === 'all' ? undefined : value
+          )
+        }}
+      >
+        <SelectTrigger>
+          <SelectValue>{billingAccountTypeLabel}</SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {billingAccountTypeItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </LogsFilterField>
+  ) : null
+  const selectFilters = (
     <>
+      {typeFilter}
+      {billingAccountTypeFilter}
+    </>
+  )
+  const inputFilters = (
+    <>
+      {modelFilter}
+      {groupFilter}
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Token Name')}
@@ -403,6 +463,17 @@ export function CommonLogsFilterBar<TData>(
             placeholder={t('Channel ID')}
             value={filters.channel || ''}
             onChange={(e) => handleChange('channel', e.target.value)}
+            onKeyDown={handleKeyDown}
+          />
+        </LogsFilterField>
+      )}
+      {isAdmin && (
+        <LogsFilterField>
+          <LogsFilterInput
+            inputMode='numeric'
+            placeholder={t('Organization ID')}
+            value={filters.organizationId || ''}
+            onChange={(e) => handleChange('organizationId', e.target.value)}
             onKeyDown={handleKeyDown}
           />
         </LogsFilterField>
@@ -434,28 +505,21 @@ export function CommonLogsFilterBar<TData>(
       primaryFilters={
         <>
           {dateRangeFilter}
-          {modelFilter}
-          {groupFilter}
-          {typeFilter}
+          {selectFilters}
         </>
       }
-      advancedFilters={advancedFilters}
+      advancedFilters={inputFilters}
       mobilePinnedFilters={dateRangeFilter}
       mobileFilters={
         <>
-          {modelFilter}
-          {groupFilter}
-          {typeFilter}
-          {advancedFilters}
+          {selectFilters}
+          {inputFilters}
         </>
       }
-      mobileFilterCount={
-        [filters.model, filters.group, hasTypeFilter].filter(Boolean).length +
-        expandedFilterCount
-      }
-      hasAdvancedActiveFilters={hasExpandedFilters}
-      advancedFilterCount={expandedFilterCount}
-      hasActiveFilters={hasAdditionalFilters}
+      mobileFilterCount={activeFilterCount}
+      hasAdvancedActiveFilters={hasAdvancedActiveFilters}
+      advancedFilterCount={advancedFilterCount}
+      hasActiveFilters={hasActiveFilters}
       onSearch={handleApply}
       searchLoading={fetchingLogs > 0}
       onReset={handleReset}
