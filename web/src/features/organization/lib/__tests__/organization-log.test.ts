@@ -27,6 +27,7 @@ import {
   organizationLogResponsibleName,
   organizationLogTimeRangeParams,
   organizationLogTimeWindow,
+  organizationLogToUsageLog,
   organizationLogTokenName,
   organizationLogTypeMeta,
   ORGANIZATION_LOG_TYPE,
@@ -281,5 +282,33 @@ describe('organizationLogTokenName', () => {
 
   test('a row with neither reads as a dash', () => {
     expect(organizationLogTokenName(row({}))).toBe('-')
+  })
+})
+
+describe('organizationLogToUsageLog', () => {
+  test('fills the organization-owned billing fields for the shared dialog', () => {
+    const adapted = organizationLogToUsageLog(
+      row({
+        organization_id: 9,
+        organization_name: 'Acme',
+        responsible_user_id: 7,
+        responsible_name: 'alice',
+        token_name: 'ci',
+        model_name: 'gpt-4o',
+      })
+    )
+
+    expect(adapted.billing_account_type).toBe('organization')
+    expect(adapted.billing_account_id).toBe(9)
+    expect(adapted.organization_id).toBe(9)
+    expect(adapted.organization_name).toBe('Acme')
+    expect(adapted.responsible_user_id).toBe(7)
+    expect(adapted.responsible_name).toBe('alice')
+    expect(adapted.token_name).toBe('ci')
+    expect(adapted.model_name).toBe('gpt-4o')
+  })
+
+  test('keeps the blank organization content blank', () => {
+    expect(organizationLogToUsageLog(row({})).content).toBe('')
   })
 })

@@ -1,7 +1,7 @@
 # Usage Logs Unification — Design
 
 **Date:** 2026-11-02
-**Status:** Implemented — root/admin and personal page phases
+**Status:** Implemented — root/admin, personal page, and organization Logs enhancements
 
 ## Goal
 
@@ -110,6 +110,26 @@ full log remains in the organization detail Logs tab.
 - **Organization tab (implemented):** the organization detail Logs tab is
   hidden for plain members. Owner/admin keeps it for the organization-wide view.
 
+## Organization Logs tab (implemented 2026-11-02)
+
+The organization detail Logs tab remains the organization-wide view for
+owner/admin; plain members no longer see it.
+
+- **Details:** the organization-specific dialog was removed. The tab now uses
+  the shared `DetailsDialog` with `isAdmin=false`, `showResponsible` for wide
+  data, `showRequestDetails` (path, model, time, stream), and `showGroup=false`.
+  This adds the shared billing/token/subscription breakdown without exposing
+  platform diagnostics or the internal group.
+- **Filters:** log type, responsible member (a picker backed by the member
+  roster), upstream request ID, plus the existing time/model/key/request filters.
+  Group remains deliberately absent.
+- **Columns:** caller (`username`) added next to the responsible user; the
+  caller and the billing responsible person can differ.
+- **Presentation:** mobile card list (shared layout), error/refund row tints,
+  and a logs-specific default page size of 50.
+- **Backend:** `OrganizationLogListRequest` accepts `upstream_request_id`; the
+  existing type/responsible filters are used by the UI.
+
 ## Root/admin phase (this change)
 
 ### In scope
@@ -134,11 +154,9 @@ full log remains in the organization detail Logs tab.
 
 ### Out of scope (next phases)
 
-- Migrating the organization details dialog to the shared dialog.
-- A responsible-user filter (the column is visible, but filtering by it is
-  deferred).
-- Mobile parity for the organization scope; organization-wide logs remain in
-  the organization detail tab.
+- Server-side sorting on the organization log table.
+- A direct-route guard for members who bookmark the organization Logs tab; the
+  tab itself is hidden for them.
 
 ## Decisions
 
@@ -187,6 +205,14 @@ full log remains in the organization detail Logs tab.
   page; Usage / RPM / TPM on All.
 - `organization-center.ts`: the Logs tab requires wide-data access, so plain
   members no longer see it.
+- `organization-logs-section.tsx`: shared details dialog, type/upstream/responsible
+  filters, caller column, mobile list, row tints, logs page size.
+- `organization-log.ts`: `organizationLogToUsageLog` adapts an organization row
+  to the shared dialog shape.
+- `use-organization-member-options.ts`: member filter options for the
+  responsible picker.
+- `service/organization_log.go` + `controller/organization_log.go`:
+  `upstream_request_id` filter.
 
 ## Verification
 
@@ -198,6 +224,8 @@ full log remains in the organization detail Logs tab.
   responsible, legacy personal rows, filters, and split stats.
 - Frontend test for self-view params: `include_organization`, billing filters,
   and the admin-wide endpoint not asking for a union.
+- Organization tests: log section filters (type/upstream/responsible, no group),
+  shared details dialog org view, and the organization-row mapper.
 - Manual check with the local SQLite test site as root and admin: All view shows
   organization rows labeled; Only Mine shows personal plus own responsible
   organization rows; details show billing/responsible fields; no Export button

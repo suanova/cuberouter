@@ -102,6 +102,16 @@ export function useUsageLogsContext() {
 }
 
 /**
+ * The same context for components that are reused outside the usage-logs page
+ * (the organization log table's mobile list). There is no provider there, so a
+ * missing context means "render without the interactive user dialog" rather
+ * than an error.
+ */
+export function useUsageLogsContextOptional() {
+  return useContext(UsageLogsContext)
+}
+
+/**
  * Resolves the effective admin scope for usage logs: whether the current
  * user is allowed to view all users' logs (`canManageScope`), and whether
  * their current view preference (`viewScope`) has that scope active

@@ -973,6 +973,7 @@ export interface OrganizationLogListParams {
   model_name?: string
   group?: string
   request_id?: string
+  upstream_request_id?: string
   responsible_user_id?: number
   responsible_name?: string
   start_timestamp?: number

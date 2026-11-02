@@ -21,13 +21,20 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getOrganizationLogStats, listOrganizationLogs } from '../../api'
+import {
+  getOrganizationLogStats,
+  listOrganizationLogs,
+  listOrganizationMembers,
+} from '../../api'
 import type { OrganizationLogRow } from '../../types'
 import { OrganizationLogsSection } from '../organization-logs-section'
 
 // The URL is the page's state, not this section's; the harness supplies a fixed
-// empty set of search params instead of standing up a route.
-const pageRoute = vi.hoisted(() => ({ search: {}, navigate: vi.fn() }))
+// set of search params instead of standing up a route.
+const pageRoute = vi.hoisted(() => ({
+  search: {} as Record<string, unknown>,
+  navigate: vi.fn(),
+}))
 
 vi.mock('../organization-page-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../organization-page-provider')>()),
@@ -39,6 +46,7 @@ vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
   listOrganizationLogs: vi.fn(),
   getOrganizationLogStats: vi.fn(),
+  listOrganizationMembers: vi.fn(),
 }))
 
 // @lobehub/icons transitively imports @emoji-mart JSON assets that vitest's
@@ -50,6 +58,7 @@ vi.mock('@/lib/lobe-icon', () => ({
 
 const listLogsMock = vi.mocked(listOrganizationLogs)
 const logStatsMock = vi.mocked(getOrganizationLogStats)
+const listMembersMock = vi.mocked(listOrganizationMembers)
 
 const ORGANIZATION_ID = 7
 
@@ -92,6 +101,7 @@ function renderSection(): void {
 }
 
 beforeEach(() => {
+  pageRoute.search = {}
   listLogsMock.mockReset().mockResolvedValue({
     success: true,
     data: {
@@ -105,21 +115,25 @@ beforeEach(() => {
     success: true,
     data: { quota: 1_000, rpm: 1, tpm: 2 },
   })
+  listMembersMock.mockReset().mockResolvedValue({
+    success: true,
+    data: { page: 1, page_size: 100, total: 0, items: [] },
+  })
 })
 
 describe('organization logs section', () => {
-  test('does not offer group or type filters', () => {
+  test('offers the type and responsible filters but not the group filter', () => {
     renderSection()
 
-    expect(screen.queryByPlaceholderText('Group')).not.toBeInTheDocument()
-    // The type filter lived behind the advanced-filter toggle; with no
-    // advanced filters left there is no toggle to open.
+    expect(screen.getByText('All Types')).toBeInTheDocument()
+    expect(screen.getByText('All members')).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: /Expand/ })
-    ).not.toBeInTheDocument()
+      screen.getByPlaceholderText('Upstream Request ID')
+    ).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText('Group')).not.toBeInTheDocument()
   })
 
-  test('does not render a group column or the group value', async () => {
+  test('renders the caller column but not a group column or value', async () => {
     renderSection()
 
     // Wait for the current DOM, not a node `findByText` happened to catch
@@ -135,12 +149,20 @@ describe('organization logs section', () => {
       screen.getByRole('columnheader', { name: 'Type' })
     ).toBeInTheDocument()
     expect(
+      screen.getByRole('columnheader', { name: 'Caller' })
+    ).toBeInTheDocument()
+    expect(
       screen.queryByRole('columnheader', { name: 'Group' })
     ).not.toBeInTheDocument()
     expect(screen.queryByText('vip-group')).not.toBeInTheDocument()
   })
 
-  test('does not send type or group filters to the log endpoints', async () => {
+  test('sends type, upstream request and responsible filters but never group', async () => {
+    pageRoute.search = {
+      logType: '2',
+      logUpstreamRequest: 'up-1',
+      logResponsible: '42',
+    }
     renderSection()
 
     await waitFor(
@@ -152,11 +174,15 @@ describe('organization logs section', () => {
     )
 
     const listParams = listLogsMock.mock.calls[0]?.[2]
-    expect(listParams).not.toHaveProperty('type')
+    expect(listParams?.type).toBe(2)
+    expect(listParams?.upstream_request_id).toBe('up-1')
+    expect(listParams?.responsible_user_id).toBe(42)
     expect(listParams).not.toHaveProperty('group')
 
     const statsParams = logStatsMock.mock.calls[0]?.[2]
-    expect(statsParams).not.toHaveProperty('type')
+    expect(statsParams?.type).toBe(2)
+    expect(statsParams?.upstream_request_id).toBe('up-1')
+    expect(statsParams?.responsible_user_id).toBe(42)
     expect(statsParams).not.toHaveProperty('group')
   })
 })

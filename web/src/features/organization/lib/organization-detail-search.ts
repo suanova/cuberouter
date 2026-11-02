@@ -109,9 +109,11 @@ export const organizationDetailSearchSchema = z.object({
   // (OrganizationLogListRequest in service/organization_log.go). All of them are
   // single-valued, and a single-valued filter that is offered as a multi-select
   // would put a spelling in the URL the endpoint cannot read.
+  logType: z.string().optional().catch(''),
   logModel: z.string().optional().catch(''),
   logToken: z.string().optional().catch(''),
   logRequest: z.string().optional().catch(''),
+  logUpstreamRequest: z.string().optional().catch(''),
   logResponsible: z.string().optional().catch(''),
 
   // Tasks — the panel, then the async task filters the endpoint accepts
