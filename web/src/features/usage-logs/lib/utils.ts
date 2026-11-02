@@ -194,7 +194,9 @@ export function buildApiParams(config: {
     ...(searchParams.type ? { type: processType(searchParams.type) } : {}),
     ...(searchParams.model ? { model_name: String(searchParams.model) } : {}),
     ...(searchParams.token ? { token_name: String(searchParams.token) } : {}),
-    ...(searchParams.group ? { group: String(searchParams.group) } : {}),
+    ...(isAdmin && searchParams.group
+      ? { group: String(searchParams.group) }
+      : {}),
     ...(isAdmin && searchParams.channel
       ? { channel: Number(searchParams.channel) || 0 }
       : {}),
@@ -207,10 +209,9 @@ export function buildApiParams(config: {
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
-    ...(isAdmin && billingAccountType
-      ? { billing_account_type: billingAccountType }
-      : {}),
-    ...(isAdmin && searchParams.organizationId
+    ...(!isAdmin ? { include_organization: true } : {}),
+    ...(billingAccountType ? { billing_account_type: billingAccountType } : {}),
+    ...(searchParams.organizationId
       ? { organization_id: Number(searchParams.organizationId) || 0 }
       : {}),
     ...buildTimeRangeParams(searchParams, false),
@@ -232,7 +233,7 @@ export function buildApiParams(config: {
           params.token_name = String(value)
           break
         case 'group':
-          params.group = String(value)
+          if (isAdmin) params.group = String(value)
           break
         case 'channel':
           if (isAdmin) params.channel = Number(value) || 0

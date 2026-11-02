@@ -263,6 +263,10 @@ export interface LogOtherData {
  */
 export interface LogStatistics {
   quota: number
+  /** Personal-billed share of the caller's own logs. */
+  personal_quota?: number
+  /** Organization-billed share where the caller is the responsible person. */
+  organization_quota?: number
   rpm: number
   tpm: number
 }
@@ -399,6 +403,7 @@ export interface GetLogsParams {
   upstream_request_id?: string
   billing_account_type?: 'personal' | 'organization'
   organization_id?: number
+  include_organization?: boolean
 }
 
 export interface GetLogsResponse {
@@ -425,6 +430,7 @@ export interface GetLogStatsParams {
   upstream_request_id?: string
   billing_account_type?: 'personal' | 'organization'
   organization_id?: number
+  include_organization?: boolean
 }
 
 export interface GetLogStatsResponse {

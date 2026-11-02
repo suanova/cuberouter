@@ -81,6 +81,42 @@ export function CommonLogsStats() {
         <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
+        {!isAdmin && <Skeleton className='h-7 w-[120px] rounded-md' />}
+      </div>
+    )
+  }
+
+  if (!isAdmin) {
+    return (
+      <div className='flex flex-wrap items-center gap-2'>
+        <StatBadge
+          label={t('Personal')}
+          value={
+            sensitiveVisible
+              ? formatLogQuota(stats?.personal_quota || 0)
+              : '••••'
+          }
+          accent='bg-sky-500/70'
+        />
+        <StatBadge
+          label={t('Organization')}
+          value={
+            sensitiveVisible
+              ? formatLogQuota(stats?.organization_quota || 0)
+              : '••••'
+          }
+          accent='bg-violet-500/70'
+        />
+        <StatBadge
+          label={t('RPM')}
+          value={stats?.rpm || 0}
+          accent='bg-rose-500/65'
+        />
+        <StatBadge
+          label={t('TPM')}
+          value={stats?.tpm || 0}
+          accent='bg-slate-400/70'
+        />
       </div>
     )
   }

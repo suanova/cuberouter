@@ -1,7 +1,7 @@
 # Usage Logs Unification — Design
 
 **Date:** 2026-11-02
-**Status:** Implemented — root/admin phase; personal page is next
+**Status:** Implemented — root/admin and personal page phases
 
 ## Goal
 
@@ -72,9 +72,7 @@ for this role beyond the root/admin work already implemented.
   the backend endpoints are already `OpsAuth`, so the billing filters added in
   the root/admin phase apply to ops without extra changes.
 
-## Personal page (next phase)
-
-**Status:** Next phase; not part of the root/admin change.
+## Personal page (all users)
 
 This is the Only Mine view for platform roles and the only logs view for
 ordinary users. Organization role does not change it: an organization
@@ -105,11 +103,11 @@ full log remains in the organization detail Logs tab.
 - **Details:** the shared dialog with platform diagnostics off
   (`isAdmin=false`). Show Billing Account; keep the request content for the
   caller's own organization-billed requests; no platform diagnostics.
-- **Backend (next phase):** `/api/log/self` and `/api/log/self/stat` will accept
+- **Backend (implemented):** `/api/log/self` and `/api/log/self/stat` accept
   `include_organization=true`, `billing_account_type`, and `organization_id`
-  (the latter always scoped to `responsible_user_id=me`); stats will return split
+  (the latter always scoped to `responsible_user_id=me`); stats return split
   personal/organization quota.
-- **Organization tab (next phase):** the organization detail Logs tab will be
+- **Organization tab (implemented):** the organization detail Logs tab is
   hidden for plain members. Owner/admin keeps it for the organization-wide view.
 
 ## Root/admin phase (this change)
@@ -136,8 +134,6 @@ full log remains in the organization detail Logs tab.
 
 ### Out of scope (next phases)
 
-- Personal-page union backend (`/api/log/self` + `/stat`) and the personal page.
-- Removing the organization Logs tab for ordinary members.
 - Migrating the organization details dialog to the shared dialog.
 - A responsible-user filter (the column is visible, but filtering by it is
   deferred).
@@ -179,6 +175,18 @@ full log remains in the organization detail Logs tab.
   `organization_id` filters on `GET /api/log/` and `/api/log/stat`.
 - Remove `common-logs-export-button.tsx`, `lib/logs-export.ts`, and the export
   button tests; drop the Export button from the filter bar.
+- `model/log.go`: `userLogScopeQuery` (personal + responsible organization
+  rows), `GetUserLogs`/`GetUserLogStats` union and split stats; `controller/log.go`
+  reads `include_organization`, `billing_account_type`, `organization_id`.
+- `common-logs-columns.tsx`: Billing Account is visible in the personal page;
+  Channel/User/Responsible remain admin-only.
+- `common-logs-filter-bar.tsx`: billing account select for everyone; organization
+  select from `GET /api/organizations` for the personal page; Group input only on
+  the platform All page.
+- `common-logs-stats.tsx`: Personal / Organization / RPM / TPM on the personal
+  page; Usage / RPM / TPM on All.
+- `organization-center.ts`: the Logs tab requires wide-data access, so plain
+  members no longer see it.
 
 ## Verification
 
@@ -186,7 +194,11 @@ full log remains in the organization detail Logs tab.
 - Unit tests for the billing/responsible helpers (legacy empty type,
   organization name fallback, responsible fallback).
 - Go test for admin billing filters, including legacy empty types and stats.
-- Frontend test for admin billing params.
+- Go test for the personal union: responsible organization rows, caller vs
+  responsible, legacy personal rows, filters, and split stats.
+- Frontend test for self-view params: `include_organization`, billing filters,
+  and the admin-wide endpoint not asking for a union.
 - Manual check with the local SQLite test site as root and admin: All view shows
-  organization rows labeled; details show billing/responsible fields; no Export
-  button appears.
+  organization rows labeled; Only Mine shows personal plus own responsible
+  organization rows; details show billing/responsible fields; no Export button
+  appears.

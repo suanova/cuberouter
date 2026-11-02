@@ -243,7 +243,7 @@ func TestPersonalLogQueriesFilterOutOrganizationLogs(t *testing.T) {
 	require.NoError(t, LOG_DB.Create(&personal).Error)
 	require.NoError(t, LOG_DB.Create(&organization).Error)
 
-	logs, total, err := GetUserLogs(user.Id, LogTypeUnknown, 0, 0, "", "", 0, 20, "", "", "")
+	logs, total, err := GetUserLogs(user.Id, LogTypeUnknown, 0, 0, "", "", 0, 20, "", "", "", false, "", 0)
 	require.NoError(t, err)
 	require.EqualValues(t, 2, total)
 	require.Len(t, logs, 2)

@@ -757,7 +757,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {props.isAdmin && (
+          {(props.isAdmin || billingAccount.type === 'organization') && (
             <DetailRow
               label={t('Billing Account')}
               value={billingAccountLabel}
