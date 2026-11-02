@@ -37,7 +37,7 @@ describe('admin billing filters in log API params', () => {
     expect(params.organization_id).toBe(7)
   })
 
-  test('ignores billing filters for a self view', () => {
+  test('passes billing filters and the organization union for a self view', () => {
     const params = buildApiParams({
       page: 1,
       pageSize: 20,
@@ -48,8 +48,20 @@ describe('admin billing filters in log API params', () => {
       isAdmin: false,
     })
 
-    expect(params).not.toHaveProperty('billing_account_type')
-    expect(params).not.toHaveProperty('organization_id')
+    expect(params.billing_account_type).toBe('organization')
+    expect(params.organization_id).toBe(7)
+    expect(params.include_organization).toBe(true)
+  })
+
+  test('does not ask the admin-wide endpoint for a union', () => {
+    const params = buildApiParams({
+      page: 1,
+      pageSize: 20,
+      searchParams: {},
+      isAdmin: true,
+    })
+
+    expect(params).not.toHaveProperty('include_organization')
   })
 
   test('drops an unrecognized billing type from a stale URL', () => {

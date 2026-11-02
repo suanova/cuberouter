@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQueryClient, useIsFetching } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import type { Table } from '@tanstack/react-table'
 import { Eye, EyeOff } from 'lucide-react'
@@ -37,6 +37,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { getOrganizations } from '@/features/organization/api'
+import { getAccountContextCacheKey } from '@/stores/account-context-store'
 
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
@@ -123,6 +125,18 @@ export function CommonLogsFilterBar<TData>(
   const { isAdminView: isAdmin } = useLogsViewScope('common')
   const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
+  const organizationsQuery = useQuery({
+    queryKey: [
+      'organizations',
+      'self',
+      'log-filter',
+      getAccountContextCacheKey(),
+    ],
+    queryFn: getOrganizations,
+    enabled: !isAdmin,
+    staleTime: 5 * 60 * 1000,
+  })
+  const organizations = organizationsQuery.data?.data ?? []
 
   const searchState = useMemo<CommonLogDraft>(() => {
     const { start, end } = getDefaultTimeRange()
@@ -264,7 +278,7 @@ export function CommonLogsFilterBar<TData>(
   const activeFilterCount = activeFilters.length
   const advancedActiveFilters = [
     filters.model,
-    filters.group,
+    isAdmin ? filters.group : undefined,
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
@@ -400,7 +414,7 @@ export function CommonLogsFilterBar<TData>(
       </Select>
     </LogsFilterField>
   )
-  const billingAccountTypeFilter = isAdmin ? (
+  const billingAccountTypeFilter = (
     <LogsFilterField>
       <Select
         items={billingAccountTypeItems}
@@ -426,17 +440,63 @@ export function CommonLogsFilterBar<TData>(
         </SelectContent>
       </Select>
     </LogsFilterField>
-  ) : null
+  )
+  const organizationFilter =
+    !isAdmin && organizations.length > 0 ? (
+      <LogsFilterField>
+        <Select
+          items={[
+            { value: 'all', label: t('All organizations') },
+            ...organizations.map((organization) => ({
+              value: String(organization.id),
+              label: organization.name,
+            })),
+          ]}
+          value={filters.organizationId || 'all'}
+          onValueChange={(value) => {
+            handleChange(
+              'organizationId',
+              value === null || value === 'all' ? undefined : value
+            )
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue>
+              {filters.organizationId
+                ? (organizations.find(
+                    (organization) =>
+                      String(organization.id) === filters.organizationId
+                  )?.name ?? `#${filters.organizationId}`)
+                : t('All organizations')}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              <SelectItem value='all'>{t('All organizations')}</SelectItem>
+              {organizations.map((organization) => (
+                <SelectItem
+                  key={organization.id}
+                  value={String(organization.id)}
+                >
+                  {organization.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </LogsFilterField>
+    ) : null
   const selectFilters = (
     <>
       {typeFilter}
       {billingAccountTypeFilter}
+      {organizationFilter}
     </>
   )
   const inputFilters = (
     <>
       {modelFilter}
-      {groupFilter}
+      {isAdmin && groupFilter}
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Token Name')}

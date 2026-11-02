@@ -234,9 +234,9 @@ describe('getOrganizationTabs', () => {
     // the organization-wide usage outright, so a tab here would lead nowhere.
     expect(keys).not.toContain('overview')
     expect(keys).not.toContain('members')
-    // What a member may still read is untouched by that, including the keyring
-    // they manage their own keys from.
-    expect(keys).toEqual(['tokens', 'logs', 'usage', 'tasks'])
+    // Organization-wide logs moved to the usage logs personal page for members;
+    // what a member may still read here is the keyring and their own usage.
+    expect(keys).toEqual(['tokens', 'usage', 'tasks'])
   })
 
   test('an owner keeps the overview and the members tab', () => {

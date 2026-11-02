@@ -888,16 +888,26 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
-	var tx *gorm.DB
-	if logType == LogTypeUnknown {
-		tx = personalLogScopeQuery(LOG_DB.Where("logs.user_id = ?", userId))
-	} else {
-		tx = personalLogScopeQuery(LOG_DB.Where("logs.user_id = ? and logs.type = ?", userId, logType))
+// userLogScopeQuery returns the caller's own rows: personal-billed rows always,
+// plus organization-billed rows the caller is responsible for when
+// includeOrganization is set. Responsibility is the billing responsibility
+// snapshot on the row, not the caller, so a row another member triggered still
+// belongs here when this user is the responsible person.
+func userLogScopeQuery(db *gorm.DB, userId int, includeOrganization bool) *gorm.DB {
+	personal := "(logs.user_id = ? AND (logs.scope_type = ? OR logs.scope_type = ''))"
+	if !includeOrganization {
+		return db.Where(personal, userId, AccountContextTypePersonal)
 	}
+	return db.Where(
+		"("+personal+" OR (logs.billing_account_type = ? AND logs.responsible_user_id = ?))",
+		userId, AccountContextTypePersonal, AccountContextTypeOrganization, userId,
+	)
+}
 
+func applyUserLogFilters(tx *gorm.DB, modelName string, tokenName string, group string, requestId string, upstreamRequestId string, billingAccountType string, organizationId int, startTimestamp int64, endTimestamp int64, includeTimeRange bool) (*gorm.DB, error) {
+	var err error
 	if tx, err = applyExplicitLogTextFilter(tx, "logs.model_name", modelName); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if tokenName != "" {
 		tx = tx.Where("logs.token_name = ?", tokenName)
@@ -908,14 +918,28 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if upstreamRequestId != "" {
 		tx = tx.Where("logs.upstream_request_id = ?", upstreamRequestId)
 	}
-	if startTimestamp != 0 {
-		tx = tx.Where("logs.created_at >= ?", startTimestamp)
-	}
-	if endTimestamp != 0 {
-		tx = tx.Where("logs.created_at <= ?", endTimestamp)
-	}
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
+	}
+	tx = applyLogBillingFilter(tx, "logs.", billingAccountType, organizationId)
+	if includeTimeRange {
+		if startTimestamp != 0 {
+			tx = tx.Where("logs.created_at >= ?", startTimestamp)
+		}
+		if endTimestamp != 0 {
+			tx = tx.Where("logs.created_at <= ?", endTimestamp)
+		}
+	}
+	return tx, nil
+}
+
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string, includeOrganization bool, billingAccountType string, organizationId int) (logs []*Log, total int64, err error) {
+	tx := userLogScopeQuery(LOG_DB, userId, includeOrganization)
+	if logType != LogTypeUnknown {
+		tx = tx.Where("logs.type = ?", logType)
+	}
+	if tx, err = applyUserLogFilters(tx, modelName, tokenName, group, requestId, upstreamRequestId, billingAccountType, organizationId, startTimestamp, endTimestamp, true); err != nil {
+		return nil, 0, err
 	}
 	err = tx.Model(&Log{}).Limit(logSearchCountLimit).Count(&total).Error
 	if err != nil {
@@ -934,6 +958,96 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 
 	formatUserLogs(logs, startIdx)
 	return logs, total, err
+}
+
+// UserLogStat splits the caller's quota between personal billing and
+// organization billing where the caller is responsible. RPM/TPM cover the
+// caller's whole scope over the last sixty seconds, matching the organization
+// stats and ignoring the selected time range.
+type UserLogStat struct {
+	Quota             int `json:"quota"`
+	PersonalQuota     int `json:"personal_quota"`
+	OrganizationQuota int `json:"organization_quota"`
+	Rpm               int `json:"rpm"`
+	Tpm               int `json:"tpm"`
+}
+
+func GetUserLogStats(userId int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, group string, requestId string, upstreamRequestId string, includeOrganization bool, billingAccountType string, organizationId int) (UserLogStat, error) {
+	var stat UserLogStat
+
+	sumQuota := func(tx *gorm.DB) (int, error) {
+		var row struct {
+			Quota int
+		}
+		err := tx.Model(&Log{}).
+			Where("logs.type = ?", LogTypeConsume).
+			Select("COALESCE(SUM(logs.quota), 0) AS quota").
+			Scan(&row).Error
+		return row.Quota, err
+	}
+
+	scopeQuery := func() *gorm.DB {
+		return userLogScopeQuery(LOG_DB, userId, includeOrganization)
+	}
+
+	totalQuery, err := applyUserLogFilters(scopeQuery(), modelName, tokenName, group, requestId, upstreamRequestId, billingAccountType, organizationId, startTimestamp, endTimestamp, true)
+	if err != nil {
+		return stat, err
+	}
+	if stat.Quota, err = sumQuota(totalQuery); err != nil {
+		common.SysError("failed to query user log quota: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	personalQuery, err := applyUserLogFilters(
+		personalLogScopeQuery(LOG_DB.Where("logs.user_id = ?", userId)),
+		modelName, tokenName, group, requestId, upstreamRequestId, billingAccountType, organizationId,
+		startTimestamp, endTimestamp, true,
+	)
+	if err != nil {
+		return stat, err
+	}
+	if stat.PersonalQuota, err = sumQuota(personalQuery); err != nil {
+		common.SysError("failed to query personal log quota: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+
+	if includeOrganization {
+		organizationQuery, err := applyUserLogFilters(
+			LOG_DB.Where("logs.billing_account_type = ? AND logs.responsible_user_id = ?", AccountContextTypeOrganization, userId),
+			modelName, tokenName, group, requestId, upstreamRequestId, billingAccountType, organizationId,
+			startTimestamp, endTimestamp, true,
+		)
+		if err != nil {
+			return stat, err
+		}
+		if stat.OrganizationQuota, err = sumQuota(organizationQuery); err != nil {
+			common.SysError("failed to query organization log quota: " + err.Error())
+			return stat, errors.New("查询统计数据失败")
+		}
+	}
+
+	rpmTpmQuery, err := applyUserLogFilters(scopeQuery(), modelName, tokenName, group, requestId, upstreamRequestId, billingAccountType, organizationId, 0, 0, false)
+	if err != nil {
+		return stat, err
+	}
+	var rateStat struct {
+		Rpm int
+		Tpm int
+	}
+	err = rpmTpmQuery.Model(&Log{}).
+		Where("logs.type = ?", LogTypeConsume).
+		Where("logs.created_at >= ?", time.Now().Add(-60*time.Second).Unix()).
+		Select("COUNT(*) AS rpm, COALESCE(SUM(logs.prompt_tokens), 0) + COALESCE(SUM(logs.completion_tokens), 0) AS tpm").
+		Scan(&rateStat).Error
+	if err != nil {
+		common.SysError("failed to query user log rpm/tpm: " + err.Error())
+		return stat, errors.New("查询统计数据失败")
+	}
+	stat.Rpm = rateStat.Rpm
+	stat.Tpm = rateStat.Tpm
+
+	return stat, nil
 }
 
 type Stat struct {
