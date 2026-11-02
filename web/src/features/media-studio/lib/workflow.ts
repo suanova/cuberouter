@@ -112,32 +112,78 @@ export function templateDraft(
     parent_id: template.mode === 'edit' ? current.parent_id : undefined,
   }
 }
+// 参考图 / 蒙版在草稿里是 data URL；上传 multipart 前还原成 Blob。
+function dataUrlToBlob(dataURL: string): Blob {
+  const comma = dataURL.indexOf(',')
+  const meta = dataURL.slice(5, comma)
+  const mime = /^([^;]+)/.exec(meta)?.[1] || 'application/octet-stream'
+  const raw = atob(dataURL.slice(comma + 1))
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i++) {
+    bytes[i] = raw.charCodeAt(i)
+  }
+  return new Blob([bytes], { type: mime })
+}
+
+// blob 媒体类型 → 文件扩展名。part 文件名带着扩展名好让上游按 MIME 识别,默认 png。
+function extension(mime: string): string {
+  switch (mime) {
+    case 'image/webp':
+      return '.webp'
+    case 'image/jpeg':
+      return '.jpg'
+    default:
+      return '.png'
+  }
+}
+
 export function imageRequest(
   draft: WorkflowDraft,
   referenceURLs: string[] = [],
   maskURL?: string
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {
+): Record<string, unknown> | FormData {
+  const formValues: Record<string, string> = {
+    model: draft.model,
+    prompt: draft.prompt.trim(),
+    n: String(draft.count),
+    size: draft.size,
+    quality: draft.quality,
+    // 画质档位既用于按张计费价目表,也决定机器原生推理步数;显式填写的
+    // steps/cfg/seed 优先，留空才回落到档位与机器默认值。
+    num_inference_steps: String(draft.steps ?? qualitySteps(draft.quality)),
+    seed: String(draft.seed ?? DEFAULT_PARAMS.seed),
+    true_cfg_scale: String(draft.cfg ?? DEFAULT_PARAMS.cfg),
+  }
+
+  if (draft.mode === 'edit' && referenceURLs.length) {
+    // 编辑请求走 multipart/form-data:参考图与蒙版各为一个 file part,标量走
+    // form 字段,直接贴合 OpenAI 兼容的 /v1/images/edits 上游,不再把 image/mask
+    // base64 内联进 JSON。
+    const form = new FormData()
+    for (const [key, value] of Object.entries(formValues)) {
+      form.append(key, value)
+    }
+    referenceURLs.forEach((url, index) => {
+      const blob = dataUrlToBlob(url)
+      form.append('image', blob, `image-${index + 1}${extension(blob.type)}`)
+    })
+    // 蒙版是同尺寸 PNG（透明 = 重绘区）,只有用户真的框了区域才带。
+    if (maskURL) {
+      const maskBlob = dataUrlToBlob(maskURL)
+      form.append('mask', maskBlob, `mask${extension(maskBlob.type)}`)
+    }
+    return form
+  }
+
+  // 文生图没有图片,保持原先的 JSON 结构(数值字段仍为数字)。
+  return {
     model: draft.model,
     prompt: draft.prompt.trim(),
     n: draft.count,
     size: draft.size,
-    // 画质档位既用于按张计费价目表,也决定机器原生推理步数;显式填写的
-    // steps/cfg/seed 优先，留空才回落到档位与机器默认值。
     quality: draft.quality,
     num_inference_steps: draft.steps ?? qualitySteps(draft.quality),
     seed: draft.seed ?? DEFAULT_PARAMS.seed,
     true_cfg_scale: draft.cfg ?? DEFAULT_PARAMS.cfg,
   }
-  if (draft.mode === 'edit' && referenceURLs.length) {
-    // 编辑渠道只认内联 base64：参考图在 draft 里本来就是 data URL，直接下发，
-    // 多张时用数组。下发网址会被上游按 base64 解码，报 Incorrect padding。
-    body.image =
-      referenceURLs.length === 1 ? referenceURLs[0] : referenceURLs
-    // 蒙版是同尺寸 PNG（透明 = 重绘区），只有用户真的框了区域才带。
-    if (maskURL) {
-      body.mask = maskURL
-    }
-  }
-  return body
 }

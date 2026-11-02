@@ -60,7 +60,6 @@ const (
 	ChannelTypeSub2API        = 60
 	ChannelTypeNewAPI         = 61
 	ChannelTypeTaskPlugin     = 62
-	ChannelTypeImageEdit      = 63
 	ChannelTypeCubeStack      = 64
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
@@ -201,7 +200,6 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeSub2API:        "Sub2API",
 	ChannelTypeNewAPI:         "New API",
 	ChannelTypeTaskPlugin:     "Task Plugin",
-	ChannelTypeImageEdit:      "Image Edit (Base64)",
 	ChannelTypeCubeStack:      "CubeStack",
 }
 
