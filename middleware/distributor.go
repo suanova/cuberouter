@@ -1,10 +1,14 @@
 package middleware
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -313,6 +317,57 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 	return &modelRequest, nil
 }
 
+// readBodyFormValue 从 multipart/form-data（或表单 URL 编码）请求体中读出指定表单字段的值。
+// 与 c.PostForm 不同，它基于可重放的 BodyStorage 读取，不会消费/替换 c.Request.Body，
+// 因此下游仍能用同一份 body 做复用解析（图片编辑的上传文件 part 留待适配器读取）。
+func readBodyFormValue(c *gin.Context, key string) string {
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return ""
+	}
+	requestBody, err := storage.Bytes()
+	if err != nil {
+		return ""
+	}
+	// 每次读取前把可重放 body 复位，保证后续解析依旧完整。
+	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
+		return ""
+	}
+	c.Request.Body = io.NopCloser(storage)
+
+	contentType := c.Request.Header.Get("Content-Type")
+	if !strings.Contains(contentType, "multipart/form-data") {
+		values, err := url.ParseQuery(string(requestBody))
+		if err != nil {
+			return ""
+		}
+		return values.Get(key)
+	}
+
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil || params["boundary"] == "" {
+		return ""
+	}
+	reader := multipart.NewReader(bytes.NewReader(requestBody), params["boundary"])
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			return ""
+		}
+		// 只读标量表单值，遇到文件 part 直接跳过。
+		if part.FormName() == "" {
+			_ = part.Close()
+			continue
+		}
+		if part.FileName() == "" && part.FormName() == key {
+			value, _ := io.ReadAll(part)
+			_ = part.Close()
+			return string(value)
+		}
+		_ = part.Close()
+	}
+}
+
 func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
@@ -528,14 +583,19 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/generations") {
 		modelRequest.Model = common.GetStringIfEmpty(modelRequest.Model, "dall-e")
-	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/edits") {
-		//modelRequest.Model = common.GetStringIfEmpty(c.PostForm("model"), "gpt-image-1")
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/images/edits") || strings.HasPrefix(c.Request.URL.Path, "/pg/images/edits") {
+		// 图片编辑可能以 multipart/form-data 提交（参考图/蒙版作为 file、标量走表单字段）。
+		// 此时 getModelFromRequest 只会按 JSON 解 body，拿不到 model；而这里若直接用
+		// c.PostForm/ParseMultipartForm 会消费 c.Request.Body，破坏后面的可重放 body 解析。
+		// 改为基于可重放 BodyStorage 读取 model 表单值，不消费 body 也不碰文件 part。
 		contentType := c.ContentType()
 		if slices.Contains([]string{gin.MIMEPOSTForm, gin.MIMEMultipartPOSTForm}, contentType) {
-			req, err := getModelFromRequest(c)
-			if err == nil && req.Model != "" {
-				modelRequest.Model = req.Model
+			model := readBodyFormValue(c, "model")
+			if model != "" {
+				modelRequest.Model = model
 			}
+		} else if req, err := getModelFromRequest(c); err == nil && req.Model != "" {
+			modelRequest.Model = req.Model
 		}
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/audio") {
