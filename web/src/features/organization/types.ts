@@ -453,6 +453,13 @@ export interface OrganizationLogRow {
   request_id?: string
   upstream_request_id?: string
   other?: string
+  scope_type?: string
+  scope_id?: number
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
+  actor_user_id?: number
   creator_user_id?: number
   creator_name?: string
   responsible_user_id?: number

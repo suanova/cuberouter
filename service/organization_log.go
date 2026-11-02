@@ -38,6 +38,7 @@ type OrganizationLogListRequest struct {
 	ModelName         string
 	Group             string
 	RequestId         string
+	UpstreamRequestId string
 	StartTimestamp    int64
 	EndTimestamp      int64
 }
@@ -221,6 +222,9 @@ func applyOrganizationLogFilters(tx *gorm.DB, operatorUserId, organizationId int
 	}
 	if req.RequestId != "" {
 		tx = tx.Where("request_id = ?", req.RequestId)
+	}
+	if req.UpstreamRequestId != "" {
+		tx = tx.Where("upstream_request_id = ?", req.UpstreamRequestId)
 	}
 	if includeTimeRange {
 		if req.StartTimestamp > 0 {

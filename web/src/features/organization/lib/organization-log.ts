@@ -18,6 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { StatusVariant } from '@/components/status-badge'
+import type { UsageLog } from '@/features/usage-logs/data/schema'
 import { parseLogOther } from '@/features/usage-logs/lib/format'
 import type { LogOtherData } from '@/features/usage-logs/types'
 
@@ -255,4 +256,53 @@ export function organizationLogTokenName(row: OrganizationLogRow): string {
   if (row.token_name) return row.token_name
   if (row.token_id) return `#${row.token_id}`
   return '-'
+}
+
+/**
+ * Adapt one organization log row to the shared usage-log row shape.
+ *
+ * The two endpoints return the same `model.Log`, but the organization view's
+ * type omits fields it never displays and blanks `content` on the server. The
+ * shared details dialog expects the full personal-row shape, so fill the
+ * organization-owned defaults explicitly rather than casting.
+ */
+export function organizationLogToUsageLog(row: OrganizationLogRow): UsageLog {
+  const model = organizationLogModelInfo(row)
+  const organizationId = row.organization_id ?? row.billing_account_id ?? 0
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    created_at: row.created_at,
+    type: row.type,
+    content: row.content ?? '',
+    username: row.username ?? '',
+    token_name: organizationLogTokenName(row),
+    model_name: model.name,
+    quota: row.quota,
+    prompt_tokens: row.prompt_tokens,
+    completion_tokens: row.completion_tokens,
+    use_time: row.use_time,
+    is_stream: row.is_stream,
+    channel: row.channel ?? 0,
+    channel_name: row.channel_name ?? '',
+    token_id: row.token_id ?? 0,
+    group: row.group ?? '',
+    ip: row.ip ?? '',
+    other: row.other ?? '',
+    request_id: row.request_id ?? '',
+    upstream_request_id: row.upstream_request_id ?? '',
+    scope_type: row.scope_type ?? 'organization',
+    scope_id: row.scope_id ?? organizationId,
+    billing_account_type: row.billing_account_type ?? 'organization',
+    billing_account_id: row.billing_account_id ?? organizationId,
+    organization_id: organizationId,
+    organization_name: row.organization_name ?? '',
+    actor_user_id: row.actor_user_id ?? 0,
+    creator_user_id: row.creator_user_id ?? 0,
+    creator_name: row.creator_name ?? '',
+    responsible_user_id: row.responsible_user_id ?? 0,
+    responsible_name: row.responsible_name ?? '',
+    responsible_username: row.responsible_username ?? '',
+    responsible_display_name: row.responsible_display_name ?? '',
+  }
 }

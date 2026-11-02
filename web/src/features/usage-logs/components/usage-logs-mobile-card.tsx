@@ -49,7 +49,7 @@ import {
 } from '../lib/utils'
 import type { LogCategory } from '../types'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
-import { useUsageLogsContext } from './usage-logs-provider'
+import { useUsageLogsContextOptional } from './usage-logs-provider'
 
 const logTypeRowTint: Record<number, string> = {
   [LOG_TYPE_ENUM.ERROR]:
@@ -243,10 +243,21 @@ function MobileTokensField({ log }: { log: UsageLog }) {
 
 /** Mobile-only User block: own layout so avatar/name always line up on the same baseline. */
 function MobileUserField({ log }: { log: UsageLog }) {
-  const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-    useUsageLogsContext()
+  const context = useUsageLogsContextOptional()
 
   if (!log.username) return null
+
+  if (!context) {
+    return (
+      <div className='bg-muted/20 flex min-w-0 items-center px-2 py-1.5'>
+        <span className='text-foreground min-w-0 truncate text-sm'>
+          {log.username}
+        </span>
+      </div>
+    )
+  }
+
+  const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } = context
 
   return (
     <button
@@ -363,7 +374,7 @@ function CommonLogsCard<TData>({
         )}
         <SummaryField
           label={t('Details')}
-          cell={cells.get('content')}
+          cell={cells.get('content') ?? cells.get('details')}
           className='col-span-2 bg-transparent px-0 py-0'
         />
       </div>

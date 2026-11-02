@@ -21,6 +21,9 @@ For commercial licensing, please contact support@quantumnous.com
 /** Rows per page for the organization tables. Mirrors the backend default. */
 export const ORGANIZATION_DEFAULT_PAGE_SIZE = 10
 
+/** Logs are the densest organization table; start with more rows in view. */
+export const ORGANIZATION_LOGS_DEFAULT_PAGE_SIZE = 50
+
 export const ORGANIZATION_PAGE_SIZE_OPTIONS = [10, 20, 50, 100] as const
 
 /**
