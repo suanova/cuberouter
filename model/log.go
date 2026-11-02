@@ -153,6 +153,23 @@ func personalLogScopeQuery(db *gorm.DB) *gorm.DB {
 	return db.Where("(logs.scope_type = ? OR logs.scope_type = '')", AccountContextTypePersonal)
 }
 
+// applyLogBillingFilter narrows an admin log query to a billing account type
+// and/or one organization. Legacy rows with an empty billing_account_type are
+// personal: the column predates scoped billing, so an exact match on
+// "personal" would silently drop them from personal views.
+func applyLogBillingFilter(tx *gorm.DB, prefix string, billingAccountType string, organizationId int) *gorm.DB {
+	if organizationId > 0 {
+		tx = tx.Where(prefix+"organization_id = ?", organizationId)
+	}
+	switch billingAccountType {
+	case AccountContextTypePersonal:
+		tx = tx.Where("("+prefix+"billing_account_type = ? OR "+prefix+"billing_account_type = '')", AccountContextTypePersonal)
+	case AccountContextTypeOrganization:
+		tx = tx.Where(prefix+"billing_account_type = ?", AccountContextTypeOrganization)
+	}
+	return tx
+}
+
 // don't use iota, avoid change log type value
 const (
 	LogTypeUnknown = 0
@@ -774,7 +791,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, upstreamRequestId string, billingAccountType string, organizationId int) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -809,6 +826,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if group != "" {
 		tx = tx.Where("logs."+logGroupCol+" = ?", group)
 	}
+	tx = applyLogBillingFilter(tx, "logs.", billingAccountType, organizationId)
 	err = tx.Model(&Log{}).Count(&total).Error
 	if err != nil {
 		return nil, 0, err
@@ -925,8 +943,8 @@ type Stat struct {
 }
 
 // SumUsedQuota 统计全站用量，不带账单归属过滤，管理端看板用。
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, "", 0)
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, filterBillingAccountType string, filterOrganizationId int) (stat Stat, err error) {
+	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, "", 0, filterBillingAccountType, filterOrganizationId)
 }
 
 // SumUsedQuotaForBillingAccount 按账单归属统计用量。
@@ -934,10 +952,10 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 // 个人看板必须带上 (personal, userId)，否则用同一个人作责任人的组织消费会算进他的
 // 个人统计里——花的不是他的钱，却显示在他的额度消耗上。
 func SumUsedQuotaForBillingAccount(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, billingAccountType string, billingAccountId int) (stat Stat, err error) {
-	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, billingAccountType, billingAccountId)
+	return sumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, billingAccountType, billingAccountId, "", 0)
 }
 
-func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, billingAccountType string, billingAccountId int) (stat Stat, err error) {
+func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, billingAccountType string, billingAccountId int, filterBillingAccountType string, filterOrganizationId int) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -952,6 +970,8 @@ func sumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		tx = tx.Where("billing_account_id = ?", billingAccountId)
 		rpmTpmQuery = rpmTpmQuery.Where("billing_account_id = ?", billingAccountId)
 	}
+	tx = applyLogBillingFilter(tx, "", filterBillingAccountType, filterOrganizationId)
+	rpmTpmQuery = applyLogBillingFilter(rpmTpmQuery, "", filterBillingAccountType, filterOrganizationId)
 
 	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
 		return stat, err
