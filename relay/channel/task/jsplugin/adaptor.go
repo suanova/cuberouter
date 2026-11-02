@@ -148,6 +148,25 @@ func (a *TaskAdaptor) EstimateBillingValidated(c *gin.Context, info *relaycommon
 			// 请求不可解析时不能按锚点价静默预扣,交给调用方的拒绝路径处理
 			return nil, err
 		}
+		// 插件按自己的请求语义解析时长/分辨率（例如 wan3 优先读
+		// metadata.duration / metadata.resolution）。按次计费成功任务不做差额
+		// 结算，预扣必须跟随插件事实，否则会按顶层缺省档位多收或少收。
+		facts, err := a.ExtractUsageFactsValidated(c, info)
+		if err != nil {
+			return nil, err
+		}
+		if seconds, ok := usageNumber(facts["seconds"], false); ok && seconds > 0 {
+			taskReq.Duration = int(math.Min(math.Round(seconds), float64(relaycommon.MaxTaskDurationSeconds)))
+		} else if seconds, ok := usageNumber(facts["duration"], false); ok && seconds > 0 {
+			taskReq.Duration = int(math.Min(math.Round(seconds), float64(relaycommon.MaxTaskDurationSeconds)))
+		}
+		for _, key := range []string{"resolution_tier", "resolution", "size"} {
+			if resolution, ok := facts[key].(string); ok && strings.TrimSpace(resolution) != "" {
+				taskReq.Size = strings.TrimSpace(resolution)
+				taskReq.Resolution = ""
+				break
+			}
+		}
 		return helper.ComputeVideoPriceRatios(taskReq, info.OriginModelName, time.Now()), nil
 	}
 	usageContext := a.submitContext(c, info)
