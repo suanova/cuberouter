@@ -350,6 +350,19 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 		t.ResponsibleUserId = relayInfo.ResponsibleUserId
 		t.OrganizationBillingSessionId = relayInfo.OrganizationBillingSessionId
 		t.OrganizationBillingSessionKey = relayInfo.OrganizationBillingSessionKey
+		// 任务行会长期保留，用量页需要按 Key/组织展示；这里固化名字快照，
+		// 避免之后改名或退组导致历史行只剩 id。
+		if relayInfo.TokenId > 0 {
+			if token, err := GetTokenById(relayInfo.TokenId); err == nil {
+				t.TokenName = token.Name
+			}
+		}
+		if relayInfo.OrganizationId > 0 {
+			var organization Organization
+			if err := DB.Select("name").Where("id = ?", relayInfo.OrganizationId).First(&organization).Error; err == nil {
+				t.OrganizationName = organization.Name
+			}
+		}
 	}
 	NormalizeTaskBillingScope(t)
 	return t
