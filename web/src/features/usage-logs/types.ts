@@ -313,7 +313,7 @@ export interface TaskLog {
   username?: string
   platform: string // suno, kling, runway, etc.
   task_id: string
-  action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
+  action: string // image_to_video, text_to_video, MUSIC, LYRICS, etc.
   channel_id: number
   group: string
   quota: number
