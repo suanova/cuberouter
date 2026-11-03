@@ -49,7 +49,7 @@ export function UsageOverview(props: UsageOverviewProps) {
             {t('Personal')}
           </div>
         </div>
-        <div className='grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-3'>
+        <div className='grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-4'>
           <UsageMetric
             label={t('Cost')}
             value={formatLogQuota(personal?.quota ?? 0)}
@@ -59,19 +59,13 @@ export function UsageOverview(props: UsageOverviewProps) {
             value={formatNumber(personal?.request_count ?? 0)}
           />
           <UsageMetric
-            label={t('Input Tokens')}
-            value={formatNumber(personal?.prompt_tokens ?? 0)}
+            label={t('Tokens')}
+            value={formatNumber(
+              (personal?.prompt_tokens ?? 0) + (personal?.completion_tokens ?? 0)
+            )}
           />
           <UsageMetric
-            label={t('Output Tokens')}
-            value={formatNumber(personal?.completion_tokens ?? 0)}
-          />
-          <UsageMetric
-            label={t('Cache Tokens')}
-            value={formatNumber(personal?.cache_tokens ?? 0)}
-          />
-          <UsageMetric
-            label={t('Remaining quota')}
+            label={t('Available quota')}
             value={formatQuota(personal?.remaining_quota ?? 0)}
           />
         </div>

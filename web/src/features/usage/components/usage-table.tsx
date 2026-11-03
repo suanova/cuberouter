@@ -25,6 +25,7 @@ import { formatLogQuota, formatNumber } from '@/lib/format'
 
 import type {
   SelfUsageData,
+  SelfUsageTokenOption,
   SelfUsageTotals,
   UsageOrganizationOption,
 } from '../types'
@@ -36,6 +37,8 @@ interface UsageTableProps {
   loading: boolean
   filtering: boolean
   organizations: UsageOrganizationOption[]
+  modelOptions: string[]
+  tokenOptions: SelfUsageTokenOption[]
   initialFilters: UsageFilterValues
   page: number
   pageSize: number
@@ -78,6 +81,8 @@ export function UsageTable(props: UsageTableProps) {
           table={table}
           initial={props.initialFilters}
           organizations={props.organizations}
+          modelOptions={props.modelOptions}
+          tokenOptions={props.tokenOptions}
           loading={props.filtering}
           onApply={props.onFiltersChange}
           onReset={() => props.onFiltersChange({})}
@@ -95,14 +100,11 @@ function UsageTotalsStrip(props: { totals: SelfUsageTotals }) {
     { label: t('Success'), value: formatNumber(props.totals.success_count) },
     { label: t('Failed'), value: formatNumber(props.totals.failure_count) },
     {
-      label: t('Input Tokens'),
-      value: formatNumber(props.totals.prompt_tokens),
+      label: t('Tokens'),
+      value: formatNumber(
+        props.totals.prompt_tokens + props.totals.completion_tokens
+      ),
     },
-    {
-      label: t('Output Tokens'),
-      value: formatNumber(props.totals.completion_tokens),
-    },
-    { label: t('Cache Tokens'), value: formatNumber(props.totals.cache_tokens) },
     { label: t('Cost'), value: formatLogQuota(props.totals.quota) },
   ]
   return (

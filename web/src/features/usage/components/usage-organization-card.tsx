@@ -95,26 +95,20 @@ export function UsageOrganizationCard(props: UsageOrganizationCardProps) {
           </SelectContent>
         </Select>
       </div>
-      <div className='grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-3'>
+      <div className='grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-4'>
         <UsageMetric label={t('Cost')} value={formatLogQuota(overview?.quota ?? 0)} />
         <UsageMetric
           label={t('Requests')}
           value={formatNumber(overview?.request_count ?? 0)}
         />
         <UsageMetric
-          label={t('Input Tokens')}
-          value={formatNumber(overview?.prompt_tokens ?? 0)}
+          label={t('Tokens')}
+          value={formatNumber(
+            (overview?.prompt_tokens ?? 0) + (overview?.completion_tokens ?? 0)
+          )}
         />
         <UsageMetric
-          label={t('Output Tokens')}
-          value={formatNumber(overview?.completion_tokens ?? 0)}
-        />
-        <UsageMetric
-          label={t('Cache Tokens')}
-          value={formatNumber(overview?.cache_tokens ?? 0)}
-        />
-        <UsageMetric
-          label={t('My available quota')}
+          label={t('Available quota')}
           value={formatQuota(overview?.remaining_quota ?? 0)}
           title={breakdown}
         />

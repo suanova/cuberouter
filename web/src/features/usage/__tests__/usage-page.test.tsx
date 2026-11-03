@@ -70,6 +70,7 @@ function usageData(backfillComplete: boolean): SelfUsageData {
       cache_tokens: 0,
       quota: 0,
     },
+    filter_options: { models: [], tokens: [] },
   }
 }
 

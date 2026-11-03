@@ -28,13 +28,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Combobox } from '@/components/ui/combobox'
 import {
   LogsFilterField,
-  LogsFilterInput,
   LogsFilterToolbar,
 } from '@/features/usage-logs/components/logs-filter-toolbar'
 
-import type { SelfUsageRow, UsageOrganizationOption } from '../types'
+import type {
+  SelfUsageRow,
+  SelfUsageTokenOption,
+  UsageOrganizationOption,
+} from '../types'
 
 export interface UsageFilterValues {
   model?: string
@@ -47,6 +51,8 @@ interface UsageFilterBarProps {
   table: Table<SelfUsageRow>
   initial: UsageFilterValues
   organizations: UsageOrganizationOption[]
+  modelOptions: string[]
+  tokenOptions: SelfUsageTokenOption[]
   loading: boolean
   onApply: (values: UsageFilterValues) => void
   onReset: () => void
@@ -54,10 +60,42 @@ interface UsageFilterBarProps {
 
 const BILLING_ALL = 'all'
 
+// The token filter stores the key name, but the dropdown needs unique values
+// because two organizations may use the same key name. The organization id is
+// appended for org keys and stripped again on apply.
+const TOKEN_OPTION_SEPARATOR = '\u0000'
+
+function tokenOptionValue(option: SelfUsageTokenOption): string {
+  return option.organization_id > 0
+    ? `${option.name}${TOKEN_OPTION_SEPARATOR}${option.organization_id}`
+    : option.name
+}
+
+function tokenOptionLabel(option: SelfUsageTokenOption): string {
+  return option.organization_id > 0
+    ? `${option.name} (${option.organization_name})`
+    : option.name
+}
+
+function tokenNameFromOptionValue(value: string): string {
+  return value.split(TOKEN_OPTION_SEPARATOR)[0]
+}
+
+function initialTokenOptionValue(
+  options: SelfUsageTokenOption[],
+  name?: string
+): string {
+  if (!name) return ''
+  const match = options.find((option) => option.name === name)
+  return match ? tokenOptionValue(match) : name
+}
+
 export function UsageFilterBar(props: UsageFilterBarProps) {
   const { t } = useTranslation()
   const [model, setModel] = useState(props.initial.model ?? '')
-  const [token, setToken] = useState(props.initial.token ?? '')
+  const [token, setToken] = useState(
+    initialTokenOptionValue(props.tokenOptions, props.initial.token)
+  )
   const [billing, setBilling] = useState(
     props.initial.billingAccountType || BILLING_ALL
   )
@@ -67,7 +105,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
 
   useEffect(() => {
     setModel(props.initial.model ?? '')
-    setToken(props.initial.token ?? '')
+    setToken(initialTokenOptionValue(props.tokenOptions, props.initial.token))
     setBilling(props.initial.billingAccountType || BILLING_ALL)
     setOrganizationId(props.initial.organizationId)
   }, [
@@ -75,12 +113,24 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
     props.initial.token,
     props.initial.billingAccountType,
     props.initial.organizationId,
+    props.tokenOptions,
   ])
 
   const billingItems = [
-    { value: BILLING_ALL, label: t('All') },
+    { value: BILLING_ALL, label: t('All Billing Types') },
     { value: 'personal', label: t('Personal') },
     { value: 'organization', label: t('Organization') },
+  ]
+  const modelItems = [
+    { value: '', label: t('All Models') },
+    ...props.modelOptions.map((name) => ({ value: name, label: name })),
+  ]
+  const tokenItems = [
+    { value: '', label: t('All API tokens') },
+    ...props.tokenOptions.map((option) => ({
+      value: tokenOptionValue(option),
+      label: tokenOptionLabel(option),
+    })),
   ]
   const organizationItems = props.organizations.map((organization) => ({
     value: String(organization.id),
@@ -95,7 +145,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
   const apply = () => {
     props.onApply({
       model: model.trim() || undefined,
-      token: token.trim() || undefined,
+      token: tokenNameFromOptionValue(token).trim() || undefined,
       billingAccountType: billing === BILLING_ALL ? undefined : billing,
       organizationId:
         billing === 'organization' ? organizationId : undefined,
@@ -116,25 +166,23 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
       primaryFilters={
         <>
           <LogsFilterField>
-            <LogsFilterInput
-              aria-label={t('Model')}
-              placeholder={t('Model')}
+            <Combobox
+              options={modelItems}
               value={model}
-              onChange={(event) => setModel(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') apply()
-              }}
+              onValueChange={(value) => setModel(value ?? '')}
+              placeholder={t('Model')}
+              ariaLabel={t('Model')}
+              className='h-8 min-w-0 text-sm leading-5'
             />
           </LogsFilterField>
           <LogsFilterField>
-            <LogsFilterInput
-              aria-label={t('API Key')}
-              placeholder={t('API Key')}
+            <Combobox
+              options={tokenItems}
               value={token}
-              onChange={(event) => setToken(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') apply()
-              }}
+              onValueChange={(value) => setToken(value ?? '')}
+              placeholder={t('API Key')}
+              ariaLabel={t('API Key')}
+              className='h-8 min-w-0 text-sm leading-5'
             />
           </LogsFilterField>
           <LogsFilterField>

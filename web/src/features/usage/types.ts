@@ -84,6 +84,16 @@ export interface SelfUsageData {
     items: SelfUsageRow[]
   }
   totals: SelfUsageTotals
+  filter_options: {
+    models: string[]
+    tokens: SelfUsageTokenOption[]
+  }
+}
+
+export interface SelfUsageTokenOption {
+  name: string
+  organization_id: number
+  organization_name: string
 }
 
 export interface SelfUsageEnvelope {
