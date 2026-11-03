@@ -74,6 +74,12 @@ func GetSelfUsageLogRows(actorUserId int, startTs, endTs int64) ([]SelfUsageLogR
 		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Where("usage_source IN ?", []string{LogUsageSourceText, LogUsageSourceFee}).
 		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
+		// 滚动升级安全网：旧节点写出的日志带 DB 默认 source=text。在回填追上之前，
+		// 用模型前缀和 task 标记把任务/MJ 行排除，避免文本行与任务表重复计数。
+		Where("model_name NOT LIKE 'mj_%'").
+		Where("model_name <> ?", "swap_face").
+		Where("COALESCE(other, '') NOT LIKE ?", `%"is_task":true%`).
+		Where("COALESCE(other, '') NOT LIKE ?", `%"task_id"%`).
 		Group("day_key, billing_account_type, billing_account_id, organization_id, organization_name, token_id, token_name, model_name").
 		Order("day_key, model_name").
 		Scan(&rows).Error

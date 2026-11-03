@@ -271,6 +271,12 @@ func sortSelfUsageRows(rows []usageRow) {
 		if left.Type != right.Type {
 			return left.Type < right.Type
 		}
+		if left.OrganizationID != right.OrganizationID {
+			return left.OrganizationID < right.OrganizationID
+		}
+		if left.OrganizationName != right.OrganizationName {
+			return left.OrganizationName < right.OrganizationName
+		}
 		if left.ModelName != right.ModelName {
 			return left.ModelName < right.ModelName
 		}

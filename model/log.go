@@ -59,7 +59,7 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 type Log struct {
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:5;index:idx_logs_org_billing_responsible_time,priority:6"`
+	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:5;index:idx_logs_org_billing_responsible_time,priority:6;index:idx_logs_actor_created_at,priority:2"`
 	Type              int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:4;index:idx_logs_org_billing_responsible_time,priority:4"`
 	Content           string `json:"content"`
 	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
@@ -85,7 +85,7 @@ type Log struct {
 	BillingAccountId   int    `json:"billing_account_id" gorm:"index;index:idx_logs_org_billing_type_time,priority:2;index:idx_logs_org_billing_responsible_time,priority:2;default:0"`
 	OrganizationId     int    `json:"organization_id" gorm:"index;index:idx_logs_org_billing_type_time,priority:3;index:idx_logs_org_billing_responsible_time,priority:3;default:0"`
 	OrganizationName   string `json:"organization_name" gorm:"type:varchar(128);default:''"`
-	ActorUserId        int    `json:"actor_user_id" gorm:"index;default:0"`
+	ActorUserId        int    `json:"actor_user_id" gorm:"index;index:idx_logs_actor_created_at,priority:1;default:0"`
 	CreatorUserId      int    `json:"creator_user_id" gorm:"index;default:0"`
 	CreatorName        string `json:"creator_name" gorm:"type:varchar(128);default:''"`
 	ResponsibleUserId  int    `json:"responsible_user_id" gorm:"index;index:idx_logs_org_billing_responsible_time,priority:5;default:0"`

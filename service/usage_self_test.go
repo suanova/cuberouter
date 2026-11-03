@@ -161,3 +161,13 @@ func TestGetSelfUsageTotalsCoverAllPages(t *testing.T) {
 	assert.Equal(t, 3, got.Totals.RequestCount)
 	assert.Equal(t, 30, got.Totals.Quota)
 }
+
+func TestSortSelfUsageRowsComparesFullKey(t *testing.T) {
+	rows := []usageRow{
+		{DayKey: 1, Type: ModelUsageTypeText, BillingAccountType: "organization", OrganizationID: 2, OrganizationName: "Beta", ModelName: "gpt", TokenID: 1},
+		{DayKey: 1, Type: ModelUsageTypeText, BillingAccountType: "organization", OrganizationID: 1, OrganizationName: "Alpha", ModelName: "gpt", TokenID: 1},
+	}
+	sortSelfUsageRows(rows)
+	assert.Equal(t, 1, rows[0].OrganizationID)
+	assert.Equal(t, "Alpha", rows[0].OrganizationName)
+}

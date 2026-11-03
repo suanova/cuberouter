@@ -21,11 +21,16 @@ For commercial licensing, please contact support@quantumnous.com
 package model
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func TestRecordConsumeLogWritesStructuredUsageFields(t *testing.T) {
@@ -69,4 +74,61 @@ func TestRecordTaskBillingLogWritesStructuredUsageFields(t *testing.T) {
 	got = Log{}
 	require.NoError(t, db.Where("user_id = ? AND type = ?", 7, LogTypeRefund).First(&got).Error)
 	assert.Equal(t, LogUsageSourceMJ, got.UsageSource)
+}
+
+func TestEnsureSelfUsageLogIndex(t *testing.T) {
+	db := newBillingTestDB(t)
+	require.NoError(t, db.Migrator().DropIndex(&Log{}, "idx_logs_actor_created_at"))
+	require.NoError(t, ensureSelfUsageLogIndexes(db))
+	assert.True(t, db.Migrator().HasIndex(&Log{}, "idx_logs_actor_created_at"))
+}
+
+// TestEnsureSelfUsageLogIndexConfiguredDatabases exercises the explicit index
+// creation on real MySQL and PostgreSQL instances, where AutoMigrate alone is
+// not proof that the upgrade path repairs a missing index.
+func TestEnsureSelfUsageLogIndexConfiguredDatabases(t *testing.T) {
+	cases := []struct {
+		name string
+		env  string
+		open func(string) (*gorm.DB, error)
+	}{
+		{
+			name: "mysql",
+			env:  "TEST_MYSQL_DSN",
+			open: func(dsn string) (*gorm.DB, error) {
+				return gorm.Open(mysql.Open(dsn), &gorm.Config{})
+			},
+		},
+		{
+			name: "postgres",
+			env:  "TEST_POSTGRES_DSN",
+			open: func(dsn string) (*gorm.DB, error) {
+				return gorm.Open(postgres.New(postgres.Config{
+					DSN:                  dsn,
+					PreferSimpleProtocol: true,
+				}), &gorm.Config{})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dsn := strings.TrimSpace(os.Getenv(tc.env))
+			if dsn == "" {
+				t.Skip(tc.env + " is not configured")
+			}
+			db, err := tc.open(dsn)
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+			require.NoError(t, db.AutoMigrate(&Log{}))
+			if db.Migrator().HasIndex(&Log{}, "idx_logs_actor_created_at") {
+				require.NoError(t, db.Migrator().DropIndex(&Log{}, "idx_logs_actor_created_at"))
+			}
+
+			require.NoError(t, ensureSelfUsageLogIndexes(db))
+			assert.True(t, db.Migrator().HasIndex(&Log{}, "idx_logs_actor_created_at"))
+		})
+	}
 }

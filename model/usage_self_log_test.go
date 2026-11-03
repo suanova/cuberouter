@@ -28,6 +28,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/clickhouse"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -84,6 +85,27 @@ func TestSelfUsageLogRowsSeparatesLocalDayBoundary(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 	assert.NotEqual(t, got[0].DayKey, got[1].DayKey)
+}
+
+func TestSelfUsageLogRowsExcludesStaleTaskAndMJRows(t *testing.T) {
+	db := newBillingTestDB(t)
+	orig := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = orig })
+
+	ts := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	require.NoError(t, db.Create(&[]Log{
+		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "n1", Quota: 10},
+		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "wan3.0-video", BillingAccountType: "personal", RequestId: "s1", Other: `{"task_id":"t1"}`, Quota: 999},
+		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "wan3.0-video", BillingAccountType: "personal", RequestId: "s2", Other: `{"is_task":true}`, Quota: 998},
+		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "mj_imagine", BillingAccountType: "personal", RequestId: "s3", Quota: 997},
+	}).Error)
+
+	got, err := GetSelfUsageLogRows(7, ts-60, ts+60)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, 10, got[0].Quota)
+	assert.Equal(t, "gpt-4o", got[0].ModelName)
 }
 
 func TestSelfUsageLogRowsConfiguredDatabases(t *testing.T) {
@@ -153,4 +175,49 @@ func TestSelfUsageLogRowsConfiguredDatabases(t *testing.T) {
 			assert.Equal(t, 1000+50-200, got[0].Quota)
 		})
 	}
+}
+
+// TestSelfUsageLogRowsClickHouse pins the ClickHouse branch of the aggregation:
+// FLOOR((created_at + offset) / 86400) produces a Float64 day key there, and
+// the IN / NOT LIKE filters must survive ClickHouse's GROUP BY alias rules.
+func TestSelfUsageLogRowsClickHouse(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("TEST_CLICKHOUSE_DSN"))
+	if dsn == "" {
+		t.Skip("TEST_CLICKHOUSE_DSN is not configured")
+	}
+	db, err := gorm.Open(clickhouse.Open(normalizeClickHouseDSN(dsn)), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	require.NoError(t, db.Exec(clickHouseLogCreateTableSQL(0)).Error)
+
+	const actor = 987654321
+	deleteRows := func() {
+		_ = db.Exec("ALTER TABLE logs DELETE WHERE actor_user_id = ? SETTINGS mutations_sync = 2", actor).Error
+	}
+	deleteRows()
+	t.Cleanup(deleteRows)
+
+	orig := LOG_DB
+	LOG_DB = db
+	t.Cleanup(func() { LOG_DB = orig })
+
+	ts := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	rows := []Log{
+		{UserId: actor, ActorUserId: actor, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 1, TokenName: "k1", BillingAccountType: "personal", PromptTokens: 100, CompletionTokens: 50, CacheTokens: 30, Quota: 1000},
+		{UserId: actor, ActorUserId: actor, Type: LogTypeConsume, UsageSource: LogUsageSourceFee, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 1, TokenName: "k1", BillingAccountType: "personal", Quota: 50},
+		{UserId: actor, ActorUserId: actor, Type: LogTypeRefund, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 1, TokenName: "k1", BillingAccountType: "personal", Quota: 200},
+		{UserId: actor, ActorUserId: actor, Type: LogTypeConsume, UsageSource: LogUsageSourceTask, CreatedAt: ts, ModelName: "wan3.0-video", BillingAccountType: "personal", Quota: 9999},
+	}
+	require.NoError(t, db.Create(&rows).Error)
+
+	got, err := GetSelfUsageLogRows(actor, ts-60, ts+60)
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, 1, got[0].RequestCount)
+	assert.Equal(t, 100, got[0].PromptTokens)
+	assert.Equal(t, 50, got[0].CompletionTokens)
+	assert.Equal(t, 30, got[0].CacheTokens)
+	assert.Equal(t, 1000+50-200, got[0].Quota)
 }

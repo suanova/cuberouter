@@ -73,15 +73,17 @@ func StartLogUsageBackfill() {
 	if !common.IsMasterNode || LogUsageBackfillComplete() {
 		return
 	}
-	if common.RedisEnabled && common.RDB != nil {
-		ok, err := common.RDB.SetNX(context.Background(), "log:usage-backfill:lock", common.NodeName, time.Hour).Result()
-		if err != nil || !ok {
-			common.SysLog("log usage backfill skipped: lock not acquired")
-			return
-		}
-		defer func() { _ = common.RDB.Del(context.Background(), "log:usage-backfill:lock").Err() }()
-	}
 	go func() {
+		// 锁必须在 goroutine 内获取和释放：放到调用方会在 goroutine 启动前
+		// 就因 defer 释放，等于没有互斥。
+		if common.RedisEnabled && common.RDB != nil {
+			ok, err := common.RDB.SetNX(context.Background(), "log:usage-backfill:lock", common.NodeName, time.Hour).Result()
+			if err != nil || !ok {
+				common.SysLog("log usage backfill skipped: lock not acquired")
+				return
+			}
+			defer func() { _ = common.RDB.Del(context.Background(), "log:usage-backfill:lock").Err() }()
+		}
 		if err := BackfillLogUsageFields(); err != nil {
 			common.SysError("log usage backfill failed: " + err.Error())
 			return
@@ -135,7 +137,8 @@ func BackfillLogUsageFields() error {
 
 // backfillClickHouseLogUsageFields is a single mutation: ClickHouse's display
 // ids are assigned at read time, so the id watermark used on SQL engines does
-// not apply here.
+// not apply here. mutations_sync = 2 让 ALTER 等到所有副本完成后再返回，
+// 否则回填完成标记会先于数据落地，下一页查询仍会看到未回填的行。
 func backfillClickHouseLogUsageFields() error {
 	return LOG_DB.Exec(`
 ALTER TABLE logs UPDATE
@@ -146,7 +149,8 @@ ALTER TABLE logs UPDATE
     JSONExtractBool(other, 'violation_fee'), 'fee',
     'text'
   )
-WHERE 1`).Error
+WHERE 1
+SETTINGS mutations_sync = 2`).Error
 }
 
 func logUsageBackfillLastID() int64 {

@@ -21,11 +21,17 @@ For commercial licensing, please contact support@quantumnous.com
 package model
 
 import (
+	"errors"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestClassifyLogUsageSource(t *testing.T) {
@@ -67,4 +73,77 @@ func TestBackfillLogUsageFieldsIsIdempotent(t *testing.T) {
 
 	// A second run must not change or fail anything.
 	require.NoError(t, BackfillLogUsageFields())
+}
+
+func TestStartLogUsageBackfillHoldsLockUntilBackfillFinishes(t *testing.T) {
+	db := newBillingTestDB(t)
+	origLog, origDB := LOG_DB, DB
+	origOptions := common.OptionMap
+	origRedis, origRDB := common.RedisEnabled, common.RDB
+	origMaster := common.IsMasterNode
+	LOG_DB, DB = db, db
+	common.OptionMap = map[string]string{}
+	common.IsMasterNode = true
+	require.NoError(t, db.AutoMigrate(&Option{}))
+
+	mr := miniredis.RunT(t)
+	common.RedisEnabled = true
+	common.RDB = redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() {
+		LOG_DB, DB, common.OptionMap = origLog, origDB, origOptions
+		_ = common.RDB.Close()
+		common.RedisEnabled, common.RDB = origRedis, origRDB
+		common.IsMasterNode = origMaster
+	})
+
+	// Block the backfill's first query so the goroutine stays inside the
+	// critical section while the test inspects the lock.
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var enteredOnce, releaseOnce sync.Once
+	closeRelease := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(closeRelease)
+	db.Callback().Query().Before("gorm:query").Register("test:block_log_query", func(tx *gorm.DB) {
+		if tx.Statement.Table == "logs" {
+			enteredOnce.Do(func() { close(entered) })
+			<-release
+		}
+	})
+
+	StartLogUsageBackfill()
+
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("backfill query did not start")
+	}
+	assert.True(t, mr.Exists("log:usage-backfill:lock"), "lock must be held while the backfill runs")
+
+	closeRelease()
+	require.Eventually(t, func() bool {
+		return !mr.Exists("log:usage-backfill:lock")
+	}, 5*time.Second, 10*time.Millisecond, "lock must be released after the backfill finishes")
+}
+
+func TestBackfillClickHouseLogUsageFieldsWaitsForMutation(t *testing.T) {
+	db := newBillingTestDB(t)
+	origLog := LOG_DB
+	origType := common.LogDatabaseType()
+	LOG_DB = db
+	common.SetLogDatabaseType(common.DatabaseTypeClickHouse)
+	t.Cleanup(func() {
+		LOG_DB = origLog
+		common.SetLogDatabaseType(origType)
+	})
+
+	// 捕获实际发给 ClickHouse 的 SQL 并终止执行：没有 mutations_sync 时
+	// ALTER TABLE UPDATE 是异步的，usage_source 的完成标记会先于回填落下。
+	var captured string
+	db.Callback().Raw().Before("gorm:raw").Register("test:capture_backfill_sql", func(tx *gorm.DB) {
+		captured = tx.Statement.SQL.String()
+		_ = tx.AddError(errors.New("captured"))
+	})
+
+	require.Error(t, backfillClickHouseLogUsageFields())
+	assert.Contains(t, captured, "SETTINGS mutations_sync = 2")
 }
