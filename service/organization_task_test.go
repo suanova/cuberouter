@@ -52,7 +52,7 @@ func TestHydrateOrganizationTaskNames(t *testing.T) {
 		},
 	}
 
-	require.NoError(t, hydrateOrganizationTaskNames([]*model.Task{task}))
+	require.NoError(t, HydrateOrganizationTaskNames([]*model.Task{task}))
 
 	assert.Equal(t, "task-name-test-key-name", task.TokenName)
 	assert.Equal(t, "Task User", task.ResponsibleName)
@@ -76,7 +76,7 @@ func TestHydrateOrganizationTaskNamesKeepsStoredSnapshots(t *testing.T) {
 		CreatorUserId:     7,
 	}
 
-	require.NoError(t, hydrateOrganizationTaskNames([]*model.Task{task}))
+	require.NoError(t, HydrateOrganizationTaskNames([]*model.Task{task}))
 
 	assert.Equal(t, "stored-key", task.TokenName)
 	assert.Equal(t, "Stored User", task.ResponsibleName)

@@ -25,3 +25,15 @@ func TestNormalizeTaskAction(t *testing.T) {
 		})
 	}
 }
+
+func TestTaskActionQueryNamesIncludesCanonicalAndLegacySpellings(t *testing.T) {
+	assert.ElementsMatch(t,
+		[]string{"textGenerate", TaskActionTextToVideo},
+		TaskActionQueryNames("textGenerate"),
+	)
+	assert.ElementsMatch(t,
+		[]string{TaskActionTextToVideo, "textGenerate"},
+		TaskActionQueryNames(TaskActionTextToVideo),
+	)
+	assert.Equal(t, []string{"custom_action"}, TaskActionQueryNames("custom_action"))
+}

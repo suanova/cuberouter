@@ -57,3 +57,36 @@ const personalAsyncTaskScopeCondition = "(billing_account_type = ? OR billing_ac
 func applyPersonalAsyncTaskScope(db *gorm.DB) *gorm.DB {
 	return db.Where(personalAsyncTaskScopeCondition, AccountContextTypePersonal, AccountContextTypePersonal)
 }
+
+// userAsyncTaskScopeQuery is the personal task page: the caller's own tasks,
+// plus organization-billed tasks the caller is responsible for when
+// includeOrganization is set. Responsibility is the snapshot on the row, so a
+// task another member triggered still belongs here when this user is the
+// responsible person.
+func userAsyncTaskScopeQuery(db *gorm.DB, userId int, includeOrganization bool) *gorm.DB {
+	personal := "(user_id = ? AND " + personalAsyncTaskScopeCondition + ")"
+	if !includeOrganization {
+		return db.Where(personal, userId, AccountContextTypePersonal, AccountContextTypePersonal)
+	}
+	return db.Where(
+		"("+personal+" OR (billing_account_type = ? AND responsible_user_id = ?))",
+		userId, AccountContextTypePersonal, AccountContextTypePersonal,
+		AccountContextTypeOrganization, userId,
+	)
+}
+
+// applyAsyncTaskBillingFilter narrows a task query to one billing account type
+// and/or one organization. Legacy rows with an empty billing_account_type count
+// as personal, matching the personal scope helper above.
+func applyAsyncTaskBillingFilter(db *gorm.DB, billingAccountType string, organizationId int) *gorm.DB {
+	if organizationId > 0 {
+		db = db.Where("organization_id = ?", organizationId)
+	}
+	switch billingAccountType {
+	case AccountContextTypePersonal:
+		db = db.Where("(billing_account_type = ? OR billing_account_type = '' OR billing_account_type IS NULL)", AccountContextTypePersonal)
+	case AccountContextTypeOrganization:
+		db = db.Where("billing_account_type = ?", AccountContextTypeOrganization)
+	}
+	return db
+}

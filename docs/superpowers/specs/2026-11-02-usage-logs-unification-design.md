@@ -1,7 +1,7 @@
 # Usage Logs Unification — Design
 
 **Date:** 2026-11-02
-**Status:** Implemented — root/admin, personal page, and organization Logs enhancements
+**Status:** Implemented — root/admin, personal page, organization Logs, and task logs
 
 ## Goal
 
@@ -129,6 +129,31 @@ owner/admin; plain members no longer see it.
   and a logs-specific default page size of 50.
 - **Backend:** `OrganizationLogListRequest` accepts `upstream_request_id`; the
   existing type/responsible filters are used by the UI.
+
+## Task logs (implemented 2026-11-03)
+
+Task logs follow the same role model as common logs, applied to the `tasks`
+table.
+
+- **Personal task page:** personal-billed tasks plus organization-billed tasks
+  whose `responsible_user_id` is the caller (`include_organization=true` on
+  `/api/task/self`). Columns add Billing Account, Token, and Cost. Filters:
+  date, status, action/type, billing account, organization (self), plus task ID
+  and channel/organization ID for the platform All view.
+- **Platform All:** `/api/task` gains `billing_account_type` / `organization_id`
+  filters; the admin table adds Billing Account and Responsible user columns.
+  Ops remains self-only because the task read endpoint is `AdminAuth`.
+- **Organization Tasks tab:** owner/admin keeps the organization-wide view;
+  plain members no longer see the tab. The tab is aligned with the task page's
+  shared columns/details, adds a platform filter and mobile layout, and its
+  Excel export is removed.
+- **Details:** the shared task details dialog shows Cost and Billing Account for
+  all viewers; platform-only fields remain behind the admin section.
+- **Backend:** task DTOs expose token/billing/organization/responsible fields;
+  `userAsyncTaskScopeQuery` implements the union and `applyAsyncTaskBillingFilter`
+  handles the billing filters. Task statistics are deferred.
+- **Out of scope:** task statistics, server-side sorting, and Midjourney/drawing
+  logs (the platform has no Midjourney upstream).
 
 ## Root/admin phase (this change)
 

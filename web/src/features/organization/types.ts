@@ -494,6 +494,10 @@ export interface OrganizationTaskRow {
   token_name?: string
   token_unlimited?: boolean
   request_id?: string
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
   actor_user_id?: number
   creator_user_id?: number
   creator_name?: string
