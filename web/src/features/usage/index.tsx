@@ -104,8 +104,12 @@ export function UsagePage(props: UsagePageProps) {
   const usageQuery = useQuery({
     queryKey: ['self-usage', params],
     queryFn: () => getSelfUsage(params),
+    placeholderData: (previousData) => previousData,
   })
   const data = usageQuery.data?.data
+  // 回填完成前旧任务日志会被当成 text，行数与金额都不准；按设计（§7.3）
+  // 只显示说明，不暴露任何用量数字。
+  const backfillPending = data ? !data.backfill_complete : false
 
   const updateSearch = (next: Partial<UsageSearch>) => {
     props.onSearchChange(next)
@@ -134,52 +138,55 @@ export function UsagePage(props: UsagePageProps) {
               }}
             />
           </div>
-          {data && !data.backfill_complete ? (
+          {backfillPending ? (
             <div
               role='status'
               className='rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm text-amber-700 dark:text-amber-400'
             >
               {t('History is still being prepared.')}
             </div>
-          ) : null}
-          <UsageOverview
-            data={data}
-            loading={usageQuery.isLoading}
-            organizations={organizations}
-            selectedOrganizationId={selectedOrganizationId}
-            onSelectOrganization={(id) =>
-              updateSearch({ overviewOrganizationId: String(id), page: 1 })
-            }
-          />
-          <div className='rounded-lg border' aria-hidden='true'>
-            {data ? (
-              <UsageTable
+          ) : (
+            <>
+              <UsageOverview
                 data={data}
                 loading={usageQuery.isLoading}
-                filtering={usageQuery.isFetching}
                 organizations={organizations}
-                initialFilters={initialFilters}
-                page={props.search.page ?? 1}
-                pageSize={props.search.pageSize ?? 20}
-                onFiltersChange={(filters) =>
-                  updateSearch({
-                    model: filters.model ?? '',
-                    token: filters.token ?? '',
-                    billingAccountType: filters.billingAccountType ?? '',
-                    organizationId: filters.organizationId
-                      ? String(filters.organizationId)
-                      : '',
-                    page: 1,
-                  })
-                }
-                onPageChange={(page, pageSize) =>
-                  updateSearch({ page, pageSize })
+                selectedOrganizationId={selectedOrganizationId}
+                onSelectOrganization={(id) =>
+                  updateSearch({ overviewOrganizationId: String(id), page: 1 })
                 }
               />
-            ) : (
-              <div className='h-48 animate-pulse rounded-lg bg-muted/20' />
-            )}
-          </div>
+              <div className='rounded-lg border'>
+                {data ? (
+                  <UsageTable
+                    data={data}
+                    loading={usageQuery.isLoading}
+                    filtering={usageQuery.isFetching}
+                    organizations={organizations}
+                    initialFilters={initialFilters}
+                    page={props.search.page ?? 1}
+                    pageSize={props.search.pageSize ?? 20}
+                    onFiltersChange={(filters) =>
+                      updateSearch({
+                        model: filters.model ?? '',
+                        token: filters.token ?? '',
+                        billingAccountType: filters.billingAccountType ?? '',
+                        organizationId: filters.organizationId
+                          ? String(filters.organizationId)
+                          : '',
+                        page: 1,
+                      })
+                    }
+                    onPageChange={(page, pageSize) =>
+                      updateSearch({ page, pageSize })
+                    }
+                  />
+                ) : (
+                  <div className='h-48 animate-pulse rounded-lg bg-muted/20' />
+                )}
+              </div>
+            </>
+          )}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
