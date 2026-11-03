@@ -1,7 +1,7 @@
 # 用户用量页设计（User Usage Page）
 
 **Date:** 2026-11-03
-**Status:** Draft — awaiting review
+**Status:** Implemented — backend + frontend; verification in §16
 **Branch:** TBD（建议 `feat/user-usage-page`）
 
 ## 1. 目标与背景
@@ -499,6 +499,19 @@ web/src/features/usage/
 2. 聚合 model/service + 接口 + 单测（三库）。
 3. 前端页面（概览 + 表格 + 过滤）+ i18n。
 4. 本地 e2e 对账 + 文档更新。
+
+## 16. 验证记录（2026-11-03）
+
+- Go full suite：`GOWORK=off go test -race -count=1 ./...` — 结果见最终交接。
+- MySQL 8.0.46 / PostgreSQL 16.15：`TEST_MYSQL_DSN=... TEST_POSTGRES_DSN=... go test ./model/ ./service/ ./controller/ -run 'ConfiguredDatabases|SelfUsage' -count=1` — PASS（含 `TestSelfUsageLogRowsConfiguredDatabases`：新列 AutoMigrate + 聚合）。
+- ClickHouse 24.8：一次性容器内执行 `ALTER TABLE logs UPDATE ...` 回填 mutation，`cache_tokens` / `usage_source` 对 text/task/mj/fee 分类正确。
+- 前端：`bun install`、`bun run typecheck`、`bun run build`、`bunx vitest run src/features/usage` — PASS。
+- 手工 e2e：未在隔离 worktree 中执行（缺少本地测试站点的真实用户/组织数据）；部署前在站点验收补做。
+
+### 实现说明（与计划的差异）
+
+- 页面把路由 search 通过 props 传给 feature，而不是在 feature 内 `useSearch({ from })`，避免 route ↔ feature 循环导入；行为不变。
+- 表格分页/过滤通过页面 props 写回 URL，而不是 `useTableUrlState`；行为不变。
 
 ## 附录 A：Builder check 问题与处理
 
