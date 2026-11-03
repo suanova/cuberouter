@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { Pencil } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -62,7 +62,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
-import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import {
   ADMIN_PERMISSION_ACTIONS,
   ADMIN_PERMISSION_RESOURCES,
@@ -81,6 +80,7 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  getUserEnabledModels,
   getUserModelDiscounts,
   updateUserModelDiscounts,
 } from '../api'
@@ -154,12 +154,16 @@ export function UsersMutateDrawer({
     enabled: isUpdate,
   })
 
-  // The editor's model picker offers the models the site prices.
-  const { models: pricingModels } = usePricingData(isUpdate)
-  const modelOptions = useMemo(
-    () => pricingModels.map((pricing) => pricing.model_name),
-    [pricingModels]
-  )
+  // The editor's model picker offers the models this user can actually use.
+  // It cannot borrow the viewer's pricing list: that list is filtered by the
+  // viewer's own groups, so a model enabled only for the edited user's group
+  // would be missing.
+  const { data: enabledModels } = useQuery({
+    queryKey: ['user-enabled-models', currentRow?.id],
+    queryFn: () => getUserEnabledModels(currentRow?.id ?? 0),
+    enabled: isUpdate,
+  })
+  const modelOptions = enabledModels ?? []
   const modelDiscounts = editedDiscounts ?? modelDiscountsData ?? {}
 
   const form = useForm<UserFormValues>({
