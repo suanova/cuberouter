@@ -741,6 +741,8 @@ var clickHouseLogScopeColumns = []struct {
 	{"responsible_name", "String DEFAULT ''"},
 	{"organization_billing_session_id", "Int32 DEFAULT 0"},
 	{"organization_billing_session_key", "String DEFAULT ''"},
+	{"cache_tokens", "Int32 DEFAULT 0"},
+	{"usage_source", "String DEFAULT 'text'"},
 	{"billing_event_key", "Nullable(String)"},
 }
 
@@ -812,6 +814,8 @@ CREATE TABLE IF NOT EXISTS logs (
 	responsible_name String DEFAULT '',
 	organization_billing_session_id Int32 DEFAULT 0,
 	organization_billing_session_key String DEFAULT '',
+	cache_tokens Int32 DEFAULT 0,
+	usage_source String DEFAULT 'text',
 	billing_event_key Nullable(String),
 	other String DEFAULT ''
 )

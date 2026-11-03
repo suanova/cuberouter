@@ -166,6 +166,7 @@ func RefundMidjourneyQuota(ctx context.Context, task *model.Midjourney, reason s
 			"task_id": task.MjId,
 			"reason":  reason,
 		},
+		UsageSource: model.LogUsageSourceMJ,
 	}
 	applyMidjourneyBillingScope(&refundLogParams, task)
 	model.RecordTaskBillingLog(refundLogParams)

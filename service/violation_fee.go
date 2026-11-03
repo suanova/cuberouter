@@ -200,6 +200,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		IsStream:          relayInfo.IsStream,
 		Group:             chargedRelayInfo.UsingGroup,
 		Other:             other,
+		UsageSource:       model.LogUsageSourceFee,
 	}))
 
 	return true
