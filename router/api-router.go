@@ -315,6 +315,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
+			usageRoute.GET("/self", middleware.UserAuth(), controller.GetSelfUsage)
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{
