@@ -30,6 +30,8 @@ import {
 import { getSelfUsage } from './api'
 import { UsageDateRangePicker } from './components/usage-date-range-picker'
 import { UsageOverview } from './components/usage-overview'
+import { UsageTable } from './components/usage-table'
+import type { UsageFilterValues } from './components/usage-filter-bar'
 import {
   resolveOverviewOrganizationId,
 } from './lib/organization-selection'
@@ -108,6 +110,14 @@ export function UsagePage(props: UsagePageProps) {
   const updateSearch = (next: Partial<UsageSearch>) => {
     props.onSearchChange(next)
   }
+  const initialFilters: UsageFilterValues = {
+    model: props.search.model,
+    token: props.search.token,
+    billingAccountType: props.search.billingAccountType,
+    organizationId: props.search.organizationId
+      ? Number(props.search.organizationId)
+      : undefined,
+  }
 
   return (
     <SectionPageLayout>
@@ -141,7 +151,35 @@ export function UsagePage(props: UsagePageProps) {
               updateSearch({ overviewOrganizationId: String(id), page: 1 })
             }
           />
-          <div className='rounded-lg border' aria-hidden='true' />
+          <div className='rounded-lg border' aria-hidden='true'>
+            {data ? (
+              <UsageTable
+                data={data}
+                loading={usageQuery.isLoading}
+                filtering={usageQuery.isFetching}
+                organizations={organizations}
+                initialFilters={initialFilters}
+                page={props.search.page ?? 1}
+                pageSize={props.search.pageSize ?? 20}
+                onFiltersChange={(filters) =>
+                  updateSearch({
+                    model: filters.model ?? '',
+                    token: filters.token ?? '',
+                    billingAccountType: filters.billingAccountType ?? '',
+                    organizationId: filters.organizationId
+                      ? String(filters.organizationId)
+                      : '',
+                    page: 1,
+                  })
+                }
+                onPageChange={(page, pageSize) =>
+                  updateSearch({ page, pageSize })
+                }
+              />
+            ) : (
+              <div className='h-48 animate-pulse rounded-lg bg-muted/20' />
+            )}
+          </div>
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
