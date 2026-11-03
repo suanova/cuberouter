@@ -138,8 +138,8 @@ table.
 - **Personal task page:** personal-billed tasks plus organization-billed tasks
   whose `responsible_user_id` is the caller (`include_organization=true` on
   `/api/task/self`). Columns add Billing Account, Token, and Cost. Filters:
-  date, status, action/type, billing account, organization (self), plus task ID,
-  platform, channel/organization ID for the platform All view.
+  date, status, action/type, billing account, organization (self), plus task ID
+  and channel/organization ID for the platform All view.
 - **Platform All:** `/api/task` gains `billing_account_type` / `organization_id`
   filters; the admin table adds Billing Account and Responsible user columns.
   Ops remains self-only because the task read endpoint is `AdminAuth`.

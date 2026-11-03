@@ -328,6 +328,115 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         />
       </LogsFilterField>
     ) : null
+  const statusFilter = (
+    <LogsFilterField>
+      <Select
+        items={statusItems}
+        value={taskFilters?.status || 'all'}
+        onValueChange={(value) =>
+          handleChange(
+            'status',
+            value === null || value === 'all' ? undefined : value
+          )
+        }
+      >
+        <SelectTrigger>
+          <SelectValue>{statusLabel}</SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {statusItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </LogsFilterField>
+  )
+  const actionFilter = (
+    <LogsFilterField>
+      <Select
+        items={actionItems}
+        value={taskFilters?.action || 'all'}
+        onValueChange={(value) =>
+          handleChange(
+            'action',
+            value === null || value === 'all' ? undefined : value
+          )
+        }
+      >
+        <SelectTrigger>
+          <SelectValue>{actionLabel}</SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {actionItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </LogsFilterField>
+  )
+  const billingAccountTypeFilter = (
+    <LogsFilterField>
+      <Select
+        items={billingAccountTypeItems}
+        value={billingAccountTypeValue}
+        onValueChange={(value) =>
+          handleChange(
+            'billingAccountType',
+            value === null || value === 'all' ? undefined : value
+          )
+        }
+      >
+        <SelectTrigger>
+          <SelectValue>{billingAccountTypeLabel}</SelectValue>
+        </SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          <SelectGroup>
+            {billingAccountTypeItems.map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+    </LogsFilterField>
+  )
+  const organizationFilter =
+    !isAdmin && organizations.length > 0 ? (
+      <LogsFilterField>
+        <Select
+          items={organizationItems}
+          value={organizationValue}
+          onValueChange={(value) =>
+            handleChange(
+              'organizationId',
+              value === null || value === 'all' ? undefined : value
+            )
+          }
+        >
+          <SelectTrigger>
+            <SelectValue>{organizationLabel}</SelectValue>
+          </SelectTrigger>
+          <SelectContent alignItemWithTrigger={false}>
+            <SelectGroup>
+              {organizationItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </Select>
+      </LogsFilterField>
+    ) : null
 
   if (props.logCategory === 'drawing') {
     return (
@@ -364,108 +473,10 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       primaryFilters={
         <>
           {dateRangeFilter}
-          <LogsFilterField>
-            <Select
-              items={statusItems}
-              value={taskFilters?.status || 'all'}
-              onValueChange={(value) =>
-                handleChange(
-                  'status',
-                  value === null || value === 'all' ? undefined : value
-                )
-              }
-            >
-              <SelectTrigger>
-                <SelectValue>{statusLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {statusItems.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </LogsFilterField>
-          <LogsFilterField>
-            <Select
-              items={actionItems}
-              value={taskFilters?.action || 'all'}
-              onValueChange={(value) =>
-                handleChange(
-                  'action',
-                  value === null || value === 'all' ? undefined : value
-                )
-              }
-            >
-              <SelectTrigger>
-                <SelectValue>{actionLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {actionItems.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </LogsFilterField>
-          <LogsFilterField>
-            <Select
-              items={billingAccountTypeItems}
-              value={billingAccountTypeValue}
-              onValueChange={(value) =>
-                handleChange(
-                  'billingAccountType',
-                  value === null || value === 'all' ? undefined : value
-                )
-              }
-            >
-              <SelectTrigger>
-                <SelectValue>{billingAccountTypeLabel}</SelectValue>
-              </SelectTrigger>
-              <SelectContent alignItemWithTrigger={false}>
-                <SelectGroup>
-                  {billingAccountTypeItems.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </LogsFilterField>
-          {!isAdmin && organizations.length > 0 ? (
-            <LogsFilterField>
-              <Select
-                items={organizationItems}
-                value={organizationValue}
-                onValueChange={(value) =>
-                  handleChange(
-                    'organizationId',
-                    value === null || value === 'all' ? undefined : value
-                  )
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue>{organizationLabel}</SelectValue>
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    {organizationItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </LogsFilterField>
-          ) : null}
+          {statusFilter}
+          {actionFilter}
+          {billingAccountTypeFilter}
+          {organizationFilter}
         </>
       }
       advancedFilters={
@@ -478,6 +489,10 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       mobilePinnedFilters={dateRangeFilter}
       mobileFilters={
         <>
+          {statusFilter}
+          {actionFilter}
+          {billingAccountTypeFilter}
+          {organizationFilter}
           {taskIdFilter}
           {channelFilter}
           {organizationIdFilter}

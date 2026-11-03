@@ -156,4 +156,19 @@ describe('organization tasks section', () => {
     ).not.toBeInTheDocument()
     expect(screen.queryByText('50%')).not.toBeInTheDocument()
   })
+
+  test('hides the Excel export action in the task toolbar', async () => {
+    renderSection()
+
+    await waitFor(
+      () => {
+        expect(screen.getByText('Alice')).toBeInTheDocument()
+      },
+      { timeout: 5_000 }
+    )
+
+    expect(
+      screen.queryByRole('button', { name: /Export/ })
+    ).not.toBeInTheDocument()
+  })
 })

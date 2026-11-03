@@ -378,6 +378,10 @@ func GetAllTask(c *gin.Context) {
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
 	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp, ChannelID: c.Query("channel_id"), BillingAccountType: c.Query("billing_account_type"), OrganizationID: organizationId}
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	if err := service.HydrateOrganizationTaskNames(items); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo.SetTotal(int(model.TaskCountAllTasks(queryParams)))
 	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role")))
 	common.ApiSuccess(c, pageInfo)
@@ -391,6 +395,10 @@ func GetUserTask(c *gin.Context) {
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
 	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp, IncludeOrganization: c.Query("include_organization") == "true", BillingAccountType: c.Query("billing_account_type"), OrganizationID: organizationId}
 	items := model.TaskGetAllUserTask(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
+	if err := service.HydrateOrganizationTaskNames(items); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	pageInfo.SetTotal(int(model.TaskCountAllUserTask(userID, queryParams)))
 	pageInfo.SetItems(tasksToDto(items, false, common.RoleCommonUser))
 	common.ApiSuccess(c, pageInfo)

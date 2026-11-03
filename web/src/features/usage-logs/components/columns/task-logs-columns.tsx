@@ -223,11 +223,10 @@ export function useTaskLogsColumns(
     columns.push({
       id: 'responsible_user',
       header: t('Responsible user'),
-      accessorFn: (row) => row.responsible_name || row.username || '',
+      accessorFn: (row) => row.responsible_name || '',
       cell: ({ row }) => {
         const name =
           row.original.responsible_name ||
-          row.original.username ||
           (row.original.responsible_user_id
             ? `#${row.original.responsible_user_id}`
             : '')

@@ -11,10 +11,10 @@ const (
 	// TaskActionGenerate 是视频生成请求的默认动作（legacy 别名 "generate"，
 	// NormalizeTaskAction 会归一到 image_to_video）。fork 保留的 Go 任务适配器
 	// （doubao/astraflow）使用该动作，上游因迁移到 JS 插件系统而移除了它。
-	TaskActionGenerate          = "generate"
+	TaskActionGenerate = "generate"
 	// TaskActionTextGenerate 是 Kling/Jimeng 旧路由中间件写入的 legacy 动作
 	// 别名（NormalizeTaskAction 会归一到 text_to_video）。
-	TaskActionTextGenerate      = "textGenerate"
+	TaskActionTextGenerate     = "textGenerate"
 	TaskActionImageToVideo     = "image_to_video"
 	TaskActionTextToVideo      = "text_to_video"
 	TaskActionFirstTailToVideo = "first_tail_to_video"
@@ -46,4 +46,32 @@ func NormalizeTaskAction(action string) string {
 		return canonical
 	}
 	return action
+}
+
+// TaskActionQueryNames returns every stored action name equivalent to the
+// requested one: the request itself, its canonical name, and the legacy alias
+// for that canonical name. Task rows are written under both the legacy and the
+// canonical vocabulary (and plugin tasks may declare the canonical name), so an
+// exact-match filter on either spelling alone would miss rows.
+func TaskActionQueryNames(action string) []string {
+	canonical := NormalizeTaskAction(action)
+	names := []string{action}
+	seen := map[string]struct{}{action: {}}
+	add := func(name string) {
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	add(canonical)
+	for legacy, target := range legacyTaskActionAliases {
+		if target == canonical {
+			add(legacy)
+		}
+	}
+	return names
 }

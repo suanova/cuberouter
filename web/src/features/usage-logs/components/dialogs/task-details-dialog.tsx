@@ -97,7 +97,6 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
   }
   const responsibleName =
     props.log.responsible_name ||
-    props.log.username ||
     (props.log.responsible_user_id ? `#${props.log.responsible_user_id}` : '')
 
   return (

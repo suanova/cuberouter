@@ -288,6 +288,9 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
           isLoading={tasks.isLoading}
           logCategory='task'
           emptyTitle={t('No tasks in this range')}
+          emptyDescription={t(
+            'Adjust the time range or the filters to find what the organization submitted.'
+          )}
         />
       }
     />
