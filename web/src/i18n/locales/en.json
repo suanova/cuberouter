@@ -6206,6 +6206,13 @@
     "Remaining allocatable": "Remaining allocatable",
     "Member quota limits exceed the organization quota. Lower a member's limit or raise the organization quota before setting another.": "Member quota limits exceed the organization quota. Lower a member's limit or raise the organization quota before setting another.",
     "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.": "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.",
-    "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap."
+    "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.",
+    "Member remaining": "Member remaining",
+    "Organization balance": "Organization balance",
+    "Cache Tokens": "Cache Tokens",
+    "My available quota": "My available quota",
+    "The range cannot exceed 31 days.": "The range cannot exceed 31 days.",
+    "History is still being prepared.": "History is still being prepared.",
+    "Vector": "Vector"
   }
 }

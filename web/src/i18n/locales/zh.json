@@ -6206,6 +6206,13 @@
     "Remaining allocatable": "可分配余额",
     "Member quota limits exceed the organization quota. Lower a member's limit or raise the organization quota before setting another.": "成员配额上限总和已超过组织配额。请先调低成员上限或提高组织配额，再设置新的上限。",
     "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.": "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.",
-    "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap."
+    "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.",
+    "Member remaining": "成员剩余",
+    "Organization balance": "组织余额",
+    "Cache Tokens": "缓存 Token",
+    "My available quota": "我的可用额度",
+    "The range cannot exceed 31 days.": "时间跨度不能超过 31 天。",
+    "History is still being prepared.": "历史数据仍在整理中。",
+    "Vector": "向量"
   }
 }
