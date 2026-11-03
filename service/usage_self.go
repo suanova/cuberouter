@@ -259,6 +259,79 @@ func sumSelfUsageTotals(rows []usageRow) dto.SelfUsageTotals {
 	return totals
 }
 
+// collectSelfUsageFilterOptions feeds the model and API key dropdowns with
+// what the caller can actually see and use: models enabled for their groups
+// (narrowed by member model access), personal keys, and organization keys they
+// are allowed to view. It is independent of the current table filters so the
+// lists do not collapse to the current selection.
+func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfUsageFilterOptions, error) {
+	usableGroups := GetUserUsableGroups(user.Group)
+	groups := make([]string, 0, len(usableGroups))
+	for name := range usableGroups {
+		groups = append(groups, name)
+	}
+	models := GetGroupsEnabledModels(groups)
+	models = model.FilterModelsByMemberAccess(model.GetUserModelAllowList(actorUserId), models)
+	if models == nil {
+		models = []string{}
+	}
+	sort.Strings(models)
+
+	options := dto.SelfUsageFilterOptions{
+		Models: models,
+		Tokens: make([]dto.SelfUsageTokenOption, 0),
+	}
+
+	var personalNames []string
+	if err := model.DB.Model(&model.Token{}).
+		Where("(scope_type = ? OR scope_type = '') AND user_id = ?", model.TokenScopePersonal, actorUserId).
+		Pluck("name", &personalNames).Error; err != nil {
+		return dto.SelfUsageFilterOptions{}, err
+	}
+	for _, name := range personalNames {
+		if name != "" {
+			options.Tokens = append(options.Tokens, dto.SelfUsageTokenOption{Name: name})
+		}
+	}
+
+	organizations, err := ListUserOrganizations(actorUserId, false)
+	if err != nil {
+		return dto.SelfUsageFilterOptions{}, err
+	}
+	for _, organization := range organizations {
+		if !organization.Capabilities.CanViewOrganizationTokens {
+			continue
+		}
+		query := model.DB.Model(&model.Token{}).
+			Where("scope_type = ? AND organization_id = ?", model.TokenScopeOrganization, organization.Id)
+		if !organization.Capabilities.CanViewOrganizationWideData {
+			query = query.Where("(visibility <> ? AND (responsible_user_id = ? OR creator_user_id = ?)) OR visibility = ?",
+				model.TokenVisibilityPublic, actorUserId, actorUserId, model.TokenVisibilityPublic)
+		}
+		var names []string
+		if err := query.Pluck("name", &names).Error; err != nil {
+			return dto.SelfUsageFilterOptions{}, err
+		}
+		for _, name := range names {
+			if name != "" {
+				options.Tokens = append(options.Tokens, dto.SelfUsageTokenOption{
+					Name:             name,
+					OrganizationId:   organization.Id,
+					OrganizationName: organization.Name,
+				})
+			}
+		}
+	}
+
+	sort.Slice(options.Tokens, func(i, j int) bool {
+		if options.Tokens[i].Name != options.Tokens[j].Name {
+			return options.Tokens[i].Name < options.Tokens[j].Name
+		}
+		return options.Tokens[i].OrganizationId < options.Tokens[j].OrganizationId
+	})
+	return options, nil
+}
+
 func sortSelfUsageRows(rows []usageRow) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		left, right := rows[i], rows[j]
@@ -379,6 +452,10 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 	if err != nil {
 		return dto.SelfUsageData{}, err
 	}
+	filterOptions, err := collectSelfUsageFilterOptions(query.ActorUserId, user)
+	if err != nil {
+		return dto.SelfUsageData{}, err
+	}
 	overview := buildSelfUsageOverview(merged, user.Quota, query.OverviewOrganizationID)
 	if query.OverviewOrganizationID > 0 {
 		if err := fillSelfUsageOrganizationOverview(&overview, query.ActorUserId, query.OverviewOrganizationID); err != nil {
@@ -423,6 +500,7 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 			Total:    len(filtered),
 			Items:    items,
 		},
-		Totals: totals,
+		Totals:        totals,
+		FilterOptions: filterOptions,
 	}, nil
 }

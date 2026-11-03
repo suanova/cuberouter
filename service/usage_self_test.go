@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -170,4 +171,43 @@ func TestSortSelfUsageRowsComparesFullKey(t *testing.T) {
 	sortSelfUsageRows(rows)
 	assert.Equal(t, 1, rows[0].OrganizationID)
 	assert.Equal(t, "Alpha", rows[0].OrganizationName)
+}
+
+func TestGetSelfUsageReturnsVisibleModelsAndUsableTokens(t *testing.T) {
+	setupServiceTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Model{}, &model.Ability{}))
+
+	const actor = 707
+	require.NoError(t, model.DB.Create(&model.User{Id: actor, Username: "u707", Group: "default"}).Error)
+	require.NoError(t, model.DB.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-4o", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "wan3.0-video", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "hidden-model", ChannelId: 1, Enabled: false},
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Organization{Id: 909, Name: "Acme", Slug: "acme", OwnerUserId: 9099}).Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{
+		OrganizationId: 909, UserId: actor, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive,
+	}).Error)
+	require.NoError(t, model.DB.Create(&[]model.Token{
+		{UserId: actor, Name: "personal-key", Key: "sk-personal", ScopeType: model.TokenScopePersonal},
+		{UserId: actor, Name: "org-public", Key: "sk-orgpub", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPublic},
+		{UserId: actor, Name: "org-mine", Key: "sk-orgmine", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPrivate, ResponsibleUserId: actor},
+		{UserId: 708, Name: "org-other", Key: "sk-orgother", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPrivate, ResponsibleUserId: 708},
+		{UserId: 709, Name: "foreign-org-key", Key: "sk-foreign", ScopeType: model.TokenScopeOrganization, OrganizationId: 910, Visibility: model.TokenVisibilityPublic},
+	}).Error)
+
+	got, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: actor,
+		StartTs:     time.Now().Add(-time.Hour).Unix(),
+		EndTs:       time.Now().Add(time.Hour).Unix(),
+		Page:        1,
+		PageSize:    20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gpt-4o", "wan3.0-video"}, got.FilterOptions.Models)
+	assert.Equal(t, []dto.SelfUsageTokenOption{
+		{Name: "org-mine", OrganizationId: 909, OrganizationName: "Acme"},
+		{Name: "org-public", OrganizationId: 909, OrganizationName: "Acme"},
+		{Name: "personal-key"},
+	}, got.FilterOptions.Tokens)
 }

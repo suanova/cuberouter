@@ -22,11 +22,12 @@ package dto
 
 // SelfUsageData is the response of GET /api/usage/self.
 type SelfUsageData struct {
-	BackfillComplete bool              `json:"backfill_complete"`
-	Range            SelfUsageRange    `json:"range"`
-	Overview         SelfUsageOverview `json:"overview"`
-	Rows             SelfUsageRows     `json:"rows"`
-	Totals           SelfUsageTotals   `json:"totals"`
+	BackfillComplete bool                   `json:"backfill_complete"`
+	Range            SelfUsageRange         `json:"range"`
+	Overview         SelfUsageOverview      `json:"overview"`
+	Rows             SelfUsageRows          `json:"rows"`
+	Totals           SelfUsageTotals        `json:"totals"`
+	FilterOptions    SelfUsageFilterOptions `json:"filter_options"`
 }
 
 type SelfUsageRange struct {
@@ -93,4 +94,19 @@ type SelfUsageTotals struct {
 	CompletionTokens int `json:"completion_tokens"`
 	CacheTokens      int `json:"cache_tokens"`
 	Quota            int `json:"quota"`
+}
+
+// SelfUsageFilterOptions lists the models the caller can see and the API keys
+// the caller can use (personal keys plus keys of organizations they belong to).
+// Organization keys carry the organization so the UI can label them
+// "key (organization)" and tell same-named keys apart.
+type SelfUsageFilterOptions struct {
+	Models []string               `json:"models"`
+	Tokens []SelfUsageTokenOption `json:"tokens"`
+}
+
+type SelfUsageTokenOption struct {
+	Name             string `json:"name"`
+	OrganizationId   int    `json:"organization_id"`
+	OrganizationName string `json:"organization_name"`
 }
