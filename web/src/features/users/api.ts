@@ -95,6 +95,22 @@ export async function getUser(id: number): Promise<ApiResponse<User>> {
 }
 
 /**
+ * The models a user can currently use, resolved by the backend from that
+ * user's groups (and any member model allow-list). This is the discount
+ * editor's option source: the viewer's own pricing list is filtered by the
+ * viewer's groups, so models that live only in the edited user's group would
+ * be missing from it.
+ */
+export async function getUserEnabledModels(userId: number): Promise<string[]> {
+  const res = await api.get(`/api/user/${userId}/models`)
+  const payload = res.data as ApiResponse<string[]> | undefined
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
+  return payload?.data ?? []
+}
+
+/**
  * Get a user's per-model billing discounts (admin).
  * The backend answers with an empty object when the user has none.
  */

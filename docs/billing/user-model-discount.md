@@ -40,6 +40,7 @@
 |---|---|
 | 读 | `GET /api/user/:id/model-discounts`（ops 及以上读权限面；DB 直读） |
 | 写 | `PUT /api/user/:id/model-discounts`（admin）；body `{"discounts": {"模型名": 0.8}}` |
+| 模型候选 | `GET /api/user/:id/models`（ops 及以上读权限面）：被编辑用户当前可见的模型 |
 | 后台 UI | 用户列表 → 编辑用户抽屉 → 「Model Discounts」区 |
 | 审计 | 管理审计 `user.model_discounts`（before/after） |
 
