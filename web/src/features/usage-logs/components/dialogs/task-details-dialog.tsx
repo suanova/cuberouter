@@ -26,6 +26,7 @@ import { Label } from '@/components/ui/label'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { getLogBillingAccount } from '../../lib/format'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import { resolveTaskDetailAccess } from '../../lib/task-details'
 import type { TaskLog } from '../../types'
@@ -87,6 +88,17 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
   const plugin = access.plugin
   const runtime = access.runtime
   const properties = props.log.properties
+  const billingAccount = getLogBillingAccount(props.log)
+  let billingAccountLabel = t('Personal')
+  if (billingAccount.type === 'organization') {
+    billingAccountLabel = billingAccount.name
+      ? `${billingAccount.name} (#${billingAccount.id})`
+      : `#${billingAccount.id}`
+  }
+  const responsibleName =
+    props.log.responsible_name ||
+    props.log.username ||
+    (props.log.responsible_user_id ? `#${props.log.responsible_user_id}` : '')
 
   return (
     <Dialog
@@ -160,6 +172,19 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
           ) : null}
         </DetailSection>
 
+        <DetailSection label={t('Billing')}>
+          <DetailRow
+            label={t('Cost')}
+            value={formatLogQuota(props.log.quota ?? 0)}
+            mono
+          />
+          <DetailRow label={t('Billing Account')} value={billingAccountLabel} />
+          {(props.isAdmin || billingAccount.type === 'organization') &&
+          responsibleName ? (
+            <DetailRow label={t('Responsible user')} value={responsibleName} />
+          ) : null}
+        </DetailSection>
+
         {props.isAdmin ? (
           <DetailSection
             label={t('Admin Only')}
@@ -181,11 +206,6 @@ export function TaskDetailsDialog(props: TaskDetailsDialogProps) {
               mono
             />
             <DetailRow label={t('Group')} value={props.log.group || '-'} />
-            <DetailRow
-              label={t('Quota')}
-              value={formatLogQuota(props.log.quota)}
-              mono
-            />
             {props.log.admin_info?.request_id ? (
               <DetailRow
                 label={t('Request ID')}

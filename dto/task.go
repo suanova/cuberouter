@@ -50,6 +50,14 @@ type TaskDto struct {
 	Progress             string          `json:"progress"`
 	Properties           any             `json:"properties"`
 	Username             string          `json:"username,omitempty"`
+	TokenId              int             `json:"token_id,omitempty"`
+	TokenName            string          `json:"token_name,omitempty"`
+	BillingAccountType   string          `json:"billing_account_type,omitempty"`
+	BillingAccountId     int             `json:"billing_account_id,omitempty"`
+	OrganizationId       int             `json:"organization_id,omitempty"`
+	OrganizationName     string          `json:"organization_name,omitempty"`
+	ResponsibleUserId    int             `json:"responsible_user_id,omitempty"`
+	ResponsibleName      string          `json:"responsible_name,omitempty"`
 	Data                 json.RawMessage `json:"data"`
 	AdminInfo            *TaskAdminInfo  `json:"admin_info,omitempty"`
 	RootInfo             *TaskRootInfo   `json:"root_info,omitempty"`

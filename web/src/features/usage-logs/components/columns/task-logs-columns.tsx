@@ -26,9 +26,10 @@ import { useTranslation } from 'react-i18next'
 import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
+import { getLogBillingAccount } from '../../lib/format'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
 import type { TaskLog } from '../../types'
 import { TaskDetailsDialog } from '../dialogs/task-details-dialog'
@@ -191,6 +192,55 @@ export function useTaskLogsColumns(
     )
   }
 
+  columns.push({
+    id: 'billing_account',
+    header: t('Billing Account'),
+    accessorFn: (row) => row.billing_account_type || 'personal',
+    cell: function BillingAccountCell({ row }) {
+      const account = getLogBillingAccount(row.original)
+      if (account.type === 'personal') {
+        return (
+          <span className='text-muted-foreground text-sm'>{t('Personal')}</span>
+        )
+      }
+      return (
+        <span className='flex min-w-0 flex-col gap-0.5'>
+          <span className='max-w-[160px] truncate text-sm'>
+            {account.name || `#${account.id}`}
+          </span>
+          {account.name && account.id > 0 && (
+            <span className='text-muted-foreground font-mono text-xs'>
+              #{account.id}
+            </span>
+          )}
+        </span>
+      )
+    },
+    size: 170,
+  })
+
+  if (isAdmin) {
+    columns.push({
+      id: 'responsible_user',
+      header: t('Responsible user'),
+      accessorFn: (row) => row.responsible_name || row.username || '',
+      cell: ({ row }) => {
+        const name =
+          row.original.responsible_name ||
+          row.original.username ||
+          (row.original.responsible_user_id
+            ? `#${row.original.responsible_user_id}`
+            : '')
+        return name ? (
+          <span className='text-sm whitespace-nowrap'>{name}</span>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        )
+      },
+      size: 150,
+    })
+  }
+
   columns.push(
     {
       accessorKey: 'task_id',
@@ -217,6 +267,31 @@ export function useTaskLogsColumns(
         )
       },
       meta: { mobileTitle: true },
+    },
+    {
+      accessorKey: 'token_name',
+      header: t('Token'),
+      cell: ({ row }) => {
+        const name =
+          row.original.token_name ||
+          (row.original.token_id ? `#${row.original.token_id}` : '')
+        return name ? (
+          <span className='font-mono text-xs'>{name}</span>
+        ) : (
+          <span className='text-muted-foreground/60 text-xs'>-</span>
+        )
+      },
+      size: 150,
+    },
+    {
+      accessorKey: 'quota',
+      header: t('Cost'),
+      cell: ({ row }) => (
+        <span className='font-mono text-xs tabular-nums'>
+          {formatLogQuota(row.original.quota ?? 0)}
+        </span>
+      ),
+      size: 120,
     },
     createDurationColumn<TaskLog>({
       submitTimeKey: 'submit_time',

@@ -78,6 +78,14 @@ export function buildSearchParams(
       return {
         ...baseParams,
         ...(taskFilters.taskId && { filter: taskFilters.taskId }),
+        ...(taskFilters.status && { status: taskFilters.status }),
+        ...(taskFilters.action && { action: taskFilters.action }),
+        ...(taskFilters.billingAccountType && {
+          billingAccountType: taskFilters.billingAccountType,
+        }),
+        ...(taskFilters.organizationId && {
+          organizationId: taskFilters.organizationId,
+        }),
       }
     }
     default:

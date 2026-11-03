@@ -70,6 +70,10 @@ export interface DrawingLogFilters extends CommonFilters {
  */
 export interface TaskLogFilters extends CommonFilters {
   taskId?: string
+  status?: string
+  action?: string
+  billingAccountType?: string
+  organizationId?: string
 }
 
 /**
@@ -313,6 +317,14 @@ export interface TaskLog {
   channel_id: number
   group: string
   quota: number
+  token_id?: number
+  token_name?: string
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
+  responsible_user_id?: number
+  responsible_name?: string
   submit_time: number // seconds
   start_time?: number // seconds
   finish_time?: number // seconds
@@ -461,6 +473,12 @@ export interface GetTaskLogsParams {
   page_size?: number
   channel_id?: string
   task_id?: string
+  platform?: string
+  status?: string
+  action?: string
+  include_organization?: boolean
+  billing_account_type?: 'personal' | 'organization'
+  organization_id?: number
   start_timestamp?: number
   end_timestamp?: number
 }

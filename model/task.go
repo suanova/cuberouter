@@ -283,15 +283,18 @@ func (p TaskPrivateData) Value() (driver.Value, error) {
 
 // SyncTaskQueryParams 用于包含所有搜索条件的结构体，可以根据需求添加更多字段
 type SyncTaskQueryParams struct {
-	Platform       constant.TaskPlatform
-	ChannelID      string
-	TaskID         string
-	UserID         string
-	Action         string
-	Status         string
-	StartTimestamp int64
-	EndTimestamp   int64
-	UserIDs        []int
+	Platform            constant.TaskPlatform
+	ChannelID           string
+	TaskID              string
+	UserID              string
+	Action              string
+	Status              string
+	StartTimestamp      int64
+	EndTimestamp        int64
+	UserIDs             []int
+	IncludeOrganization bool
+	BillingAccountType  string
+	OrganizationID      int
 }
 
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
@@ -357,7 +360,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	var err error
 
 	// 初始化查询构建器
-	query := applyPersonalAsyncTaskScope(DB).Where("user_id = ?", userId)
+	query := userAsyncTaskScopeQuery(DB, userId, queryParams.IncludeOrganization)
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
@@ -371,6 +374,7 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 	if queryParams.Platform != "" {
 		query = query.Where("platform = ?", queryParams.Platform)
 	}
+	query = applyAsyncTaskBillingFilter(query, queryParams.BillingAccountType, queryParams.OrganizationID)
 	if queryParams.StartTimestamp != 0 {
 		// 假设您已将前端传来的时间戳转换为数据库所需的时间格式，并处理了时间戳的验证和解析
 		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
@@ -417,6 +421,7 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	if queryParams.Status != "" {
 		query = query.Where("status = ?", queryParams.Status)
 	}
+	query = applyAsyncTaskBillingFilter(query, queryParams.BillingAccountType, queryParams.OrganizationID)
 	if queryParams.StartTimestamp != 0 {
 		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
 	}
@@ -723,6 +728,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	if queryParams.Status != "" {
 		query = query.Where("status = ?", queryParams.Status)
 	}
+	query = applyAsyncTaskBillingFilter(query, queryParams.BillingAccountType, queryParams.OrganizationID)
 	if queryParams.StartTimestamp != 0 {
 		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
 	}
@@ -736,7 +742,7 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 // TaskCountAllUserTask returns total tasks for given user
 func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	var total int64
-	query := applyPersonalAsyncTaskScope(DB.Model(&Task{})).Where("user_id = ?", userId)
+	query := userAsyncTaskScopeQuery(DB.Model(&Task{}), userId, queryParams.IncludeOrganization)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
@@ -749,6 +755,7 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	if queryParams.Platform != "" {
 		query = query.Where("platform = ?", queryParams.Platform)
 	}
+	query = applyAsyncTaskBillingFilter(query, queryParams.BillingAccountType, queryParams.OrganizationID)
 	if queryParams.StartTimestamp != 0 {
 		query = query.Where("submit_time >= ?", queryParams.StartTimestamp)
 	}

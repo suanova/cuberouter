@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { formatQuota } from '@/lib/format'
@@ -42,17 +41,6 @@ vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
   listOrganizationTasks: vi.fn(),
 }))
-
-const exportMock = vi.hoisted(() => ({
-  buildTaskExportSheet: vi.fn(() => ({
-    rows: [],
-    columns: [],
-    filename: 'organization-tasks.xlsx',
-  })),
-  writeTaskExportFile: vi.fn(),
-}))
-
-vi.mock('../../lib/organization-task-export', () => exportMock)
 
 const listTasksMock = vi.mocked(listOrganizationTasks)
 
@@ -167,46 +155,5 @@ describe('organization tasks section', () => {
       screen.queryByRole('columnheader', { name: 'Artifacts' })
     ).not.toBeInTheDocument()
     expect(screen.queryByText('50%')).not.toBeInTheDocument()
-  })
-
-  test('exports the whole filtered task set in detail or daily mode', async () => {
-    renderSection()
-
-    await waitFor(
-      () => {
-        expect(screen.getByText('Alice')).toBeInTheDocument()
-      },
-      { timeout: 5_000 }
-    )
-
-    await userEvent.click(screen.getByRole('button', { name: /Export/ }))
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: 'Excel (details)' })
-    )
-
-    await waitFor(() => {
-      expect(exportMock.writeTaskExportFile).toHaveBeenCalled()
-    })
-    expect(exportMock.buildTaskExportSheet).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ task_id: 'task-1' })]),
-      'detail',
-      expect.any(Function)
-    )
-    expect(
-      listTasksMock.mock.calls.some(([, , params]) => params.page_size === 100)
-    ).toBe(true)
-
-    await userEvent.click(screen.getByRole('button', { name: /Export/ }))
-    await userEvent.click(
-      await screen.findByRole('menuitem', { name: 'Excel (daily summary)' })
-    )
-
-    await waitFor(() => {
-      expect(exportMock.buildTaskExportSheet).toHaveBeenLastCalledWith(
-        expect.any(Array),
-        'daily',
-        expect.any(Function)
-      )
-    })
   })
 })

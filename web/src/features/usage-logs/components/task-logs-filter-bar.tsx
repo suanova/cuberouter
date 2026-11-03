@@ -16,12 +16,24 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQueryClient, useIsFetching } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
-import { type Table } from '@tanstack/react-table'
-import { useState, useEffect, useCallback } from 'react'
+import type { Table } from '@tanstack/react-table'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { getOrganizations } from '@/features/organization/api'
+import { getAccountContextCacheKey } from '@/stores/account-context-store'
+
+import { TASK_ACTION_MAPPINGS, TASK_STATUS_MAPPINGS } from '../constants'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { DrawingLogFilters, LogCategory, TaskLogFilters } from '../types'
@@ -72,6 +84,22 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   const { isAdminView: isAdmin } = useLogsViewScope(props.logCategory)
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 
+  const organizationsQuery = useQuery({
+    queryKey: [
+      'organizations',
+      'self',
+      'task-log-filter',
+      getAccountContextCacheKey(),
+    ],
+    queryFn: getOrganizations,
+    enabled: props.logCategory === 'task' && !isAdmin,
+    staleTime: 5 * 60 * 1000,
+  })
+  const organizations = useMemo(
+    () => organizationsQuery.data?.data ?? [],
+    [organizationsQuery.data]
+  )
+
   const [filters, setFilters] = useState<TaskLogsFilters>(() => {
     const { start, end } = getDefaultTimeRange()
     return { startTime: start, endTime: end }
@@ -97,6 +125,20 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         : {
             ...baseFilters,
             ...(searchParams.filter ? { taskId: searchParams.filter } : {}),
+            ...(searchParams.status
+              ? { status: String(searchParams.status) }
+              : {}),
+            ...(searchParams.action
+              ? { action: String(searchParams.action) }
+              : {}),
+            ...(searchParams.billingAccountType
+              ? {
+                  billingAccountType: String(searchParams.billingAccountType),
+                }
+              : {}),
+            ...(searchParams.organizationId
+              ? { organizationId: String(searchParams.organizationId) }
+              : {}),
           }
 
     setFilters(next)
@@ -106,11 +148,18 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.endTime,
     searchParams.channel,
     searchParams.filter,
+    searchParams.status,
+    searchParams.action,
+    searchParams.billingAccountType,
+    searchParams.organizationId,
   ])
 
   const handleChange = useCallback(
-    (field: keyof TaskLogsFilters, value: Date | string | undefined) => {
-      setFilters((prev) => ({ ...prev, [field]: value }))
+    (field: keyof TaskLogFilters, value: Date | string | undefined) => {
+      setFilters(
+        (prev) =>
+          ({ ...(prev as TaskLogFilters), [field]: value }) as TaskLogsFilters
+      )
     },
     []
   )
@@ -130,8 +179,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
-    const resetFilters: TaskLogsFilters = { startTime: start, endTime: end }
-    setFilters(resetFilters)
+    setFilters({ startTime: start, endTime: end })
 
     navigate({
       to: '/usage-logs/$section',
@@ -152,21 +200,87 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     [handleApply]
   )
 
-  const handleFilterChange = useCallback(
-    (value: string) => {
-      setFilters((prev) => setFilterValue(prev, props.logCategory, value))
-    },
-    [props.logCategory]
-  )
-
   const filterValue = getFilterValue(filters, props.logCategory)
+  const taskFilters =
+    props.logCategory === 'task' ? (filters as TaskLogFilters) : null
+  const drawingFilters =
+    props.logCategory === 'drawing' ? (filters as DrawingLogFilters) : null
   const placeholder =
     props.logCategory === 'drawing'
       ? t('Filter by MjProxy task ID')
       : t('Filter by task ID')
-  const hasAdditionalFilters = !!filterValue || !!filters.channel
+  const statusItems = useMemo(
+    () => [
+      { value: 'all', label: t('All statuses') },
+      ...Object.entries(TASK_STATUS_MAPPINGS).map(([value, meta]) => ({
+        value,
+        label: t(meta.label),
+      })),
+    ],
+    [t]
+  )
+  const actionItems = useMemo(
+    () => [
+      { value: 'all', label: t('All Types') },
+      ...Object.entries(TASK_ACTION_MAPPINGS).map(([value, meta]) => ({
+        value,
+        label: t(meta.label),
+      })),
+    ],
+    [t]
+  )
+  const billingAccountTypeItems = useMemo(
+    () => [
+      { value: 'all', label: t('All Billing Types') },
+      { value: 'personal', label: t('Personal') },
+      { value: 'organization', label: t('Organization') },
+    ],
+    [t]
+  )
+  const organizationItems = useMemo(
+    () => [
+      { value: 'all', label: t('All organizations') },
+      ...organizations.map((organization) => ({
+        value: String(organization.id),
+        label: organization.name,
+      })),
+    ],
+    [organizations, t]
+  )
+  const statusLabel =
+    statusItems.find((item) => item.value === taskFilters?.status)?.label ??
+    t('All statuses')
+  const actionLabel =
+    actionItems.find((item) => item.value === taskFilters?.action)?.label ??
+    t('All Types')
+  const billingAccountTypeValue = taskFilters?.billingAccountType || 'all'
+  const billingAccountTypeLabel =
+    billingAccountTypeItems.find(
+      (item) => item.value === billingAccountTypeValue
+    )?.label ?? t('All Billing Types')
+  const organizationValue = taskFilters?.organizationId || 'all'
+  const organizationLabel =
+    organizationItems.find((item) => item.value === organizationValue)?.label ??
+    t('All organizations')
+
+  const hasAdvancedFilters =
+    !!filterValue ||
+    (isAdmin && !!taskFilters?.channel) ||
+    (isAdmin && !!taskFilters?.organizationId)
+  const advancedFilterCount = [
+    filterValue,
+    isAdmin ? taskFilters?.channel : undefined,
+    isAdmin ? taskFilters?.organizationId : undefined,
+  ].filter(Boolean).length
+  const hasActiveFilters =
+    hasAdvancedFilters ||
+    !!taskFilters?.status ||
+    !!taskFilters?.action ||
+    !!taskFilters?.billingAccountType ||
+    (!isAdmin && !!taskFilters?.organizationId)
+
   const dateRangeFilter = (
-    <LogsFilterField wide>
+    <LogsFilterField className='sm:col-span-2'>
       <CompactDateTimeRangePicker
         start={filters.startTime}
         end={filters.endTime}
@@ -183,7 +297,11 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         aria-label={t('Task ID')}
         placeholder={placeholder}
         value={filterValue}
-        onChange={(e) => handleFilterChange(e.target.value)}
+        onChange={(e) => {
+          setFilters((prev) =>
+            setFilterValue(prev, props.logCategory, e.target.value)
+          )
+        }}
         onKeyDown={handleKeyDown}
       />
     </LogsFilterField>
@@ -192,12 +310,53 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     <LogsFilterField>
       <LogsFilterInput
         placeholder={t('Channel ID')}
-        value={filters.channel || ''}
+        value={taskFilters?.channel ?? drawingFilters?.channel ?? ''}
         onChange={(e) => handleChange('channel', e.target.value)}
         onKeyDown={handleKeyDown}
       />
     </LogsFilterField>
   ) : null
+  const organizationIdFilter =
+    isAdmin && taskFilters ? (
+      <LogsFilterField>
+        <LogsFilterInput
+          inputMode='numeric'
+          placeholder={t('Organization ID')}
+          value={taskFilters.organizationId || ''}
+          onChange={(e) => handleChange('organizationId', e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+      </LogsFilterField>
+    ) : null
+
+  if (props.logCategory === 'drawing') {
+    return (
+      <LogsFilterToolbar
+        table={props.table}
+        primaryFilters={
+          <>
+            {dateRangeFilter}
+            {taskIdFilter}
+            {channelFilter}
+          </>
+        }
+        mobilePinnedFilters={dateRangeFilter}
+        mobileFilters={
+          <>
+            {taskIdFilter}
+            {channelFilter}
+          </>
+        }
+        mobileFilterCount={
+          [filterValue, drawingFilters?.channel].filter(Boolean).length
+        }
+        hasActiveFilters={!!filterValue || !!drawingFilters?.channel}
+        onSearch={handleApply}
+        searchLoading={fetchingLogs > 0}
+        onReset={handleReset}
+      />
+    )
+  }
 
   return (
     <LogsFilterToolbar
@@ -205,8 +364,115 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       primaryFilters={
         <>
           {dateRangeFilter}
+          <LogsFilterField>
+            <Select
+              items={statusItems}
+              value={taskFilters?.status || 'all'}
+              onValueChange={(value) =>
+                handleChange(
+                  'status',
+                  value === null || value === 'all' ? undefined : value
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue>{statusLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {statusItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </LogsFilterField>
+          <LogsFilterField>
+            <Select
+              items={actionItems}
+              value={taskFilters?.action || 'all'}
+              onValueChange={(value) =>
+                handleChange(
+                  'action',
+                  value === null || value === 'all' ? undefined : value
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue>{actionLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {actionItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </LogsFilterField>
+          <LogsFilterField>
+            <Select
+              items={billingAccountTypeItems}
+              value={billingAccountTypeValue}
+              onValueChange={(value) =>
+                handleChange(
+                  'billingAccountType',
+                  value === null || value === 'all' ? undefined : value
+                )
+              }
+            >
+              <SelectTrigger>
+                <SelectValue>{billingAccountTypeLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {billingAccountTypeItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </LogsFilterField>
+          {!isAdmin && organizations.length > 0 ? (
+            <LogsFilterField>
+              <Select
+                items={organizationItems}
+                value={organizationValue}
+                onValueChange={(value) =>
+                  handleChange(
+                    'organizationId',
+                    value === null || value === 'all' ? undefined : value
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue>{organizationLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    {organizationItems.map((item) => (
+                      <SelectItem key={item.value} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </LogsFilterField>
+          ) : null}
+        </>
+      }
+      advancedFilters={
+        <>
           {taskIdFilter}
           {channelFilter}
+          {organizationIdFilter}
         </>
       }
       mobilePinnedFilters={dateRangeFilter}
@@ -214,10 +480,21 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         <>
           {taskIdFilter}
           {channelFilter}
+          {organizationIdFilter}
         </>
       }
-      mobileFilterCount={[filterValue, filters.channel].filter(Boolean).length}
-      hasActiveFilters={hasAdditionalFilters}
+      mobileFilterCount={
+        advancedFilterCount +
+        [
+          taskFilters?.status,
+          taskFilters?.action,
+          taskFilters?.billingAccountType,
+          !isAdmin ? taskFilters?.organizationId : undefined,
+        ].filter(Boolean).length
+      }
+      hasAdvancedActiveFilters={hasAdvancedFilters}
+      advancedFilterCount={advancedFilterCount}
+      hasActiveFilters={hasActiveFilters}
       onSearch={handleApply}
       searchLoading={fetchingLogs > 0}
       onReset={handleReset}

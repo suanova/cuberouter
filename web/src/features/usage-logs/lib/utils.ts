@@ -286,7 +286,26 @@ export async function fetchLogsByCategory(
       ? { mj_id: searchParams.filter as string | undefined }
       : {}),
     ...(logCategory === 'task'
-      ? { task_id: searchParams.filter as string | undefined }
+      ? {
+          task_id: searchParams.filter as string | undefined,
+          ...(searchParams.status
+            ? { status: String(searchParams.status) }
+            : {}),
+          ...(searchParams.action
+            ? { action: String(searchParams.action) }
+            : {}),
+          ...(!isAdmin ? { include_organization: true } : {}),
+          ...(searchParams.billingAccountType
+            ? {
+                billing_account_type: String(
+                  searchParams.billingAccountType
+                ) as 'personal' | 'organization',
+              }
+            : {}),
+          ...(searchParams.organizationId
+            ? { organization_id: Number(searchParams.organizationId) || 0 }
+            : {}),
+        }
       : {}),
   }
 

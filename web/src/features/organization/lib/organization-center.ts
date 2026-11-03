@@ -210,7 +210,11 @@ export function getOrganizationTabs(
     },
     {
       key: 'tasks',
-      visible: capabilities.can_view_organization_logs,
+      // Like Logs: the organization-wide task list requires the wide grant.
+      // Members see their own organization tasks in the personal task page.
+      visible:
+        capabilities.can_view_organization_logs &&
+        capabilities.can_view_organization_wide_data,
       limitedView,
     },
     {

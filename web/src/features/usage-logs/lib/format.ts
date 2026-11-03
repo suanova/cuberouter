@@ -260,6 +260,14 @@ export type LogBillingAccount = {
   id: number
 }
 
+type BillingAccountLog = {
+  user_id: number
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
+}
+
 /**
  * The account a log entry was billed to.
  *
@@ -267,12 +275,14 @@ export type LogBillingAccount = {
  * existed; those rows were all personal, so an empty value must not read as an
  * organization.
  */
-export function getLogBillingAccount(log: UsageLog): LogBillingAccount {
+export function getLogBillingAccount(
+  log: BillingAccountLog
+): LogBillingAccount {
   if (log.billing_account_type === 'organization') {
     return {
       type: 'organization',
-      name: log.organization_name,
-      id: log.organization_id || log.billing_account_id,
+      name: log.organization_name ?? '',
+      id: log.organization_id || log.billing_account_id || 0,
     }
   }
   return {

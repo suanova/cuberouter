@@ -17,32 +17,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ChevronDown, Download, Loader2 } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import { DataTablePage, useDataTable } from '@/components/data-table'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { useTaskLogsColumns } from '@/features/usage-logs/components/columns/task-logs-columns'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
 import {
   LogsFilterField,
   LogsFilterToolbar,
 } from '@/features/usage-logs/components/logs-filter-toolbar'
+import { UsageLogsMobileList } from '@/features/usage-logs/components/usage-logs-mobile-card'
 import { getDefaultTimeRange } from '@/features/usage-logs/lib/utils'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 
 import { listOrganizationTasks } from '../api'
 import { useOrganizationPagedSection } from '../hooks/use-organization-paged-query'
 import {
-  collectOrganizationRows,
   insertColumnsAfter,
   organizationColumnFilterValue,
   organizationLogTimeWindow,
@@ -54,11 +44,6 @@ import {
   type OrganizationTaskLog,
 } from '../lib'
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
-import {
-  buildTaskExportSheet,
-  writeTaskExportFile,
-  type TaskExportMode,
-} from '../lib/organization-task-export'
 import type { OrganizationTaskRow } from '../types'
 import {
   OrganizationSelectFilter,
@@ -165,7 +150,10 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
     return (
       columnId !== 'task_id' &&
       columnId !== 'progress' &&
-      columnId !== 'artifacts'
+      columnId !== 'artifacts' &&
+      columnId !== 'token_name' &&
+      columnId !== 'quota' &&
+      columnId !== 'billing_account'
     )
   })
   const organizationColumns = buildOrganizationTaskColumns<OrganizationTaskLog>(
@@ -183,50 +171,6 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
   )
 
   const rows = tasks.items.map(organizationTaskToLog)
-
-  const [exporting, setExporting] = useState<TaskExportMode | null>(null)
-
-  const handleExport = async (mode: TaskExportMode) => {
-    setExporting(mode)
-    try {
-      const collected = await collectOrganizationRows<OrganizationTaskRow>(
-        async (page, pageSize) => {
-          const response = await listOrganizationTasks(
-            surface,
-            props.organizationId,
-            { ...listParams, p: page, page_size: pageSize }
-          )
-          return (
-            response.data ?? {
-              page,
-              page_size: pageSize,
-              total: 0,
-              items: [],
-            }
-          )
-        }
-      )
-      await writeTaskExportFile(
-        buildTaskExportSheet(
-          collected.items.map(organizationTaskToLog),
-          mode,
-          t
-        )
-      )
-      if (collected.truncated) {
-        toast.warning(
-          t('Exported the first {{exported}} of {{total}} records.', {
-            exported: collected.items.length,
-            total: collected.total,
-          })
-        )
-      }
-    } catch {
-      toast.error(t('The export could not be prepared.'))
-    } finally {
-      setExporting(null)
-    }
-  }
 
   const { table } = useDataTable({
     data: rows,
@@ -270,42 +214,9 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
         <LogsFilterToolbar
           table={table}
           hasActiveFilters={columnFilters.length > 0 || window.fromUrl}
-          hasAdvancedActiveFilters={
-            filters.status !== undefined || filters.action !== undefined
-          }
           searchLoading={tasks.isFetching}
           onReset={resetFilters}
           onSearch={tasks.refetch}
-          actionStart={
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    type='button'
-                    variant='outline'
-                    size='sm'
-                    disabled={exporting !== null || tasks.total === 0}
-                  />
-                }
-              >
-                {exporting ? (
-                  <Loader2 className='size-4 animate-spin' />
-                ) : (
-                  <Download className='size-4' />
-                )}
-                {exporting ? t('Exporting...') : t('Export')}
-                <ChevronDown className='size-3.5' />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align='end'>
-                <DropdownMenuItem onClick={() => void handleExport('detail')}>
-                  {t('Excel (details)')}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void handleExport('daily')}>
-                  {t('Excel (daily summary)')}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
           primaryFilters={
             <>
               <LogsFilterField className='sm:col-span-2'>
@@ -323,22 +234,6 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
                   }
                 />
               </LogsFilterField>
-              <OrganizationTextFilter
-                value={filters.task_id}
-                placeholder={t('Task ID')}
-                onChange={(value) =>
-                  setOrganizationTextFilter(
-                    onColumnFiltersChange,
-                    columnFilters,
-                    'task_id',
-                    value
-                  )
-                }
-              />
-            </>
-          }
-          advancedFilters={
-            <>
               <LogsFilterField>
                 <OrganizationSelectFilter
                   value={filters.status}
@@ -371,8 +266,28 @@ export function OrganizationTaskList(props: OrganizationTaskListProps) {
                   }
                 />
               </LogsFilterField>
+              <OrganizationTextFilter
+                value={filters.task_id}
+                placeholder={t('Task ID')}
+                onChange={(value) =>
+                  setOrganizationTextFilter(
+                    onColumnFiltersChange,
+                    columnFilters,
+                    'task_id',
+                    value
+                  )
+                }
+              />
             </>
           }
+        />
+      }
+      mobile={
+        <UsageLogsMobileList
+          table={table}
+          isLoading={tasks.isLoading}
+          logCategory='task'
+          emptyTitle={t('No tasks in this range')}
         />
       }
     />
