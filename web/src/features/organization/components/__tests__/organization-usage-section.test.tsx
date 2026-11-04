@@ -296,4 +296,18 @@ describe('organization usage section', () => {
       screen.queryByRole('columnheader', { name: 'Requests' })
     ).not.toBeInTheDocument()
   })
+
+  test('offers a retry instead of an endless skeleton when the request fails', async () => {
+    getUsageMock.mockRejectedValueOnce(new Error('network'))
+    renderSection()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Failed to load')
+
+    getUsageMock.mockResolvedValueOnce({ success: true, data: usageData() })
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Alice')).toBeInTheDocument()
+    })
+  })
 })

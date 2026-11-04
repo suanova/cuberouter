@@ -21,6 +21,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/ui/button'
 import { UsageDateRangePicker } from '@/features/usage/components/usage-date-range-picker'
 import type { UsageFilterValues } from '@/features/usage/components/usage-filter-bar'
 import { UsageTable } from '@/features/usage/components/usage-table'
@@ -160,6 +161,9 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
   }
 
   const backfillPending = usage.data ? !usage.data.backfill_complete : false
+  // The section hook turns a failed read into `undefined`; without an explicit
+  // state that would leave the skeleton on screen forever.
+  const failed = !usage.data && !usage.isLoading && !usage.isFetching
 
   return (
     <OrganizationSection
@@ -193,7 +197,24 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
           >
             {t('History is still being prepared.')}
           </div>
-        ) : (
+        ) : null}
+        {failed ? (
+          <div
+            role='alert'
+            className='border-destructive/40 bg-destructive/5 text-destructive flex items-center justify-between gap-3 rounded-lg border px-4 py-2 text-sm'
+          >
+            {t('Failed to load')}
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={usage.refetch}
+            >
+              {t('Retry')}
+            </Button>
+          </div>
+        ) : null}
+        {!backfillPending && !failed ? (
           <div className='min-h-0 flex-1 rounded-lg border'>
             {usage.data ? (
               <UsageTable
@@ -234,7 +255,7 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
               <div className='bg-muted/20 h-48 animate-pulse rounded-lg' />
             )}
           </div>
-        )}
+        ) : null}
       </div>
     </OrganizationSection>
   )
