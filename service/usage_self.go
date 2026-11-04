@@ -83,7 +83,6 @@ type usageRowKey struct {
 	OrganizationID     int
 	OrganizationName   string
 	ResponsibleUserID  int
-	ResponsibleName    string
 	TokenID            int
 	TokenName          string
 	ModelName          string
@@ -104,7 +103,7 @@ func mergeSelfUsageRows(
 ) []usageRow {
 	byKey := make(map[usageRowKey]*usageRow)
 
-	getOrCreate := func(key usageRowKey) *usageRow {
+	getOrCreate := func(key usageRowKey, responsibleName string) *usageRow {
 		row := byKey[key]
 		if row == nil {
 			row = &usageRow{
@@ -114,12 +113,14 @@ func mergeSelfUsageRows(
 				OrganizationID:     key.OrganizationID,
 				OrganizationName:   key.OrganizationName,
 				ResponsibleUserID:  key.ResponsibleUserID,
-				ResponsibleName:    key.ResponsibleName,
+				ResponsibleName:    responsibleName,
 				TokenID:            key.TokenID,
 				TokenName:          key.TokenName,
 				ModelName:          key.ModelName,
 			}
 			byKey[key] = row
+		} else if row.ResponsibleName == "" && responsibleName != "" {
+			row.ResponsibleName = responsibleName
 		}
 		return row
 	}
@@ -132,12 +133,11 @@ func mergeSelfUsageRows(
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
 			ResponsibleUserID:  item.ResponsibleUserID,
-			ResponsibleName:    item.ResponsibleName,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
 		}
-		row := getOrCreate(key)
+		row := getOrCreate(key, item.ResponsibleName)
 		row.RequestCount += item.RequestCount
 		row.SuccessCount += item.RequestCount
 		row.PromptTokens += item.PromptTokens
@@ -154,12 +154,11 @@ func mergeSelfUsageRows(
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
 			ResponsibleUserID:  item.ResponsibleUserID,
-			ResponsibleName:    item.ResponsibleName,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
 		}
-		row := getOrCreate(key)
+		row := getOrCreate(key, item.ResponsibleName)
 		row.RequestCount += item.RequestCount
 		row.SuccessCount += item.SuccessCount
 		row.FailureCount += item.FailureCount
@@ -174,12 +173,11 @@ func mergeSelfUsageRows(
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
 			ResponsibleUserID:  item.ResponsibleUserID,
-			ResponsibleName:    item.ResponsibleName,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
 		}
-		row := getOrCreate(key)
+		row := getOrCreate(key, item.ResponsibleName)
 		row.RequestCount += item.RequestCount
 		row.SuccessCount += item.SuccessCount
 		row.FailureCount += item.FailureCount

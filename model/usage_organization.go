@@ -37,6 +37,9 @@ func GetOrganizationUsageLogRowsByBucket(organizationId int, startTs, endTs, buc
 	if bucketSeconds <= 0 {
 		bucketSeconds = SelfUsageDaySeconds
 	}
+	// The bucket key uses the server's current UTC offset, matching the
+	// self-usage query. The deployment timezone is Asia/Shanghai, which has no
+	// DST; a DST-observing zone would misbucket the rows around a transition.
 	offset := localUTCOffsetSeconds()
 
 	var rows []SelfUsageLogRow

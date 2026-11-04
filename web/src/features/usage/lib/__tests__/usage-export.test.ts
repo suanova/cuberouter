@@ -192,4 +192,21 @@ describe('buildSelfUsageExportSheet', () => {
       /^organization-usage-day-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/
     )
   })
+
+  test('exports the same success and failure numbers the table shows', () => {
+    const sheet = buildSelfUsageExportSheet(
+      exportData('day', [
+        row({ request_count: 2, success_count: 1, failure_count: 1 }),
+        row({ request_count: 1, success_count: 0, failure_count: 0 }),
+      ]),
+      translate
+    )
+
+    // With failures the table reports success_count; without failures it
+    // reports request_count, including a request still in progress.
+    expect(sheet.rows[1].map(cellValue)[6]).toBe(1)
+    expect(sheet.rows[1].map(cellValue)[7]).toBe(1)
+    expect(sheet.rows[2].map(cellValue)[6]).toBe(1)
+    expect(sheet.rows[2].map(cellValue)[7]).toBe(0)
+  })
 })

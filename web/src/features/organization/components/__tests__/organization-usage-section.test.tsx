@@ -235,7 +235,33 @@ describe('organization usage section', () => {
     expect(params?.p).toBe(1)
   })
 
+  test('keeps the date range from a legacy usage link', async () => {
+    pageRoute.search = {
+      startTime: new Date(2026, 10, 1).getTime(),
+      endTime: new Date(2026, 10, 3).getTime(),
+    }
+    renderSection()
+
+    await waitFor(
+      () => {
+        expect(getUsageMock).toHaveBeenCalled()
+      },
+      { timeout: 5_000 }
+    )
+
+    const params = getUsageMock.mock.calls[0]?.[2]
+    expect(params?.start).toBe('2026-11-01')
+    expect(params?.end).toBe('2026-11-03')
+  })
+
   test('exports the filtered table by day or by hour', async () => {
+    pageRoute.search = {
+      usageStart: '2026-11-03',
+      usageEnd: '2026-11-03',
+      usageModel: 'gpt-4o',
+      usageTokenId: '2',
+      usageUserId: '42',
+    }
     renderSection()
 
     await waitFor(
@@ -258,6 +284,9 @@ describe('organization usage section', () => {
           start: '2026-11-03',
           end: '2026-11-03',
           granularity: 'day',
+          model_name: 'gpt-4o',
+          token_id: 2,
+          responsible_user_id: 42,
         })
       )
       expect(exportMock.buildSelfUsageExportSheet).toHaveBeenCalledWith(
@@ -295,6 +324,30 @@ describe('organization usage section', () => {
     expect(
       screen.queryByRole('columnheader', { name: 'Requests' })
     ).not.toBeInTheDocument()
+  })
+
+  test('clamps a page beyond the last returned page', async () => {
+    pageRoute.search = {
+      usageStart: '2026-11-03',
+      usageEnd: '2026-11-03',
+      page: 5,
+    }
+    getUsageMock.mockResolvedValue({
+      success: true,
+      data: usageData({
+        rows: { page: 5, page_size: 20, total: 1, items: [] },
+      }),
+    })
+    renderSection()
+
+    await waitFor(() => {
+      expect(pageRoute.navigate).toHaveBeenCalled()
+    })
+
+    const options = pageRoute.navigate.mock.calls[0]?.[0] as {
+      search: (previous: Record<string, unknown>) => Record<string, unknown>
+    }
+    expect(options.search({ page: 5 })).toMatchObject({ page: 1 })
   })
 
   test('offers a retry instead of an endless skeleton when the request fails', async () => {

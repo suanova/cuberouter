@@ -140,6 +140,9 @@ func TestGetOrganizationUsageAggregatesByDayResponsibleUserAndKey(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, 2, bobOnly.Rows.Total)
 	assert.Equal(t, 150, bobOnly.Totals.Quota)
+	// Filtering by one member must not remove the other members from the
+	// dropdown that produced the filter.
+	assert.Len(t, bobOnly.FilterOptions.Users, 2)
 
 	tokenOnly, err := GetOrganizationUsage(OrganizationUsageQuery{
 		OperatorUserId: 101,
@@ -189,6 +192,14 @@ type modelUsageRowView struct {
 	requests int
 	quota    int
 	typeName string
+}
+
+func TestHydrateOrganizationUsageResponsibleNamesFallsBackToID(t *testing.T) {
+	setupServiceTestDB(t)
+
+	rows := []usageRow{{ResponsibleUserID: 999}}
+	hydrateOrganizationUsageResponsibleNames(rows)
+	assert.Equal(t, "#999", rows[0].ResponsibleName)
 }
 
 func TestGetOrganizationUsagePinsMembersWithoutWideData(t *testing.T) {

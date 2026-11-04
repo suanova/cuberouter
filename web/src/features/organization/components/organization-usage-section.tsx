@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -34,6 +34,7 @@ import {
   writeSelfUsageExportFile,
 } from '@/features/usage/lib/usage-export'
 import type { UsageExportGranularity } from '@/features/usage/types'
+import dayjs from '@/lib/dayjs'
 
 import { exportOrganizationUsage, getOrganizationUsage } from '../api'
 import { useOrganizationResourceSection } from '../hooks/use-organization-paged-query'
@@ -70,8 +71,8 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
   const surface = useOrganizationSurface()
 
   const window = usageWindowFromSearch({
-    start: search.usageStart,
-    end: search.usageEnd,
+    start: search.usageStart || legacyTimeParam(search.startTime),
+    end: search.usageEnd || legacyTimeParam(search.endTime),
   })
   const dateParams = usageDateParams(window)
   const page = search.page ?? 1
@@ -105,6 +106,23 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
   const [exporting, setExporting] = useState<UsageExportGranularity | null>(
     null
   )
+
+  // A deep link can point past the last page after a filter or range change.
+  // Clamp it once the total is known; otherwise the backend would return a
+  // positive total with an empty page and the table would look empty.
+  useEffect(() => {
+    const total = usage.data?.rows.total ?? 0
+    if (total <= 0) return
+    const lastPage = Math.max(1, Math.ceil(total / pageSize))
+    if (page > lastPage) {
+      navigate({
+        search: (previous) => ({
+          ...previous,
+          page: lastPage,
+        }),
+      })
+    }
+  }, [usage.data?.rows.total, page, pageSize, navigate])
 
   const handleExport = async (granularity: UsageExportGranularity) => {
     setExporting(granularity)
@@ -259,4 +277,11 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
       </div>
     </OrganizationSection>
   )
+}
+
+/** The old usage page stored its window as millisecond timestamps. */
+function legacyTimeParam(value?: number): string | undefined {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? dayjs(value).format('YYYY-MM-DD')
+    : undefined
 }

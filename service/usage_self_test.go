@@ -70,6 +70,22 @@ func TestMergeSelfUsageRowsKeepsCacheSeparateAndTotalsAllRows(t *testing.T) {
 	assert.Equal(t, 3, totalRequests)
 }
 
+func TestMergeSelfUsageRowsGroupsByResponsibleUserIDNotName(t *testing.T) {
+	rows := mergeSelfUsageRows(
+		nil,
+		[]model.SelfUsageAsyncRow{
+			{BucketKey: 0, BillingAccountType: "organization", OrganizationID: 9, ResponsibleUserID: 101, ResponsibleName: "Alice", TokenID: 1, TokenName: "k", ModelName: "m", RequestCount: 1, SuccessCount: 1, Quota: 10},
+			{BucketKey: 0, BillingAccountType: "organization", OrganizationID: 9, ResponsibleUserID: 101, ResponsibleName: "Alice Chen", TokenID: 1, TokenName: "k", ModelName: "m", RequestCount: 1, SuccessCount: 1, Quota: 20},
+		},
+		nil,
+		&ModelTypeResolver{byName: map[string]ModelUsageType{"m": ModelUsageTypeText}},
+	)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 2, rows[0].RequestCount)
+	assert.Equal(t, 30, rows[0].Quota)
+	assert.Equal(t, "Alice", rows[0].ResponsibleName)
+}
+
 func newSelfUsageTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	// 与 setupServiceTestDB 共用一把锁：用例会切换 model.DB / LOG_DB 等全局，

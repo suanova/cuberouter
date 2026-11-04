@@ -23,6 +23,7 @@ import { writeExcelSheet, type ExcelSheet } from '@/lib/excel'
 import { quotaUnitsToDollars } from '@/lib/format'
 
 import type { SelfUsageExportData, UsageTableVariant } from '../types'
+import { usageFailureValue, usageSuccessValue } from './usage-row'
 import { usageTypeLabelKey } from './usage-type'
 
 const TOKEN_FORMAT = '#,##0'
@@ -108,8 +109,8 @@ export function buildSelfUsageExportSheet(
         row.token_name || '-',
         row.model_name || '-',
         tokenCell(row.request_count),
-        tokenCell(row.success_count),
-        tokenCell(row.failure_count),
+        tokenCell(usageSuccessValue(row)),
+        tokenCell(usageFailureValue(row)),
         tokenCell(row.prompt_tokens),
         tokenCell(row.completion_tokens),
         tokenCell(row.cache_tokens),

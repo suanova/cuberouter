@@ -139,6 +139,11 @@ export const organizationDetailSearchSchema = z.object({
   // Usage — the daily table reads the organization usage endpoint
   // (OrganizationUsageQuery in service/organization_usage.go). Model is the
   // name from the organization's model dropdown; the key and member are ids.
+  //
+  // The old per-request usage page also accepted usageToken/usageResponsible
+  // as free-text filters. The aggregated table filters those dimensions by id,
+  // so those legacy text values are not mapped; the date range below still
+  // carries over when the old link used startTime/endTime.
   usageStart: z.string().optional().catch(''),
   usageEnd: z.string().optional().catch(''),
   usageModel: z.string().optional().catch(''),

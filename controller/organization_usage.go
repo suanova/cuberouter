@@ -80,8 +80,14 @@ func organizationUsageQueryFromRequest(c *gin.Context, organizationId int) (serv
 		return service.OrganizationUsageQuery{}, err
 	}
 	pageInfo := common.GetPageQuery(c)
-	tokenId, _ := strconv.Atoi(c.Query("token_id"))
-	responsibleUserId, _ := strconv.Atoi(c.Query("responsible_user_id"))
+	tokenId, err := parseOptionalPositiveQueryInt(c.Query("token_id"))
+	if err != nil {
+		return service.OrganizationUsageQuery{}, errors.New("invalid token_id")
+	}
+	responsibleUserId, err := parseOptionalPositiveQueryInt(c.Query("responsible_user_id"))
+	if err != nil {
+		return service.OrganizationUsageQuery{}, errors.New("invalid responsible_user_id")
+	}
 	return service.OrganizationUsageQuery{
 		OperatorUserId:    operatorUserId,
 		OrganizationId:    organizationId,
@@ -95,4 +101,18 @@ func organizationUsageQueryFromRequest(c *gin.Context, organizationId int) (serv
 		Page:              pageInfo.Page,
 		PageSize:          pageInfo.PageSize,
 	}, nil
+}
+
+// parseOptionalPositiveQueryInt treats an absent optional filter as "no
+// filter" but refuses a malformed or non-positive value instead of silently
+// turning it into an unfiltered query.
+func parseOptionalPositiveQueryInt(value string) (int, error) {
+	if value == "" {
+		return 0, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, errors.New("invalid query integer")
+	}
+	return parsed, nil
 }

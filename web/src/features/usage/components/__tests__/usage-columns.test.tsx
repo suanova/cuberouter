@@ -23,7 +23,7 @@ import type { ReactNode } from 'react'
 import { describe, expect, test } from 'vitest'
 
 import type { SelfUsageRow } from '../../types'
-import { buildUsageColumns } from '../usage-columns'
+import { buildUsageColumns, usageSuccessText } from '../usage-columns'
 
 function headerText(column: ColumnDef<SelfUsageRow>): ReactNode {
   if (typeof column.header !== 'function') return column.header
@@ -75,5 +75,38 @@ describe('buildUsageColumns', () => {
     expect(
       screen.getByRole('columnheader', { name: 'Model' })
     ).toBeInTheDocument()
+  })
+})
+
+describe('usageSuccessText', () => {
+  const row = (overrides: Partial<SelfUsageRow> = {}): SelfUsageRow => ({
+    date: '2026-11-03',
+    type: 'text',
+    billing_account_type: 'personal',
+    organization_id: 0,
+    organization_name: '',
+    token_id: 1,
+    token_name: 'k1',
+    model_name: 'gpt-4o',
+    request_count: 2,
+    success_count: 1,
+    failure_count: 1,
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    cache_tokens: 0,
+    quota: 0,
+    ...overrides,
+  })
+
+  test('uses success_count when the row has failures', () => {
+    expect(usageSuccessText(row())).toBe('1')
+  })
+
+  test('uses request_count when the row has no failures', () => {
+    expect(
+      usageSuccessText(
+        row({ request_count: 3, success_count: 1, failure_count: 0 })
+      )
+    ).toBe('3')
   })
 })

@@ -85,6 +85,11 @@ func localBucketKey(ts, bucketSeconds int64) int64 {
 	return (ts + int64(localUTCOffsetSeconds())) / bucketSeconds
 }
 
+// usageAsyncBatchSize bounds how many task/MJ rows are held while aggregating.
+// The aggregation state is a map keyed by the same dimensions as the result,
+// so streaming batches keeps memory proportional to the result, not the input.
+const usageAsyncBatchSize = 1000
+
 func selfUsageBillingType(value string) string {
 	if value == "" {
 		return AccountContextTypePersonal
@@ -121,6 +126,7 @@ func getUsageTaskRowsByBucket(scope usageAsyncScope, startTs, endTs, bucketSecon
 		bucketSeconds = SelfUsageDaySeconds
 	}
 	var tasks []Task
+	byKey := make(map[selfUsageAsyncKey]*SelfUsageAsyncRow)
 	query := DB.Model(&Task{})
 	query = scope.apply(query).
 		Where("COALESCE(NULLIF(submit_time, 0), created_at) BETWEEN ? AND ?", startTs, endTs)
@@ -129,16 +135,19 @@ func getUsageTaskRowsByBucket(scope usageAsyncScope, startTs, endTs, bucketSecon
 	}
 	err := query.
 		Select("id, task_id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, responsible_user_id, responsible_name, status, quota, submit_time, created_at, properties").
-		Find(&tasks).Error
+		FindInBatches(&tasks, usageAsyncBatchSize, func(_ *gorm.DB, _ int) error {
+			aggregateUsageTasksInto(byKey, tasks, bucketSeconds, groupByResponsible)
+			return nil
+		}).Error
 	if err != nil {
 		common.SysError("failed to query usage tasks: " + err.Error())
 		return nil, errors.New("查询用量失败")
 	}
-	return aggregateUsageTasks(tasks, bucketSeconds, groupByResponsible), nil
+	return hydrateSelfUsageAsyncNames(flattenSelfUsageAsyncRows(byKey)), nil
 }
 
-func aggregateUsageTasks(tasks []Task, bucketSeconds int64, groupByResponsible bool) []SelfUsageAsyncRow {
-	byKey := make(map[selfUsageAsyncKey]*SelfUsageAsyncRow)
+// aggregateUsageTasksInto folds one batch of tasks into the shared aggregation map.
+func aggregateUsageTasksInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, tasks []Task, bucketSeconds int64, groupByResponsible bool) {
 	for i := range tasks {
 		task := &tasks[i]
 		ts := task.SubmitTime
@@ -186,8 +195,6 @@ func aggregateUsageTasks(tasks []Task, bucketSeconds int64, groupByResponsible b
 		}
 		row.Quota += task.Quota
 	}
-
-	return hydrateSelfUsageAsyncNames(flattenSelfUsageAsyncRows(byKey))
 }
 
 // GetSelfUsageMidjourneyRows aggregates the caller's MJ tasks. MJ timestamps
@@ -220,6 +227,7 @@ func getUsageMidjourneyRowsByBucket(scope usageAsyncScope, startTs, endTs, bucke
 	}
 	const mjTimeExpr = "COALESCE(NULLIF(submit_time, 0), NULLIF(start_time, 0), finish_time)"
 	var journeys []Midjourney
+	byKey := make(map[selfUsageAsyncKey]*SelfUsageAsyncRow)
 	query := DB.Model(&Midjourney{})
 	query = scope.apply(query).
 		Where(mjTimeExpr+" >= ? AND "+mjTimeExpr+" < ?", startTs*1000, (endTs+1)*1000)
@@ -228,16 +236,19 @@ func getUsageMidjourneyRowsByBucket(scope usageAsyncScope, startTs, endTs, bucke
 	}
 	err := query.
 		Select("id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, responsible_user_id, responsible_name, action, status, quota, submit_time, start_time, finish_time").
-		Find(&journeys).Error
+		FindInBatches(&journeys, usageAsyncBatchSize, func(_ *gorm.DB, _ int) error {
+			aggregateUsageJourneysInto(byKey, journeys, bucketSeconds, groupByResponsible)
+			return nil
+		}).Error
 	if err != nil {
 		common.SysError("failed to query usage midjourneys: " + err.Error())
 		return nil, errors.New("查询用量失败")
 	}
-	return aggregateUsageJourneys(journeys, bucketSeconds, groupByResponsible), nil
+	return hydrateSelfUsageAsyncNames(flattenSelfUsageAsyncRows(byKey)), nil
 }
 
-func aggregateUsageJourneys(journeys []Midjourney, bucketSeconds int64, groupByResponsible bool) []SelfUsageAsyncRow {
-	byKey := make(map[selfUsageAsyncKey]*SelfUsageAsyncRow)
+// aggregateUsageJourneysInto folds one batch of Midjourney rows into the shared aggregation map.
+func aggregateUsageJourneysInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, journeys []Midjourney, bucketSeconds int64, groupByResponsible bool) {
 	for i := range journeys {
 		journey := &journeys[i]
 		tsMs := journey.SubmitTime
@@ -292,8 +303,6 @@ func aggregateUsageJourneys(journeys []Midjourney, bucketSeconds int64, groupByR
 		}
 		row.Quota += journey.Quota
 	}
-
-	return hydrateSelfUsageAsyncNames(flattenSelfUsageAsyncRows(byKey))
 }
 
 func midjourneyUsageModelName(action string) string {

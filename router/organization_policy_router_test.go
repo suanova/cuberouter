@@ -28,9 +28,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
-	"github.com/gin-gonic/gin"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/controller"
@@ -38,6 +35,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/gin-contrib/sessions"
+	"github.com/gin-contrib/sessions/cookie"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -294,6 +294,53 @@ func TestOrganizationRosterAndOverviewRoutesRequireFullMemberVisibility(t *testi
 				return
 			}
 			require.Contains(t, recorder.Body.String(), "organization access denied")
+		})
+	}
+}
+
+func TestOrganizationUsageRoutesRequireUsageCapability(t *testing.T) {
+	setupOrganizationPolicyRouterTestDB(t)
+	owner := createOrganizationPolicyRouterUser(t, "router-usage-owner", common.RoleCommonUser)
+	member := createOrganizationPolicyRouterUser(t, "router-usage-member", common.RoleCommonUser)
+	outsider := createOrganizationPolicyRouterUser(t, "router-usage-outsider", common.RoleCommonUser)
+	organization, err := service.CreateOrganization(owner.Id, service.CreateOrganizationRequest{Name: "Router Usage Org"})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: member.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive}).Error)
+
+	router := gin.New()
+	router.Use(sessions.Sessions("session", cookie.NewStore([]byte("router-test-secret"))))
+	SetApiRouter(router)
+
+	cases := []struct {
+		name       string
+		user       model.User
+		path       string
+		wantStatus int
+	}{
+		{"owner can read usage", owner, "/usage", http.StatusOK},
+		{"owner can export usage", owner, "/usage/export", http.StatusOK},
+		{"plain member cannot read usage", member, "/usage", http.StatusForbidden},
+		{"plain member cannot export usage", member, "/usage/export", http.StatusForbidden},
+		{"non-member cannot read usage", outsider, "/usage", http.StatusForbidden},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/api/organizations/"+strconv.Itoa(organization.Id)+tc.path+"?start=2026-11-03&end=2026-11-03", nil)
+			req.Header.Set("Authorization", tc.user.GetAccessToken())
+			req.Header.Set("New-Api-User", strconv.Itoa(tc.user.Id))
+			req.Header.Set("X-Account-Context-Type", "organization")
+			req.Header.Set("X-Account-Context-Id", strconv.Itoa(organization.Id))
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+
+			require.Equal(t, tc.wantStatus, recorder.Code)
+			if tc.wantStatus == http.StatusOK {
+				require.Contains(t, recorder.Body.String(), `"success":true`)
+				return
+			}
+			require.Contains(t, recorder.Body.String(), `"success":false`)
+			require.NotContains(t, recorder.Body.String(), `"rows"`)
 		})
 	}
 }
@@ -639,6 +686,9 @@ func setupOrganizationPolicyRouterTestDB(t *testing.T) {
 		&model.OrganizationJoinRule{},
 		&model.Task{},
 		&model.Midjourney{},
+		&model.Log{},
+		&model.Model{},
+		&model.Ability{},
 		// The Overview section reads this one, so the quota-data route must be
 		// servable here for a caller the gate lets through.
 		&model.QuotaData{},

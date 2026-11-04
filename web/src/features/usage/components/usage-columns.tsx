@@ -21,6 +21,7 @@ import type { ColumnDef } from '@tanstack/react-table'
 
 import { formatLogQuota, formatNumber } from '@/lib/format'
 
+import { usageFailureValue, usageSuccessValue } from '../lib/usage-row'
 import { usageTypeLabelKey } from '../lib/usage-type'
 import type { SelfUsageRow, UsageTableVariant } from '../types'
 
@@ -29,13 +30,12 @@ function tokenText(value: number): string {
 }
 
 export function usageSuccessText(row: SelfUsageRow): string {
-  return row.failure_count > 0
-    ? formatNumber(row.success_count)
-    : formatNumber(row.request_count)
+  return formatNumber(usageSuccessValue(row))
 }
 
 export function usageFailureText(row: SelfUsageRow): string {
-  return row.failure_count > 0 ? formatNumber(row.failure_count) : '-'
+  const value = usageFailureValue(row)
+  return value > 0 ? formatNumber(value) : '-'
 }
 
 export function buildUsageColumns(

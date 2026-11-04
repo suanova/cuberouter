@@ -166,21 +166,24 @@ func organizationUsageActor(query OrganizationUsageQuery) (*OrganizationActorCon
 
 // collectOrganizationUsageRows loads and merges the organization's rows. A
 // caller without organization-wide visibility is pinned to their own rows, the
-// same rule the log endpoints use.
+// same rule the log endpoints use. The user-selected responsible-user filter is
+// deliberately not pushed into SQL: the dropdown options are built from these
+// rows, and filtering at the source would make every user but the selected one
+// disappear from the filter itself.
 func collectOrganizationUsageRows(query OrganizationUsageQuery, actor *OrganizationActorContext, bucketSeconds int64) ([]usageRow, error) {
-	responsibleUserId := query.ResponsibleUserId
+	loaderResponsibleUserId := 0
 	if !actor.Capabilities.CanViewOrganizationWideData {
-		responsibleUserId = query.OperatorUserId
+		loaderResponsibleUserId = query.OperatorUserId
 	}
-	logRows, err := model.GetOrganizationUsageLogRowsByBucket(query.OrganizationId, query.StartTs, query.EndTs, bucketSeconds, responsibleUserId)
+	logRows, err := model.GetOrganizationUsageLogRowsByBucket(query.OrganizationId, query.StartTs, query.EndTs, bucketSeconds, loaderResponsibleUserId)
 	if err != nil {
 		return nil, err
 	}
-	taskRows, err := model.GetOrganizationUsageTaskRowsByBucket(query.OrganizationId, query.StartTs, query.EndTs, bucketSeconds, responsibleUserId)
+	taskRows, err := model.GetOrganizationUsageTaskRowsByBucket(query.OrganizationId, query.StartTs, query.EndTs, bucketSeconds, loaderResponsibleUserId)
 	if err != nil {
 		return nil, err
 	}
-	mjRows, err := model.GetOrganizationUsageMidjourneyRowsByBucket(query.OrganizationId, query.StartTs, query.EndTs, bucketSeconds, responsibleUserId)
+	mjRows, err := model.GetOrganizationUsageMidjourneyRowsByBucket(query.OrganizationId, query.StartTs, query.EndTs, bucketSeconds, loaderResponsibleUserId)
 	if err != nil {
 		return nil, err
 	}
@@ -241,9 +244,16 @@ func hydrateOrganizationUsageResponsibleNames(rows []usageRow) {
 		names[user.Id] = name
 	}
 	for index := range rows {
-		if rows[index].ResponsibleName == "" {
-			rows[index].ResponsibleName = names[rows[index].ResponsibleUserID]
+		if rows[index].ResponsibleName != "" {
+			continue
 		}
+		name := names[rows[index].ResponsibleUserID]
+		if name == "" && rows[index].ResponsibleUserID > 0 {
+			// The user record may have been hard-deleted; keep the row
+			// attributable by its id instead of showing a blank member.
+			name = "#" + strconv.Itoa(rows[index].ResponsibleUserID)
+		}
+		rows[index].ResponsibleName = name
 	}
 }
 

@@ -122,6 +122,20 @@ func TestGetOrganizationUsageControllerReturnsAggregatedRows(t *testing.T) {
 	assert.Contains(t, body, `"tokens":[`)
 }
 
+func TestGetOrganizationUsageControllerRejectsMalformedFilters(t *testing.T) {
+	newOrganizationUsageControllerTestDB(t)
+	seedOrganizationUsageController(t)
+
+	c, rec := organizationUsageRequest(t, "/api/organizations/9/usage?start=2026-11-03&end=2026-11-03&token_id=102oops")
+	GetOrganizationUsage(c)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	assert.Contains(t, body, `"success":false`)
+	assert.Contains(t, body, "invalid token_id")
+	assert.NotContains(t, body, `"rows"`)
+}
+
 func TestExportOrganizationUsageControllerGroupsByHour(t *testing.T) {
 	newOrganizationUsageControllerTestDB(t)
 	seedOrganizationUsageController(t)

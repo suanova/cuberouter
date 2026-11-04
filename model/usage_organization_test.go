@@ -21,6 +21,7 @@ For commercial licensing, please contact support@quantumnous.com
 package model
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -123,4 +124,35 @@ func TestGetOrganizationUsageTaskAndMidjourneyRowsKeepResponsibleUser(t *testing
 	assert.Equal(t, "mj_imagine", journeys[0].ModelName)
 	assert.Equal(t, 102, journeys[0].ResponsibleUserID)
 	assert.Equal(t, 80, journeys[0].Quota)
+}
+
+func TestGetOrganizationUsageTaskRowsAggregatesAcrossBatches(t *testing.T) {
+	db := newOrganizationUsageTestDB(t)
+	ts := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	tasks := make([]Task, usageAsyncBatchSize+1)
+	for i := range tasks {
+		tasks[i] = Task{
+			TaskID:             fmt.Sprintf("batch-%d", i),
+			UserId:             101,
+			ActorUserId:        101,
+			ResponsibleUserId:  101,
+			ResponsibleName:    "Alice",
+			BillingAccountType: AccountContextTypeOrganization,
+			BillingAccountId:   9,
+			OrganizationId:     9,
+			OrganizationName:   "Acme",
+			Status:             TaskStatusSuccess,
+			Quota:              1,
+			SubmitTime:         ts,
+			Properties:         Properties{OriginModelName: "wan3.0-video"},
+		}
+	}
+	require.NoError(t, db.CreateInBatches(tasks, 200).Error)
+
+	rows, err := GetOrganizationUsageTaskRowsByBucket(9, ts-60, ts+60, SelfUsageDaySeconds, 0)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, usageAsyncBatchSize+1, rows[0].RequestCount)
+	assert.Equal(t, usageAsyncBatchSize+1, rows[0].SuccessCount)
+	assert.Equal(t, usageAsyncBatchSize+1, rows[0].Quota)
 }
