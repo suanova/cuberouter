@@ -28,10 +28,10 @@ import { SiteRegionSwitcher } from '@/components/site-region-switcher'
 import { ThemeSwitch } from '@/components/theme-switch'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useBrandLogo } from '@/hooks/use-brand-logo'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
-import { withBasePath } from '@/lib/base-path'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -85,6 +85,7 @@ export function PublicHeader(props: PublicHeaderProps) {
     useState(AUTH_PROMPT_SECONDS)
   const { auth } = useAuthStore()
   const { systemName, loading } = useSystemConfig()
+  const { logo, recolorForDark } = useBrandLogo()
   const dynamicLinks = useTopNavLinks()
   const notifications = useNotifications()
   const routerState = useRouterState()
@@ -188,14 +189,15 @@ export function PublicHeader(props: PublicHeaderProps) {
             )}
           >
             {/* Logo */}
-            <Link
-              to={homeUrl}
-              className='group flex shrink-0 items-center'
-            >
+            <Link to={homeUrl} className='group flex shrink-0 items-center'>
               <img
-                src={withBasePath('/head.png')}
+                src={logo}
                 alt={displaySiteName || t('CubeRouter')}
-                className='h-8 w-auto transition-all duration-300 group-hover:scale-105 dark:brightness-0 dark:invert'
+                className={
+                  recolorForDark
+                    ? 'h-8 w-auto transition-all duration-300 group-hover:scale-105 dark:brightness-0 dark:invert'
+                    : 'h-8 w-auto transition-all duration-300 group-hover:scale-105'
+                }
               />
             </Link>
 
