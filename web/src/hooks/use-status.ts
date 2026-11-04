@@ -37,35 +37,41 @@ function getInitialStatus(): SystemStatus | undefined {
   return undefined
 }
 
+export const STATUS_QUERY_KEY = ['status'] as const
+
+/**
+ * Fetch `/api/status` and mirror its display-related fields into the shared
+ * system config store. Exported so an option update can refresh the store even
+ * when no `useStatus` observer is mounted — the settings pages often have none.
+ */
+export async function fetchSystemStatus(): Promise<SystemStatus | null> {
+  const status = await getStatus()
+  try {
+    if (status) {
+      const { setConfig } = useSystemConfigStore.getState()
+      setConfig(mapStatusDataToConfig(status))
+    }
+  } catch (err) {
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console
+      console.warn('[useStatus] Failed to sync status to system config', err)
+    }
+  }
+  // Save to localStorage
+  try {
+    if (typeof window !== 'undefined' && status) {
+      window.localStorage.setItem('status', JSON.stringify(status))
+    }
+  } catch {
+    /* empty */
+  }
+  return status as SystemStatus | null
+}
+
 export function useStatus() {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['status'],
-    queryFn: async () => {
-      const status = await getStatus()
-      try {
-        if (status) {
-          const { setConfig } = useSystemConfigStore.getState()
-          setConfig(mapStatusDataToConfig(status))
-        }
-      } catch (err) {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console
-          console.warn(
-            '[useStatus] Failed to sync status to system config',
-            err
-          )
-        }
-      }
-      // Save to localStorage
-      try {
-        if (typeof window !== 'undefined' && status) {
-          window.localStorage.setItem('status', JSON.stringify(status))
-        }
-      } catch {
-        /* empty */
-      }
-      return status as SystemStatus | null
-    },
+    queryKey: STATUS_QUERY_KEY,
+    queryFn: fetchSystemStatus,
     // Use localStorage data as initial data
     placeholderData: getInitialStatus(),
     // Data becomes stale after 5 minutes

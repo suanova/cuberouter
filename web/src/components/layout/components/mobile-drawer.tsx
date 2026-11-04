@@ -25,9 +25,9 @@ import { SignOutDialog } from '@/components/sign-out-dialog'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useBrandLogo } from '@/hooks/use-brand-logo'
 import useDialogState from '@/hooks/use-dialog'
 import { useUserDisplay } from '@/hooks/use-user-display'
-import { withBasePath } from '@/lib/base-path'
 import type { AuthUser } from '@/stores/auth-store'
 
 import { MOBILE_DRAWER_ANIMATION, MOBILE_DRAWER_CONFIG } from '../constants'
@@ -43,12 +43,18 @@ interface BrandLogoProps {
 }
 
 function BrandLogo({ homeUrl, displaySiteName, onClick }: BrandLogoProps) {
+  const { logo, recolorForDark } = useBrandLogo()
+
   return (
     <Link to={homeUrl} className='flex items-center' onClick={onClick}>
       <img
-        src={withBasePath('/head.png')}
+        src={logo}
         alt={displaySiteName}
-        className='h-6 w-auto dark:brightness-0 dark:invert'
+        className={
+          recolorForDark
+            ? 'h-6 w-auto dark:brightness-0 dark:invert'
+            : 'h-6 w-auto'
+        }
       />
     </Link>
   )
