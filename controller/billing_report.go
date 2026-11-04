@@ -181,6 +181,17 @@ func buildBillingReportData(user *model.User, startStr, endStr string, startTs, 
 // GetUserBillingReport 查询用户计费账单报表(管理员)。
 // 按用户 ID + 日期范围(YYYY-MM-DD) 查询 token 用量与费用,含汇总与按日明细,
 // 均按 model_name 分组。最大跨度 31 天。
+//
+// @Summary     查询用户计费账单报表(管理员)
+// @Description 按用户与日期范围汇总 token 用量与费用,含按模型汇总与按日明细。
+// @Tags        计费报表
+// @Security    ApiKeyAuth
+// @Produce     json
+// @Param       user_id query int    true "用户 ID"
+// @Param       start   query string true "开始日期,格式 YYYY-MM-DD"
+// @Param       end     query string true "结束日期,格式 YYYY-MM-DD,不早于 start,跨度不超过 31 天"
+// @Success     200 {object} dto.BillingReportAPIResponse "业务错误时 success=false,message 说明原因"
+// @Router      /data/billing [get]
 func GetUserBillingReport(c *gin.Context) {
 	userId, ok := parseBillingUserId(c)
 	if !ok {
@@ -212,6 +223,17 @@ func GetUserBillingReport(c *gin.Context) {
 
 // GetOpsBillingReport 查询用户计费账单报表(运营/管理员)。
 // 运营人员仅可查询自己邀请的用户,管理员可查询任意用户。
+//
+// @Summary     查询用户计费账单报表(运营/管理员)
+// @Description 运营人员仅可查询自己邀请的用户,管理员可查询任意用户。
+// @Tags        计费报表
+// @Security    ApiKeyAuth
+// @Produce     json
+// @Param       user_id query int    true "用户 ID"
+// @Param       start   query string true "开始日期,格式 YYYY-MM-DD"
+// @Param       end     query string true "结束日期,格式 YYYY-MM-DD,不早于 start,跨度不超过 31 天"
+// @Success     200 {object} dto.BillingReportAPIResponse "业务错误时 success=false,message 说明原因"
+// @Router      /ops/data/billing [get]
 func GetOpsBillingReport(c *gin.Context) {
 	callerId := c.GetInt("id")
 	callerRole := c.GetInt("role")
@@ -261,6 +283,16 @@ func GetOpsBillingReport(c *gin.Context) {
 // GetReconciliationReport 查询计费对账报表(管理员)。
 // 按日期范围(YYYY-MM-DD) 汇总所有用户的计费总金额(无交易明细),每用户一行
 // (用量/quota/换算金额/模型数),按金额降序,含全平台合计。最大跨度 31 天。
+//
+// @Summary     查询计费对账报表(管理员)
+// @Description 按日期范围汇总所有用户的计费总金额(无交易明细),按金额降序,含全平台合计。
+// @Tags        计费报表
+// @Security    ApiKeyAuth
+// @Produce     json
+// @Param       start query string true "开始日期,格式 YYYY-MM-DD"
+// @Param       end   query string true "结束日期,格式 YYYY-MM-DD,不早于 start,跨度不超过 31 天"
+// @Success     200 {object} dto.ReconciliationReportAPIResponse "业务错误时 success=false,message 说明原因"
+// @Router      /data/reconciliation [get]
 func GetReconciliationReport(c *gin.Context) {
 	startStr := c.Query("start")
 	endStr := c.Query("end")
