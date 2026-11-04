@@ -34,7 +34,7 @@ Note: sign-in and page loads fire CriticalRateLimit-marked requests (login,
 auth/refresh, PUT /api/user/self), so the e2e deployment disables
 CRITICAL_RATE_LIMIT (see e2e/k8s/app.yaml) to avoid per-IP 429 flakes.
 
-UI flows from the deck (slides 10-13: sign-in → dashboard, change password,
+UI flows from the deck (slides 10-13: sign-in → usage, change password,
 wallet subscriptions, playground) are covered with real browser steps.
 */
 import { expect, test, type APIRequestContext } from '@playwright/test'
@@ -460,14 +460,14 @@ test.describe('API onboarding (v4.5 deck)', () => {
     userPassword = newPassword
   })
 
-  test('slide 10 — user signs in and opens the dashboard', async ({ page }) => {
+  test('slide 10 — user signs in and opens the usage page', async ({ page }) => {
     await page.goto('/sign-in')
     await page.getByLabel('Username or Email').fill(USERNAME)
     await page.getByLabel('Password', { exact: true }).fill(userPassword)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await page.waitForURL('**/dashboard**')
+    await page.waitForURL('**/usage**')
     await expect(
-      page.getByRole('heading', { name: 'Overview' })
+      page.getByRole('heading', { name: 'Usage', exact: true })
     ).toBeVisible()
   })
 
@@ -478,7 +478,7 @@ test.describe('API onboarding (v4.5 deck)', () => {
     await page.getByLabel('Username or Email').fill(USERNAME)
     await page.getByLabel('Password', { exact: true }).fill(userPassword)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await page.waitForURL('**/dashboard**')
+    await page.waitForURL('**/usage**')
 
     await page.goto('/profile')
     await page.getByRole('button', { name: 'Change Password' }).click()
@@ -504,7 +504,7 @@ test.describe('API onboarding (v4.5 deck)', () => {
     await page.getByLabel('Username or Email').fill(USERNAME)
     await page.getByLabel('Password', { exact: true }).fill(userPassword)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await page.waitForURL('**/dashboard**')
+    await page.waitForURL('**/usage**')
   })
 
   test('slide 12 — user views the one-off and top-up plans in the wallet', async ({
@@ -548,7 +548,7 @@ test.describe('API onboarding (v4.5 deck)', () => {
     await page.getByLabel('Username or Email').fill(USERNAME)
     await page.getByLabel('Password', { exact: true }).fill(userPassword)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await page.waitForURL('**/dashboard**')
+    await page.waitForURL('**/usage**')
 
     await page.goto('/wallet')
     await expect(page.getByText('My Subscriptions')).toBeVisible()
@@ -567,7 +567,7 @@ test.describe('API onboarding (v4.5 deck)', () => {
     await page.getByLabel('Username or Email').fill(USERNAME)
     await page.getByLabel('Password', { exact: true }).fill(userPassword)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await page.waitForURL('**/dashboard**')
+    await page.waitForURL('**/usage**')
 
     await page.goto('/playground')
     const input = page.getByPlaceholder('Ask anything')

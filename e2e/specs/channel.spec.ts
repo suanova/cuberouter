@@ -424,7 +424,7 @@ test.describe('MockLLM relay (v4.5 demo flows)', () => {
     await page.getByLabel('Username or Email').fill(USERNAME)
     await page.getByLabel('Password', { exact: true }).fill(USER_PASSWORD)
     await page.getByRole('button', { name: 'Sign in' }).click()
-    await page.waitForURL('**/dashboard**')
+    await page.waitForURL('**/usage**')
 
     await page.goto('/playground')
     const input = page.getByPlaceholder('Ask anything')

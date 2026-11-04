@@ -78,7 +78,12 @@ async function docsLinkHref(page: Page): Promise<string | null> {
   return (await link.getAttribute('href')) as string | null
 }
 
-async function freshSignIn(page: Page, username: string, password: string) {
+async function freshSignIn(
+  page: Page,
+  username: string,
+  password: string,
+  landing = '**/dashboard**'
+) {
   // Navigate to a real origin page first: a fresh page starts at about:blank,
   // where reading localStorage throws a SecurityError.
   await page.goto('/sign-in')
@@ -90,7 +95,8 @@ async function freshSignIn(page: Page, username: string, password: string) {
   await page.getByLabel('Username or Email').fill(username)
   await page.getByLabel('Password', { exact: true }).fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
-  await page.waitForURL('**/dashboard**')
+  // Administrators land on the dashboard; regular users land on usage.
+  await page.waitForURL(landing)
 }
 
 test.describe.configure({ mode: 'serial', retries: 0 })
@@ -172,7 +178,7 @@ test.describe('docs link settings and role-based top-nav routing', () => {
   })
 
   test('regular user UI: top-nav Docs → user docs link', async ({ page }) => {
-    await freshSignIn(page, USERNAME, PASSWORD)
+    await freshSignIn(page, USERNAME, PASSWORD, '**/usage**')
 
     await page.goto('/')
     expect(await docsLinkHref(page)).toBe(USER_DOCS)
