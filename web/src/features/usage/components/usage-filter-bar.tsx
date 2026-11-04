@@ -18,9 +18,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Combobox } from '@/components/ui/combobox'
 import {
   Select,
   SelectContent,
@@ -28,7 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Combobox } from '@/components/ui/combobox'
 import {
   LogsFilterField,
   LogsFilterToolbar,
@@ -55,6 +55,7 @@ interface UsageFilterBarProps {
   modelOptions: string[]
   tokenOptions: SelfUsageTokenOption[]
   loading: boolean
+  actionStart?: ReactNode
   onApply: (values: UsageFilterValues) => void
   onReset: () => void
 }
@@ -168,8 +169,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
       token: selectedToken?.name ?? (token.trim() || undefined),
       tokenId: selectedToken?.id,
       billingAccountType: billing === BILLING_ALL ? undefined : billing,
-      organizationId:
-        billing === 'organization' ? organizationId : undefined,
+      organizationId: billing === 'organization' ? organizationId : undefined,
     })
   }
 
@@ -233,9 +233,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
               <Select
                 items={organizationItems}
                 value={
-                  organizationId === undefined
-                    ? null
-                    : String(organizationId)
+                  organizationId === undefined ? null : String(organizationId)
                 }
                 onValueChange={(next) =>
                   setOrganizationId(next === null ? undefined : Number(next))
@@ -258,6 +256,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
       }
       hasActiveFilters={hasActiveFilters}
       searchLoading={props.loading}
+      actionStart={props.actionStart}
       onReset={reset}
       onSearch={apply}
     />

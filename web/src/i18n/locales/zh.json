@@ -2797,6 +2797,7 @@
     "Hour": "小时",
     "Hour must be between 0 and 23": "小时必须是 0 到 23 之间的整数",
     "Hour of day": "小时",
+    "Hourly": "每小时",
     "Hourly token usage by model across the last 24 hours": "过去 24 小时内各模型的逐小时 Token 用量",
     "Hourly token usage by model over the past 24 hours": "过去 24 小时内按模型分布的小时级 Token 使用量",
     "hours": "小时",

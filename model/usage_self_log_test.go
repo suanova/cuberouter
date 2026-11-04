@@ -85,7 +85,7 @@ func TestSelfUsageLogRowsSeparatesLocalDayBoundary(t *testing.T) {
 	got, err := GetSelfUsageLogRows(7, late, early)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
-	assert.NotEqual(t, got[0].DayKey, got[1].DayKey)
+	assert.NotEqual(t, got[0].BucketKey, got[1].BucketKey)
 }
 
 func TestSelfUsageLogRowsExcludesStaleTaskAndMJRows(t *testing.T) {

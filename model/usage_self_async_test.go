@@ -112,8 +112,16 @@ func TestGetSelfUsageMidjourneyRowsIncludesLastSecond(t *testing.T) {
 	assert.Equal(t, 80, rows[0].Quota)
 }
 
-func TestLocalDayKeySeparatesBoundary(t *testing.T) {
+func TestLocalBucketKeySeparatesDayBoundary(t *testing.T) {
 	late := time.Date(2026, 11, 2, 23, 59, 59, 0, time.Local).Unix()
 	early := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local).Unix()
-	assert.NotEqual(t, localDayKey(late), localDayKey(early))
+	assert.NotEqual(t, localBucketKey(late, SelfUsageDaySeconds), localBucketKey(early, SelfUsageDaySeconds))
+}
+
+func TestLocalBucketKeyGroupsOneHour(t *testing.T) {
+	first := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	last := time.Date(2026, 11, 3, 10, 59, 59, 0, time.Local).Unix()
+	next := time.Date(2026, 11, 3, 11, 0, 0, 0, time.Local).Unix()
+	assert.Equal(t, localBucketKey(first, SelfUsageHourSeconds), localBucketKey(last, SelfUsageHourSeconds))
+	assert.NotEqual(t, localBucketKey(last, SelfUsageHourSeconds), localBucketKey(next, SelfUsageHourSeconds))
 }

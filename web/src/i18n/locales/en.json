@@ -2797,6 +2797,7 @@
     "Hour": "Hour",
     "Hour must be between 0 and 23": "Hour must be between 0 and 23",
     "Hour of day": "Hour of day",
+    "Hourly": "Hourly",
     "Hourly token usage by model across the last 24 hours": "Hourly token usage by model across the last 24 hours",
     "Hourly token usage by model over the past 24 hours": "Hourly token usage by model over the past 24 hours",
     "hours": "hours",

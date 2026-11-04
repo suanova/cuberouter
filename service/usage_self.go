@@ -34,6 +34,14 @@ import (
 // organization is not one the caller may see.
 var ErrSelfUsageOrganizationForbidden = errors.New("organization access denied")
 
+const (
+	SelfUsageGranularityDay  = "day"
+	SelfUsageGranularityHour = "hour"
+	// MaxSelfUsageExportRows bounds one spreadsheet; older exports used the
+	// same order of magnitude and warn when the filter matched more rows.
+	MaxSelfUsageExportRows = 10000
+)
+
 type SelfUsageQuery struct {
 	ActorUserId            int
 	StartTs                int64
@@ -49,7 +57,7 @@ type SelfUsageQuery struct {
 }
 
 type usageRow struct {
-	DayKey             int64
+	BucketKey          int64
 	Type               ModelUsageType
 	BillingAccountType string
 	OrganizationID     int
@@ -67,7 +75,7 @@ type usageRow struct {
 }
 
 type usageRowKey struct {
-	DayKey             int64
+	BucketKey          int64
 	Type               ModelUsageType
 	BillingAccountType string
 	OrganizationID     int
@@ -96,7 +104,7 @@ func mergeSelfUsageRows(
 		row := byKey[key]
 		if row == nil {
 			row = &usageRow{
-				DayKey:             key.DayKey,
+				BucketKey:          key.BucketKey,
 				Type:               key.Type,
 				BillingAccountType: key.BillingAccountType,
 				OrganizationID:     key.OrganizationID,
@@ -112,7 +120,7 @@ func mergeSelfUsageRows(
 
 	for _, item := range logRows {
 		key := usageRowKey{
-			DayKey:             item.DayKey,
+			BucketKey:          item.BucketKey,
 			Type:               resolver.Resolve(item.ModelName),
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
@@ -132,7 +140,7 @@ func mergeSelfUsageRows(
 
 	for _, item := range taskRows {
 		key := usageRowKey{
-			DayKey:             item.DayKey,
+			BucketKey:          item.BucketKey,
 			Type:               resolver.Resolve(item.ModelName),
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
@@ -150,7 +158,7 @@ func mergeSelfUsageRows(
 
 	for _, item := range mjRows {
 		key := usageRowKey{
-			DayKey:             item.DayKey,
+			BucketKey:          item.BucketKey,
 			Type:               resolver.Resolve(item.ModelName),
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
@@ -271,7 +279,7 @@ func sumSelfUsageTotals(rows []usageRow) dto.SelfUsageTotals {
 // reading a second data source that could disagree.
 func buildSelfUsageChartPoints(rows []usageRow) []dto.SelfUsageChartPoint {
 	type chartKey struct {
-		DayKey    int64
+		BucketKey int64
 		ModelName string
 	}
 	type chartAgg struct {
@@ -280,7 +288,7 @@ func buildSelfUsageChartPoints(rows []usageRow) []dto.SelfUsageChartPoint {
 	}
 	buckets := make(map[chartKey]chartAgg)
 	for _, row := range rows {
-		key := chartKey{DayKey: row.DayKey, ModelName: row.ModelName}
+		key := chartKey{BucketKey: row.BucketKey, ModelName: row.ModelName}
 		agg := buckets[key]
 		agg.RequestCount += row.RequestCount
 		agg.Quota += row.Quota
@@ -289,7 +297,7 @@ func buildSelfUsageChartPoints(rows []usageRow) []dto.SelfUsageChartPoint {
 	points := make([]dto.SelfUsageChartPoint, 0, len(buckets))
 	for key, agg := range buckets {
 		points = append(points, dto.SelfUsageChartPoint{
-			Date:         model.BillingDayKeyToDate(key.DayKey),
+			Date:         model.BillingDayKeyToDate(key.BucketKey),
 			ModelName:    key.ModelName,
 			RequestCount: agg.RequestCount,
 			Quota:        agg.Quota,
@@ -398,8 +406,8 @@ func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfU
 func sortSelfUsageRows(rows []usageRow) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		left, right := rows[i], rows[j]
-		if left.DayKey != right.DayKey {
-			return left.DayKey > right.DayKey
+		if left.BucketKey != right.BucketKey {
+			return left.BucketKey > right.BucketKey
 		}
 		if left.BillingAccountType != right.BillingAccountType {
 			return left.BillingAccountType < right.BillingAccountType
@@ -438,7 +446,7 @@ func normalizeSelfUsagePagination(page, pageSize int) (int, int) {
 
 func toSelfUsageDTO(row usageRow) dto.SelfUsageRow {
 	return dto.SelfUsageRow{
-		Date:               model.BillingDayKeyToDate(row.DayKey),
+		Date:               model.BillingDayKeyToDate(row.BucketKey),
 		Type:               string(row.Type),
 		BillingAccountType: row.BillingAccountType,
 		OrganizationId:     row.OrganizationID,
@@ -483,6 +491,30 @@ func fillSelfUsageOrganizationOverview(overview *dto.SelfUsageOverview, actorUse
 	return nil
 }
 
+// collectSelfUsageRows loads and merges the caller's usage at the requested
+// bucket size (day for the table, day or hour for exports). Task/MJ billing
+// logs are excluded by the model layer; their spend comes from the source
+// tables instead.
+func collectSelfUsageRows(query SelfUsageQuery, bucketSeconds int64) ([]usageRow, error) {
+	logRows, err := model.GetSelfUsageLogRowsByBucket(query.ActorUserId, query.StartTs, query.EndTs, bucketSeconds)
+	if err != nil {
+		return nil, err
+	}
+	taskRows, err := model.GetSelfUsageTaskRowsByBucket(query.ActorUserId, query.StartTs, query.EndTs, bucketSeconds)
+	if err != nil {
+		return nil, err
+	}
+	mjRows, err := model.GetSelfUsageMidjourneyRowsByBucket(query.ActorUserId, query.StartTs, query.EndTs, bucketSeconds)
+	if err != nil {
+		return nil, err
+	}
+	resolver, err := LoadModelTypeResolver()
+	if err != nil {
+		return nil, err
+	}
+	return mergeSelfUsageRows(logRows, taskRows, mjRows, resolver), nil
+}
+
 // GetSelfUsage assembles the caller's usage from text/fee logs, tasks, and
 // Midjourney rows. Task/MJ logs are excluded by the model layer.
 func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
@@ -493,23 +525,10 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 		return dto.SelfUsageData{}, errors.New("时间范围无效")
 	}
 
-	logRows, err := model.GetSelfUsageLogRows(query.ActorUserId, query.StartTs, query.EndTs)
+	merged, err := collectSelfUsageRows(query, model.SelfUsageDaySeconds)
 	if err != nil {
 		return dto.SelfUsageData{}, err
 	}
-	taskRows, err := model.GetSelfUsageTaskRows(query.ActorUserId, query.StartTs, query.EndTs)
-	if err != nil {
-		return dto.SelfUsageData{}, err
-	}
-	mjRows, err := model.GetSelfUsageMidjourneyRows(query.ActorUserId, query.StartTs, query.EndTs)
-	if err != nil {
-		return dto.SelfUsageData{}, err
-	}
-	resolver, err := LoadModelTypeResolver()
-	if err != nil {
-		return dto.SelfUsageData{}, err
-	}
-	merged := mergeSelfUsageRows(logRows, taskRows, mjRows, resolver)
 
 	user, err := model.GetUserById(query.ActorUserId, false)
 	if err != nil {
@@ -572,4 +591,65 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 		Charts:        buildSelfUsageChartPoints(filtered),
 		FilterOptions: filterOptions,
 	}, nil
+}
+
+// ExportSelfUsage returns every filtered row at the requested bucket size. It
+// reuses the table's row assembly and filters, but keeps all matching rows
+// (up to MaxSelfUsageExportRows) so the client can build one sheet.
+func ExportSelfUsage(query SelfUsageQuery, granularity string) (dto.SelfUsageExportData, error) {
+	if query.ActorUserId <= 0 {
+		return dto.SelfUsageExportData{}, errors.New("用户 ID 无效")
+	}
+	if query.StartTs > query.EndTs {
+		return dto.SelfUsageExportData{}, errors.New("时间范围无效")
+	}
+	normalized, bucketSeconds := normalizeSelfUsageGranularity(granularity)
+
+	merged, err := collectSelfUsageRows(query, bucketSeconds)
+	if err != nil {
+		return dto.SelfUsageExportData{}, err
+	}
+	filtered := make([]usageRow, 0, len(merged))
+	for _, row := range merged {
+		if selfUsageMatchesFilters(row, query) {
+			filtered = append(filtered, row)
+		}
+	}
+	sortSelfUsageRows(filtered)
+
+	total := len(filtered)
+	truncated := total > MaxSelfUsageExportRows
+	if truncated {
+		filtered = filtered[:MaxSelfUsageExportRows]
+	}
+	rows := make([]dto.SelfUsageRow, 0, len(filtered))
+	for _, row := range filtered {
+		item := toSelfUsageDTO(row)
+		item.Date = formatSelfUsageBucket(row.BucketKey, normalized)
+		rows = append(rows, item)
+	}
+	return dto.SelfUsageExportData{
+		Granularity: normalized,
+		Rows:        rows,
+		Total:       total,
+		Truncated:   truncated,
+	}, nil
+}
+
+// normalizeSelfUsageGranularity maps the public granularity onto a bucket
+// size. Unknown values (and the absent default) mean day, as the UI promises.
+func normalizeSelfUsageGranularity(value string) (string, int64) {
+	if value == SelfUsageGranularityHour {
+		return SelfUsageGranularityHour, model.SelfUsageHourSeconds
+	}
+	return SelfUsageGranularityDay, model.SelfUsageDaySeconds
+}
+
+// formatSelfUsageBucket restores the local wall-clock label from a bucket key.
+// The key is local-shifted at write time, so UTC formatting reproduces it.
+func formatSelfUsageBucket(bucketKey int64, granularity string) string {
+	if granularity == SelfUsageGranularityHour {
+		return time.Unix(bucketKey*model.SelfUsageHourSeconds, 0).UTC().Format("2006-01-02 15:00")
+	}
+	return model.BillingDayKeyToDate(bucketKey)
 }

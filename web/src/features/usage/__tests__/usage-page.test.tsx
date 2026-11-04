@@ -19,15 +19,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 
 import { getOrganizations } from '@/features/organization/api'
 
-import { getSelfUsage } from '../api'
+import { exportSelfUsage, getSelfUsage } from '../api'
 import { UsagePage, type UsageSearch } from '../index'
 import type { SelfUsageData } from '../types'
 
-vi.mock('../api', () => ({ getSelfUsage: vi.fn() }))
+vi.mock('../api', () => ({
+  getSelfUsage: vi.fn(),
+  exportSelfUsage: vi.fn(),
+}))
 vi.mock('@/features/organization/api', () => ({ getOrganizations: vi.fn() }))
 vi.mock('../components/usage-date-range-picker', () => ({
   UsageDateRangePicker: () => <div data-testid='date-range-picker' />,
@@ -39,12 +43,30 @@ vi.mock('../components/usage-charts', () => ({
   UsageCharts: () => <div data-testid='usage-charts' />,
 }))
 vi.mock('../components/usage-table', () => ({
-  UsageTable: (props: { data: SelfUsageData }) => (
-    <div data-testid='usage-table'>{props.data.rows.items[0]?.model_name}</div>
+  UsageTable: (props: {
+    data: SelfUsageData
+    onExport: (granularity: 'day' | 'hour') => void
+  }) => (
+    <div data-testid='usage-table'>
+      {props.data.rows.items[0]?.model_name}
+      <button type='button' onClick={() => props.onExport('hour')}>
+        export-hour
+      </button>
+    </div>
   ),
 }))
+const exportFileMock = vi.hoisted(() => ({
+  buildSelfUsageExportSheet: vi.fn(() => ({
+    rows: [],
+    columns: [],
+    filename: 'usage.xlsx',
+  })),
+  writeSelfUsageExportFile: vi.fn(),
+}))
+vi.mock('../lib/usage-export', () => exportFileMock)
 
 const getSelfUsageMock = vi.mocked(getSelfUsage)
+const exportSelfUsageMock = vi.mocked(exportSelfUsage)
 const getOrganizationsMock = vi.mocked(getOrganizations)
 
 function usageData(backfillComplete: boolean): SelfUsageData {
@@ -215,5 +237,52 @@ describe('UsagePage', () => {
         (call) => call[0].overview_organization_id === 999
       )
     ).toBe(false)
+  })
+
+  test('exports the applied filters at the chosen granularity', async () => {
+    getSelfUsageMock.mockResolvedValue({
+      success: true,
+      data: usageData(true),
+    })
+    exportSelfUsageMock.mockResolvedValue({
+      success: true,
+      data: {
+        granularity: 'hour',
+        rows: usageData(true).rows.items,
+        total: 1,
+        truncated: false,
+      },
+    })
+
+    renderUsagePage(
+      {
+        start: '2026-11-03',
+        end: '2026-11-03',
+        model: 'gpt-4o',
+        token: 'key-1',
+        tokenId: '1',
+        billingAccountType: 'organization',
+        organizationId: '9',
+      },
+      [{ id: 9, name: 'Acme' }]
+    )
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'export-hour' })
+    )
+    await waitFor(() => expect(exportSelfUsageMock).toHaveBeenCalled())
+    expect(exportSelfUsageMock).toHaveBeenCalledWith({
+      start: '2026-11-03',
+      end: '2026-11-03',
+      granularity: 'hour',
+      model_name: 'gpt-4o',
+      token_name: 'key-1',
+      token_id: 1,
+      billing_account_type: 'organization',
+      organization_id: 9,
+    })
+    await waitFor(() =>
+      expect(exportFileMock.writeSelfUsageExportFile).toHaveBeenCalled()
+    )
   })
 })

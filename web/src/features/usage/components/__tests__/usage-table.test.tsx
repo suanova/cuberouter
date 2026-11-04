@@ -80,6 +80,8 @@ describe('UsageTable totals', () => {
         initialFilters={{}}
         page={1}
         pageSize={20}
+        exporting={null}
+        onExport={() => undefined}
         onFiltersChange={() => undefined}
         onPageChange={() => undefined}
       />
