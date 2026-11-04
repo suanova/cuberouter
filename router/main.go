@@ -28,10 +28,9 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	// routes instead of being reported as intersecting a static route.
 	SetDocsRouter(router)
 	pluginDispatcher := SetPluginRouter(router)
-	// Swagger 仅 DEBUG=true 时挂载(生产默认关闭,避免匿名暴露完整 API 规格)。
-	if common.DebugEnabled {
-		router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	}
+	// Swagger 默认挂载,不再由 DEBUG 开关控制。API 规格本身不含敏感数据,
+	// 接口访问仍由各自的鉴权中间件(AdminAuth/OpsAuth 等)保护。
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""
