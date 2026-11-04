@@ -21,11 +21,11 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { Main } from '@/components/layout'
 import { MediaStudio } from '@/features/media-studio'
-import { isSidebarModuleEnabled } from '@/lib/nav-modules'
+import { isHeaderNavModuleEnabled } from '@/lib/nav-modules'
 
 export const Route = createFileRoute('/_authenticated/media-studio/')({
   beforeLoad: () => {
-    if (!isSidebarModuleEnabled('chat', 'media_studio')) {
+    if (!isHeaderNavModuleEnabled('media_studio')) {
       throw redirect({ to: '/dashboard' })
     }
   },
