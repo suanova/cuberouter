@@ -85,3 +85,19 @@ type ReconciliationReportData struct {
 	Total    ReconciliationTotals     `json:"total"`
 	Users    []ReconciliationUserStat `json:"users"`
 }
+
+// BillingReportAPIResponse 是用户计费账单报表接口的 200 响应信封。
+// dto.APIResponse.data 为 interface{},生成的 spec 无法表达结构化结果;
+// 此处显式引用 BillingReportData,使客户端可以发现并校验 data 的完整 schema。
+type BillingReportAPIResponse struct {
+	Success bool              `json:"success"`
+	Message string            `json:"message"`
+	Data    BillingReportData `json:"data"`
+}
+
+// ReconciliationReportAPIResponse 是计费对账报表接口的 200 响应信封。
+type ReconciliationReportAPIResponse struct {
+	Success bool                     `json:"success"`
+	Message string                   `json:"message"`
+	Data    ReconciliationReportData `json:"data"`
+}

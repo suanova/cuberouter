@@ -49,6 +49,92 @@ definitions:
       success:
         type: boolean
     type: object
+  dto.BillingCurrency:
+    properties:
+      symbol:
+        type: string
+      type:
+        type: string
+    type: object
+  dto.BillingDailyStat:
+    properties:
+      amount:
+        type: number
+      cache_tokens:
+        type: integer
+      completion_tokens:
+        type: integer
+      date:
+        type: string
+      models:
+        items:
+          $ref: '#/definitions/dto.BillingModelStat'
+        type: array
+      prompt_tokens:
+        type: integer
+      quota:
+        type: integer
+      request_count:
+        type: integer
+      total_tokens:
+        type: integer
+    type: object
+  dto.BillingModelStat:
+    properties:
+      amount:
+        type: number
+      cache_tokens:
+        type: integer
+      completion_tokens:
+        type: integer
+      model_name:
+        type: string
+      prompt_tokens:
+        type: integer
+      quota:
+        type: integer
+      request_count:
+        type: integer
+      total_tokens:
+        type: integer
+    type: object
+  dto.BillingRange:
+    properties:
+      end:
+        type: string
+      end_timestamp:
+        type: integer
+      start:
+        type: string
+      start_timestamp:
+        type: integer
+    type: object
+  dto.BillingReportAPIResponse:
+    properties:
+      data:
+        $ref: '#/definitions/dto.BillingReportData'
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  dto.BillingReportData:
+    properties:
+      currency:
+        $ref: '#/definitions/dto.BillingCurrency'
+      daily:
+        items:
+          $ref: '#/definitions/dto.BillingDailyStat'
+        type: array
+      range:
+        $ref: '#/definitions/dto.BillingRange'
+      summary:
+        items:
+          $ref: '#/definitions/dto.BillingModelStat'
+        type: array
+      user:
+        $ref: '#/definitions/dto.UserDashboardBrief'
+    type: object
   dto.ImportCsvAPIResponse:
     properties:
       data:
@@ -117,6 +203,95 @@ definitions:
       reason:
         type: string
     type: object
+  dto.ReconciliationReportAPIResponse:
+    properties:
+      data:
+        $ref: '#/definitions/dto.ReconciliationReportData'
+      message:
+        type: string
+      success:
+        type: boolean
+    type: object
+  dto.ReconciliationReportData:
+    properties:
+      currency:
+        $ref: '#/definitions/dto.BillingCurrency'
+      range:
+        $ref: '#/definitions/dto.BillingRange'
+      total:
+        $ref: '#/definitions/dto.ReconciliationTotals'
+      users:
+        items:
+          $ref: '#/definitions/dto.ReconciliationUserStat'
+        type: array
+    type: object
+  dto.ReconciliationTotals:
+    properties:
+      amount:
+        type: number
+      cache_tokens:
+        type: integer
+      completion_tokens:
+        type: integer
+      prompt_tokens:
+        type: integer
+      quota:
+        type: integer
+      request_count:
+        type: integer
+      total_tokens:
+        type: integer
+      user_count:
+        type: integer
+    type: object
+  dto.ReconciliationUserStat:
+    properties:
+      amount:
+        type: number
+      cache_tokens:
+        type: integer
+      completion_tokens:
+        type: integer
+      display_name:
+        type: string
+      group:
+        type: string
+      model_count:
+        type: integer
+      prompt_tokens:
+        type: integer
+      quota:
+        type: integer
+      request_count:
+        type: integer
+      role:
+        type: integer
+      total_tokens:
+        type: integer
+      user_id:
+        type: integer
+      username:
+        type: string
+    type: object
+  dto.UserDashboardBrief:
+    properties:
+      display_name:
+        type: string
+      group:
+        type: string
+      id:
+        type: integer
+      quota:
+        type: integer
+      request_count:
+        type: integer
+      role:
+        type: integer
+      used_quota:
+        type: integer
+      username:
+        type: string
+    type: object
   model.SubscriptionPlan:
     properties:
       allow_balance_pay:
@@ -178,9 +353,9 @@ definitions:
     type: object
 info:
   contact: {}
-  description: new-api AI 网关 —— 用户与账号相关接口(对外第三方)
-  title: new-api 用户 API
-  version: "1.0"
+  description: cuberouter API 网关 —— 用户与账号相关接口(对外第三方)
+  title: cuberouter 用户 API
+  version: "2.0"
 paths:
   /channel/{id}/import_models_csv:
     post:
@@ -222,6 +397,94 @@ paths:
       summary: CSV 批量导入渠道模型/价格/介绍
       tags:
       - 渠道-模型导入
+  /data/billing:
+    get:
+      description: 按用户与日期范围汇总 token 用量与费用,含按模型汇总与按日明细。
+      parameters:
+      - description: 用户 ID
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      - description: 开始日期,格式 YYYY-MM-DD
+        in: query
+        name: start
+        required: true
+        type: string
+      - description: 结束日期,格式 YYYY-MM-DD,不早于 start,跨度不超过 31 天
+        in: query
+        name: end
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 业务错误时 success=false,message 说明原因
+          schema:
+            $ref: '#/definitions/dto.BillingReportAPIResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 查询用户计费账单报表(管理员)
+      tags:
+      - 计费报表
+  /data/reconciliation:
+    get:
+      description: 按日期范围汇总所有用户的计费总金额(无交易明细),按金额降序,含全平台合计。
+      parameters:
+      - description: 开始日期,格式 YYYY-MM-DD
+        in: query
+        name: start
+        required: true
+        type: string
+      - description: 结束日期,格式 YYYY-MM-DD,不早于 start,跨度不超过 31 天
+        in: query
+        name: end
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 业务错误时 success=false,message 说明原因
+          schema:
+            $ref: '#/definitions/dto.ReconciliationReportAPIResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 查询计费对账报表(管理员)
+      tags:
+      - 计费报表
+  /ops/data/billing:
+    get:
+      description: 运营人员仅可查询自己邀请的用户,管理员可查询任意用户。
+      parameters:
+      - description: 用户 ID
+        in: query
+        name: user_id
+        required: true
+        type: integer
+      - description: 开始日期,格式 YYYY-MM-DD
+        in: query
+        name: start
+        required: true
+        type: string
+      - description: 结束日期,格式 YYYY-MM-DD,不早于 start,跨度不超过 31 天
+        in: query
+        name: end
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 业务错误时 success=false,message 说明原因
+          schema:
+            $ref: '#/definitions/dto.BillingReportAPIResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: 查询用户计费账单报表(运营/管理员)
+      tags:
+      - 计费报表
   /plans:
     post:
       consumes:
