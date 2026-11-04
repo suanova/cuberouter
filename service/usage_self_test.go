@@ -72,6 +72,13 @@ func TestMergeSelfUsageRowsKeepsCacheSeparateAndTotalsAllRows(t *testing.T) {
 
 func newSelfUsageTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	// 与 setupServiceTestDB 共用一把锁：用例会切换 model.DB / LOG_DB 等全局，
+	// 而前一个用例触发的异步额度缓存任务可能仍在读这些全局。
+	serviceTestDBMu.Lock()
+	t.Cleanup(serviceTestDBMu.Unlock)
+	model.WaitForQuotaCacheWorkers()
+	WaitForBackgroundWork()
+
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 	origDB, origLog := model.DB, model.LOG_DB
@@ -92,6 +99,9 @@ func newSelfUsageTestDB(t *testing.T) *gorm.DB {
 		&model.Model{},
 	))
 	t.Cleanup(func() {
+		// 先等后台任务结束再还原全局，避免它们读到半切换的状态。
+		model.WaitForQuotaCacheWorkers()
+		WaitForBackgroundWork()
 		model.DB, model.LOG_DB = origDB, origLog
 		common.OptionMap = origOptions
 		common.RedisEnabled = origRedis
