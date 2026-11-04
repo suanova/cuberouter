@@ -404,6 +404,7 @@ export interface OrganizationTokenRow {
   /** `private` keys are only usable by their responsible member. */
   visibility: string
   organization_id?: number
+  organization_name?: string
   creator_user_id?: number
   responsible_user_id?: number
   transfer_reason?: string

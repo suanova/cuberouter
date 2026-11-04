@@ -54,6 +54,7 @@ type Token struct {
 	ResponsibleUsername    string   `json:"responsible_username,omitempty" gorm:"-"`
 	ResponsibleDisplayName string   `json:"responsible_display_name,omitempty" gorm:"-"`
 	ResponsibleEmail       string   `json:"-" gorm:"-"`
+	OrganizationName       string   `json:"organization_name,omitempty" gorm:"-"`
 	UnavailableReasons     []string `json:"unavailable_reasons,omitempty" gorm:"-"`
 	// CacheScopeVersion 只存在于 Redis 哈希里，不入库。作用域字段加入缓存之前写入的旧哈希
 	// 读出来是零值，会让组织令牌看上去像个人令牌，因此带版本号的哈希才被接受，见 token_cache.go。
@@ -204,6 +205,38 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	err = personalTokenScopeQuery(DB.Where("user_id = ?", userId)).Order("id desc").Limit(num).Offset(startIdx).Find(&tokens).Error
 	normalizeTokenScopes(tokens)
 	return tokens, err
+}
+
+// TokenKeyColumn is the dialect-quoted `key` column, which is a reserved word
+// in MySQL. Callers that build a raw keyword search on the column need it.
+func TokenKeyColumn() string {
+	return commonKeyCol
+}
+
+// SelfOrganizationTokensQuery returns the organization keys the user may use:
+// public keys, keys they are responsible for, and keys they created, across
+// the active organizations they belong to. An owner or administrator also sees
+// every key in their organization, matching what the organization key page
+// lets them read; a plain member never sees another member's private key.
+func SelfOrganizationTokensQuery(userId int) *gorm.DB {
+	memberOrganizationIds := DB.Table("organization_members").
+		Select("organization_members.organization_id").
+		Joins("JOIN organizations ON organizations.id = organization_members.organization_id").
+		Where("organization_members.user_id = ? AND organization_members.status = ? AND organizations.status <> ?",
+			userId, OrganizationMemberStatusActive, OrganizationStatusDissolved)
+	adminOrganizationIds := DB.Table("organization_members").
+		Select("organization_members.organization_id").
+		Joins("JOIN organizations ON organizations.id = organization_members.organization_id").
+		Where("organization_members.user_id = ? AND organization_members.status = ? AND organizations.status <> ?",
+			userId, OrganizationMemberStatusActive, OrganizationStatusDissolved).
+		Where("organization_members.role IN ? OR organizations.owner_user_id = ?",
+			[]string{OrganizationRoleOwner, OrganizationRoleAdmin}, userId)
+	return DB.Model(&Token{}).
+		Where("scope_type = ? AND organization_id IN (?)", TokenScopeOrganization, memberOrganizationIds).
+		Where(DB.Where("visibility = ?", TokenVisibilityPublic).
+			Or("responsible_user_id = ?", userId).
+			Or("creator_user_id = ?", userId).
+			Or("organization_id IN (?)", adminOrganizationIds))
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。

@@ -23,6 +23,7 @@ import { ApiKeys } from '@/features/keys'
 import { API_KEY_STATUS_OPTIONS } from '@/features/keys/constants'
 
 const apiKeySearchSchema = z.object({
+  tab: z.enum(['personal', 'organization']).optional().catch('personal'),
   page: z.number().optional().catch(1),
   pageSize: z.number().optional().catch(undefined),
   status: z
@@ -31,6 +32,22 @@ const apiKeySearchSchema = z.object({
     .catch([]),
   filter: z.string().optional().catch(''),
   token: z.string().optional().catch(''),
+
+  // Organization keys tab — a separate page/filter set so switching tabs does
+  // not overwrite the personal table's state.
+  orgPage: z.number().optional().catch(1),
+  orgPageSize: z.number().optional().catch(undefined),
+  orgFilter: z.string().optional().catch(''),
+  orgToken: z.string().optional().catch(''),
+  orgStatus: z
+    .array(z.enum(API_KEY_STATUS_OPTIONS.map((s) => s.value as `${number}`)))
+    .optional()
+    .catch([]),
+  orgVisibility: z
+    .array(z.enum(['private', 'public']))
+    .optional()
+    .catch([]),
+  orgOrganization: z.array(z.string()).optional().catch([]),
 })
 
 export const Route = createFileRoute('/_authenticated/keys/')({

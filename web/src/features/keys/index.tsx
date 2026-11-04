@@ -16,26 +16,62 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { ApiKeysDialogs } from './components/api-keys-dialogs'
 import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
 import { ApiKeysProvider } from './components/api-keys-provider'
 import { ApiKeysTable } from './components/api-keys-table'
+import { SelfOrganizationTokensTable } from './components/self-organization-tokens-table'
+
+const route = getRouteApi('/_authenticated/keys/')
 
 export function ApiKeys() {
   const { t } = useTranslation()
+  const search = route.useSearch()
+  const navigate = route.useNavigate()
+  const tab = search.tab ?? 'personal'
+
   return (
     <ApiKeysProvider>
       <SectionPageLayout fixedContent>
         <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          <ApiKeysPrimaryButtons />
+          {tab === 'personal' ? <ApiKeysPrimaryButtons /> : null}
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
-          <ApiKeysTable />
+          <div className='flex h-full min-h-0 flex-col gap-3'>
+            <Tabs
+              value={tab}
+              onValueChange={(value) =>
+                navigate({
+                  search: (previous) => ({
+                    ...previous,
+                    tab: value as 'personal' | 'organization',
+                  }),
+                })
+              }
+              className='shrink-0'
+            >
+              <TabsList>
+                <TabsTrigger value='personal'>{t('Personal keys')}</TabsTrigger>
+                <TabsTrigger value='organization'>
+                  {t('Organization keys')}
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <div className='min-h-0 flex-1'>
+              {tab === 'personal' ? (
+                <ApiKeysTable />
+              ) : (
+                <SelfOrganizationTokensTable />
+              )}
+            </div>
+          </div>
         </SectionPageLayout.Content>
       </SectionPageLayout>
 

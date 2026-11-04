@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { OrganizationTokenRow } from '@/features/organization/types'
 import { api } from '@/lib/api'
 
 import type {
@@ -52,6 +53,39 @@ export async function searchApiKeys(
   if (p != null) queryParams.set('p', String(p))
   if (size != null) queryParams.set('size', String(size))
   const res = await api.get(`/api/token/search?${queryParams.toString()}`)
+  return res.data
+}
+
+export interface GetSelfOrganizationTokensParams {
+  p: number
+  size: number
+  keyword?: string
+  token?: string
+  status?: number
+  visibility?: string
+  organization_id?: number
+}
+
+export interface GetSelfOrganizationTokensResponse {
+  success: boolean
+  message?: string
+  data?: {
+    items: OrganizationTokenRow[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
+/**
+ * The organization keys the caller may use, across every organization they
+ * belong to. Unlike the organization detail endpoint this needs no organization
+ * account context, which is what lets the personal API Keys page show them.
+ */
+export async function getSelfOrganizationTokens(
+  params: GetSelfOrganizationTokensParams
+): Promise<GetSelfOrganizationTokensResponse> {
+  const res = await api.get('/api/token/self/organization', { params })
   return res.data
 }
 
