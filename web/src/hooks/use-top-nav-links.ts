@@ -59,8 +59,9 @@ export function useTopNavLinks(): TopNavLink[] {
 
   // Documentation links (may be external)
   const docsLink: string | undefined = status?.docs_link as string | undefined
-  const adminDocsLink: string | undefined =
-    status?.admin_docs_link as string | undefined
+  const adminDocsLink: string | undefined = status?.admin_docs_link as
+    | string
+    | undefined
 
   const isAuthed = !!auth?.user
   const isAdmin = (auth?.user?.role ?? 0) >= ROLE.ADMIN
@@ -72,9 +73,12 @@ export function useTopNavLinks(): TopNavLink[] {
     links.push({ title: t('Home'), href: '/' })
   }
 
-  // Console -> /dashboard (new console path)
+  // Console: the dashboard is admin-only; regular users land on usage.
   if (modules?.console !== false) {
-    links.push({ title: t('Console'), href: '/dashboard' })
+    links.push({
+      title: t('Console'),
+      href: isAuthed && !isAdmin ? '/usage' : '/dashboard',
+    })
   }
 
   // Pricing

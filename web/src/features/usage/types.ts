@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-export type UsageType = 'text' | 'image' | 'video' | 'audio' | 'vector' | 'other'
+export type UsageType =
+  | 'text'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'vector'
+  | 'other'
 
 export interface SelfUsageAccountStat {
   request_count: number
@@ -65,6 +71,13 @@ export interface SelfUsageTotals {
   quota: number
 }
 
+export interface SelfUsageChartPoint {
+  date: string
+  model_name: string
+  request_count: number
+  quota: number
+}
+
 export interface SelfUsageData {
   backfill_complete: boolean
   range: {
@@ -84,6 +97,7 @@ export interface SelfUsageData {
     items: SelfUsageRow[]
   }
   totals: SelfUsageTotals
+  charts: SelfUsageChartPoint[]
   filter_options: {
     models: string[]
     tokens: SelfUsageTokenOption[]

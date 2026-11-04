@@ -265,6 +265,45 @@ func sumSelfUsageTotals(rows []usageRow) dto.SelfUsageTotals {
 	return totals
 }
 
+// buildSelfUsageChartPoints folds the filtered rows into the day/model buckets
+// the usage charts draw. It runs on the same rows as the table totals, so the
+// charts inherit the date range, filters, and actor/account scope instead of
+// reading a second data source that could disagree.
+func buildSelfUsageChartPoints(rows []usageRow) []dto.SelfUsageChartPoint {
+	type chartKey struct {
+		DayKey    int64
+		ModelName string
+	}
+	type chartAgg struct {
+		RequestCount int
+		Quota        int
+	}
+	buckets := make(map[chartKey]chartAgg)
+	for _, row := range rows {
+		key := chartKey{DayKey: row.DayKey, ModelName: row.ModelName}
+		agg := buckets[key]
+		agg.RequestCount += row.RequestCount
+		agg.Quota += row.Quota
+		buckets[key] = agg
+	}
+	points := make([]dto.SelfUsageChartPoint, 0, len(buckets))
+	for key, agg := range buckets {
+		points = append(points, dto.SelfUsageChartPoint{
+			Date:         model.BillingDayKeyToDate(key.DayKey),
+			ModelName:    key.ModelName,
+			RequestCount: agg.RequestCount,
+			Quota:        agg.Quota,
+		})
+	}
+	sort.Slice(points, func(i, j int) bool {
+		if points[i].Date != points[j].Date {
+			return points[i].Date < points[j].Date
+		}
+		return points[i].ModelName < points[j].ModelName
+	})
+	return points
+}
+
 // collectSelfUsageFilterOptions feeds the model and API key dropdowns with
 // what the caller can actually see and use: models enabled for their groups
 // (narrowed by member model access), personal keys, and organization keys they
@@ -530,6 +569,7 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 			Items:    items,
 		},
 		Totals:        totals,
+		Charts:        buildSelfUsageChartPoints(filtered),
 		FilterOptions: filterOptions,
 	}, nil
 }

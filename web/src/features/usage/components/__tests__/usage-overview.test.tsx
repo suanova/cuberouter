@@ -56,6 +56,7 @@ function usageData(
       cache_tokens: 0,
       quota: 0,
     },
+    charts: [],
     filter_options: { models: [], tokens: [] },
   }
 }

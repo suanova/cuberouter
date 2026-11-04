@@ -71,6 +71,22 @@ function renderNativeQuota(rawQuota: number): string {
   return num.toLocaleString()
 }
 
+export interface ProcessChartDataOptions {
+  /**
+   * Minimum number of time buckets to draw for the trend charts. The
+   * dashboard pads short ranges to a full week so the trend stays readable;
+   * callers with an explicit date range (the usage page) pass 0 to keep the
+   * chart inside that range.
+   */
+  minTrendPoints?: number
+  /**
+   * Formats the quota total and tooltip values. The dashboard shows native
+   * quota units; the user-facing usage page passes a currency formatter so
+   * the chart agrees with the cost shown in its overview and table.
+   */
+  formatQuota?: (rawQuota: number) => string
+}
+
 /**
  * Process and aggregate chart data
  */
@@ -78,16 +94,29 @@ export function processChartData(
   data: QuotaDataItem[],
   timeGranularity: TimeGranularity = 'day',
   t?: TFunction,
-  chartCornerRadius?: number
+  chartCornerRadius?: number,
+  options?: ProcessChartDataOptions
 ): ProcessedChartData {
   const tt: TFunction = t ?? ((x) => x)
   const otherLabel = tt('Other')
 
   const formatInt = (value: number) =>
     Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(value)
-  // Model consumption charts display native quota values, no currency
-  const formatQuotaValue = (value: number) => renderNativeQuota(value)
-  const formatQuotaTotal = (value: number) => renderNativeQuota(value)
+  const formatQuota = options?.formatQuota ?? renderNativeQuota
+  const formatQuotaValue = (value: number) => formatQuota(value)
+  const formatQuotaTotal = (value: number) => formatQuota(value)
+  // Only override the auto axis when the caller supplies a formatter; the
+  // dashboard keeps its native-quota axis untouched.
+  const quotaAxes = options?.formatQuota
+    ? [
+        { orient: 'bottom', type: 'band' },
+        {
+          orient: 'left',
+          type: 'linear',
+          label: { formatMethod: (value: number) => formatQuota(value) },
+        },
+      ]
+    : undefined
 
   const MAX_TOOLTIP_MODELS = 15
   const isOtherTooltipKey = (key: string) =>
@@ -180,6 +209,7 @@ export function processChartData(
         yField: 'Usage',
         seriesField: 'Model',
         stack: true,
+        ...(quotaAxes ? { axes: quotaAxes } : {}),
         legends: { visible: true, selectMode: 'single' },
       },
       spec_area: {
@@ -189,6 +219,7 @@ export function processChartData(
         yField: 'Usage',
         seriesField: 'Model',
         stack: true,
+        ...(quotaAxes ? { axes: quotaAxes } : {}),
         legends: { visible: true, selectMode: 'single' },
       },
       spec_model_line: {
@@ -278,9 +309,9 @@ export function processChartData(
   }
 
   // Pad time points if too few (default 7 points)
-  const MAX_TREND_POINTS = MAX_CHART_TREND_POINTS
+  const minTrendPoints = options?.minTrendPoints ?? MAX_CHART_TREND_POINTS
   const fillTimePoints = (times: string[]) => {
-    if (times.length >= MAX_TREND_POINTS) return times
+    if (times.length >= minTrendPoints) return times
     const lastTime = Math.max(
       ...data.map((item) => Number(item.created_at) || 0)
     )
@@ -290,9 +321,9 @@ export function processChartData(
         : timeGranularity === 'day'
           ? 86400
           : 3600
-    const padded = Array.from({ length: MAX_TREND_POINTS }, (_, i) =>
+    const padded = Array.from({ length: minTrendPoints }, (_, i) =>
       formatChartTime(
-        lastTime - (MAX_TREND_POINTS - 1 - i) * intervalSec,
+        lastTime - (minTrendPoints - 1 - i) * intervalSec,
         timeGranularity
       )
     )
@@ -495,6 +526,7 @@ export function processChartData(
       yField: 'Usage',
       seriesField: 'Model',
       stack: true,
+      ...(quotaAxes ? { axes: quotaAxes } : {}),
       legends: { visible: true, selectMode: 'single' },
       color: modelColor,
       bar: {
@@ -533,6 +565,7 @@ export function processChartData(
       yField: 'Usage',
       seriesField: 'Model',
       stack: false,
+      ...(quotaAxes ? { axes: quotaAxes } : {}),
       legends: { visible: true, selectMode: 'single' },
       color: modelColor,
       tooltip: {

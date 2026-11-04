@@ -150,7 +150,10 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
       return (
         <OrganizationUsageSection
           organizationId={organization.id}
-          canView={capabilities.can_view_organization_usage}
+          canView={
+            capabilities.can_view_organization_usage &&
+            capabilities.can_view_organization_wide_data
+          }
           canViewWideData={capabilities.can_view_organization_wide_data}
           onForbidden={props.onForbidden}
         />
