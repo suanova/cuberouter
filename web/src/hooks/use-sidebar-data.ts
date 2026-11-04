@@ -20,6 +20,7 @@ import {
   Activity,
   Box,
   Building2,
+  ChartColumn,
   CreditCard,
   FileText,
   FlaskConical,
@@ -100,6 +101,11 @@ export function useSidebarData(): SidebarData {
             title: t('Organizations'),
             url: '/organizations',
             icon: Building2,
+          },
+          {
+            title: t('Usage'),
+            url: '/usage',
+            icon: ChartColumn,
           },
           {
             title: t('Usage Logs'),

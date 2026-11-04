@@ -39,6 +39,7 @@ type SelfUsageQuery struct {
 	StartTs                int64
 	EndTs                  int64
 	ModelName              string
+	TokenId                int
 	TokenName              string
 	BillingAccountType     string
 	OrganizationID         int
@@ -226,7 +227,12 @@ func selfUsageMatchesFilters(row usageRow, query SelfUsageQuery) bool {
 	if query.ModelName != "" && !strings.Contains(strings.ToLower(row.ModelName), strings.ToLower(query.ModelName)) {
 		return false
 	}
-	if query.TokenName != "" && !strings.Contains(strings.ToLower(row.TokenName), strings.ToLower(query.TokenName)) {
+	if query.TokenId > 0 {
+		// 同名密钥可能分属个人与组织；有 id 时按身份过滤，避免互相命中。
+		if row.TokenID != query.TokenId {
+			return false
+		}
+	} else if query.TokenName != "" && !strings.Contains(strings.ToLower(row.TokenName), strings.ToLower(query.TokenName)) {
 		return false
 	}
 	switch query.BillingAccountType {
@@ -298,15 +304,17 @@ func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfU
 		Tokens: make([]dto.SelfUsageTokenOption, 0),
 	}
 
-	var personalNames []string
-	if err := model.DB.Model(&model.Token{}).
+	var personalTokens []model.Token
+	if err := model.DB.
+		Select("id, name").
 		Where("(scope_type = ? OR scope_type = '') AND user_id = ?", model.TokenScopePersonal, actorUserId).
-		Pluck("name", &personalNames).Error; err != nil {
+		Order("name, id").
+		Find(&personalTokens).Error; err != nil {
 		return dto.SelfUsageFilterOptions{}, err
 	}
-	for _, name := range personalNames {
-		if name != "" {
-			options.Tokens = append(options.Tokens, dto.SelfUsageTokenOption{Name: name})
+	for _, token := range personalTokens {
+		if token.Name != "" {
+			options.Tokens = append(options.Tokens, dto.SelfUsageTokenOption{Id: token.Id, Name: token.Name})
 		}
 	}
 
@@ -320,14 +328,15 @@ func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfU
 			query = query.Where("(visibility <> ? AND (responsible_user_id = ? OR creator_user_id = ?)) OR visibility = ?",
 				model.TokenVisibilityPublic, actorUserId, actorUserId, model.TokenVisibilityPublic)
 		}
-		var names []string
-		if err := query.Pluck("name", &names).Error; err != nil {
+		var orgTokens []model.Token
+		if err := query.Select("id, name").Order("name, id").Find(&orgTokens).Error; err != nil {
 			return dto.SelfUsageFilterOptions{}, err
 		}
-		for _, name := range names {
-			if name != "" {
+		for _, token := range orgTokens {
+			if token.Name != "" {
 				options.Tokens = append(options.Tokens, dto.SelfUsageTokenOption{
-					Name:             name,
+					Id:               token.Id,
+					Name:             token.Name,
 					OrganizationId:   organization.Id,
 					OrganizationName: organization.Name,
 				})
@@ -339,7 +348,10 @@ func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfU
 		if options.Tokens[i].Name != options.Tokens[j].Name {
 			return options.Tokens[i].Name < options.Tokens[j].Name
 		}
-		return options.Tokens[i].OrganizationId < options.Tokens[j].OrganizationId
+		if options.Tokens[i].OrganizationId != options.Tokens[j].OrganizationId {
+			return options.Tokens[i].OrganizationId < options.Tokens[j].OrganizationId
+		}
+		return options.Tokens[i].Id < options.Tokens[j].Id
 	})
 	return options, nil
 }

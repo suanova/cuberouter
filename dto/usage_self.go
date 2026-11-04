@@ -106,6 +106,7 @@ type SelfUsageFilterOptions struct {
 }
 
 type SelfUsageTokenOption struct {
+	Id               int    `json:"id"`
 	Name             string `json:"name"`
 	OrganizationId   int    `json:"organization_id"`
 	OrganizationName string `json:"organization_name"`
