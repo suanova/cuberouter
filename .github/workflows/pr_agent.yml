@@ -57,6 +57,9 @@ jobs:
           CONFIG__MODEL: ${{ vars.LLM_MODEL || 'openai/deepseek-flash' }}
           CONFIG__FALLBACK_MODELS: '[]'
           CONFIG__CUSTOM_MODEL_MAX_TOKENS: ${{ vars.LLM_MAX_TOKENS || '128000' }}
+          # 实际窗口 = min(此项, 模型窗口)，默认 32000；不提高时 review 会按
+          # 令牌预算丢弃大 PR 的部分文件。
+          CONFIG__MAX_MODEL_TOKENS: ${{ vars.LLM_MAX_MODEL_TOKENS || '128000' }}
           # OpenAI 兼容网关不认识该模型 ID，显式声明其支持 reasoning_effort，
           # 否则 pr-agent 不会把 reasoning_effort 传给网关。
           CONFIG__ADDITIONAL_REASONING_EFFORT_MODELS: ${{ vars.LLM_REASONING_MODELS || '["deepseek-flash"]' }}
@@ -65,3 +68,6 @@ jobs:
           CONFIG__REASONING_EFFORT: ${{ vars.LLM_REASONING_EFFORT || 'none' }}
           CONFIG__NO_TEMPERATURE_MODELS: ${{ vars.LLM_NO_TEMPERATURE_MODELS || '["deepseek-flash"]' }}
           CONFIG__OUTPUT_RUN_DETAILS: 'true'
+          # 超出预算时按块评审并合并结果，而不是丢弃文件（最多 3 次模型调用）。
+          CONFIG__PR_REVIEWER__ENABLE_LARGE_PR_CHUNKING: 'true'
+          CONFIG__PR_REVIEWER__MAX_NUMBER_OF_CALLS: '3'
