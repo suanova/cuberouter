@@ -124,4 +124,48 @@ describe('UsageOverview', () => {
     expect(screen.queryByText('Output Tokens')).not.toBeInTheDocument()
     expect(screen.queryByText('Cache Tokens')).not.toBeInTheDocument()
   })
+
+  test('shows placeholders instead of zeros while loading', () => {
+    render(
+      <UsageOverview
+        data={undefined}
+        loading
+        organizations={[]}
+        selectedOrganizationId={null}
+        onSelectOrganization={() => undefined}
+      />
+    )
+
+    expect(screen.getAllByText('—')).toHaveLength(4)
+  })
+
+  test('hides the previous organization figures while switching organizations', () => {
+    const data = usageData({})
+    data.overview.organization = {
+      id: 8,
+      name: 'Old Org',
+      request_count: 3,
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      cache_tokens: 25,
+      quota: 100,
+      remaining_quota: 500,
+      member_quota_limit: 0,
+      member_used_quota: 0,
+      organization_quota: 1000,
+      organization_used_quota: 500,
+    }
+
+    render(
+      <UsageOverview
+        data={data}
+        loading={false}
+        organizations={[{ id: 9, name: 'Acme' }]}
+        selectedOrganizationId={9}
+        onSelectOrganization={() => undefined}
+      />
+    )
+
+    expect(screen.getAllByText('—')).toHaveLength(4)
+  })
 })

@@ -37,6 +37,7 @@ interface UsageOverviewProps {
 export function UsageOverview(props: UsageOverviewProps) {
   const { t } = useTranslation()
   const personal = props.data?.overview.personal
+  const pending = props.loading && !props.data
 
   return (
     <div className='grid gap-4 xl:grid-cols-2'>
@@ -52,21 +53,26 @@ export function UsageOverview(props: UsageOverviewProps) {
         <div className='grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-4'>
           <UsageMetric
             label={t('Cost')}
-            value={formatLogQuota(personal?.quota ?? 0)}
+            value={pending ? '—' : formatLogQuota(personal?.quota ?? 0)}
           />
           <UsageMetric
             label={t('Requests')}
-            value={formatNumber(personal?.request_count ?? 0)}
+            value={pending ? '—' : formatNumber(personal?.request_count ?? 0)}
           />
           <UsageMetric
             label={t('Tokens')}
-            value={formatNumber(
-              (personal?.prompt_tokens ?? 0) + (personal?.completion_tokens ?? 0)
-            )}
+            value={
+              pending
+                ? '—'
+                : formatNumber(
+                    (personal?.prompt_tokens ?? 0) +
+                      (personal?.completion_tokens ?? 0)
+                  )
+            }
           />
           <UsageMetric
             label={t('Available quota')}
-            value={formatQuota(personal?.remaining_quota ?? 0)}
+            value={pending ? '—' : formatQuota(personal?.remaining_quota ?? 0)}
           />
         </div>
       </div>

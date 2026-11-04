@@ -21,6 +21,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Button } from '@/components/ui/button'
 import { getOrganizations } from '@/features/organization/api'
 import {
   ACCOUNT_CONTEXT_TYPE,
@@ -35,6 +36,7 @@ import type { UsageFilterValues } from './components/usage-filter-bar'
 import {
   resolveOverviewOrganizationId,
 } from './lib/organization-selection'
+import { usageRefetchInterval } from './lib/polling'
 import { usageDateParams, usageWindowFromSearch } from './lib/time-window'
 import type { GetSelfUsageParams, UsageOrganizationOption } from './types'
 
@@ -43,6 +45,7 @@ export interface UsageSearch {
   end?: string
   model?: string
   token?: string
+  tokenId?: string
   billingAccountType?: string
   organizationId?: string
   overviewOrganizationId?: string
@@ -76,12 +79,20 @@ export function UsagePage(props: UsagePageProps) {
       ? state.accountContext.current.id
       : null
   )
-  const selectedOrganizationId = props.search.overviewOrganizationId
+  const requestedOrganizationId = props.search.overviewOrganizationId
     ? Number(props.search.overviewOrganizationId)
-    : resolveOverviewOrganizationId(
-        organizations,
-        currentContextOrganizationId
-      )
+    : null
+  // URL 里的组织可能已被删除或用户已退出；校验后再用，避免后端 403。
+  const selectedOrganizationId =
+    requestedOrganizationId !== null &&
+    organizations.some(
+      (organization) => organization.id === requestedOrganizationId
+    )
+      ? requestedOrganizationId
+      : resolveOverviewOrganizationId(
+          organizations,
+          currentContextOrganizationId
+        )
 
   const params: GetSelfUsageParams = {
     start: dateParams.start,
@@ -90,6 +101,9 @@ export function UsagePage(props: UsagePageProps) {
     page_size: props.search.pageSize ?? 20,
     ...(props.search.model ? { model_name: props.search.model } : {}),
     ...(props.search.token ? { token_name: props.search.token } : {}),
+    ...(props.search.tokenId
+      ? { token_id: Number(props.search.tokenId) }
+      : {}),
     ...(props.search.billingAccountType
       ? { billing_account_type: props.search.billingAccountType }
       : {}),
@@ -105,8 +119,12 @@ export function UsagePage(props: UsagePageProps) {
     queryKey: ['self-usage', params],
     queryFn: () => getSelfUsage(params),
     placeholderData: (previousData) => previousData,
+    // 回填完成前页面只显示提示；轮询到完成即可自动放出数据。
+    refetchInterval: (query) =>
+      usageRefetchInterval(query.state.data?.data?.backfill_complete),
   })
   const data = usageQuery.data?.data
+  const failed = usageQuery.isError || usageQuery.data?.success === false
   // 回填完成前旧任务日志会被当成 text，行数与金额都不准；按设计（§7.3）
   // 只显示说明，不暴露任何用量数字。
   const backfillPending = data ? !data.backfill_complete : false
@@ -117,6 +135,9 @@ export function UsagePage(props: UsagePageProps) {
   const initialFilters: UsageFilterValues = {
     model: props.search.model,
     token: props.search.token,
+    tokenId: props.search.tokenId
+      ? Number(props.search.tokenId)
+      : undefined,
     billingAccountType: props.search.billingAccountType,
     organizationId: props.search.organizationId
       ? Number(props.search.organizationId)
@@ -138,14 +159,31 @@ export function UsagePage(props: UsagePageProps) {
               }}
             />
           </div>
-          {backfillPending ? (
+          {failed ? (
+            <div
+              role='alert'
+              className='flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2 text-sm text-destructive'
+            >
+              {t('Failed to load')}
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                onClick={() => void usageQuery.refetch()}
+              >
+                {t('Retry')}
+              </Button>
+            </div>
+          ) : null}
+          {!failed && backfillPending ? (
             <div
               role='status'
               className='rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-2 text-sm text-amber-700 dark:text-amber-400'
             >
               {t('History is still being prepared.')}
             </div>
-          ) : (
+          ) : null}
+          {!failed && !backfillPending ? (
             <>
               <UsageOverview
                 data={data}
@@ -172,6 +210,9 @@ export function UsagePage(props: UsagePageProps) {
                       updateSearch({
                         model: filters.model ?? '',
                         token: filters.token ?? '',
+                        tokenId: filters.tokenId
+                          ? String(filters.tokenId)
+                          : '',
                         billingAccountType: filters.billingAccountType ?? '',
                         organizationId: filters.organizationId
                           ? String(filters.organizationId)
@@ -188,7 +229,7 @@ export function UsagePage(props: UsagePageProps) {
                 )}
               </div>
             </>
-          )}
+          ) : null}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>

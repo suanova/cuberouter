@@ -41,8 +41,8 @@ function renderFilterBar(
       organizations={[]}
       modelOptions={['gpt-4o', 'wan3.0-video']}
       tokenOptions={[
-        { name: 'personal-key', organization_id: 0, organization_name: '' },
-        { name: 'org-key', organization_id: 9, organization_name: 'Acme' },
+        { id: 1, name: 'personal-key', organization_id: 0, organization_name: '' },
+        { id: 2, name: 'org-key', organization_id: 9, organization_name: 'Acme' },
       ]}
       loading={false}
       onApply={onApply}
@@ -56,7 +56,7 @@ describe('UsageFilterBar dropdowns', () => {
     const onApply = vi.fn()
     renderFilterBar(onApply)
 
-    const modelInput = screen.getByPlaceholderText('Model')
+    const modelInput = screen.getByRole('combobox', { name: 'Model' })
     fireEvent.focus(modelInput)
 
     expect(screen.getByRole('option', { name: 'All Models' })).toBeInTheDocument()
@@ -75,7 +75,7 @@ describe('UsageFilterBar dropdowns', () => {
     const onApply = vi.fn()
     renderFilterBar(onApply)
 
-    fireEvent.focus(screen.getByPlaceholderText('API Key'))
+    fireEvent.focus(screen.getByRole('combobox', { name: 'API Key' }))
 
     expect(screen.getByRole('option', { name: 'personal-key' })).toBeInTheDocument()
     const orgOption = screen.getByRole('option', { name: 'org-key (Acme)' })
@@ -85,7 +85,37 @@ describe('UsageFilterBar dropdowns', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
 
     expect(onApply).toHaveBeenCalledWith(
-      expect.objectContaining({ token: 'org-key' })
+      expect.objectContaining({ token: 'org-key', tokenId: 2 })
+    )
+  })
+
+  test('keeps an unapplied token draft when the options refresh', () => {
+    const options = [
+      { id: 2, name: 'org-key', organization_id: 9, organization_name: 'Acme' },
+    ]
+    const ui = (tokenOptions: typeof options) => (
+      <UsageFilterBar
+        table={table}
+        initial={{}}
+        organizations={[]}
+        modelOptions={[]}
+        tokenOptions={tokenOptions}
+        loading={false}
+        onApply={() => undefined}
+        onReset={() => undefined}
+      />
+    )
+    const rendered = render(ui(options))
+    const combobox = screen.getByRole('combobox', { name: 'API Key' })
+    fireEvent.focus(combobox)
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'org-key (Acme)' }))
+    // Selecting reopens the search input; close it so the selected label shows.
+    fireEvent.keyDown(combobox, { key: 'Escape' })
+
+    rendered.rerender(ui([...options]))
+
+    expect(screen.getByRole('combobox', { name: 'API Key' })).toHaveValue(
+      'org-key (Acme)'
     )
   })
 })

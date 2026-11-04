@@ -37,13 +37,13 @@ function tokenText(value: number): string {
 }
 
 export function usageSuccessText(row: SelfUsageRow): string {
-  return row.type === 'text'
-    ? formatNumber(row.request_count)
-    : formatNumber(row.success_count)
+  return row.failure_count > 0
+    ? formatNumber(row.success_count)
+    : formatNumber(row.request_count)
 }
 
 export function usageFailureText(row: SelfUsageRow): string {
-  return row.type === 'text' ? '-' : formatNumber(row.failure_count)
+  return row.failure_count > 0 ? formatNumber(row.failure_count) : '-'
 }
 
 export function buildUsageColumns(

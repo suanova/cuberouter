@@ -57,4 +57,15 @@ describe('usage table cells', () => {
     expect(usageSuccessText(taskRow)).toBe('1')
     expect(usageFailureText(taskRow)).toBe('1')
   })
+
+  test('text rows carrying task failures use status counts', () => {
+    const row = {
+      ...textRow,
+      request_count: 2,
+      success_count: 1,
+      failure_count: 1,
+    }
+    expect(usageSuccessText(row)).toBe('1')
+    expect(usageFailureText(row)).toBe('1')
+  })
 })

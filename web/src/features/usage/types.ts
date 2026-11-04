@@ -91,6 +91,7 @@ export interface SelfUsageData {
 }
 
 export interface SelfUsageTokenOption {
+  id: number
   name: string
   organization_id: number
   organization_name: string
@@ -107,6 +108,7 @@ export interface GetSelfUsageParams {
   end: string
   model_name?: string
   token_name?: string
+  token_id?: number
   billing_account_type?: string
   organization_id?: number
   overview_organization_id?: number

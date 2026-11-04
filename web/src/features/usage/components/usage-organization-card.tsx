@@ -48,6 +48,10 @@ export function UsageOrganizationCard(props: UsageOrganizationCardProps) {
   if (props.organizations.length === 0) return null
 
   const overview = props.overview
+  const pending = props.loading && !overview
+  // placeholderData 会在切换组织时保留上一个组织的数字；id 不匹配先显示占位。
+  const stale = overview != null && overview.id !== props.selectedId
+  const placeholder = pending || stale
   const items = props.organizations.map((organization) => ({
     value: String(organization.id),
     label: organization.name,
@@ -96,20 +100,36 @@ export function UsageOrganizationCard(props: UsageOrganizationCardProps) {
         </Select>
       </div>
       <div className='grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-4'>
-        <UsageMetric label={t('Cost')} value={formatLogQuota(overview?.quota ?? 0)} />
+        <UsageMetric
+          label={t('Cost')}
+          value={placeholder ? '—' : formatLogQuota(overview?.quota ?? 0)}
+        />
         <UsageMetric
           label={t('Requests')}
-          value={formatNumber(overview?.request_count ?? 0)}
+          value={
+            placeholder
+              ? '—'
+              : formatNumber(overview?.request_count ?? 0)
+          }
         />
         <UsageMetric
           label={t('Tokens')}
-          value={formatNumber(
-            (overview?.prompt_tokens ?? 0) + (overview?.completion_tokens ?? 0)
-          )}
+          value={
+            placeholder
+              ? '—'
+              : formatNumber(
+                  (overview?.prompt_tokens ?? 0) +
+                    (overview?.completion_tokens ?? 0)
+                )
+          }
         />
         <UsageMetric
           label={t('Available quota')}
-          value={formatQuota(overview?.remaining_quota ?? 0)}
+          value={
+            placeholder
+              ? '—'
+              : formatQuota(overview?.remaining_quota ?? 0)
+          }
           title={breakdown}
         />
       </div>

@@ -47,11 +47,13 @@ func GetSelfUsage(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
 	overviewOrganizationId, _ := strconv.Atoi(c.Query("overview_organization_id"))
+	tokenId, _ := strconv.Atoi(c.Query("token_id"))
 	data, err := service.GetSelfUsage(service.SelfUsageQuery{
 		ActorUserId:            actorUserId,
 		StartTs:                startTs,
 		EndTs:                  endTs,
 		ModelName:              c.Query("model_name"),
+		TokenId:                tokenId,
 		TokenName:              c.Query("token_name"),
 		BillingAccountType:     c.Query("billing_account_type"),
 		OrganizationID:         organizationId,

@@ -192,11 +192,11 @@ func TestGetSelfUsageReturnsVisibleModelsAndUsableTokens(t *testing.T) {
 		OrganizationId: 909, UserId: actor, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive,
 	}).Error)
 	require.NoError(t, model.DB.Create(&[]model.Token{
-		{UserId: actor, Name: "personal-key", Key: "sk-personal", ScopeType: model.TokenScopePersonal},
-		{UserId: actor, Name: "org-public", Key: "sk-orgpub", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPublic},
-		{UserId: actor, Name: "org-mine", Key: "sk-orgmine", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPrivate, ResponsibleUserId: actor},
-		{UserId: 708, Name: "org-other", Key: "sk-orgother", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPrivate, ResponsibleUserId: 708},
-		{UserId: 709, Name: "foreign-org-key", Key: "sk-foreign", ScopeType: model.TokenScopeOrganization, OrganizationId: 910, Visibility: model.TokenVisibilityPublic},
+		{Id: 1, UserId: actor, Name: "personal-key", Key: "sk-personal", ScopeType: model.TokenScopePersonal},
+		{Id: 2, UserId: actor, Name: "org-public", Key: "sk-orgpub", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPublic},
+		{Id: 3, UserId: actor, Name: "org-mine", Key: "sk-orgmine", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPrivate, ResponsibleUserId: actor},
+		{Id: 4, UserId: 708, Name: "org-other", Key: "sk-orgother", ScopeType: model.TokenScopeOrganization, OrganizationId: 909, Visibility: model.TokenVisibilityPrivate, ResponsibleUserId: 708},
+		{Id: 5, UserId: 709, Name: "foreign-org-key", Key: "sk-foreign", ScopeType: model.TokenScopeOrganization, OrganizationId: 910, Visibility: model.TokenVisibilityPublic},
 	}).Error)
 
 	got, err := GetSelfUsage(SelfUsageQuery{
@@ -209,10 +209,38 @@ func TestGetSelfUsageReturnsVisibleModelsAndUsableTokens(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"gpt-4o", "org-only-model", "wan3.0-video"}, got.FilterOptions.Models)
 	assert.Equal(t, []dto.SelfUsageTokenOption{
-		{Name: "org-mine", OrganizationId: 909, OrganizationName: "Acme"},
-		{Name: "org-public", OrganizationId: 909, OrganizationName: "Acme"},
-		{Name: "personal-key"},
+		{Id: 3, Name: "org-mine", OrganizationId: 909, OrganizationName: "Acme"},
+		{Id: 2, Name: "org-public", OrganizationId: 909, OrganizationName: "Acme"},
+		{Id: 1, Name: "personal-key"},
 	}, got.FilterOptions.Tokens)
+}
+
+func TestGetSelfUsageFiltersByTokenId(t *testing.T) {
+	db := newSelfUsageTestDB(t)
+	ts := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "u7"}).Error)
+	require.NoError(t, db.Create(&[]model.Token{
+		{Id: 11, UserId: 7, Name: "shared", Key: "sk-11", ScopeType: model.TokenScopePersonal},
+		{Id: 12, UserId: 7, Name: "shared", Key: "sk-12", ScopeType: model.TokenScopePersonal},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 11, TokenName: "shared", BillingAccountType: "personal", RequestId: "t11", Quota: 10},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 12, TokenName: "shared", BillingAccountType: "personal", RequestId: "t12", Quota: 20},
+	}).Error)
+
+	byId, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: ts - 3600, EndTs: ts + 3600, TokenId: 11, Page: 1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, byId.Rows.Total)
+	assert.Equal(t, 10, byId.Totals.Quota)
+
+	byName, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: ts - 3600, EndTs: ts + 3600, TokenName: "shared", Page: 1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 2, byName.Rows.Total)
+	assert.Equal(t, 30, byName.Totals.Quota)
 }
 
 func TestGetSelfUsageClampsHugePage(t *testing.T) {

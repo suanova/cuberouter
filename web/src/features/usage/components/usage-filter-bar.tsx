@@ -18,7 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { Table } from '@tanstack/react-table'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -43,6 +43,7 @@ import type {
 export interface UsageFilterValues {
   model?: string
   token?: string
+  tokenId?: number
   billingAccountType?: string
   organizationId?: number
 }
@@ -60,15 +61,9 @@ interface UsageFilterBarProps {
 
 const BILLING_ALL = 'all'
 
-// The token filter stores the key name, but the dropdown needs unique values
-// because two organizations may use the same key name. The organization id is
-// appended for org keys and stripped again on apply.
-const TOKEN_OPTION_SEPARATOR = '\u0000'
-
+// 同名密钥可能分属个人与组织，下拉值用密钥 id，应用时再带上名称。
 function tokenOptionValue(option: SelfUsageTokenOption): string {
-  return option.organization_id > 0
-    ? `${option.name}${TOKEN_OPTION_SEPARATOR}${option.organization_id}`
-    : option.name
+  return String(option.id)
 }
 
 function tokenOptionLabel(option: SelfUsageTokenOption): string {
@@ -77,24 +72,33 @@ function tokenOptionLabel(option: SelfUsageTokenOption): string {
     : option.name
 }
 
-function tokenNameFromOptionValue(value: string): string {
-  return value.split(TOKEN_OPTION_SEPARATOR)[0]
-}
-
 function initialTokenOptionValue(
   options: SelfUsageTokenOption[],
-  name?: string
+  tokenId?: number,
+  tokenName?: string
 ): string {
-  if (!name) return ''
-  const match = options.find((option) => option.name === name)
-  return match ? tokenOptionValue(match) : name
+  if (tokenId) {
+    const byId = options.find((option) => option.id === tokenId)
+    if (byId) return tokenOptionValue(byId)
+  }
+  if (tokenName) {
+    const byName = options.find((option) => option.name === tokenName)
+    if (byName) return tokenOptionValue(byName)
+    return tokenName
+  }
+  if (tokenId) return String(tokenId)
+  return ''
 }
 
 export function UsageFilterBar(props: UsageFilterBarProps) {
   const { t } = useTranslation()
   const [model, setModel] = useState(props.initial.model ?? '')
   const [token, setToken] = useState(
-    initialTokenOptionValue(props.tokenOptions, props.initial.token)
+    initialTokenOptionValue(
+      props.tokenOptions,
+      props.initial.tokenId,
+      props.initial.token
+    )
   )
   const [billing, setBilling] = useState(
     props.initial.billingAccountType || BILLING_ALL
@@ -102,19 +106,32 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
   const [organizationId, setOrganizationId] = useState<number | undefined>(
     props.initial.organizationId
   )
+  const appliedTokenKeyRef = useRef('')
 
   useEffect(() => {
     setModel(props.initial.model ?? '')
-    setToken(initialTokenOptionValue(props.tokenOptions, props.initial.token))
     setBilling(props.initial.billingAccountType || BILLING_ALL)
     setOrganizationId(props.initial.organizationId)
   }, [
     props.initial.model,
-    props.initial.token,
     props.initial.billingAccountType,
     props.initial.organizationId,
-    props.tokenOptions,
   ])
+
+  // 只在「已应用的密钥」变化时重置草稿；选项随日期刷新时不能清掉用户未应用的编辑。
+  useEffect(() => {
+    const appliedKey = `${props.initial.tokenId ?? ''}|${props.initial.token ?? ''}`
+    if (appliedTokenKeyRef.current === appliedKey) return
+    if (appliedKey !== '|' && props.tokenOptions.length === 0) return
+    appliedTokenKeyRef.current = appliedKey
+    setToken(
+      initialTokenOptionValue(
+        props.tokenOptions,
+        props.initial.tokenId,
+        props.initial.token
+      )
+    )
+  }, [props.initial.tokenId, props.initial.token, props.tokenOptions])
 
   const billingItems = [
     { value: BILLING_ALL, label: t('All Billing Types') },
@@ -142,10 +159,14 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
     billing !== BILLING_ALL ||
     organizationId !== undefined
 
+  const selectedToken = props.tokenOptions.find(
+    (option) => String(option.id) === token
+  )
   const apply = () => {
     props.onApply({
       model: model.trim() || undefined,
-      token: tokenNameFromOptionValue(token).trim() || undefined,
+      token: selectedToken?.name ?? (token.trim() || undefined),
+      tokenId: selectedToken?.id,
       billingAccountType: billing === BILLING_ALL ? undefined : billing,
       organizationId:
         billing === 'organization' ? organizationId : undefined,

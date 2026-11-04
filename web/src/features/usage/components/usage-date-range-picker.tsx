@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Calendar as CalendarIcon } from 'lucide-react'
 import { useState } from 'react'
-import { enUS, fr, ja, ru, vi, zhCN } from 'react-day-picker/locale'
 import type { DateRange } from 'react-day-picker'
 import { useTranslation } from 'react-i18next'
 
@@ -32,22 +31,16 @@ import {
 } from '@/components/ui/popover'
 import dayjs from '@/lib/dayjs'
 
-const calendarLocales = {
-  en: enUS,
-  zh: zhCN,
-  fr,
-  ru,
-  ja,
-  vi,
-} as const
+import {
+  usageCalendarLocale,
+  usageRangeWithinLimit,
+} from '../lib/date-range'
 
 interface UsageDateRangePickerProps {
   start: Date
   end: Date
   onChange: (range: { start: Date; end: Date }) => void
 }
-
-const MAX_RANGE_DAYS = 31
 
 export function UsageDateRangePicker(props: UsageDateRangePickerProps) {
   const { t, i18n } = useTranslation()
@@ -56,19 +49,24 @@ export function UsageDateRangePicker(props: UsageDateRangePickerProps) {
     from: props.start,
     to: props.end,
   })
-  const calendarLocale =
-    calendarLocales[i18n.language as keyof typeof calendarLocales] ?? enUS
+  const calendarLocale = usageCalendarLocale(i18n.language)
 
   const handleSelect = (range: DateRange | undefined) => {
     setDraft(range)
     if (!range?.from || !range.to) return
-    if (dayjs(range.to).diff(range.from, 'day') > MAX_RANGE_DAYS) return
+    if (!usageRangeWithinLimit(range.from, range.to)) return
     props.onChange({ start: range.from, end: range.to })
     setOpen(false)
   }
 
+  const handleOpenChange = (nextOpen: boolean) => {
+    // 每次打开都以当前已应用区间为准；URL 变化后不会残留旧草稿。
+    if (nextOpen) setDraft({ from: props.start, to: props.end })
+    setOpen(nextOpen)
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         render={
           <Button variant='outline' className='justify-start font-normal' />
@@ -88,14 +86,22 @@ export function UsageDateRangePicker(props: UsageDateRangePickerProps) {
           numberOfMonths={1}
           disabled={(date: Date) =>
             date > new Date() ||
-            (draft?.from
-              ? dayjs(date).diff(draft.from, 'day') > MAX_RANGE_DAYS
-              : false)
+            (draft?.from ? !usageRangeWithinLimit(draft.from, date) : false)
           }
         />
-        <p className='text-muted-foreground border-t px-3 py-2 text-xs'>
-          {t('The range cannot exceed 31 days.')}
-        </p>
+        <div className='flex items-center justify-between gap-3 border-t px-3 py-2'>
+          <p className='text-muted-foreground text-xs'>
+            {t('The range cannot exceed 31 days.')}
+          </p>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            onClick={() => setDraft(undefined)}
+          >
+            {t('Reset')}
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   )

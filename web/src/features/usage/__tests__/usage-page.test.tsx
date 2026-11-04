@@ -36,7 +36,9 @@ vi.mock('../components/usage-overview', () => ({
   UsageOverview: () => <div data-testid='usage-overview' />,
 }))
 vi.mock('../components/usage-table', () => ({
-  UsageTable: () => <div data-testid='usage-table' />,
+  UsageTable: (props: { data: SelfUsageData }) => (
+    <div data-testid='usage-table'>{props.data.rows.items[0]?.model_name}</div>
+  ),
 }))
 
 const getSelfUsageMock = vi.mocked(getSelfUsage)
@@ -60,7 +62,30 @@ function usageData(backfillComplete: boolean): SelfUsageData {
       end_timestamp: 0,
     },
     overview: { personal: stat, organization: null },
-    rows: { page: 1, page_size: 20, total: 0, items: [] },
+    rows: {
+      page: 1,
+      page_size: 20,
+      total: 1,
+      items: [
+        {
+          date: '2026-11-03',
+          type: 'text',
+          billing_account_type: 'personal',
+          organization_id: 0,
+          organization_name: '',
+          token_id: 1,
+          token_name: 'k1',
+          model_name: 'gpt-4o',
+          request_count: 1,
+          success_count: 1,
+          failure_count: 0,
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          cache_tokens: 0,
+          quota: 0,
+        },
+      ],
+    },
     totals: {
       request_count: 0,
       success_count: 0,
@@ -74,8 +99,14 @@ function usageData(backfillComplete: boolean): SelfUsageData {
   }
 }
 
-function renderUsagePage(search: UsageSearch) {
-  getOrganizationsMock.mockResolvedValue({ success: true, data: [] })
+function renderUsagePage(
+  search: UsageSearch,
+  organizations: { id: number; name: string }[] = []
+) {
+  getOrganizationsMock.mockResolvedValue({
+    success: true,
+    data: organizations as never,
+  })
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -129,7 +160,8 @@ describe('UsagePage', () => {
     })
 
     const page = renderUsagePage({ start: '2026-11-03', end: '2026-11-03' })
-    await screen.findByTestId('usage-table')
+    const table = await screen.findByTestId('usage-table')
+    expect(table).toHaveTextContent('gpt-4o')
 
     getSelfUsageMock.mockReturnValue(new Promise(() => undefined))
     page.rerender({ start: '2026-11-02', end: '2026-11-02' })
@@ -137,6 +169,44 @@ describe('UsagePage', () => {
     await waitFor(() => {
       expect(getSelfUsageMock).toHaveBeenCalledTimes(2)
     })
-    expect(screen.getByTestId('usage-table')).toBeInTheDocument()
+    expect(screen.getByTestId('usage-table')).toHaveTextContent('gpt-4o')
+  })
+
+  test('shows an error state instead of zero figures when the request fails', async () => {
+    getSelfUsageMock.mockRejectedValue(new Error('boom'))
+
+    renderUsagePage({ start: '2026-11-03', end: '2026-11-03' })
+
+    expect(await screen.findByText('Failed to load')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+    expect(screen.queryByTestId('usage-overview')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('usage-table')).not.toBeInTheDocument()
+  })
+
+  test('falls back to a member organization when the URL id is unknown', async () => {
+    getSelfUsageMock.mockResolvedValue({
+      success: true,
+      data: usageData(true),
+    })
+
+    renderUsagePage(
+      {
+        start: '2026-11-03',
+        end: '2026-11-03',
+        overviewOrganizationId: '999',
+      },
+      [{ id: 9, name: 'Acme' }]
+    )
+
+    await waitFor(() => {
+      const calls = getSelfUsageMock.mock.calls
+      const last = calls.at(-1)?.[0]
+      expect(last?.overview_organization_id).toBe(9)
+    })
+    expect(
+      getSelfUsageMock.mock.calls.some(
+        (call) => call[0].overview_organization_id === 999
+      )
+    ).toBe(false)
   })
 })
