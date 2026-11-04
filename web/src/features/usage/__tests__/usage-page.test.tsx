@@ -35,6 +35,9 @@ vi.mock('../components/usage-date-range-picker', () => ({
 vi.mock('../components/usage-overview', () => ({
   UsageOverview: () => <div data-testid='usage-overview' />,
 }))
+vi.mock('../components/usage-charts', () => ({
+  UsageCharts: () => <div data-testid='usage-charts' />,
+}))
 vi.mock('../components/usage-table', () => ({
   UsageTable: (props: { data: SelfUsageData }) => (
     <div data-testid='usage-table'>{props.data.rows.items[0]?.model_name}</div>
@@ -95,6 +98,7 @@ function usageData(backfillComplete: boolean): SelfUsageData {
       cache_tokens: 0,
       quota: 0,
     },
+    charts: [],
     filter_options: { models: [], tokens: [] },
   }
 }
@@ -134,6 +138,7 @@ describe('UsagePage', () => {
       await screen.findByText('History is still being prepared.')
     ).toBeInTheDocument()
     expect(screen.queryByTestId('usage-overview')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('usage-charts')).not.toBeInTheDocument()
     expect(screen.queryByTestId('usage-table')).not.toBeInTheDocument()
   })
 
@@ -151,6 +156,7 @@ describe('UsagePage', () => {
     ).not.toBeInTheDocument()
     expect(table.closest('[aria-hidden="true"]')).toBeNull()
     expect(screen.getByTestId('usage-overview')).toBeInTheDocument()
+    expect(await screen.findByTestId('usage-charts')).toBeInTheDocument()
   })
 
   test('keeps the previous rows visible while the next range loads', async () => {
@@ -180,6 +186,7 @@ describe('UsagePage', () => {
     expect(await screen.findByText('Failed to load')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(screen.queryByTestId('usage-overview')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('usage-charts')).not.toBeInTheDocument()
     expect(screen.queryByTestId('usage-table')).not.toBeInTheDocument()
   })
 

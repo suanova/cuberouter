@@ -47,7 +47,7 @@ PPTX 的 `/api/v2/*` onboarding 接口映射到产品真实接口（套餐/用�
 | 7 | API#5 — admin reactivates the user; sign-in works again | slide 7 | 启用用户；恢复登录 |
 | 8 | API#7/API#5 — the operator API_KEY stays valid through suspend and reactivate | slide 7/9 | **支持场景**：最新 API_KEY 有效期内可用；挂起后**用户的 sk- key 被拒（403）**；reactivate 后恢复；操作者 key 全程有效不被吊销 |
 | 9 | API#4 — admin resets the user password | slide 7 | 管理员重置密码（旧密码失效、新密码可用） |
-| 10 | slide 10 — user signs in and opens the dashboard | slide 10 | UI 登录 → 数据看板（Overview） |
+| 10 | slide 10 — user signs in and opens the usage page | slide 10 | UI 登录 → 用量页（Usage） |
 | 11 | slide 11 — user changes the password in the UI and signs in with it | slide 11 | UI 改密码 → 新密码重新登录 |
 | 12 | slide 12 — user views the one-off and top-up plans in the wallet | slide 12 | 钱包"我的订阅"显示 2 个 active 订阅、额度、FIFO 顺序 |
 | 13 | slide 13 — user opens the playground and enters a question | slide 13 | 操练场入口可用（输入框/发送按钮） |

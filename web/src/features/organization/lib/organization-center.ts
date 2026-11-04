@@ -205,7 +205,12 @@ export function getOrganizationTabs(
     },
     {
       key: 'usage',
-      visible: capabilities.can_view_organization_usage,
+      // Like Logs and Tasks: members read their own organization-billed usage
+      // on the personal /usage page. This tab is the organization-wide view
+      // and requires the wide grant.
+      visible:
+        capabilities.can_view_organization_usage &&
+        capabilities.can_view_organization_wide_data,
       limitedView,
     },
     {

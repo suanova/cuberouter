@@ -273,3 +273,77 @@ func TestGetSelfUsageClampsHugePage(t *testing.T) {
 	assert.Empty(t, got.Rows.Items)
 	assert.Equal(t, 1, got.Rows.Total)
 }
+
+func TestGetSelfUsageChartsAggregateFilteredRowsByDayAndModel(t *testing.T) {
+	db := newSelfUsageTestDB(t)
+	day1 := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local)
+	day2 := day1.AddDate(0, 0, 1)
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "u7"}).Error)
+	require.NoError(t, db.Create(&model.Model{ModelName: "gpt-4o", Tags: "工具"}).Error)
+	require.NoError(t, db.Create(&model.Model{ModelName: "wan3.0-video", Tags: "视频生成"}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: day1.Unix(), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "a", Quota: 10},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: day1.Unix(), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "b", Quota: 20},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: day1.Unix(), ModelName: "gpt-4o", BillingAccountType: "organization", OrganizationId: 9, RequestId: "c", Quota: 7},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: day2.Unix(), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "d", Quota: 5},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: day1.Unix(), ModelName: "wan3.0-video", BillingAccountType: "organization", OrganizationId: 9, RequestId: "e", Quota: 50},
+	}).Error)
+	require.NoError(t, db.Create(&model.Task{
+		TaskID: "t1", UserId: 7, ActorUserId: 7, BillingAccountType: "personal",
+		Status: model.TaskStatusSuccess, Quota: 40, SubmitTime: day2.Unix(),
+		Properties: model.Properties{OriginModelName: "wan3.0-video"},
+	}).Error)
+
+	query := SelfUsageQuery{
+		ActorUserId: 7,
+		StartTs:     day1.Unix() - 3600,
+		EndTs:       day2.Unix() + 3600,
+		Page:        1,
+		PageSize:    20,
+	}
+	got, err := GetSelfUsage(query)
+	require.NoError(t, err)
+	assert.Equal(t, []dto.SelfUsageChartPoint{
+		{Date: "2026-11-03", ModelName: "gpt-4o", RequestCount: 3, Quota: 37},
+		{Date: "2026-11-03", ModelName: "wan3.0-video", RequestCount: 1, Quota: 50},
+		{Date: "2026-11-04", ModelName: "gpt-4o", RequestCount: 1, Quota: 5},
+		{Date: "2026-11-04", ModelName: "wan3.0-video", RequestCount: 1, Quota: 40},
+	}, got.Charts)
+	assert.Equal(t, 132, got.Totals.Quota)
+
+	chartQuota, chartRequests := 0, 0
+	for _, point := range got.Charts {
+		chartQuota += point.Quota
+		chartRequests += point.RequestCount
+	}
+	assert.Equal(t, got.Totals.Quota, chartQuota)
+	assert.Equal(t, got.Totals.RequestCount, chartRequests)
+
+	paged, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: query.StartTs, EndTs: query.EndTs,
+		Page: 2, PageSize: 1,
+	})
+	require.NoError(t, err)
+	assert.Len(t, paged.Rows.Items, 1)
+	assert.Equal(t, got.Charts, paged.Charts)
+
+	organization, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: query.StartTs, EndTs: query.EndTs,
+		BillingAccountType: "organization", Page: 1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []dto.SelfUsageChartPoint{
+		{Date: "2026-11-03", ModelName: "gpt-4o", RequestCount: 1, Quota: 7},
+		{Date: "2026-11-03", ModelName: "wan3.0-video", RequestCount: 1, Quota: 50},
+	}, organization.Charts)
+
+	video, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: query.StartTs, EndTs: query.EndTs,
+		ModelName: "wan3.0-video", Page: 1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []dto.SelfUsageChartPoint{
+		{Date: "2026-11-03", ModelName: "wan3.0-video", RequestCount: 1, Quota: 50},
+		{Date: "2026-11-04", ModelName: "wan3.0-video", RequestCount: 1, Quota: 40},
+	}, video.Charts)
+}

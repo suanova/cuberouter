@@ -62,6 +62,7 @@ function usageData(): SelfUsageData {
       cache_tokens: 500,
       quota: 0,
     },
+    charts: [],
     filter_options: { models: [], tokens: [] },
   }
 }

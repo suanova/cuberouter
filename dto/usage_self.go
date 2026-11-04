@@ -27,6 +27,7 @@ type SelfUsageData struct {
 	Overview         SelfUsageOverview      `json:"overview"`
 	Rows             SelfUsageRows          `json:"rows"`
 	Totals           SelfUsageTotals        `json:"totals"`
+	Charts           []SelfUsageChartPoint  `json:"charts"`
 	FilterOptions    SelfUsageFilterOptions `json:"filter_options"`
 }
 
@@ -94,6 +95,16 @@ type SelfUsageTotals struct {
 	CompletionTokens int `json:"completion_tokens"`
 	CacheTokens      int `json:"cache_tokens"`
 	Quota            int `json:"quota"`
+}
+
+// SelfUsageChartPoint is one day/model bucket of the filtered usage rows. The
+// chart series shares the table's filters and accounting scope so the two
+// never disagree.
+type SelfUsageChartPoint struct {
+	Date         string `json:"date"`
+	ModelName    string `json:"model_name"`
+	RequestCount int    `json:"request_count"`
+	Quota        int    `json:"quota"`
 }
 
 // SelfUsageFilterOptions lists the models the caller can see and the API keys

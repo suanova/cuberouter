@@ -18,6 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
+import { lazy, Suspense } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
@@ -30,15 +31,19 @@ import {
 
 import { getSelfUsage } from './api'
 import { UsageDateRangePicker } from './components/usage-date-range-picker'
+import type { UsageFilterValues } from './components/usage-filter-bar'
 import { UsageOverview } from './components/usage-overview'
 import { UsageTable } from './components/usage-table'
-import type { UsageFilterValues } from './components/usage-filter-bar'
-import {
-  resolveOverviewOrganizationId,
-} from './lib/organization-selection'
+import { resolveOverviewOrganizationId } from './lib/organization-selection'
 import { usageRefetchInterval } from './lib/polling'
 import { usageDateParams, usageWindowFromSearch } from './lib/time-window'
 import type { GetSelfUsageParams, UsageOrganizationOption } from './types'
+
+const LazyUsageCharts = lazy(() =>
+  import('./components/usage-charts').then((module) => ({
+    default: module.UsageCharts,
+  }))
+)
 
 export interface UsageSearch {
   start?: string
@@ -101,9 +106,7 @@ export function UsagePage(props: UsagePageProps) {
     page_size: props.search.pageSize ?? 20,
     ...(props.search.model ? { model_name: props.search.model } : {}),
     ...(props.search.token ? { token_name: props.search.token } : {}),
-    ...(props.search.tokenId
-      ? { token_id: Number(props.search.tokenId) }
-      : {}),
+    ...(props.search.tokenId ? { token_id: Number(props.search.tokenId) } : {}),
     ...(props.search.billingAccountType
       ? { billing_account_type: props.search.billingAccountType }
       : {}),
@@ -135,9 +138,7 @@ export function UsagePage(props: UsagePageProps) {
   const initialFilters: UsageFilterValues = {
     model: props.search.model,
     token: props.search.token,
-    tokenId: props.search.tokenId
-      ? Number(props.search.tokenId)
-      : undefined,
+    tokenId: props.search.tokenId ? Number(props.search.tokenId) : undefined,
     billingAccountType: props.search.billingAccountType,
     organizationId: props.search.organizationId
       ? Number(props.search.organizationId)
@@ -162,7 +163,7 @@ export function UsagePage(props: UsagePageProps) {
           {failed ? (
             <div
               role='alert'
-              className='flex items-center justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-4 py-2 text-sm text-destructive'
+              className='border-destructive/40 bg-destructive/5 text-destructive flex items-center justify-between gap-3 rounded-lg border px-4 py-2 text-sm'
             >
               {t('Failed to load')}
               <Button
@@ -194,6 +195,16 @@ export function UsagePage(props: UsagePageProps) {
                   updateSearch({ overviewOrganizationId: String(id), page: 1 })
                 }
               />
+              <Suspense
+                fallback={
+                  <div className='bg-muted/20 h-96 animate-pulse rounded-lg border' />
+                }
+              >
+                <LazyUsageCharts
+                  points={data?.charts ?? []}
+                  loading={usageQuery.isLoading}
+                />
+              </Suspense>
               <div className='rounded-lg border'>
                 {data ? (
                   <UsageTable
@@ -210,9 +221,7 @@ export function UsagePage(props: UsagePageProps) {
                       updateSearch({
                         model: filters.model ?? '',
                         token: filters.token ?? '',
-                        tokenId: filters.tokenId
-                          ? String(filters.tokenId)
-                          : '',
+                        tokenId: filters.tokenId ? String(filters.tokenId) : '',
                         billingAccountType: filters.billingAccountType ?? '',
                         organizationId: filters.organizationId
                           ? String(filters.organizationId)
@@ -225,7 +234,7 @@ export function UsagePage(props: UsagePageProps) {
                     }
                   />
                 ) : (
-                  <div className='h-48 animate-pulse rounded-lg bg-muted/20' />
+                  <div className='bg-muted/20 h-48 animate-pulse rounded-lg' />
                 )}
               </div>
             </>
