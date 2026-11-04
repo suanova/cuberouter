@@ -97,6 +97,17 @@ type SelfUsageTotals struct {
 	Quota            int `json:"quota"`
 }
 
+// SelfUsageExportData is the response of GET /api/usage/self/export. Rows use
+// the same columns as the usage table; Date is YYYY-MM-DD for day buckets and
+// YYYY-MM-DD HH:00 for hour buckets. Total counts every filtered row before
+// the export row cap, so the client can warn when Truncated is true.
+type SelfUsageExportData struct {
+	Granularity string         `json:"granularity"`
+	Rows        []SelfUsageRow `json:"rows"`
+	Total       int            `json:"total"`
+	Truncated   bool           `json:"truncated"`
+}
+
 // SelfUsageChartPoint is one day/model bucket of the filtered usage rows. The
 // chart series shares the table's filters and accounting scope so the two
 // never disagree.

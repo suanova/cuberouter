@@ -18,8 +18,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
@@ -29,7 +30,7 @@ import {
   useAccountContextStore,
 } from '@/stores/account-context-store'
 
-import { getSelfUsage } from './api'
+import { exportSelfUsage, getSelfUsage } from './api'
 import { UsageDateRangePicker } from './components/usage-date-range-picker'
 import type { UsageFilterValues } from './components/usage-filter-bar'
 import { UsageOverview } from './components/usage-overview'
@@ -37,7 +38,15 @@ import { UsageTable } from './components/usage-table'
 import { resolveOverviewOrganizationId } from './lib/organization-selection'
 import { usageRefetchInterval } from './lib/polling'
 import { usageDateParams, usageWindowFromSearch } from './lib/time-window'
-import type { GetSelfUsageParams, UsageOrganizationOption } from './types'
+import {
+  buildSelfUsageExportSheet,
+  writeSelfUsageExportFile,
+} from './lib/usage-export'
+import type {
+  GetSelfUsageParams,
+  UsageExportGranularity,
+  UsageOrganizationOption,
+} from './types'
 
 const LazyUsageCharts = lazy(() =>
   import('./components/usage-charts').then((module) => ({
@@ -132,6 +141,55 @@ export function UsagePage(props: UsagePageProps) {
   // 只显示说明，不暴露任何用量数字。
   const backfillPending = data ? !data.backfill_complete : false
 
+  const [exporting, setExporting] = useState<UsageExportGranularity | null>(
+    null
+  )
+
+  const handleExport = async (granularity: UsageExportGranularity) => {
+    setExporting(granularity)
+    try {
+      const response = await exportSelfUsage({
+        start: dateParams.start,
+        end: dateParams.end,
+        granularity,
+        ...(props.search.model ? { model_name: props.search.model } : {}),
+        ...(props.search.token ? { token_name: props.search.token } : {}),
+        ...(props.search.tokenId
+          ? { token_id: Number(props.search.tokenId) }
+          : {}),
+        ...(props.search.billingAccountType
+          ? { billing_account_type: props.search.billingAccountType }
+          : {}),
+        ...(props.search.organizationId
+          ? { organization_id: Number(props.search.organizationId) }
+          : {}),
+      })
+      if (!response.success || !response.data) {
+        toast.error(response.message || t('The export could not be prepared.'))
+        return
+      }
+      if (response.data.rows.length === 0) {
+        toast.info(t('No usage in this period.'))
+        return
+      }
+      await writeSelfUsageExportFile(
+        buildSelfUsageExportSheet(response.data, t)
+      )
+      if (response.data.truncated) {
+        toast.warning(
+          t('Exported the first {{exported}} of {{total}} records.', {
+            exported: response.data.rows.length,
+            total: response.data.total,
+          })
+        )
+      }
+    } catch {
+      toast.error(t('The export could not be prepared.'))
+    } finally {
+      setExporting(null)
+    }
+  }
+
   const updateSearch = (next: Partial<UsageSearch>) => {
     props.onSearchChange(next)
   }
@@ -217,6 +275,8 @@ export function UsagePage(props: UsagePageProps) {
                     initialFilters={initialFilters}
                     page={props.search.page ?? 1}
                     pageSize={props.search.pageSize ?? 20}
+                    exporting={exporting}
+                    onExport={handleExport}
                     onFiltersChange={(filters) =>
                       updateSearch({
                         model: filters.model ?? '',

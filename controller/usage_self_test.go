@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -89,4 +90,36 @@ func TestGetSelfUsageControllerOrgMembership(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, rec.Code)
 	assert.Contains(t, rec.Body.String(), "organization access denied")
+}
+
+func TestExportSelfUsageControllerDefaultsToDayAndAcceptsHour(t *testing.T) {
+	db := newSelfUsageControllerTestDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "u7"}).Error)
+	require.NoError(t, db.Create(&model.Model{ModelName: "gpt-4o", Tags: "工具"}).Error)
+	base := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local)
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: base.Add(10*time.Hour + 5*time.Minute).Unix(), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "e1", Quota: 10},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: base.Add(10*time.Hour + 55*time.Minute).Unix(), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "e2", Quota: 20},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: base.Add(11*time.Hour + 5*time.Minute).Unix(), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "e3", Quota: 30},
+	}).Error)
+
+	run := func(query string) string {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/usage/self/export?start=2026-11-03&end=2026-11-03"+query, nil)
+		c.Set("id", 7)
+		ExportSelfUsage(c)
+		require.Equal(t, http.StatusOK, rec.Code)
+		return rec.Body.String()
+	}
+
+	day := run("")
+	assert.Contains(t, day, `"granularity":"day"`)
+	assert.Contains(t, day, `"date":"2026-11-03"`)
+	assert.Contains(t, day, `"request_count":3`)
+
+	hour := run("&granularity=hour")
+	assert.Contains(t, hour, `"granularity":"hour"`)
+	assert.Contains(t, hour, `"date":"2026-11-03 10:00"`)
+	assert.Contains(t, hour, `"date":"2026-11-03 11:00"`)
 }

@@ -26,11 +26,17 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+// Self-usage exports can be grouped by local day or by local hour.
+const (
+	SelfUsageDaySeconds  int64 = 86400
+	SelfUsageHourSeconds int64 = 3600
+)
+
 // SelfUsageLogRow is one aggregated text/fee usage row. Task and MJ billing
 // logs are deliberately excluded; their spend and status come from the tasks
 // and midjourneys tables.
 type SelfUsageLogRow struct {
-	DayKey             int64
+	BucketKey          int64
 	BillingAccountType string
 	BillingAccountID   int
 	OrganizationID     int
@@ -49,14 +55,23 @@ type SelfUsageLogRow struct {
 // billing account, key, and model. Fee rows add spend but never requests;
 // refunds net against consume.
 func GetSelfUsageLogRows(actorUserId int, startTs, endTs int64) ([]SelfUsageLogRow, error) {
+	return GetSelfUsageLogRowsByBucket(actorUserId, startTs, endTs, SelfUsageDaySeconds)
+}
+
+// GetSelfUsageLogRowsByBucket is GetSelfUsageLogRows with a caller-chosen
+// bucket size, used by exports that group by hour instead of by day.
+func GetSelfUsageLogRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds int64) ([]SelfUsageLogRow, error) {
 	if actorUserId <= 0 {
 		return nil, errors.New("用户 ID 无效")
+	}
+	if bucketSeconds <= 0 {
+		bucketSeconds = SelfUsageDaySeconds
 	}
 	offset := localUTCOffsetSeconds()
 
 	var rows []SelfUsageLogRow
 	query := LOG_DB.Table("logs").
-		Select("FLOOR((created_at + ?) / ?) AS day_key, "+
+		Select("FLOOR((created_at + ?) / ?) AS bucket_key, "+
 			"billing_account_type, billing_account_id, organization_id, organization_name, "+
 			"token_id, token_name, model_name, "+
 			"SUM(CASE WHEN type = ? AND usage_source <> ? THEN 1 ELSE 0 END) AS request_count, "+
@@ -64,7 +79,7 @@ func GetSelfUsageLogRows(actorUserId int, startTs, endTs int64) ([]SelfUsageLogR
 			"COALESCE(SUM(CASE WHEN type = ? THEN completion_tokens ELSE 0 END), 0) AS completion_tokens, "+
 			"COALESCE(SUM(CASE WHEN type = ? THEN cache_tokens ELSE 0 END), 0) AS cache_tokens, "+
 			"COALESCE(SUM(CASE WHEN type = ? THEN quota WHEN type = ? THEN -quota ELSE 0 END), 0) AS quota",
-			offset, daySeconds,
+			offset, bucketSeconds,
 			LogTypeConsume, LogUsageSourceFee,
 			LogTypeConsume,
 			LogTypeConsume,
@@ -87,8 +102,8 @@ func GetSelfUsageLogRows(actorUserId int, startTs, endTs int64) ([]SelfUsageLogR
 		query = query.Where("model_name NOT LIKE 'mj!_%' ESCAPE '!'")
 	}
 	err := query.
-		Group("day_key, billing_account_type, billing_account_id, organization_id, organization_name, token_id, token_name, model_name").
-		Order("day_key, model_name").
+		Group("bucket_key, billing_account_type, billing_account_id, organization_id, organization_name, token_id, token_name, model_name").
+		Order("bucket_key, model_name").
 		Scan(&rows).Error
 	if err != nil {
 		common.SysError("failed to query self usage logs: " + err.Error())

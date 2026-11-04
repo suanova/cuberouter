@@ -117,6 +117,21 @@ export interface SelfUsageEnvelope {
   data?: SelfUsageData
 }
 
+export type UsageExportGranularity = 'day' | 'hour'
+
+export interface SelfUsageExportData {
+  granularity: UsageExportGranularity
+  rows: SelfUsageRow[]
+  total: number
+  truncated: boolean
+}
+
+export interface SelfUsageExportEnvelope {
+  success: boolean
+  message?: string
+  data?: SelfUsageExportData
+}
+
 export interface GetSelfUsageParams {
   start: string
   end: string
@@ -128,6 +143,17 @@ export interface GetSelfUsageParams {
   overview_organization_id?: number
   p: number
   page_size: number
+}
+
+export interface ExportSelfUsageParams {
+  start: string
+  end: string
+  granularity: UsageExportGranularity
+  model_name?: string
+  token_name?: string
+  token_id?: number
+  billing_account_type?: string
+  organization_id?: number
 }
 
 export interface UsageOrganizationOption {

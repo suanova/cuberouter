@@ -19,11 +19,23 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 
-import type { GetSelfUsageParams, SelfUsageEnvelope } from './types'
+import type {
+  ExportSelfUsageParams,
+  GetSelfUsageParams,
+  SelfUsageEnvelope,
+  SelfUsageExportEnvelope,
+} from './types'
 
 export async function getSelfUsage(
   params: GetSelfUsageParams
 ): Promise<SelfUsageEnvelope> {
   const res = await api.get('/api/usage/self', { params })
+  return res.data
+}
+
+export async function exportSelfUsage(
+  params: ExportSelfUsageParams
+): Promise<SelfUsageExportEnvelope> {
+  const res = await api.get('/api/usage/self/export', { params })
   return res.data
 }

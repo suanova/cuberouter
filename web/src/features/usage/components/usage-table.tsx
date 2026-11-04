@@ -27,9 +27,11 @@ import type {
   SelfUsageData,
   SelfUsageTokenOption,
   SelfUsageTotals,
+  UsageExportGranularity,
   UsageOrganizationOption,
 } from '../types'
 import { buildUsageColumns } from './usage-columns'
+import { UsageExportMenu } from './usage-export-menu'
 import { UsageFilterBar, type UsageFilterValues } from './usage-filter-bar'
 
 interface UsageTableProps {
@@ -42,6 +44,8 @@ interface UsageTableProps {
   initialFilters: UsageFilterValues
   page: number
   pageSize: number
+  exporting: UsageExportGranularity | null
+  onExport: (granularity: UsageExportGranularity) => void
   onFiltersChange: (values: UsageFilterValues) => void
   onPageChange: (page: number, pageSize: number) => void
 }
@@ -61,8 +65,7 @@ export function UsageTable(props: UsageTableProps) {
     totalCount: props.data.rows.total,
     pagination,
     onPaginationChange: (updater) => {
-      const next =
-        typeof updater === 'function' ? updater(pagination) : updater
+      const next = typeof updater === 'function' ? updater(pagination) : updater
       props.onPageChange(next.pageIndex + 1, next.pageSize)
     },
     columnVisibilityStorageKey: 'usage-table-column-visibility',
@@ -84,6 +87,13 @@ export function UsageTable(props: UsageTableProps) {
           modelOptions={props.modelOptions}
           tokenOptions={props.tokenOptions}
           loading={props.filtering}
+          actionStart={
+            <UsageExportMenu
+              exporting={props.exporting}
+              disabled={props.data.rows.total === 0}
+              onExport={props.onExport}
+            />
+          }
           onApply={props.onFiltersChange}
           onReset={() => props.onFiltersChange({})}
         />

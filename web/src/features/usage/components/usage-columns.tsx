@@ -21,16 +21,8 @@ import type { ColumnDef } from '@tanstack/react-table'
 
 import { formatLogQuota, formatNumber } from '@/lib/format'
 
-import type { SelfUsageRow, UsageType } from '../types'
-
-const TYPE_LABEL_KEYS: Record<UsageType, string> = {
-  text: 'Text',
-  image: 'Image',
-  video: 'Video',
-  audio: 'Audio',
-  vector: 'Vector',
-  other: 'Other',
-}
+import { usageTypeLabelKey } from '../lib/usage-type'
+import type { SelfUsageRow } from '../types'
 
 function tokenText(value: number): string {
   return value > 0 ? formatNumber(value) : '-'
@@ -68,7 +60,7 @@ export function buildUsageColumns(
       size: 90,
       cell: ({ row }) => (
         <span className='whitespace-nowrap'>
-          {t(TYPE_LABEL_KEYS[row.original.type] ?? 'Other')}
+          {t(usageTypeLabelKey(row.original.type))}
         </span>
       ),
     },

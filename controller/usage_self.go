@@ -30,25 +30,22 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetSelfUsage returns the caller's own usage. The actor is always the
-// authenticated user; no user_id parameter is accepted.
-func GetSelfUsage(c *gin.Context) {
+// selfUsageQueryFromRequest parses the filters shared by the usage table and
+// the export. The actor always comes from the session, never from a parameter.
+func selfUsageQueryFromRequest(c *gin.Context) (service.SelfUsageQuery, error) {
 	actorUserId := c.GetInt("id")
 	if actorUserId <= 0 {
-		common.ApiErrorMsg(c, "无效的身份信息")
-		return
+		return service.SelfUsageQuery{}, errors.New("无效的身份信息")
 	}
-	startStr, endStr := c.Query("start"), c.Query("end")
-	startTs, endTs, err := parseBillingDateRange(startStr, endStr)
+	startTs, endTs, err := parseBillingDateRange(c.Query("start"), c.Query("end"))
 	if err != nil {
-		common.ApiErrorMsg(c, err.Error())
-		return
+		return service.SelfUsageQuery{}, err
 	}
 	pageInfo := common.GetPageQuery(c)
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
 	overviewOrganizationId, _ := strconv.Atoi(c.Query("overview_organization_id"))
 	tokenId, _ := strconv.Atoi(c.Query("token_id"))
-	data, err := service.GetSelfUsage(service.SelfUsageQuery{
+	return service.SelfUsageQuery{
 		ActorUserId:            actorUserId,
 		StartTs:                startTs,
 		EndTs:                  endTs,
@@ -60,12 +57,39 @@ func GetSelfUsage(c *gin.Context) {
 		OverviewOrganizationID: overviewOrganizationId,
 		Page:                   pageInfo.Page,
 		PageSize:               pageInfo.PageSize,
-	})
+	}, nil
+}
+
+// GetSelfUsage returns the caller's own usage. The actor is always the
+// authenticated user; no user_id parameter is accepted.
+func GetSelfUsage(c *gin.Context) {
+	query, err := selfUsageQueryFromRequest(c)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	data, err := service.GetSelfUsage(query)
 	if err != nil {
 		if errors.Is(err, service.ErrSelfUsageOrganizationForbidden) {
 			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": err.Error()})
 			return
 		}
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, data)
+}
+
+// ExportSelfUsage returns every row matching the table filters at the
+// requested granularity (day by default, hour on request).
+func ExportSelfUsage(c *gin.Context) {
+	query, err := selfUsageQueryFromRequest(c)
+	if err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	data, err := service.ExportSelfUsage(query, c.Query("granularity"))
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}

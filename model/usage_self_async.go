@@ -31,7 +31,7 @@ import (
 // SelfUsageAsyncRow is one aggregated task/Midjourney usage row. Spend and
 // status come from the source tables, never from the task/MJ billing logs.
 type SelfUsageAsyncRow struct {
-	DayKey             int64
+	BucketKey          int64
 	BillingAccountType string
 	BillingAccountID   int
 	OrganizationID     int
@@ -46,7 +46,7 @@ type SelfUsageAsyncRow struct {
 }
 
 type selfUsageAsyncKey struct {
-	DayKey             int64
+	BucketKey          int64
 	BillingAccountType string
 	BillingAccountID   int
 	OrganizationID     int
@@ -56,9 +56,12 @@ type selfUsageAsyncKey struct {
 	ModelName          string
 }
 
-// localDayKey mirrors the SQL day_key expression used for log aggregation.
-func localDayKey(ts int64) int64 {
-	return (ts + int64(localUTCOffsetSeconds())) / int64(daySeconds)
+// localBucketKey mirrors the SQL bucket_key expression used for log aggregation.
+func localBucketKey(ts, bucketSeconds int64) int64 {
+	if bucketSeconds <= 0 {
+		bucketSeconds = SelfUsageDaySeconds
+	}
+	return (ts + int64(localUTCOffsetSeconds())) / bucketSeconds
 }
 
 func selfUsageBillingType(value string) string {
@@ -71,8 +74,17 @@ func selfUsageBillingType(value string) string {
 // GetSelfUsageTaskRows aggregates the caller's tasks by local submit day,
 // billing account, key, and model.
 func GetSelfUsageTaskRows(actorUserId int, startTs, endTs int64) ([]SelfUsageAsyncRow, error) {
+	return GetSelfUsageTaskRowsByBucket(actorUserId, startTs, endTs, SelfUsageDaySeconds)
+}
+
+// GetSelfUsageTaskRowsByBucket is GetSelfUsageTaskRows with a caller-chosen
+// bucket size, used by exports that group by hour instead of by day.
+func GetSelfUsageTaskRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds int64) ([]SelfUsageAsyncRow, error) {
 	if actorUserId <= 0 {
 		return nil, errors.New("用户 ID 无效")
+	}
+	if bucketSeconds <= 0 {
+		bucketSeconds = SelfUsageDaySeconds
 	}
 	var tasks []Task
 	err := DB.
@@ -92,7 +104,7 @@ func GetSelfUsageTaskRows(actorUserId int, startTs, endTs int64) ([]SelfUsageAsy
 			ts = task.CreatedAt
 		}
 		key := selfUsageAsyncKey{
-			DayKey:             localDayKey(ts),
+			BucketKey:          localBucketKey(ts, bucketSeconds),
 			BillingAccountType: selfUsageBillingType(task.BillingAccountType),
 			BillingAccountID:   task.BillingAccountId,
 			OrganizationID:     task.OrganizationId,
@@ -104,7 +116,7 @@ func GetSelfUsageTaskRows(actorUserId int, startTs, endTs int64) ([]SelfUsageAsy
 		row := byKey[key]
 		if row == nil {
 			row = &SelfUsageAsyncRow{
-				DayKey:             key.DayKey,
+				BucketKey:          key.BucketKey,
 				BillingAccountType: key.BillingAccountType,
 				BillingAccountID:   key.BillingAccountID,
 				OrganizationID:     key.OrganizationID,
@@ -131,8 +143,17 @@ func GetSelfUsageTaskRows(actorUserId int, startTs, endTs int64) ([]SelfUsageAsy
 // GetSelfUsageMidjourneyRows aggregates the caller's MJ tasks. MJ timestamps
 // are milliseconds, unlike tasks' seconds.
 func GetSelfUsageMidjourneyRows(actorUserId int, startTs, endTs int64) ([]SelfUsageAsyncRow, error) {
+	return GetSelfUsageMidjourneyRowsByBucket(actorUserId, startTs, endTs, SelfUsageDaySeconds)
+}
+
+// GetSelfUsageMidjourneyRowsByBucket is GetSelfUsageMidjourneyRows with a
+// caller-chosen bucket size, used by exports that group by hour.
+func GetSelfUsageMidjourneyRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds int64) ([]SelfUsageAsyncRow, error) {
 	if actorUserId <= 0 {
 		return nil, errors.New("用户 ID 无效")
+	}
+	if bucketSeconds <= 0 {
+		bucketSeconds = SelfUsageDaySeconds
 	}
 	const mjTimeExpr = "COALESCE(NULLIF(submit_time, 0), NULLIF(start_time, 0), finish_time)"
 	var journeys []Midjourney
@@ -159,7 +180,7 @@ func GetSelfUsageMidjourneyRows(actorUserId int, startTs, endTs int64) ([]SelfUs
 			continue
 		}
 		key := selfUsageAsyncKey{
-			DayKey:             localDayKey(tsMs / 1000),
+			BucketKey:          localBucketKey(tsMs/1000, bucketSeconds),
 			BillingAccountType: selfUsageBillingType(journey.BillingAccountType),
 			BillingAccountID:   journey.BillingAccountId,
 			OrganizationID:     journey.OrganizationId,
@@ -171,7 +192,7 @@ func GetSelfUsageMidjourneyRows(actorUserId int, startTs, endTs int64) ([]SelfUs
 		row := byKey[key]
 		if row == nil {
 			row = &SelfUsageAsyncRow{
-				DayKey:             key.DayKey,
+				BucketKey:          key.BucketKey,
 				BillingAccountType: key.BillingAccountType,
 				BillingAccountID:   key.BillingAccountID,
 				OrganizationID:     key.OrganizationID,
@@ -221,8 +242,8 @@ func flattenSelfUsageAsyncRows(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow) [
 		rows = append(rows, *row)
 	}
 	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].DayKey != rows[j].DayKey {
-			return rows[i].DayKey < rows[j].DayKey
+		if rows[i].BucketKey != rows[j].BucketKey {
+			return rows[i].BucketKey < rows[j].BucketKey
 		}
 		if rows[i].BillingAccountType != rows[j].BillingAccountType {
 			return rows[i].BillingAccountType < rows[j].BillingAccountType

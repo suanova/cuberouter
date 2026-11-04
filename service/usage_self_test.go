@@ -46,11 +46,11 @@ func TestOrganizationRemainingQuota(t *testing.T) {
 func TestMergeSelfUsageRowsKeepsCacheSeparateAndTotalsAllRows(t *testing.T) {
 	rows := mergeSelfUsageRows(
 		[]model.SelfUsageLogRow{{
-			DayKey: 0, BillingAccountType: "personal", TokenID: 1, TokenName: "k", ModelName: "gpt-4o",
+			BucketKey: 0, BillingAccountType: "personal", TokenID: 1, TokenName: "k", ModelName: "gpt-4o",
 			RequestCount: 2, PromptTokens: 100, CompletionTokens: 40, CacheTokens: 30, Quota: 10,
 		}},
 		[]model.SelfUsageAsyncRow{{
-			DayKey: 0, BillingAccountType: "personal", TokenID: 1, TokenName: "k", ModelName: "wan3.0-video",
+			BucketKey: 0, BillingAccountType: "personal", TokenID: 1, TokenName: "k", ModelName: "wan3.0-video",
 			RequestCount: 1, SuccessCount: 1, Quota: 20,
 		}},
 		nil,
@@ -177,8 +177,8 @@ func TestGetSelfUsageTotalsCoverAllPages(t *testing.T) {
 
 func TestSortSelfUsageRowsComparesFullKey(t *testing.T) {
 	rows := []usageRow{
-		{DayKey: 1, Type: ModelUsageTypeText, BillingAccountType: "organization", OrganizationID: 2, OrganizationName: "Beta", ModelName: "gpt", TokenID: 1},
-		{DayKey: 1, Type: ModelUsageTypeText, BillingAccountType: "organization", OrganizationID: 1, OrganizationName: "Alpha", ModelName: "gpt", TokenID: 1},
+		{BucketKey: 1, Type: ModelUsageTypeText, BillingAccountType: "organization", OrganizationID: 2, OrganizationName: "Beta", ModelName: "gpt", TokenID: 1},
+		{BucketKey: 1, Type: ModelUsageTypeText, BillingAccountType: "organization", OrganizationID: 1, OrganizationName: "Alpha", ModelName: "gpt", TokenID: 1},
 	}
 	sortSelfUsageRows(rows)
 	assert.Equal(t, 1, rows[0].OrganizationID)
@@ -346,4 +346,61 @@ func TestGetSelfUsageChartsAggregateFilteredRowsByDayAndModel(t *testing.T) {
 		{Date: "2026-11-03", ModelName: "wan3.0-video", RequestCount: 1, Quota: 50},
 		{Date: "2026-11-04", ModelName: "wan3.0-video", RequestCount: 1, Quota: 40},
 	}, video.Charts)
+}
+
+func TestExportSelfUsageGroupsByDayAndHour(t *testing.T) {
+	db := newSelfUsageTestDB(t)
+	base := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local)
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "u7"}).Error)
+	require.NoError(t, db.Create(&model.Model{ModelName: "gpt-4o", Tags: "工具"}).Error)
+	require.NoError(t, db.Create(&model.Model{ModelName: "wan3.0-video", Tags: "视频生成"}).Error)
+	at := func(hour, minute int) int64 {
+		return base.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute).Unix()
+	}
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(10, 5), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "personal", RequestId: "h1", PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 10},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(10, 55), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "personal", RequestId: "h2", PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 20},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(11, 10), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "personal", RequestId: "h3", PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 30},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(11, 20), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "organization", OrganizationId: 9, OrganizationName: "Acme", RequestId: "h4", PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 40},
+		{UserId: 8, ActorUserId: 8, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(11, 30), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "personal", RequestId: "h5", Quota: 999},
+	}).Error)
+	require.NoError(t, db.Create(&model.Task{
+		TaskID: "t1", UserId: 7, ActorUserId: 7, BillingAccountType: "personal",
+		Status: model.TaskStatusSuccess, Quota: 50, SubmitTime: at(11, 20),
+		Properties: model.Properties{OriginModelName: "wan3.0-video"},
+	}).Error)
+
+	query := SelfUsageQuery{
+		ActorUserId: 7,
+		StartTs:     base.Unix(),
+		EndTs:       base.Add(24*time.Hour - time.Second).Unix(),
+	}
+	day, err := ExportSelfUsage(query, SelfUsageGranularityDay)
+	require.NoError(t, err)
+	assert.Equal(t, SelfUsageGranularityDay, day.Granularity)
+	assert.Equal(t, 3, day.Total)
+	assert.False(t, day.Truncated)
+	assert.Equal(t, []dto.SelfUsageRow{
+		{Date: "2026-11-03", Type: "text", BillingAccountType: "organization", OrganizationId: 9, OrganizationName: "Acme", TokenId: 1, TokenName: "key", ModelName: "gpt-4o", RequestCount: 1, SuccessCount: 1, PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 40},
+		{Date: "2026-11-03", Type: "text", BillingAccountType: "personal", TokenId: 1, TokenName: "key", ModelName: "gpt-4o", RequestCount: 3, SuccessCount: 3, PromptTokens: 300, CompletionTokens: 30, CacheTokens: 15, Quota: 60},
+		{Date: "2026-11-03", Type: "video", BillingAccountType: "personal", ModelName: "wan3.0-video", RequestCount: 1, SuccessCount: 1, Quota: 50},
+	}, day.Rows)
+
+	hour, err := ExportSelfUsage(query, SelfUsageGranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, SelfUsageGranularityHour, hour.Granularity)
+	assert.Equal(t, 4, hour.Total)
+	assert.Equal(t, []dto.SelfUsageRow{
+		{Date: "2026-11-03 11:00", Type: "text", BillingAccountType: "organization", OrganizationId: 9, OrganizationName: "Acme", TokenId: 1, TokenName: "key", ModelName: "gpt-4o", RequestCount: 1, SuccessCount: 1, PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 40},
+		{Date: "2026-11-03 11:00", Type: "text", BillingAccountType: "personal", TokenId: 1, TokenName: "key", ModelName: "gpt-4o", RequestCount: 1, SuccessCount: 1, PromptTokens: 100, CompletionTokens: 10, CacheTokens: 5, Quota: 30},
+		{Date: "2026-11-03 11:00", Type: "video", BillingAccountType: "personal", ModelName: "wan3.0-video", RequestCount: 1, SuccessCount: 1, Quota: 50},
+		{Date: "2026-11-03 10:00", Type: "text", BillingAccountType: "personal", TokenId: 1, TokenName: "key", ModelName: "gpt-4o", RequestCount: 2, SuccessCount: 2, PromptTokens: 200, CompletionTokens: 20, CacheTokens: 10, Quota: 30},
+	}, hour.Rows)
+
+	filtered, err := ExportSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: query.StartTs, EndTs: query.EndTs, ModelName: "gpt-4o",
+	}, SelfUsageGranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, 3, filtered.Total)
+	assert.Len(t, filtered.Rows, 3)
 }
