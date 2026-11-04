@@ -26,6 +26,18 @@ func ApplyMidjourneyBillingScope(task *Midjourney, relayInfo *commonRelay.RelayI
 	task.ResponsibleUserId = relayInfo.ResponsibleUserId
 	task.OrganizationBillingSessionId = relayInfo.OrganizationBillingSessionId
 	task.OrganizationBillingSessionKey = relayInfo.OrganizationBillingSessionKey
+	// 固化 Key/组织名字快照，供用量页展示历史归属。
+	if relayInfo.TokenId > 0 {
+		if token, err := GetTokenById(relayInfo.TokenId); err == nil {
+			task.TokenName = token.Name
+		}
+	}
+	if relayInfo.OrganizationId > 0 {
+		var organization Organization
+		if err := DB.Select("name").Where("id = ?", relayInfo.OrganizationId).First(&organization).Error; err == nil {
+			task.OrganizationName = organization.Name
+		}
+	}
 	NormalizeMidjourneyBillingScope(task)
 }
 

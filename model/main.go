@@ -630,7 +630,10 @@ func migrateLOGDB() error {
 	if err := LOG_DB.AutoMigrate(&Log{}); err != nil {
 		return err
 	}
-	return ensureOrganizationBillingLogIndexes(LOG_DB)
+	if err := ensureOrganizationBillingLogIndexes(LOG_DB); err != nil {
+		return err
+	}
+	return ensureSelfUsageLogIndexes(LOG_DB)
 }
 
 // ensureOrganizationBillingIndexes 补齐 AutoMigrate 不会重建的多列索引。
@@ -638,6 +641,9 @@ func migrateLOGDB() error {
 // 索引缺一就会退化成全表扫描。
 func ensureOrganizationBillingIndexes() error {
 	if err := ensureOrganizationBillingLogIndexes(DB); err != nil {
+		return err
+	}
+	if err := ensureSelfUsageLogIndexes(DB); err != nil {
 		return err
 	}
 	for _, index := range []string{"idx_tokens_org_scope_responsible"} {
@@ -664,6 +670,15 @@ func ensureOrganizationBillingLogIndexes(db *gorm.DB) error {
 		}
 	}
 	return ensureModelUniqueIndex(db, "logs", "billing_event_key", logBillingEventKeyIndex)
+}
+
+// ensureSelfUsageLogIndexes 补齐用量页按 (actor_user_id, 时间) 聚合所需的索引。
+// 用量页只用 actor 口径查询，没有这个索引就要扫全表再过滤。
+func ensureSelfUsageLogIndexes(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	return ensureModelIndex(db, &Log{}, "idx_logs_actor_created_at")
 }
 
 func ensureModelIndex(db *gorm.DB, model any, index string) error {
@@ -741,6 +756,8 @@ var clickHouseLogScopeColumns = []struct {
 	{"responsible_name", "String DEFAULT ''"},
 	{"organization_billing_session_id", "Int32 DEFAULT 0"},
 	{"organization_billing_session_key", "String DEFAULT ''"},
+	{"cache_tokens", "Int32 DEFAULT 0"},
+	{"usage_source", "String DEFAULT 'text'"},
 	{"billing_event_key", "Nullable(String)"},
 }
 
@@ -812,6 +829,8 @@ CREATE TABLE IF NOT EXISTS logs (
 	responsible_name String DEFAULT '',
 	organization_billing_session_id Int32 DEFAULT 0,
 	organization_billing_session_key String DEFAULT '',
+	cache_tokens Int32 DEFAULT 0,
+	usage_source String DEFAULT 'text',
 	billing_event_key Nullable(String),
 	other String DEFAULT ''
 )

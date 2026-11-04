@@ -71,14 +71,15 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 	appendTaskLogInfo(task, other)
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, RelayConsumeLogParams(info, model.RecordConsumeLogParams{
-		ChannelId: info.ChannelId,
-		ModelName: info.OriginModelName,
-		TokenName: tokenName,
-		Quota:     info.PriceData.Quota,
-		Content:   logContent,
-		TokenId:   info.TokenId,
-		Group:     info.UsingGroup,
-		Other:     other,
+		ChannelId:   info.ChannelId,
+		ModelName:   info.OriginModelName,
+		TokenName:   tokenName,
+		Quota:       info.PriceData.Quota,
+		Content:     logContent,
+		TokenId:     info.TokenId,
+		Group:       info.UsingGroup,
+		Other:       other,
+		UsageSource: model.LogUsageSourceTask,
 	}))
 	// 组织计费的用量在组织账本里结算，个人看板保持零增长。
 	if !IsOrganizationBilling(info) {

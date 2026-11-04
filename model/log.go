@@ -59,7 +59,7 @@ func sanitizeClickHouseLikePattern(input string) (string, error) {
 type Log struct {
 	Id                int    `json:"id" gorm:"index:idx_created_at_id,priority:2;index:idx_user_id_id,priority:2"`
 	UserId            int    `json:"user_id" gorm:"index;index:idx_user_id_id,priority:1"`
-	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:5;index:idx_logs_org_billing_responsible_time,priority:6"`
+	CreatedAt         int64  `json:"created_at" gorm:"bigint;index:idx_created_at_id,priority:1;index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:5;index:idx_logs_org_billing_responsible_time,priority:6;index:idx_logs_actor_created_at,priority:2"`
 	Type              int    `json:"type" gorm:"index:idx_created_at_type;index:idx_logs_org_billing_type_time,priority:4;index:idx_logs_org_billing_responsible_time,priority:4"`
 	Content           string `json:"content"`
 	Username          string `json:"username" gorm:"index;index:index_username_model_name,priority:2;default:''"`
@@ -85,7 +85,7 @@ type Log struct {
 	BillingAccountId   int    `json:"billing_account_id" gorm:"index;index:idx_logs_org_billing_type_time,priority:2;index:idx_logs_org_billing_responsible_time,priority:2;default:0"`
 	OrganizationId     int    `json:"organization_id" gorm:"index;index:idx_logs_org_billing_type_time,priority:3;index:idx_logs_org_billing_responsible_time,priority:3;default:0"`
 	OrganizationName   string `json:"organization_name" gorm:"type:varchar(128);default:''"`
-	ActorUserId        int    `json:"actor_user_id" gorm:"index;default:0"`
+	ActorUserId        int    `json:"actor_user_id" gorm:"index;index:idx_logs_actor_created_at,priority:1;default:0"`
 	CreatorUserId      int    `json:"creator_user_id" gorm:"index;default:0"`
 	CreatorName        string `json:"creator_name" gorm:"type:varchar(128);default:''"`
 	ResponsibleUserId  int    `json:"responsible_user_id" gorm:"index;index:idx_logs_org_billing_responsible_time,priority:5;default:0"`
@@ -93,6 +93,12 @@ type Log struct {
 
 	OrganizationBillingSessionId  int    `json:"organization_billing_session_id" gorm:"index;default:0"`
 	OrganizationBillingSessionKey string `json:"organization_billing_session_key" gorm:"type:varchar(191);index;default:''"`
+	// CacheTokens 是输入 token 中命中缓存的部分；它已经从 other JSON 提升为结构化列，
+	// 供用量聚合直接 sum，避免逐行解析 JSON。
+	CacheTokens int `json:"cache_tokens" gorm:"default:0"`
+	// UsageSource 区分账本来源：text（普通 API 调用）、task（任务插件计费）、
+	// mj（Midjourney）、fee（违规罚金等非请求扣费）。用量页用它避免文本行和任务行重复计数。
+	UsageSource string `json:"usage_source" gorm:"type:varchar(16);default:'text'"`
 	// BillingEventKey 是结算/退款的幂等键，唯一索引（logBillingEventKeyIndex）保证同一笔账只落一条日志。
 	// 唯一索引刻意不用 uniqueIndex 标签声明：该标签会让 SQLite 的 AutoMigrate 每次启动都重建整张 logs 表，
 	// 改为在 ensureOrganizationBillingLogIndexes 里显式、幂等地创建。
@@ -180,6 +186,16 @@ const (
 	LogTypeError   = 5
 	LogTypeRefund  = 6
 	LogTypeLogin   = 7
+)
+
+// Log.UsageSource values. The usage page aggregates text/fee log rows directly,
+// while task/MJ spend and status come from their own tables, so these two
+// sources are excluded from the log aggregation.
+const (
+	LogUsageSourceText = "text"
+	LogUsageSourceTask = "task"
+	LogUsageSourceMJ   = "mj"
+	LogUsageSourceFee  = "fee"
 )
 
 func ensureLogRequestId(log *Log) {
@@ -463,6 +479,8 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+	CacheTokens      int                    `json:"cache_tokens"`
+	UsageSource      string                 `json:"usage_source"`
 	// 以下作用域/归属字段由 service.RelayConsumeLogParams 从 RelayInfo 上一次性带入。
 	// 个人请求留空即可，NormalizeRecordConsumeLogParams 会补成 personal/调用者自己。
 	ScopeType                     string `json:"scope_type"`
@@ -507,6 +525,9 @@ func NormalizeRecordConsumeLogParams(userId int, params *RecordConsumeLogParams)
 	}
 	if params.ResponsibleUserId == 0 && params.ScopeType == AccountContextTypePersonal {
 		params.ResponsibleUserId = userId
+	}
+	if params.UsageSource == "" {
+		params.UsageSource = LogUsageSourceText
 	}
 }
 
@@ -668,6 +689,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ResponsibleName:               params.ResponsibleName,
 		OrganizationBillingSessionId:  params.OrganizationBillingSessionId,
 		OrganizationBillingSessionKey: params.OrganizationBillingSessionKey,
+		CacheTokens:                   params.CacheTokens,
+		UsageSource:                   params.UsageSource,
 		BillingEventKey:               billingEventKey,
 	}
 	NormalizeLogScope(log)
@@ -723,11 +746,16 @@ type RecordTaskBillingLogParams struct {
 	BillingAccountId   int
 	OrganizationId     int
 	ResponsibleUserId  int
+	// UsageSource 默认 task；Midjourney 退款显式传 mj，避免被当成任务插件账单。
+	UsageSource string
 }
 
 func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	if params.LogType == LogTypeConsume && !common.LogConsumeEnabled {
 		return
+	}
+	if params.UsageSource == "" {
+		params.UsageSource = LogUsageSourceTask
 	}
 	username, _ := GetUsernameById(params.UserId, false)
 	tokenName := ""
@@ -757,6 +785,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		BillingAccountId:   params.BillingAccountId,
 		OrganizationId:     params.OrganizationId,
 		ResponsibleUserId:  params.ResponsibleUserId,
+		UsageSource:        params.UsageSource,
 	}
 	// 调用方没回填作用域时退回个人：缺省就是个人，绝不能留空串，
 	// 空串在 personalLogScopeQuery 里虽然也算个人，但会在按作用域分组时变成第三类。
