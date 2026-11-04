@@ -22,15 +22,16 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { formatLogQuota } from '@/lib/format'
-
-import { listOrganizationLogs } from '../../api'
-import type { OrganizationLogRow } from '../../types'
+import { exportOrganizationUsage, getOrganizationUsage } from '../../api'
+import type { OrganizationUsageData } from '../../types'
 import { OrganizationUsageSection } from '../organization-usage-section'
 
-// The URL is the page's state, not this section's; the harness supplies a fixed
-// empty set of search params instead of standing up a route.
-const pageRoute = vi.hoisted(() => ({ search: {}, navigate: vi.fn() }))
+// The URL is the page's state, not this section's; the harness supplies the
+// search params instead of standing up a route.
+const pageRoute = vi.hoisted(() => ({
+  search: {} as Record<string, unknown>,
+  navigate: vi.fn(),
+}))
 
 vi.mock('../organization-page-provider', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../organization-page-provider')>()),
@@ -40,48 +41,87 @@ vi.mock('../organization-page-provider', async (importOriginal) => ({
 
 vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
-  listOrganizationLogs: vi.fn(),
+  getOrganizationUsage: vi.fn(),
+  exportOrganizationUsage: vi.fn(),
 }))
 
 const exportMock = vi.hoisted(() => ({
-  buildUsageExportSheet: vi.fn(() => ({
+  buildSelfUsageExportSheet: vi.fn(() => ({
     rows: [],
     columns: [],
-    filename: 'organization-usage.xlsx',
+    filename: 'organization-usage-day.xlsx',
   })),
-  writeUsageExportFile: vi.fn(),
+  writeSelfUsageExportFile: vi.fn(),
 }))
 
-vi.mock('../../lib/organization-usage-export', () => exportMock)
+vi.mock('@/features/usage/lib/usage-export', () => exportMock)
 
-const listLogsMock = vi.mocked(listOrganizationLogs)
+const getUsageMock = vi.mocked(getOrganizationUsage)
+const exportUsageMock = vi.mocked(exportOrganizationUsage)
 
 const ORGANIZATION_ID = 7
 
-function usageRow(
-  overrides: Partial<OrganizationLogRow> = {}
-): OrganizationLogRow {
+function usageData(
+  overrides: Partial<OrganizationUsageData> = {}
+): OrganizationUsageData {
   return {
-    id: 1,
-    user_id: 42,
-    created_at: 1_700_000_000,
-    type: 2,
-    token_name: 'key-1',
-    model_name: 'gpt-4o',
-    quota: 800_000,
-    prompt_tokens: 1_000,
-    completion_tokens: 500,
-    use_time: 1,
-    is_stream: false,
-    responsible_user_id: 42,
-    responsible_name: 'Alice',
-    other: JSON.stringify({
-      group_ratio: 0.8,
-      model_ratio: 1.2,
-      cache_tokens: 300,
-      is_model_mapped: true,
-      upstream_model_name: 'gpt-4o-upstream',
-    }),
+    backfill_complete: true,
+    range: {
+      start: '2026-11-03',
+      end: '2026-11-03',
+      start_timestamp: 0,
+      end_timestamp: 0,
+    },
+    rows: {
+      page: 1,
+      page_size: 20,
+      total: 1,
+      items: [
+        {
+          date: '2026-11-03',
+          type: 'text',
+          billing_account_type: 'organization',
+          organization_id: ORGANIZATION_ID,
+          organization_name: 'Acme',
+          responsible_user_id: 42,
+          responsible_name: 'Alice',
+          token_id: 1,
+          token_name: 'team-key',
+          model_name: 'gpt-4o',
+          request_count: 2,
+          success_count: 2,
+          failure_count: 0,
+          prompt_tokens: 100,
+          completion_tokens: 50,
+          cache_tokens: 10,
+          quota: 800_000,
+        },
+      ],
+    },
+    totals: {
+      request_count: 2,
+      success_count: 2,
+      failure_count: 0,
+      prompt_tokens: 100,
+      completion_tokens: 50,
+      cache_tokens: 10,
+      quota: 800_000,
+    },
+    filter_options: {
+      models: ['gpt-4o'],
+      tokens: [
+        {
+          id: 1,
+          name: 'team-key',
+          organization_id: ORGANIZATION_ID,
+          organization_name: 'Acme',
+        },
+      ],
+      users: [
+        { id: 42, name: 'Alice' },
+        { id: 43, name: 'Bob' },
+      ],
+    },
     ...overrides,
   }
 }
@@ -96,7 +136,6 @@ function renderSection(): void {
       <OrganizationUsageSection
         organizationId={ORGANIZATION_ID}
         canView
-        canViewWideData
         onForbidden={() => undefined}
       />
     </QueryClientProvider>
@@ -104,81 +143,99 @@ function renderSection(): void {
 }
 
 beforeEach(() => {
-  listLogsMock.mockReset().mockResolvedValue({
+  pageRoute.search = {
+    usageStart: '2026-11-03',
+    usageEnd: '2026-11-03',
+  }
+  pageRoute.navigate.mockReset()
+  getUsageMock.mockReset().mockResolvedValue({
+    success: true,
+    data: usageData(),
+  })
+  exportUsageMock.mockReset().mockResolvedValue({
     success: true,
     data: {
-      page: 1,
-      page_size: 20,
+      granularity: 'day',
+      rows: usageData().rows.items,
       total: 1,
-      items: [usageRow()],
+      truncated: false,
     },
   })
+  exportMock.buildSelfUsageExportSheet.mockClear()
+  exportMock.writeSelfUsageExportFile.mockClear()
 })
 
 describe('organization usage section', () => {
-  test('renders one request-level usage table without the old overview cards', () => {
+  test('renders the same daily table as personal usage with a member column', async () => {
     renderSection()
 
+    await waitFor(
+      () => {
+        expect(screen.getByText('Alice')).toBeInTheDocument()
+      },
+      { timeout: 5_000 }
+    )
+
     for (const header of [
+      'Date',
       'User',
-      'API Key Name',
+      'Type',
+      'API Key',
       'Model',
-      'Upstream',
-      'Billing Mode',
-      'Prompt Tokens',
-      'Completion Tokens',
-      'Cache Read Tokens',
-      'Original price',
-      'User charge',
-      'Time',
+      'Requests',
+      'Success',
+      'Failed',
+      'Input Tokens',
+      'Output Tokens',
+      'Cache Tokens',
+      'Cost',
     ]) {
       expect(
         screen.getByRole('columnheader', { name: header })
       ).toBeInTheDocument()
     }
 
-    expect(screen.queryByText('Total cost')).not.toBeInTheDocument()
-    expect(screen.queryByText('Active members')).not.toBeInTheDocument()
-    expect(screen.queryByText('Top spender')).not.toBeInTheDocument()
-    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    for (const oldHeader of [
+      'Upstream',
+      'Billing Mode',
+      'Original price',
+      'Billing Account',
+    ]) {
+      expect(
+        screen.queryByRole('columnheader', { name: oldHeader })
+      ).not.toBeInTheDocument()
+    }
+    expect(screen.getByText('team-key')).toBeInTheDocument()
+    expect(screen.getByText('gpt-4o')).toBeInTheDocument()
   })
 
-  test('shows the upstream model, billing mode, original price and charged quota', async () => {
+  test('reads the day range and the selected filters from the URL', async () => {
+    pageRoute.search = {
+      usageStart: '2026-11-01',
+      usageEnd: '2026-11-03',
+      usageModel: 'gpt-4o',
+      usageTokenId: '2',
+      usageUserId: '42',
+    }
     renderSection()
 
     await waitFor(
       () => {
-        expect(screen.getByText('Alice')).toBeInTheDocument()
-        expect(screen.getByText('key-1')).toBeInTheDocument()
-        expect(screen.getByText('gpt-4o')).toBeInTheDocument()
-        expect(screen.getByText('gpt-4o-upstream')).toBeInTheDocument()
-        expect(screen.getByText('Ratio')).toBeInTheDocument()
-        expect(screen.getByText('300')).toBeInTheDocument()
-        expect(screen.getByText(formatLogQuota(1_000_000))).toBeInTheDocument()
-        expect(screen.getByText(formatLogQuota(800_000))).toBeInTheDocument()
-      },
-      { timeout: 5_000 }
-    )
-  })
-
-  test('reads only consumption logs for the selected window', async () => {
-    renderSection()
-
-    await waitFor(
-      () => {
-        expect(listLogsMock).toHaveBeenCalled()
+        expect(getUsageMock).toHaveBeenCalled()
       },
       { timeout: 5_000 }
     )
 
-    const params = listLogsMock.mock.calls[0]?.[2]
-    expect(params?.type).toBe(2)
-    expect(params).toHaveProperty('start_timestamp')
-    expect(params).toHaveProperty('end_timestamp')
-    expect(params).not.toHaveProperty('group')
+    const params = getUsageMock.mock.calls[0]?.[2]
+    expect(params?.start).toBe('2026-11-01')
+    expect(params?.end).toBe('2026-11-03')
+    expect(params?.model_name).toBe('gpt-4o')
+    expect(params?.token_id).toBe(2)
+    expect(params?.responsible_user_id).toBe(42)
+    expect(params?.p).toBe(1)
   })
 
-  test('exports the whole filtered set in detail or daily mode', async () => {
+  test('exports the filtered table by day or by hour', async () => {
     renderSection()
 
     await waitFor(
@@ -190,32 +247,53 @@ describe('organization usage section', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /Export/ }))
     await userEvent.click(
-      await screen.findByRole('menuitem', { name: 'Excel (details)' })
+      await screen.findByRole('menuitem', { name: 'Daily' })
     )
 
     await waitFor(() => {
-      expect(exportMock.writeUsageExportFile).toHaveBeenCalled()
+      expect(exportUsageMock).toHaveBeenCalledWith(
+        'member',
+        ORGANIZATION_ID,
+        expect.objectContaining({
+          start: '2026-11-03',
+          end: '2026-11-03',
+          granularity: 'day',
+        })
+      )
+      expect(exportMock.buildSelfUsageExportSheet).toHaveBeenCalledWith(
+        expect.objectContaining({ granularity: 'day' }),
+        expect.any(Function),
+        { variant: 'organization' }
+      )
+      expect(exportMock.writeSelfUsageExportFile).toHaveBeenCalled()
     })
-    expect(exportMock.buildUsageExportSheet).toHaveBeenLastCalledWith(
-      expect.arrayContaining([expect.objectContaining({ id: 1 })]),
-      'detail',
-      expect.any(Function)
-    )
-    expect(
-      listLogsMock.mock.calls.some(([, , params]) => params.page_size === 100)
-    ).toBe(true)
 
     await userEvent.click(screen.getByRole('button', { name: /Export/ }))
     await userEvent.click(
-      await screen.findByRole('menuitem', { name: 'Excel (daily summary)' })
+      await screen.findByRole('menuitem', { name: 'Hourly' })
     )
 
     await waitFor(() => {
-      expect(exportMock.buildUsageExportSheet).toHaveBeenLastCalledWith(
-        expect.any(Array),
-        'daily',
-        expect.any(Function)
+      expect(exportUsageMock).toHaveBeenLastCalledWith(
+        'member',
+        ORGANIZATION_ID,
+        expect.objectContaining({ granularity: 'hour' })
       )
     })
+  })
+
+  test('waits for the history backfill before showing numbers', async () => {
+    getUsageMock.mockResolvedValue({
+      success: true,
+      data: usageData({ backfill_complete: false }),
+    })
+    renderSection()
+
+    expect(
+      await screen.findByText('History is still being prepared.')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('columnheader', { name: 'Requests' })
+    ).not.toBeInTheDocument()
   })
 })

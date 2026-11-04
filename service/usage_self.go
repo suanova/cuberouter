@@ -62,6 +62,8 @@ type usageRow struct {
 	BillingAccountType string
 	OrganizationID     int
 	OrganizationName   string
+	ResponsibleUserID  int
+	ResponsibleName    string
 	TokenID            int
 	TokenName          string
 	ModelName          string
@@ -80,6 +82,8 @@ type usageRowKey struct {
 	BillingAccountType string
 	OrganizationID     int
 	OrganizationName   string
+	ResponsibleUserID  int
+	ResponsibleName    string
 	TokenID            int
 	TokenName          string
 	ModelName          string
@@ -109,6 +113,8 @@ func mergeSelfUsageRows(
 				BillingAccountType: key.BillingAccountType,
 				OrganizationID:     key.OrganizationID,
 				OrganizationName:   key.OrganizationName,
+				ResponsibleUserID:  key.ResponsibleUserID,
+				ResponsibleName:    key.ResponsibleName,
 				TokenID:            key.TokenID,
 				TokenName:          key.TokenName,
 				ModelName:          key.ModelName,
@@ -125,6 +131,8 @@ func mergeSelfUsageRows(
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
+			ResponsibleUserID:  item.ResponsibleUserID,
+			ResponsibleName:    item.ResponsibleName,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
@@ -145,6 +153,8 @@ func mergeSelfUsageRows(
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
+			ResponsibleUserID:  item.ResponsibleUserID,
+			ResponsibleName:    item.ResponsibleName,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
@@ -163,6 +173,8 @@ func mergeSelfUsageRows(
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
+			ResponsibleUserID:  item.ResponsibleUserID,
+			ResponsibleName:    item.ResponsibleName,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
@@ -421,6 +433,12 @@ func sortSelfUsageRows(rows []usageRow) {
 		if left.OrganizationName != right.OrganizationName {
 			return left.OrganizationName < right.OrganizationName
 		}
+		if left.ResponsibleName != right.ResponsibleName {
+			return left.ResponsibleName < right.ResponsibleName
+		}
+		if left.ResponsibleUserID != right.ResponsibleUserID {
+			return left.ResponsibleUserID < right.ResponsibleUserID
+		}
 		if left.ModelName != right.ModelName {
 			return left.ModelName < right.ModelName
 		}
@@ -451,6 +469,8 @@ func toSelfUsageDTO(row usageRow) dto.SelfUsageRow {
 		BillingAccountType: row.BillingAccountType,
 		OrganizationId:     row.OrganizationID,
 		OrganizationName:   row.OrganizationName,
+		ResponsibleUserId:  row.ResponsibleUserID,
+		ResponsibleName:    row.ResponsibleName,
 		TokenId:            row.TokenID,
 		TokenName:          row.TokenName,
 		ModelName:          row.ModelName,

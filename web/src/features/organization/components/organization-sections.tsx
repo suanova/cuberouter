@@ -154,7 +154,6 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
             capabilities.can_view_organization_usage &&
             capabilities.can_view_organization_wide_data
           }
-          canViewWideData={capabilities.can_view_organization_wide_data}
           onForbidden={props.onForbidden}
         />
       )

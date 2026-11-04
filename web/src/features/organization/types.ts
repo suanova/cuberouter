@@ -19,6 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type {
+  SelfUsageRange,
+  SelfUsageRows,
+  SelfUsageTokenOption,
+  SelfUsageTotals,
+} from '@/features/usage/types'
 import { organizationCapabilitiesSchema } from '@/lib/account-context'
 
 // ============================================================================
@@ -472,6 +478,24 @@ export interface OrganizationLogStats {
   quota: number
   rpm: number
   tpm: number
+}
+
+export interface OrganizationUsageUserOption {
+  id: number
+  name: string
+}
+
+/** The organization's daily usage table; rows reuse the personal usage shape. */
+export interface OrganizationUsageData {
+  backfill_complete: boolean
+  range: SelfUsageRange
+  rows: SelfUsageRows
+  totals: SelfUsageTotals
+  filter_options: {
+    models: string[]
+    tokens: SelfUsageTokenOption[]
+    users: OrganizationUsageUserOption[]
+  }
 }
 
 // ============================================================================

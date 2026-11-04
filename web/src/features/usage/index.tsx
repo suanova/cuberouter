@@ -270,8 +270,6 @@ export function UsagePage(props: UsagePageProps) {
                     loading={usageQuery.isLoading}
                     filtering={usageQuery.isFetching}
                     organizations={organizations}
-                    modelOptions={data.filter_options?.models ?? []}
-                    tokenOptions={data.filter_options?.tokens ?? []}
                     initialFilters={initialFilters}
                     page={props.search.page ?? 1}
                     pageSize={props.search.pageSize ?? 20}
