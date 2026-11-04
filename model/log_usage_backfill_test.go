@@ -115,7 +115,7 @@ func TestStartLogUsageBackfillHoldsLockUntilBackfillFinishes(t *testing.T) {
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
-		t.Fatal("backfill query did not start")
+		require.Fail(t, "backfill query did not start")
 	}
 	assert.True(t, mr.Exists("log:usage-backfill:lock"), "lock must be held while the backfill runs")
 
@@ -146,4 +146,54 @@ func TestBackfillClickHouseLogUsageFieldsWaitsForMutation(t *testing.T) {
 
 	require.Error(t, backfillClickHouseLogUsageFields())
 	assert.Contains(t, captured, "SETTINGS mutations_sync = 2")
+}
+
+func TestRunLogUsageBackfillWithRetryRetriesTransientFailures(t *testing.T) {
+	origOptions := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() { common.OptionMap = origOptions })
+
+	calls := 0
+	err := runLogUsageBackfillWithRetry(func() error {
+		calls++
+		if calls < 3 {
+			return errors.New("transient")
+		}
+		return nil
+	}, []time.Duration{time.Millisecond, time.Millisecond})
+	require.NoError(t, err)
+	assert.Equal(t, 3, calls)
+}
+
+func TestRunLogUsageBackfillWithRetryStopsAfterDelays(t *testing.T) {
+	origOptions := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() { common.OptionMap = origOptions })
+
+	calls := 0
+	err := runLogUsageBackfillWithRetry(func() error {
+		calls++
+		return errors.New("still broken")
+	}, []time.Duration{time.Millisecond})
+	require.Error(t, err)
+	assert.Equal(t, 2, calls)
+}
+
+func TestReleaseLogUsageBackfillLockOnlyDeletesOwnLock(t *testing.T) {
+	mr := miniredis.RunT(t)
+	origRedis, origRDB := common.RedisEnabled, common.RDB
+	common.RedisEnabled = true
+	common.RDB = redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() {
+		_ = common.RDB.Close()
+		common.RedisEnabled, common.RDB = origRedis, origRDB
+	})
+
+	require.NoError(t, mr.Set("log:usage-backfill:lock", "other-node"))
+	releaseLogUsageBackfillLock("this-node")
+	assert.True(t, mr.Exists("log:usage-backfill:lock"), "must not delete another node's lock")
+
+	require.NoError(t, mr.Set("log:usage-backfill:lock", "this-node"))
+	releaseLogUsageBackfillLock("this-node")
+	assert.False(t, mr.Exists("log:usage-backfill:lock"))
 }

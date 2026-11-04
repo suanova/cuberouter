@@ -98,6 +98,20 @@ func TestGetSelfUsageMidjourneyRowsUsesMilliseconds(t *testing.T) {
 	assert.Equal(t, 1, byModel["mj_video"].FailureCount)
 }
 
+func TestGetSelfUsageMidjourneyRowsIncludesLastSecond(t *testing.T) {
+	db := newUsageAsyncTestDB(t)
+	endSec := time.Date(2026, 11, 3, 23, 59, 59, 0, time.Local).Unix()
+	require.NoError(t, db.Create(&Midjourney{
+		UserId: 7, ActorUserId: 7, Action: "IMAGINE", Status: "SUCCESS", Quota: 80,
+		SubmitTime: endSec*1000 + 500, BillingAccountType: "personal",
+	}).Error)
+
+	rows, err := GetSelfUsageMidjourneyRows(7, endSec-3600, endSec)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, 80, rows[0].Quota)
+}
+
 func TestLocalDayKeySeparatesBoundary(t *testing.T) {
 	late := time.Date(2026, 11, 2, 23, 59, 59, 0, time.Local).Unix()
 	early := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local).Unix()

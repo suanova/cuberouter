@@ -137,7 +137,7 @@ func GetSelfUsageMidjourneyRows(actorUserId int, startTs, endTs int64) ([]SelfUs
 	const mjTimeExpr = "COALESCE(NULLIF(submit_time, 0), NULLIF(start_time, 0), finish_time)"
 	var journeys []Midjourney
 	err := DB.
-		Where("actor_user_id = ? AND "+mjTimeExpr+" BETWEEN ? AND ?", actorUserId, startTs*1000, endTs*1000).
+		Where("actor_user_id = ? AND "+mjTimeExpr+" >= ? AND "+mjTimeExpr+" < ?", actorUserId, startTs*1000, (endTs+1)*1000).
 		Select("id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, action, status, quota, submit_time, start_time, finish_time").
 		Find(&journeys).Error
 	if err != nil {

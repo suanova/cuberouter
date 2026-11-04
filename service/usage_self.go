@@ -265,9 +265,25 @@ func sumSelfUsageTotals(rows []usageRow) dto.SelfUsageTotals {
 // are allowed to view. It is independent of the current table filters so the
 // lists do not collapse to the current selection.
 func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfUsageFilterOptions, error) {
+	organizations, err := ListUserOrganizations(actorUserId, false)
+	if err != nil {
+		return dto.SelfUsageFilterOptions{}, err
+	}
+
+	// 组织 key 使用组织自己的分组，可能有用户个人分组里没有的模型；只按
+	// user.Group 取会让「通过组织 key 能用」的模型从下拉里消失。
 	usableGroups := GetUserUsableGroups(user.Group)
-	groups := make([]string, 0, len(usableGroups))
+	groupSet := make(map[string]struct{}, len(usableGroups)+len(organizations))
 	for name := range usableGroups {
+		groupSet[name] = struct{}{}
+	}
+	for _, organization := range organizations {
+		if organization.Capabilities.CanViewOrganizationTokens && organization.Group != "" {
+			groupSet[organization.Group] = struct{}{}
+		}
+	}
+	groups := make([]string, 0, len(groupSet))
+	for name := range groupSet {
 		groups = append(groups, name)
 	}
 	models := GetGroupsEnabledModels(groups)
@@ -294,10 +310,6 @@ func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfU
 		}
 	}
 
-	organizations, err := ListUserOrganizations(actorUserId, false)
-	if err != nil {
-		return dto.SelfUsageFilterOptions{}, err
-	}
 	for _, organization := range organizations {
 		if !organization.Capabilities.CanViewOrganizationTokens {
 			continue
@@ -472,7 +484,12 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 	totals := sumSelfUsageTotals(filtered)
 	sortSelfUsageRows(filtered)
 	page, pageSize := normalizeSelfUsagePagination(query.Page, query.PageSize)
-	start := (page - 1) * pageSize
+	// Guard the multiplication: a huge page number would overflow into a
+	// negative start and panic the slice below.
+	start := len(filtered)
+	if page-1 <= len(filtered)/pageSize {
+		start = (page - 1) * pageSize
+	}
 	if start > len(filtered) {
 		start = len(filtered)
 	}

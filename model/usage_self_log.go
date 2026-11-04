@@ -55,7 +55,7 @@ func GetSelfUsageLogRows(actorUserId int, startTs, endTs int64) ([]SelfUsageLogR
 	offset := localUTCOffsetSeconds()
 
 	var rows []SelfUsageLogRow
-	err := LOG_DB.Table("logs").
+	query := LOG_DB.Table("logs").
 		Select("FLOOR((created_at + ?) / ?) AS day_key, "+
 			"billing_account_type, billing_account_id, organization_id, organization_name, "+
 			"token_id, token_name, model_name, "+
@@ -76,10 +76,17 @@ func GetSelfUsageLogRows(actorUserId int, startTs, endTs int64) ([]SelfUsageLogR
 		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
 		// 滚动升级安全网：旧节点写出的日志带 DB 默认 source=text。在回填追上之前，
 		// 用模型前缀和 task 标记把任务/MJ 行排除，避免文本行与任务表重复计数。
-		Where("model_name NOT LIKE 'mj_%'").
+		// LIKE 里的 `_` 是通配符，必须转义，否则 mjpeg-* 这类文本模型会被误伤；
+		// ClickHouse 不支持 ESCAPE 子句，改用 startsWith。
 		Where("model_name <> ?", "swap_face").
 		Where("COALESCE(other, '') NOT LIKE ?", `%"is_task":true%`).
-		Where("COALESCE(other, '') NOT LIKE ?", `%"task_id"%`).
+		Where("COALESCE(other, '') NOT LIKE ?", `%"task_id"%`)
+	if common.UsingLogDatabase(common.DatabaseTypeClickHouse) {
+		query = query.Where("NOT startsWith(model_name, 'mj_')")
+	} else {
+		query = query.Where("model_name NOT LIKE 'mj!_%' ESCAPE '!'")
+	}
+	err := query.
 		Group("day_key, billing_account_type, billing_account_id, organization_id, organization_name, token_id, token_name, model_name").
 		Order("day_key, model_name").
 		Scan(&rows).Error

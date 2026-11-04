@@ -22,17 +22,31 @@ package model
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/go-redis/redis/v8"
 )
 
 const (
 	LogUsageBackfillLastIDOption = "LogUsageBackfillLastID"
 	LogUsageBackfillDoneOption   = "LogUsageBackfillComplete"
 	logUsageBackfillBatchSize    = 500
+	logUsageBackfillLockKey      = "log:usage-backfill:lock"
+	logUsageBackfillLockTTL      = time.Hour
+)
+
+var (
+	errLogUsageBackfillLockHeld = errors.New("log usage backfill lock held by another node")
+	// 回填失败（含没抢到锁）在退避后重试；只跑一次的话，一次抖动就会让
+	// backfill_complete 一直为 false，直到进程重启。
+	logUsageBackfillRetryDelays  = []time.Duration{30 * time.Second, time.Minute, 2 * time.Minute, 5 * time.Minute}
+	logUsageBackfillUnlockScript = redis.NewScript(
+		`if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`,
+	)
 )
 
 // ClassifyLogUsageSource decides which billing ledger a historical log belongs
@@ -74,22 +88,56 @@ func StartLogUsageBackfill() {
 		return
 	}
 	go func() {
-		// 锁必须在 goroutine 内获取和释放：放到调用方会在 goroutine 启动前
-		// 就因 defer 释放，等于没有互斥。
-		if common.RedisEnabled && common.RDB != nil {
-			ok, err := common.RDB.SetNX(context.Background(), "log:usage-backfill:lock", common.NodeName, time.Hour).Result()
-			if err != nil || !ok {
-				common.SysLog("log usage backfill skipped: lock not acquired")
-				return
-			}
-			defer func() { _ = common.RDB.Del(context.Background(), "log:usage-backfill:lock").Err() }()
-		}
-		if err := BackfillLogUsageFields(); err != nil {
+		if err := runLogUsageBackfillWithRetry(runLogUsageBackfillAttempt, logUsageBackfillRetryDelays); err != nil {
 			common.SysError("log usage backfill failed: " + err.Error())
 			return
 		}
 		common.SysLog("log usage backfill completed")
 	}()
+}
+
+func runLogUsageBackfillWithRetry(backfill func() error, delays []time.Duration) error {
+	for attempt := 0; ; attempt++ {
+		if LogUsageBackfillComplete() {
+			return nil
+		}
+		err := backfill()
+		if err == nil {
+			return nil
+		}
+		if attempt >= len(delays) {
+			return err
+		}
+		time.Sleep(delays[attempt])
+	}
+}
+
+func runLogUsageBackfillAttempt() error {
+	// 锁必须在本次尝试内获取和释放：放到调用方会在 goroutine 启动前
+	// 就因 defer 释放，等于没有互斥。
+	if common.RedisEnabled && common.RDB != nil {
+		token := common.NodeName + ":" + common.GetUUID()
+		ok, err := common.RDB.SetNX(context.Background(), logUsageBackfillLockKey, token, logUsageBackfillLockTTL).Result()
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return errLogUsageBackfillLockHeld
+		}
+		defer releaseLogUsageBackfillLock(token)
+	}
+	return BackfillLogUsageFields()
+}
+
+// releaseLogUsageBackfillLock deletes the lock only when it still holds this
+// attempt's token, so an expired attempt cannot delete a later node's lock.
+func releaseLogUsageBackfillLock(token string) {
+	if !common.RedisEnabled || common.RDB == nil {
+		return
+	}
+	if err := logUsageBackfillUnlockScript.Run(context.Background(), common.RDB, []string{logUsageBackfillLockKey}, token).Err(); err != nil {
+		common.SysError("failed to release log usage backfill lock: " + err.Error())
+	}
 }
 
 // BackfillLogUsageFields is resumable: the last processed id lives in the

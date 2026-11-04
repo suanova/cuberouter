@@ -1,7 +1,7 @@
 # 用户用量页设计（User Usage Page）
 
 **Date:** 2026-11-03
-**Status:** Implemented — backend + frontend; verification in §16
+**Status:** Backend implemented in this PR; the frontend page ships in a follow-up PR after the backfill completes; verification in §16
 **Branch:** TBD（建议 `feat/user-usage-page`）
 
 ## 1. 目标与背景
@@ -80,7 +80,7 @@
 - 日期范围选择器，**天粒度**；默认今天（`00:00` 至当前时刻，结束日按全天计算）。
 - 后端按站点本地时区解析日期（复用 `parseBillingDateRange` 的语义：`YYYY-MM-DD`，end 当日 23:59:59）。
 - 按本地自然日分组：复用 `FLOOR((created_at + 本地 UTC 偏移) / 86400)` 的 day_key 方案（跨 SQLite/MySQL/PostgreSQL 已验证，见 `model/log_billing.go`）。
-- **最大跨度 31 天**（与现有账单报表一致）；超出返回 400。
+- **最大跨度 31 天**（与现有账单报表一致）；超出返回 HTTP 200 + `success:false`（与现有账单报表一致，前端按 `success:false` 弹错）。
 - 日期列直接显示后端返回的 `date`（`YYYY-MM-DD`），不在前端二次本地化，避免服务器/浏览器时区不一致导致日期漂移。
 
 ## 5. 概览
@@ -211,7 +211,8 @@ ClickHouse 走 `ALTER TABLE logs ADD COLUMN IF NOT EXISTS`，类型分别为 `In
 - 多节点：回填作为后台任务执行，用 Redis 分布式锁保证同一时刻只有一个节点在跑；拿不到锁的节点直接跳过。没有 Redis 的部署（单机 SQLite）不需要锁。
 - ClickHouse：`id` 是读时补的展示 id（默认 0），**不能**用 id 水位。改为一次性 `ALTER TABLE logs UPDATE`（`JSONExtractInt` / `JSONExtractBool`）或按 `created_at` 区间分批；这是一次重 mutation，部署时需要在维护窗口执行。
 - 回填范围：全量历史（用户已确认「加列并且回填」）。
-- 上线顺序：先部署后端并等回填完成标记；回填完成前不发布/不暴露新页面，避免旧任务日志在 text 行里重复计数。接口响应带 `backfill_complete` 字段，便于确认状态。
+- 边界：SQL 库的自增 id 在插入时分配、事务可能更晚提交，极少数行可能落在水位之后（漏回填 `cache_tokens`，影响仅限缓存列）。任务/MJ 行不依赖回填：查询侧会用模型前缀与 `other` 里的任务标记兜底排除。收尾前建议先停旧节点并等待在途事务提交。
+- 上线顺序：先部署后端并等回填完成标记；回填完成前不发布/不暴露新页面，避免旧任务日志在 text 行里重复计数。接口响应带 `backfill_complete` 字段，便于确认状态；回填失败会按退避重试，不需要重启进程。
 
 ### 7.4 文本日志聚合
 
@@ -385,7 +386,7 @@ WHERE actor_user_id = ?
 - 只返回 `actor_user_id = 当前用户` 的行；不接受任何 `user_id` 参数。
 - 组织概览：必须是当前成员；否则 403。
 - 表格的组织过滤：API 接受任意 `organization_id`（行本身属于本人，历史组织也算），但前端下拉只列当前所在组织；已退出组织的用量在「全部」里仍可见。
-- 日期非法 / 跨度超 31 天：400。
+- 日期非法 / 跨度超 31 天：HTTP 200 + `success:false`（与现有账单报表一致）。
 - 频率限制：`CriticalRateLimit()`（与现有日志查询一致）。
 
 ## 9. 前端设计

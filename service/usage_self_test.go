@@ -21,6 +21,7 @@ For commercial licensing, please contact support@quantumnous.com
 package service
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -85,6 +86,7 @@ func newSelfUsageTestDB(t *testing.T) *gorm.DB {
 		&model.Task{},
 		&model.Midjourney{},
 		&model.Token{},
+		&model.Ability{},
 		&model.Organization{},
 		&model.OrganizationMember{},
 		&model.Model{},
@@ -183,8 +185,9 @@ func TestGetSelfUsageReturnsVisibleModelsAndUsableTokens(t *testing.T) {
 		{Group: "default", Model: "gpt-4o", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "wan3.0-video", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "hidden-model", ChannelId: 1, Enabled: false},
+		{Group: "acme-group", Model: "org-only-model", ChannelId: 1, Enabled: true},
 	}).Error)
-	require.NoError(t, model.DB.Create(&model.Organization{Id: 909, Name: "Acme", Slug: "acme", OwnerUserId: 9099}).Error)
+	require.NoError(t, model.DB.Create(&model.Organization{Id: 909, Name: "Acme", Slug: "acme", Group: "acme-group", OwnerUserId: 9099}).Error)
 	require.NoError(t, model.DB.Create(&model.OrganizationMember{
 		OrganizationId: 909, UserId: actor, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive,
 	}).Error)
@@ -204,10 +207,31 @@ func TestGetSelfUsageReturnsVisibleModelsAndUsableTokens(t *testing.T) {
 		PageSize:    20,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"gpt-4o", "wan3.0-video"}, got.FilterOptions.Models)
+	assert.Equal(t, []string{"gpt-4o", "org-only-model", "wan3.0-video"}, got.FilterOptions.Models)
 	assert.Equal(t, []dto.SelfUsageTokenOption{
 		{Name: "org-mine", OrganizationId: 909, OrganizationName: "Acme"},
 		{Name: "org-public", OrganizationId: 909, OrganizationName: "Acme"},
 		{Name: "personal-key"},
 	}, got.FilterOptions.Tokens)
+}
+
+func TestGetSelfUsageClampsHugePage(t *testing.T) {
+	db := newSelfUsageTestDB(t)
+	ts := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "u7"}).Error)
+	require.NoError(t, db.Create(&model.Log{
+		UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText,
+		CreatedAt: ts, ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "p1", Quota: 10,
+	}).Error)
+
+	got, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7,
+		StartTs:     ts - 3600,
+		EndTs:       ts + 3600,
+		Page:        math.MaxInt,
+		PageSize:    100,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, got.Rows.Items)
+	assert.Equal(t, 1, got.Rows.Total)
 }

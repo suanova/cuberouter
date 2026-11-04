@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/clickhouse"
@@ -99,13 +100,19 @@ func TestSelfUsageLogRowsExcludesStaleTaskAndMJRows(t *testing.T) {
 		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "wan3.0-video", BillingAccountType: "personal", RequestId: "s1", Other: `{"task_id":"t1"}`, Quota: 999},
 		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "wan3.0-video", BillingAccountType: "personal", RequestId: "s2", Other: `{"is_task":true}`, Quota: 998},
 		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "mj_imagine", BillingAccountType: "personal", RequestId: "s3", Quota: 997},
+		// `_` in LIKE is a wildcard; a model whose name merely starts with "mj"
+		// plus one more character is a normal text model.
+		{UserId: 7, ActorUserId: 7, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "mjpeg-audio", BillingAccountType: "personal", RequestId: "n2", Quota: 11},
 	}).Error)
 
 	got, err := GetSelfUsageLogRows(7, ts-60, ts+60)
 	require.NoError(t, err)
-	require.Len(t, got, 1)
-	assert.Equal(t, 10, got[0].Quota)
-	assert.Equal(t, "gpt-4o", got[0].ModelName)
+	require.Len(t, got, 2)
+	assert.Equal(t, 21, got[0].Quota+got[1].Quota)
+	for _, row := range got {
+		assert.NotEqual(t, "wan3.0-video", row.ModelName)
+		assert.NotEqual(t, "mj_imagine", row.ModelName)
+	}
 }
 
 func TestSelfUsageLogRowsConfiguredDatabases(t *testing.T) {
@@ -158,6 +165,9 @@ func TestSelfUsageLogRowsConfiguredDatabases(t *testing.T) {
 				{UserId: actor, ActorUserId: actor, Type: LogTypeConsume, UsageSource: LogUsageSourceFee, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 1, TokenName: "k1", BillingAccountType: "personal", Quota: 50},
 				{UserId: actor, ActorUserId: actor, Type: LogTypeRefund, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "gpt-4o", TokenId: 1, TokenName: "k1", BillingAccountType: "personal", Quota: 200},
 				{UserId: actor, ActorUserId: actor, Type: LogTypeConsume, UsageSource: LogUsageSourceTask, CreatedAt: ts, ModelName: "wan3.0-video", BillingAccountType: "personal", Quota: 9999},
+				// `_` in LIKE is a wildcard: this text model must survive the
+				// mj-prefix safety net on every SQL dialect.
+				{UserId: actor, ActorUserId: actor, Type: LogTypeConsume, UsageSource: LogUsageSourceText, CreatedAt: ts, ModelName: "mjpeg-audio", TokenId: 2, TokenName: "k2", BillingAccountType: "personal", Quota: 11},
 			}
 			require.NoError(t, db.Create(&rows).Error)
 
@@ -167,8 +177,14 @@ func TestSelfUsageLogRowsConfiguredDatabases(t *testing.T) {
 
 			got, err := GetSelfUsageLogRows(actor, ts-60, ts+60)
 			require.NoError(t, err)
-			require.Len(t, got, 1)
-			assert.Equal(t, 1, got[0].RequestCount)
+			require.Len(t, got, 2)
+			totalQuota, totalRequests := 0, 0
+			for _, row := range got {
+				totalQuota += row.Quota
+				totalRequests += row.RequestCount
+			}
+			assert.Equal(t, 2, totalRequests)
+			assert.Equal(t, 1000+50-200+11, totalQuota)
 			assert.Equal(t, 100, got[0].PromptTokens)
 			assert.Equal(t, 50, got[0].CompletionTokens)
 			assert.Equal(t, 30, got[0].CacheTokens)
@@ -190,6 +206,9 @@ func TestSelfUsageLogRowsClickHouse(t *testing.T) {
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
+	origType := common.LogDatabaseType()
+	common.SetLogDatabaseType(common.DatabaseTypeClickHouse)
+	t.Cleanup(func() { common.SetLogDatabaseType(origType) })
 	require.NoError(t, db.Exec(clickHouseLogCreateTableSQL(0)).Error)
 
 	const actor = 987654321
