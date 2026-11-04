@@ -22,9 +22,8 @@ import { useTranslation } from 'react-i18next'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { SiteRegionSwitcher } from '@/components/site-region-switcher'
 import { ThemeSwitch } from '@/components/theme-switch'
-
+import { useBrandLogo } from '@/hooks/use-brand-logo'
 import { useSystemConfig } from '@/hooks/use-system-config'
-import { withBasePath } from '@/lib/base-path'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -38,6 +37,7 @@ type AuthLayoutProps = {
 export function AuthLayout({ children }: AuthLayoutProps) {
   const { t } = useTranslation()
   const { systemName } = useSystemConfig()
+  const { logo, recolorForDark } = useBrandLogo()
 
   return (
     <div className='relative grid min-h-svh place-items-center overflow-hidden px-4 py-14 sm:py-20'>
@@ -56,9 +56,13 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           className='transition-opacity hover:opacity-80'
         >
           <img
-            src={withBasePath('/head.png')}
+            src={logo}
             alt={systemName || t('CubeRouter')}
-            className='h-10 w-auto dark:brightness-0 dark:invert sm:h-12'
+            className={
+              recolorForDark
+                ? 'h-10 w-auto sm:h-12 dark:brightness-0 dark:invert'
+                : 'h-10 w-auto sm:h-12'
+            }
           />
         </Link>
 

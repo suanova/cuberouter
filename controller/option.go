@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 
@@ -20,6 +23,41 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+// The logo is handed to every visitor inside the public /api/status payload,
+// so an inline upload is capped at the same size the dashboard enforces.
+const maxLogoImageBytes = 200 * 1024
+
+// A logo is either an external HTTP(S) URL or an image uploaded from the
+// dashboard, which is stored inline as a base64 data URL.
+func validateLogoOptionValue(value string) error {
+	if value == "" {
+		return nil
+	}
+	if !strings.HasPrefix(value, "data:") {
+		parsed, err := url.Parse(value)
+		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+			return errors.New("Logo must be an HTTP(S) URL or an uploaded image")
+		}
+		return nil
+	}
+	// Base64 inflates the image by 4/3 and pads to a 4-character boundary.
+	if len(value) > maxLogoImageBytes/3*4+64 {
+		return errors.New("Logo image must be no larger than 200 KB")
+	}
+	header, payload, found := strings.Cut(value, ",")
+	if !found || !strings.HasPrefix(header, "data:image/") || !strings.HasSuffix(header, ";base64") {
+		return errors.New("Logo must be an HTTP(S) URL or an uploaded image")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(payload)
+	if err != nil {
+		return errors.New("Logo must be an HTTP(S) URL or an uploaded image")
+	}
+	if len(decoded) > maxLogoImageBytes {
+		return errors.New("Logo image must be no larger than 200 KB")
+	}
+	return nil
+}
 
 var completionRatioMetaOptionKeys = []string{
 	"ModelPrice",
@@ -131,6 +169,14 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
+	case "Logo":
+		if err = validateLogoOptionValue(option.Value.(string)); err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

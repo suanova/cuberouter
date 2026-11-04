@@ -27,9 +27,11 @@ import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { basePath, withBasePath } from '@/lib/base-path'
+import { useBrandLogo } from '@/hooks/use-brand-logo'
+import { basePath } from '@/lib/base-path'
 
 import Globe from './globe'
+
 import './landing.css'
 
 // Demo base URL for the API examples: point at the deployment serving this
@@ -110,6 +112,7 @@ const IconChart = () => (
 
 export function Landing() {
   const { t } = useTranslation()
+  const { logo, recolorForDark } = useBrandLogo()
   const [activeTab, setActiveTab] = useState('curl')
 
   return (
@@ -131,10 +134,17 @@ export function Landing() {
                 </span>
               </h1>
 
-              <p className='cr-hero__subtitle'>{t('One interface to access DeepSeek, GLM (Zhipu), MiniMax, Qwen, and Kimi models. Powered by Suanova Technology enterprise computing — better pricing, more stable service, no subscription limits.')}</p>
+              <p className='cr-hero__subtitle'>
+                {t(
+                  'One interface to access DeepSeek, GLM (Zhipu), MiniMax, Qwen, and Kimi models. Powered by Suanova Technology enterprise computing — better pricing, more stable service, no subscription limits.'
+                )}
+              </p>
 
               <div className='cr-hero__actions'>
-                <Link to='/sign-up' className='cr-btn cr-btn--primary cr-btn--lg'>
+                <Link
+                  to='/sign-up'
+                  className='cr-btn cr-btn--primary cr-btn--lg'
+                >
                   {t('Get API Key')}
                 </Link>
                 <Link to='/pricing' className='cr-btn cr-btn--ghost cr-btn--lg'>
@@ -173,7 +183,9 @@ export function Landing() {
               </div>
             </div>
             <div className='cr-terminal__body'>
-              <pre dangerouslySetInnerHTML={{ __html: CODE_EXAMPLES[activeTab] }} />
+              <pre
+                dangerouslySetInnerHTML={{ __html: CODE_EXAMPLES[activeTab] }}
+              />
             </div>
           </div>
         </div>
@@ -205,8 +217,14 @@ export function Landing() {
         <div className='cr-container'>
           <div className='cr-section__head'>
             <div className='cr-section__eyebrow'>{t('Features')}</div>
-            <h2 className='cr-section__title'>{t('AI Gateway Built for Enterprise')}</h2>
-            <p className='cr-section__desc'>{t('Unified access, intelligent routing, and fine-grained control — making AI a truly manageable infrastructure.')}</p>
+            <h2 className='cr-section__title'>
+              {t('AI Gateway Built for Enterprise')}
+            </h2>
+            <p className='cr-section__desc'>
+              {t(
+                'Unified access, intelligent routing, and fine-grained control — making AI a truly manageable infrastructure.'
+              )}
+            </p>
           </div>
 
           <div className='cr-features'>
@@ -215,15 +233,25 @@ export function Landing() {
                 <IconRoute />
               </div>
               <h3 className='cr-feature__title'>{t('Smart Routing')}</h3>
-              <p className='cr-feature__desc'>{t('Intelligently select the best model and channel with load balancing and failover for stable, efficient service.')}</p>
+              <p className='cr-feature__desc'>
+                {t(
+                  'Intelligently select the best model and channel with load balancing and failover for stable, efficient service.'
+                )}
+              </p>
             </article>
 
             <article className='cr-feature'>
               <div className='cr-feature__icon' aria-hidden='true'>
                 <IconBolt />
               </div>
-              <h3 className='cr-feature__title'>{t('Low Latency & High Performance')}</h3>
-              <p className='cr-feature__desc'>{t('Powered by Suanova Technology global infrastructure with edge deployment, minimal first-token latency, and optimal throughput.')}</p>
+              <h3 className='cr-feature__title'>
+                {t('Low Latency & High Performance')}
+              </h3>
+              <p className='cr-feature__desc'>
+                {t(
+                  'Powered by Suanova Technology global infrastructure with edge deployment, minimal first-token latency, and optimal throughput.'
+                )}
+              </p>
             </article>
 
             <article className='cr-feature'>
@@ -231,7 +259,11 @@ export function Landing() {
                 <IconShield />
               </div>
               <h3 className='cr-feature__title'>{t('Enterprise Security')}</h3>
-              <p className='cr-feature__desc'>{t('Fine-grained data policies, private deployment, and data sovereignty protection for compliance and auditing.')}</p>
+              <p className='cr-feature__desc'>
+                {t(
+                  'Fine-grained data policies, private deployment, and data sovereignty protection for compliance and auditing.'
+                )}
+              </p>
             </article>
 
             <article className='cr-feature'>
@@ -239,7 +271,11 @@ export function Landing() {
                 <IconChart />
               </div>
               <h3 className='cr-feature__title'>{t('Fine-grained Control')}</h3>
-              <p className='cr-feature__desc'>{t('Quota management, traffic control, multi-dimensional statistics and billing to help enterprises track real costs.')}</p>
+              <p className='cr-feature__desc'>
+                {t(
+                  'Quota management, traffic control, multi-dimensional statistics and billing to help enterprises track real costs.'
+                )}
+              </p>
             </article>
           </div>
         </div>
@@ -254,7 +290,11 @@ export function Landing() {
               <h2 className='cr-section__title' style={{ maxWidth: '12ch' }}>
                 {t('Built for Large Organizations')}
               </h2>
-              <p className='cr-section__desc'>{t('Enterprise edition provides auditing, private deployment, and customized SLAs, covering security, compliance, and scalability needs.')}</p>
+              <p className='cr-section__desc'>
+                {t(
+                  'Enterprise edition provides auditing, private deployment, and customized SLAs, covering security, compliance, and scalability needs.'
+                )}
+              </p>
               <div className='cr-enterprise__actions'>
                 <a
                   href='mailto:cube-router.sales@isuanova.com'
@@ -276,7 +316,9 @@ export function Landing() {
                     {t('Enterprise Security')}
                   </h3>
                   <p className='cr-enterprise-item__desc'>
-                    {t('Fine-grained access control, complete audit logs, and support for on-premise deployment.')}
+                    {t(
+                      'Fine-grained access control, complete audit logs, and support for on-premise deployment.'
+                    )}
                   </p>
                 </div>
               </div>
@@ -287,7 +329,9 @@ export function Landing() {
                     {t('Advanced Analytics')}
                   </h3>
                   <p className='cr-enterprise-item__desc'>
-                    {t('Usage analytics, cost optimization recommendations, custom reports, and multi-team billing statistics.')}
+                    {t(
+                      'Usage analytics, cost optimization recommendations, custom reports, and multi-team billing statistics.'
+                    )}
                   </p>
                 </div>
               </div>
@@ -298,7 +342,9 @@ export function Landing() {
                     {t('Dedicated Support')}
                   </h3>
                   <p className='cr-enterprise-item__desc'>
-                    {t('Dedicated technical support, customer success manager, custom feature development, and priority SLA.')}
+                    {t(
+                      'Dedicated technical support, customer success manager, custom feature development, and priority SLA.'
+                    )}
                   </p>
                 </div>
               </div>
@@ -313,24 +359,40 @@ export function Landing() {
           <div className='cr-section__head'>
             <div className='cr-section__eyebrow'>{t('Quick Start')}</div>
             <h2 className='cr-section__title'>{t('Get Started in 3 Steps')}</h2>
-            <p className='cr-section__desc'>{t('Fully compatible with OpenAI API format. From registration to first API call in just minutes.')}</p>
+            <p className='cr-section__desc'>
+              {t(
+                'Fully compatible with OpenAI API format. From registration to first API call in just minutes.'
+              )}
+            </p>
           </div>
 
           <div className='cr-steps'>
             <div className='cr-step'>
               <div className='cr-step__num'>{t('01 / Register')}</div>
               <h3 className='cr-step__title'>{t('Create Account')}</h3>
-              <p className='cr-step__desc'>{t('Register a CubeRouter account and get your dedicated API access.')}</p>
+              <p className='cr-step__desc'>
+                {t(
+                  'Register a CubeRouter account and get your dedicated API access.'
+                )}
+              </p>
             </div>
             <div className='cr-step'>
               <div className='cr-step__num'>{t('02 / Top Up')}</div>
               <h3 className='cr-step__title'>{t('Buy Credits')}</h3>
-              <p className='cr-step__desc'>{t('Top up credits on demand — flexible pay-as-you-go billing, scale anytime.')}</p>
+              <p className='cr-step__desc'>
+                {t(
+                  'Top up credits on demand — flexible pay-as-you-go billing, scale anytime.'
+                )}
+              </p>
             </div>
             <div className='cr-step'>
               <div className='cr-step__num'>{t('03 / Connect')}</div>
               <h3 className='cr-step__title'>{t('Get API Key')}</h3>
-              <p className='cr-step__desc'>{t('Create an API Key, replace the base_url, and start calling all supported models.')}</p>
+              <p className='cr-step__desc'>
+                {t(
+                  'Create an API Key, replace the base_url, and start calling all supported models.'
+                )}
+              </p>
             </div>
           </div>
         </div>
@@ -340,8 +402,14 @@ export function Landing() {
       <section className='cr-section'>
         <div className='cr-container cr-cta__inner'>
           <div className='cr-section__eyebrow'>{t('Get Started')}</div>
-          <h2 className='cr-cta__title'>{t('Start now, integrate AI into your business.')}</h2>
-          <p className='cr-cta__desc'>{t('Professional, stable, and efficient AI gateway to help your team build AI applications faster.')}</p>
+          <h2 className='cr-cta__title'>
+            {t('Start now, integrate AI into your business.')}
+          </h2>
+          <p className='cr-cta__desc'>
+            {t(
+              'Professional, stable, and efficient AI gateway to help your team build AI applications faster.'
+            )}
+          </p>
           <div className='cr-cta__actions'>
             <Link to='/sign-up' className='cr-btn cr-btn--primary cr-btn--lg'>
               {t('Free Trial')}
@@ -363,12 +431,18 @@ export function Landing() {
             <div>
               <div className='cr-footer__brand'>
                 <img
-                  src={withBasePath('/head.png')}
+                  src={logo}
                   alt='CubeRouter'
-                  className='dark:brightness-0 dark:invert'
+                  className={
+                    recolorForDark ? 'dark:brightness-0 dark:invert' : ''
+                  }
                 />
               </div>
-              <p className='cr-footer__desc'>{t('suanova is a leading AI service provider. Through its proprietary Token-as-a-Service (TaaS) platform, it provides stable and efficient AI Token cloud services for enterprises and institutions across industries. The brand is wholly owned and operated by Suanova Technology, dedicated to building high-standard, scalable next-generation AI computing infrastructure.')}</p>
+              <p className='cr-footer__desc'>
+                {t(
+                  'suanova is a leading AI service provider. Through its proprietary Token-as-a-Service (TaaS) platform, it provides stable and efficient AI Token cloud services for enterprises and institutions across industries. The brand is wholly owned and operated by Suanova Technology, dedicated to building high-standard, scalable next-generation AI computing infrastructure.'
+                )}
+              </p>
             </div>
 
             <div>
