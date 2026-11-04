@@ -144,4 +144,69 @@ describe('buildSelfUsageExportSheet', () => {
     expect(sheet.filename).toMatch(/^usage-hour-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/)
     expect(sheet.rows[0].map(cellValue)[11]).toBe(`Cost (${currency})`)
   })
+
+  test('exports organization rows with the responsible member and no billing account', () => {
+    const currency = getCurrencyLabel()
+    const sheet = buildSelfUsageExportSheet(
+      exportData('day', [
+        row({
+          billing_account_type: 'organization',
+          organization_name: 'Acme',
+          responsible_user_id: 101,
+          responsible_name: 'Alice Chen',
+        }),
+      ]),
+      translate,
+      { variant: 'organization' }
+    )
+
+    expect(sheet.rows[0].map(cellValue)).toEqual([
+      'Date',
+      'User',
+      'Type',
+      'API Key',
+      'Model',
+      'Requests',
+      'Success',
+      'Failed',
+      'Input Tokens',
+      'Output Tokens',
+      'Cache Tokens',
+      `Cost (${currency})`,
+    ])
+    expect(sheet.rows[1].map(cellValue)).toEqual([
+      '2026-11-03',
+      'Alice Chen',
+      'Text',
+      'key-1',
+      'gpt-4o',
+      3,
+      3,
+      0,
+      1000,
+      500,
+      300,
+      quotaUnitsToDollars(800_000),
+    ])
+    expect(sheet.filename).toMatch(
+      /^organization-usage-day-\d{4}-\d{2}-\d{2}-\d{6}\.xlsx$/
+    )
+  })
+
+  test('exports the same success and failure numbers the table shows', () => {
+    const sheet = buildSelfUsageExportSheet(
+      exportData('day', [
+        row({ request_count: 2, success_count: 1, failure_count: 1 }),
+        row({ request_count: 1, success_count: 0, failure_count: 0 }),
+      ]),
+      translate
+    )
+
+    // With failures the table reports success_count; without failures it
+    // reports request_count, including a request still in progress.
+    expect(sheet.rows[1].map(cellValue)[6]).toBe(1)
+    expect(sheet.rows[1].map(cellValue)[7]).toBe(1)
+    expect(sheet.rows[2].map(cellValue)[6]).toBe(1)
+    expect(sheet.rows[2].map(cellValue)[7]).toBe(0)
+  })
 })

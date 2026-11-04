@@ -68,6 +68,8 @@ type SelfUsageRow struct {
 	BillingAccountType string `json:"billing_account_type"`
 	OrganizationId     int    `json:"organization_id"`
 	OrganizationName   string `json:"organization_name"`
+	ResponsibleUserId  int    `json:"responsible_user_id,omitempty"`
+	ResponsibleName    string `json:"responsible_name,omitempty"`
 	TokenId            int    `json:"token_id"`
 	TokenName          string `json:"token_name"`
 	ModelName          string `json:"model_name"`
@@ -132,4 +134,26 @@ type SelfUsageTokenOption struct {
 	Name             string `json:"name"`
 	OrganizationId   int    `json:"organization_id"`
 	OrganizationName string `json:"organization_name"`
+}
+
+// OrganizationUsageData is the response of GET /api/organizations/:id/usage.
+// The rows reuse the personal usage row shape; the responsible member fields
+// are populated, and the billing account is always this organization.
+type OrganizationUsageData struct {
+	BackfillComplete bool                           `json:"backfill_complete"`
+	Range            SelfUsageRange                 `json:"range"`
+	Rows             SelfUsageRows                  `json:"rows"`
+	Totals           SelfUsageTotals                `json:"totals"`
+	FilterOptions    OrganizationUsageFilterOptions `json:"filter_options"`
+}
+
+type OrganizationUsageFilterOptions struct {
+	Models []string                      `json:"models"`
+	Tokens []SelfUsageTokenOption        `json:"tokens"`
+	Users  []OrganizationUsageUserOption `json:"users"`
+}
+
+type OrganizationUsageUserOption struct {
+	Id   int    `json:"id"`
+	Name string `json:"name"`
 }

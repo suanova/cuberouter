@@ -24,6 +24,8 @@ import (
 	"errors"
 
 	"github.com/QuantumNous/new-api/common"
+
+	"gorm.io/gorm"
 )
 
 // Self-usage exports can be grouped by local day or by local hour.
@@ -41,6 +43,8 @@ type SelfUsageLogRow struct {
 	BillingAccountID   int
 	OrganizationID     int
 	OrganizationName   string
+	ResponsibleUserID  int
+	ResponsibleName    string
 	TokenID            int
 	TokenName          string
 	ModelName          string
@@ -85,7 +89,27 @@ func GetSelfUsageLogRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds 
 			LogTypeConsume,
 			LogTypeConsume,
 			LogTypeConsume, LogTypeRefund).
-		Where("actor_user_id = ?", actorUserId).
+		Where("actor_user_id = ?", actorUserId)
+	query = applySelfUsageLogRowConditions(query, startTs, endTs)
+	err := query.
+		Group("bucket_key, billing_account_type, billing_account_id, organization_id, organization_name, token_id, token_name, model_name").
+		Order("bucket_key, model_name").
+		Scan(&rows).Error
+	if err != nil {
+		common.SysError("failed to query self usage logs: " + err.Error())
+		return nil, errors.New("查询用量失败")
+	}
+	if rows == nil {
+		rows = []SelfUsageLogRow{}
+	}
+	return rows, nil
+}
+
+// applySelfUsageLogRowConditions holds the row filters shared by the personal
+// and organization usage queries, so the two cannot drift on which log rows
+// count as usage.
+func applySelfUsageLogRowConditions(query *gorm.DB, startTs, endTs int64) *gorm.DB {
+	query = query.
 		Where("created_at >= ? AND created_at <= ?", startTs, endTs).
 		Where("usage_source IN ?", []string{LogUsageSourceText, LogUsageSourceFee}).
 		Where("type IN ?", []int{LogTypeConsume, LogTypeRefund}).
@@ -101,16 +125,5 @@ func GetSelfUsageLogRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds 
 	} else {
 		query = query.Where("model_name NOT LIKE 'mj!_%' ESCAPE '!'")
 	}
-	err := query.
-		Group("bucket_key, billing_account_type, billing_account_id, organization_id, organization_name, token_id, token_name, model_name").
-		Order("bucket_key, model_name").
-		Scan(&rows).Error
-	if err != nil {
-		common.SysError("failed to query self usage logs: " + err.Error())
-		return nil, errors.New("查询用量失败")
-	}
-	if rows == nil {
-		rows = []SelfUsageLogRow{}
-	}
-	return rows, nil
+	return query
 }

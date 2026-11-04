@@ -20,10 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, test, vi, type Mock } from 'vitest'
 
-import {
-  UsageFilterBar,
-  type UsageFilterValues,
-} from '../usage-filter-bar'
+import { UsageFilterBar, type UsageFilterValues } from '../usage-filter-bar'
 
 vi.mock('@/components/data-table', () => ({
   DataTableViewOptions: () => null,
@@ -41,8 +38,18 @@ function renderFilterBar(
       organizations={[]}
       modelOptions={['gpt-4o', 'wan3.0-video']}
       tokenOptions={[
-        { id: 1, name: 'personal-key', organization_id: 0, organization_name: '' },
-        { id: 2, name: 'org-key', organization_id: 9, organization_name: 'Acme' },
+        {
+          id: 1,
+          name: 'personal-key',
+          organization_id: 0,
+          organization_name: '',
+        },
+        {
+          id: 2,
+          name: 'org-key',
+          organization_id: 9,
+          organization_name: 'Acme',
+        },
       ]}
       loading={false}
       onApply={onApply}
@@ -59,9 +66,13 @@ describe('UsageFilterBar dropdowns', () => {
     const modelInput = screen.getByRole('combobox', { name: 'Model' })
     fireEvent.focus(modelInput)
 
-    expect(screen.getByRole('option', { name: 'All Models' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'All Models' })
+    ).toBeInTheDocument()
     const option = screen.getByRole('option', { name: 'gpt-4o' })
-    expect(screen.getByRole('option', { name: 'wan3.0-video' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'wan3.0-video' })
+    ).toBeInTheDocument()
 
     fireEvent.mouseDown(option)
     fireEvent.click(screen.getByRole('button', { name: 'Search' }))
@@ -77,7 +88,9 @@ describe('UsageFilterBar dropdowns', () => {
 
     fireEvent.focus(screen.getByRole('combobox', { name: 'API Key' }))
 
-    expect(screen.getByRole('option', { name: 'personal-key' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'personal-key' })
+    ).toBeInTheDocument()
     const orgOption = screen.getByRole('option', { name: 'org-key (Acme)' })
     expect(orgOption).toBeInTheDocument()
 
@@ -116,6 +129,38 @@ describe('UsageFilterBar dropdowns', () => {
 
     expect(screen.getByRole('combobox', { name: 'API Key' })).toHaveValue(
       'org-key (Acme)'
+    )
+  })
+
+  test('organization usage offers the member filter and hides billing', () => {
+    const onApply = vi.fn()
+    render(
+      <UsageFilterBar
+        table={table}
+        initial={{}}
+        organizations={[]}
+        modelOptions={['gpt-4o']}
+        tokenOptions={[]}
+        userOptions={[
+          { id: 101, name: 'Alice Chen' },
+          { id: 102, name: 'Bob' },
+        ]}
+        variant='organization'
+        loading={false}
+        onApply={onApply}
+        onReset={() => undefined}
+      />
+    )
+
+    expect(screen.queryByText('All Billing Types')).not.toBeInTheDocument()
+
+    const userCombobox = screen.getByRole('combobox', { name: 'User' })
+    fireEvent.focus(userCombobox)
+    fireEvent.mouseDown(screen.getByRole('option', { name: 'Bob' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Search' }))
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 102 })
     )
   })
 })

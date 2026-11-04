@@ -62,6 +62,8 @@ type usageRow struct {
 	BillingAccountType string
 	OrganizationID     int
 	OrganizationName   string
+	ResponsibleUserID  int
+	ResponsibleName    string
 	TokenID            int
 	TokenName          string
 	ModelName          string
@@ -80,6 +82,7 @@ type usageRowKey struct {
 	BillingAccountType string
 	OrganizationID     int
 	OrganizationName   string
+	ResponsibleUserID  int
 	TokenID            int
 	TokenName          string
 	ModelName          string
@@ -100,7 +103,7 @@ func mergeSelfUsageRows(
 ) []usageRow {
 	byKey := make(map[usageRowKey]*usageRow)
 
-	getOrCreate := func(key usageRowKey) *usageRow {
+	getOrCreate := func(key usageRowKey, responsibleName string) *usageRow {
 		row := byKey[key]
 		if row == nil {
 			row = &usageRow{
@@ -109,11 +112,15 @@ func mergeSelfUsageRows(
 				BillingAccountType: key.BillingAccountType,
 				OrganizationID:     key.OrganizationID,
 				OrganizationName:   key.OrganizationName,
+				ResponsibleUserID:  key.ResponsibleUserID,
+				ResponsibleName:    responsibleName,
 				TokenID:            key.TokenID,
 				TokenName:          key.TokenName,
 				ModelName:          key.ModelName,
 			}
 			byKey[key] = row
+		} else if row.ResponsibleName == "" && responsibleName != "" {
+			row.ResponsibleName = responsibleName
 		}
 		return row
 	}
@@ -125,11 +132,12 @@ func mergeSelfUsageRows(
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
+			ResponsibleUserID:  item.ResponsibleUserID,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
 		}
-		row := getOrCreate(key)
+		row := getOrCreate(key, item.ResponsibleName)
 		row.RequestCount += item.RequestCount
 		row.SuccessCount += item.RequestCount
 		row.PromptTokens += item.PromptTokens
@@ -145,11 +153,12 @@ func mergeSelfUsageRows(
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
+			ResponsibleUserID:  item.ResponsibleUserID,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
 		}
-		row := getOrCreate(key)
+		row := getOrCreate(key, item.ResponsibleName)
 		row.RequestCount += item.RequestCount
 		row.SuccessCount += item.SuccessCount
 		row.FailureCount += item.FailureCount
@@ -163,11 +172,12 @@ func mergeSelfUsageRows(
 			BillingAccountType: normalizeSelfUsageBillingType(item.BillingAccountType),
 			OrganizationID:     item.OrganizationID,
 			OrganizationName:   item.OrganizationName,
+			ResponsibleUserID:  item.ResponsibleUserID,
 			TokenID:            item.TokenID,
 			TokenName:          item.TokenName,
 			ModelName:          item.ModelName,
 		}
-		row := getOrCreate(key)
+		row := getOrCreate(key, item.ResponsibleName)
 		row.RequestCount += item.RequestCount
 		row.SuccessCount += item.SuccessCount
 		row.FailureCount += item.FailureCount
@@ -421,6 +431,12 @@ func sortSelfUsageRows(rows []usageRow) {
 		if left.OrganizationName != right.OrganizationName {
 			return left.OrganizationName < right.OrganizationName
 		}
+		if left.ResponsibleName != right.ResponsibleName {
+			return left.ResponsibleName < right.ResponsibleName
+		}
+		if left.ResponsibleUserID != right.ResponsibleUserID {
+			return left.ResponsibleUserID < right.ResponsibleUserID
+		}
 		if left.ModelName != right.ModelName {
 			return left.ModelName < right.ModelName
 		}
@@ -451,6 +467,8 @@ func toSelfUsageDTO(row usageRow) dto.SelfUsageRow {
 		BillingAccountType: row.BillingAccountType,
 		OrganizationId:     row.OrganizationID,
 		OrganizationName:   row.OrganizationName,
+		ResponsibleUserId:  row.ResponsibleUserID,
+		ResponsibleName:    row.ResponsibleName,
 		TokenId:            row.TokenID,
 		TokenName:          row.TokenName,
 		ModelName:          row.ModelName,

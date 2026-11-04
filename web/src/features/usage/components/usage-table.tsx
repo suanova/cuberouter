@@ -24,23 +24,22 @@ import { DataTablePage, useDataTable } from '@/components/data-table'
 import { formatLogQuota, formatNumber } from '@/lib/format'
 
 import type {
-  SelfUsageData,
-  SelfUsageTokenOption,
   SelfUsageTotals,
   UsageExportGranularity,
   UsageOrganizationOption,
+  UsageTableData,
+  UsageTableVariant,
 } from '../types'
 import { buildUsageColumns } from './usage-columns'
 import { UsageExportMenu } from './usage-export-menu'
 import { UsageFilterBar, type UsageFilterValues } from './usage-filter-bar'
 
 interface UsageTableProps {
-  data: SelfUsageData
+  data: UsageTableData
   loading: boolean
   filtering: boolean
   organizations: UsageOrganizationOption[]
-  modelOptions: string[]
-  tokenOptions: SelfUsageTokenOption[]
+  variant?: UsageTableVariant
   initialFilters: UsageFilterValues
   page: number
   pageSize: number
@@ -52,7 +51,7 @@ interface UsageTableProps {
 
 export function UsageTable(props: UsageTableProps) {
   const { t } = useTranslation()
-  const columns = buildUsageColumns(t)
+  const columns = buildUsageColumns(t, props.variant)
   const pagination: PaginationState = {
     pageIndex: Math.max(0, props.page - 1),
     pageSize: props.pageSize,
@@ -68,7 +67,10 @@ export function UsageTable(props: UsageTableProps) {
       const next = typeof updater === 'function' ? updater(pagination) : updater
       props.onPageChange(next.pageIndex + 1, next.pageSize)
     },
-    columnVisibilityStorageKey: 'usage-table-column-visibility',
+    columnVisibilityStorageKey:
+      props.variant === 'organization'
+        ? 'organization-usage-table-column-visibility'
+        : 'usage-table-column-visibility',
   })
 
   return (
@@ -84,8 +86,10 @@ export function UsageTable(props: UsageTableProps) {
           table={table}
           initial={props.initialFilters}
           organizations={props.organizations}
-          modelOptions={props.modelOptions}
-          tokenOptions={props.tokenOptions}
+          modelOptions={props.data.filter_options.models}
+          tokenOptions={props.data.filter_options.tokens}
+          userOptions={props.data.filter_options.users}
+          variant={props.variant}
           loading={props.filtering}
           actionStart={
             <UsageExportMenu

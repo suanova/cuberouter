@@ -22,11 +22,17 @@ import dayjs from '@/lib/dayjs'
 import { writeExcelSheet, type ExcelSheet } from '@/lib/excel'
 import { quotaUnitsToDollars } from '@/lib/format'
 
-import type { SelfUsageExportData } from '../types'
+import type { SelfUsageExportData, UsageTableVariant } from '../types'
+import { usageFailureValue, usageSuccessValue } from './usage-row'
 import { usageTypeLabelKey } from './usage-type'
 
 const TOKEN_FORMAT = '#,##0'
 const MONEY_FORMAT = '#,##0.0000'
+
+export interface UsageExportSheetOptions {
+  variant?: UsageTableVariant
+  filenamePrefix?: string
+}
 
 function tokenCell(value: number) {
   return { value, type: Number, format: TOKEN_FORMAT }
@@ -46,60 +52,73 @@ function headerCell(value: string) {
  */
 export function buildSelfUsageExportSheet(
   data: SelfUsageExportData,
-  t: (key: string) => string
+  t: (key: string) => string,
+  options: UsageExportSheetOptions = {}
 ): ExcelSheet {
   const currency = getCurrencyLabel()
   const costHeader = `${t('Cost')} (${currency})`
   const timeHeader = data.granularity === 'hour' ? t('Time') : t('Date')
+  const organization = options.variant === 'organization'
+
+  const headers = [
+    headerCell(timeHeader),
+    ...(organization ? [headerCell(t('User'))] : []),
+    headerCell(t('Type')),
+    ...(organization ? [] : [headerCell(t('Billing Account'))]),
+    headerCell(t('API Key')),
+    headerCell(t('Model')),
+    headerCell(t('Requests')),
+    headerCell(t('Success')),
+    headerCell(t('Failed')),
+    headerCell(t('Input Tokens')),
+    headerCell(t('Output Tokens')),
+    headerCell(t('Cache Tokens')),
+    headerCell(costHeader),
+  ]
+
+  const columnWidths = [
+    { width: 18 },
+    ...(organization ? [{ width: 16 }] : []),
+    { width: 10 },
+    ...(organization ? [] : [{ width: 18 }]),
+    { width: 20 },
+    { width: 22 },
+    { width: 10 },
+    { width: 10 },
+    { width: 10 },
+    { width: 14 },
+    { width: 14 },
+    { width: 16 },
+    { width: 18 },
+  ]
 
   return {
     rows: [
-      [
-        headerCell(timeHeader),
-        headerCell(t('Type')),
-        headerCell(t('Billing Account')),
-        headerCell(t('API Key')),
-        headerCell(t('Model')),
-        headerCell(t('Requests')),
-        headerCell(t('Success')),
-        headerCell(t('Failed')),
-        headerCell(t('Input Tokens')),
-        headerCell(t('Output Tokens')),
-        headerCell(t('Cache Tokens')),
-        headerCell(costHeader),
-      ],
+      headers,
       ...data.rows.map((row) => [
         row.date,
+        ...(organization ? [row.responsible_name || '-'] : []),
         t(usageTypeLabelKey(row.type)),
-        row.billing_account_type === 'organization'
-          ? row.organization_name || '-'
-          : t('Personal'),
+        ...(organization
+          ? []
+          : [
+              row.billing_account_type === 'organization'
+                ? row.organization_name || '-'
+                : t('Personal'),
+            ]),
         row.token_name || '-',
         row.model_name || '-',
         tokenCell(row.request_count),
-        tokenCell(row.success_count),
-        tokenCell(row.failure_count),
+        tokenCell(usageSuccessValue(row)),
+        tokenCell(usageFailureValue(row)),
         tokenCell(row.prompt_tokens),
         tokenCell(row.completion_tokens),
         tokenCell(row.cache_tokens),
         moneyCell(quotaUnitsToDollars(row.quota)),
       ]),
     ],
-    columns: [
-      { width: 18 },
-      { width: 10 },
-      { width: 18 },
-      { width: 20 },
-      { width: 22 },
-      { width: 10 },
-      { width: 10 },
-      { width: 10 },
-      { width: 14 },
-      { width: 14 },
-      { width: 16 },
-      { width: 18 },
-    ],
-    filename: `usage-${data.granularity}-${dayjs().format('YYYY-MM-DD-HHmmss')}.xlsx`,
+    columns: columnWidths,
+    filename: `${options.filenamePrefix ?? (organization ? 'organization-usage' : 'usage')}-${data.granularity}-${dayjs().format('YYYY-MM-DD-HHmmss')}.xlsx`,
   }
 }
 

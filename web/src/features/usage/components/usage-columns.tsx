@@ -21,27 +21,28 @@ import type { ColumnDef } from '@tanstack/react-table'
 
 import { formatLogQuota, formatNumber } from '@/lib/format'
 
+import { usageFailureValue, usageSuccessValue } from '../lib/usage-row'
 import { usageTypeLabelKey } from '../lib/usage-type'
-import type { SelfUsageRow } from '../types'
+import type { SelfUsageRow, UsageTableVariant } from '../types'
 
 function tokenText(value: number): string {
   return value > 0 ? formatNumber(value) : '-'
 }
 
 export function usageSuccessText(row: SelfUsageRow): string {
-  return row.failure_count > 0
-    ? formatNumber(row.success_count)
-    : formatNumber(row.request_count)
+  return formatNumber(usageSuccessValue(row))
 }
 
 export function usageFailureText(row: SelfUsageRow): string {
-  return row.failure_count > 0 ? formatNumber(row.failure_count) : '-'
+  const value = usageFailureValue(row)
+  return value > 0 ? formatNumber(value) : '-'
 }
 
 export function buildUsageColumns(
-  t: (key: string) => string
+  t: (key: string) => string,
+  variant: UsageTableVariant = 'personal'
 ): ColumnDef<SelfUsageRow>[] {
-  return [
+  const columns: ColumnDef<SelfUsageRow>[] = [
     {
       accessorKey: 'date',
       header: () => <span className='whitespace-nowrap'>{t('Date')}</span>,
@@ -53,18 +54,36 @@ export function buildUsageColumns(
         </span>
       ),
     },
-    {
-      accessorKey: 'type',
-      header: () => <span className='whitespace-nowrap'>{t('Type')}</span>,
+  ]
+
+  if (variant === 'organization') {
+    columns.push({
+      accessorKey: 'responsible_name',
+      header: () => <span className='whitespace-nowrap'>{t('User')}</span>,
       enableSorting: false,
-      size: 90,
+      size: 150,
       cell: ({ row }) => (
-        <span className='whitespace-nowrap'>
-          {t(usageTypeLabelKey(row.original.type))}
+        <span className='block max-w-44 truncate text-sm'>
+          {row.original.responsible_name || '-'}
         </span>
       ),
-    },
-    {
+    })
+  }
+
+  columns.push({
+    accessorKey: 'type',
+    header: () => <span className='whitespace-nowrap'>{t('Type')}</span>,
+    enableSorting: false,
+    size: 90,
+    cell: ({ row }) => (
+      <span className='whitespace-nowrap'>
+        {t(usageTypeLabelKey(row.original.type))}
+      </span>
+    ),
+  })
+
+  if (variant === 'personal') {
+    columns.push({
       accessorKey: 'billing_account_type',
       header: () => (
         <span className='whitespace-nowrap'>{t('Billing Account')}</span>
@@ -78,7 +97,10 @@ export function buildUsageColumns(
             : t('Personal')}
         </span>
       ),
-    },
+    })
+  }
+
+  columns.push(
     {
       accessorKey: 'token_name',
       header: () => <span className='whitespace-nowrap'>{t('API Key')}</span>,
@@ -179,6 +201,8 @@ export function buildUsageColumns(
           {formatLogQuota(row.original.quota)}
         </span>
       ),
-    },
-  ]
+    }
+  )
+
+  return columns
 }

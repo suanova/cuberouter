@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import type { SelfUsageExportEnvelope } from '@/features/usage/types'
 import { api } from '@/lib/api'
 
 import { withOrganizationIdempotencyKey } from './lib/organization-idempotency'
@@ -51,6 +52,7 @@ import type {
   OrganizationTaskRow,
   OrganizationTokenBatchCreateResult,
   OrganizationTokenRow,
+  OrganizationUsageData,
   UserModelDiscounts,
 } from './types'
 
@@ -999,6 +1001,48 @@ export async function getOrganizationLogStats(
 ): Promise<OrganizationApiResponse<OrganizationLogStats>> {
   const res = await api.get(
     `${organizationResourceBase(surface, organizationId)}/logs/stats`,
+    { params }
+  )
+  return res.data
+}
+
+export interface OrganizationUsageListParams {
+  p: number
+  page_size: number
+  start: string
+  end: string
+  model_name?: string
+  token_id?: number
+  token_name?: string
+  responsible_user_id?: number
+}
+
+export async function getOrganizationUsage(
+  surface: OrganizationSurface,
+  organizationId: number,
+  params: OrganizationUsageListParams
+): Promise<OrganizationApiResponse<OrganizationUsageData>> {
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/usage`,
+    { params }
+  )
+  return res.data
+}
+
+export interface OrganizationUsageExportParams extends Omit<
+  OrganizationUsageListParams,
+  'p' | 'page_size'
+> {
+  granularity: 'day' | 'hour'
+}
+
+export async function exportOrganizationUsage(
+  surface: OrganizationSurface,
+  organizationId: number,
+  params: OrganizationUsageExportParams
+): Promise<SelfUsageExportEnvelope> {
+  const res = await api.get(
+    `${organizationResourceBase(surface, organizationId)}/usage/export`,
     { params }
   )
   return res.data

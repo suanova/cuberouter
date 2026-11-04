@@ -136,15 +136,21 @@ export const organizationDetailSearchSchema = z.object({
   auditAction: freeArrayParam().optional(),
   auditTargetType: freeArrayParam().optional(),
 
-  // Usage — the per-request usage table reads the log endpoint
-  // (OrganizationLogListRequest in service/organization_log.go) with the type
-  // pinned to consumption, so there is no type key. The endpoint matches
-  // `model_name` with LIKE and the rest exactly, so all of these are keywords.
+  // Usage — the daily table reads the organization usage endpoint
+  // (OrganizationUsageQuery in service/organization_usage.go). Model is the
+  // name from the organization's model dropdown; the key and member are ids.
+  //
+  // The old per-request usage page also accepted usageToken/usageResponsible
+  // as free-text filters. The aggregated table filters those dimensions by id,
+  // so those legacy text values are not mapped; the date range below still
+  // carries over when the old link used startTime/endTime.
+  usageStart: z.string().optional().catch(''),
+  usageEnd: z.string().optional().catch(''),
   usageModel: z.string().optional().catch(''),
-  usageToken: z.string().optional().catch(''),
-  usageResponsible: z.string().optional().catch(''),
+  usageTokenId: z.string().optional().catch(''),
+  usageUserId: z.string().optional().catch(''),
 
-  // Time window shared by logs, tasks, usage and audit
+  // Time window shared by logs, tasks and audit
   startTime: z.number().optional().catch(undefined),
   endTime: z.number().optional().catch(undefined),
 })

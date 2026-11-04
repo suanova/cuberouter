@@ -62,6 +62,8 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		// 概览页的每个数字都属于组织而非浏览者，所以除了 view_organization_usage 还要
 		// view_members_full：成员看得到自己那份用量（/billing/members/me），看不到组织总量。
 		organizationRoute.GET("/:id/quota-data", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull, service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationQuotaData)
+		organizationRoute.GET("/:id/usage", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull, service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationUsage)
+		organizationRoute.GET("/:id/usage/export", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull, service.OrganizationCapabilityViewOrganizationUsage), controller.ExportOrganizationUsage)
 		organizationRoute.GET("/:id/logs", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.ListOrganizationLogs)
 		organizationRoute.GET("/:id/logs/stats", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.GetOrganizationLogStats)
 		organizationRoute.GET("/:id/tasks", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.ListOrganizationTasks)
@@ -126,6 +128,8 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		adminOrganizationRoute.GET("/:id/tasks", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.ListOrganizationTasks)
 		adminOrganizationRoute.GET("/:id/midjourney-tasks", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationLogs), controller.ListOrganizationMidjourneyTasks)
 		adminOrganizationRoute.GET("/:id/quota-data", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationQuotaData)
+		adminOrganizationRoute.GET("/:id/usage", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationUsage)
+		adminOrganizationRoute.GET("/:id/usage/export", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ExportOrganizationUsage)
 		adminOrganizationRoute.GET("/:id/billing/summary", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.GetOrganizationBillingSummary)
 		adminOrganizationRoute.GET("/:id/billing/user-summaries", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingUserSummaries)
 		adminOrganizationRoute.GET("/:id/billing/monthly-summaries", middleware.OrganizationAdminAuth(service.OrganizationCapabilityViewOrganizationUsage), controller.ListOrganizationBillingMonthlySummaries)

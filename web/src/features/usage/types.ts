@@ -49,6 +49,8 @@ export interface SelfUsageRow {
   billing_account_type: 'personal' | 'organization'
   organization_id: number
   organization_name: string
+  responsible_user_id?: number
+  responsible_name?: string
   token_id: number
   token_name: string
   model_name: string
@@ -59,6 +61,13 @@ export interface SelfUsageRow {
   completion_tokens: number
   cache_tokens: number
   quota: number
+}
+
+export interface SelfUsageRows {
+  page: number
+  page_size: number
+  total: number
+  items: SelfUsageRow[]
 }
 
 export interface SelfUsageTotals {
@@ -78,31 +87,45 @@ export interface SelfUsageChartPoint {
   quota: number
 }
 
+export interface SelfUsageRange {
+  start: string
+  end: string
+  start_timestamp: number
+  end_timestamp: number
+}
+
 export interface SelfUsageData {
   backfill_complete: boolean
-  range: {
-    start: string
-    end: string
-    start_timestamp: number
-    end_timestamp: number
-  }
+  range: SelfUsageRange
   overview: {
     personal: SelfUsageAccountStat
     organization: SelfUsageOrganizationStat | null
   }
-  rows: {
-    page: number
-    page_size: number
-    total: number
-    items: SelfUsageRow[]
-  }
+  rows: SelfUsageRows
   totals: SelfUsageTotals
   charts: SelfUsageChartPoint[]
-  filter_options: {
-    models: string[]
-    tokens: SelfUsageTokenOption[]
-  }
+  filter_options: SelfUsageFilterOptions
 }
+
+export interface UsageUserOption {
+  id: number
+  name: string
+}
+
+export interface SelfUsageFilterOptions {
+  models: string[]
+  tokens: SelfUsageTokenOption[]
+  users?: UsageUserOption[]
+}
+
+/** The fields the shared usage table reads; both personal and organization responses provide them. */
+export interface UsageTableData {
+  rows: SelfUsageRows
+  totals: SelfUsageTotals
+  filter_options: SelfUsageFilterOptions
+}
+
+export type UsageTableVariant = 'personal' | 'organization'
 
 export interface SelfUsageTokenOption {
   id: number
