@@ -81,6 +81,15 @@ export function useTopNavLinks(): TopNavLink[] {
     })
   }
 
+  // Media Studio -> /media-studio (authenticated workspace)
+  if (modules?.media_studio !== false) {
+    links.push({
+      title: t('Media Studio'),
+      href: '/media-studio',
+      requiresAuth: true,
+    })
+  }
+
   // Pricing
   const pricing = modules?.pricing
   if (pricing && typeof pricing === 'object' && pricing.enabled) {
