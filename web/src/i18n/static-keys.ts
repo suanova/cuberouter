@@ -906,6 +906,7 @@ export const STATIC_I18N_KEYS = [
   'Show mask only',
   'Original reference',
   'Reference drawing surface',
+  'Applied drawing',
   'Rectangle coordinates (%)',
   'X',
   'Y',

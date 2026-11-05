@@ -40,6 +40,7 @@ import { draftSchema } from '../lib/workflow'
 import type { Quality } from '../types'
 import type { WorkflowDraft } from '../workflow-types'
 import { MaskEditor } from './mask-editor'
+import { ReferenceThumbnail } from './reference-drawing'
 
 export function WorkflowComposer(props: {
   generating?: boolean
@@ -180,10 +181,13 @@ export function WorkflowComposer(props: {
           <div className='grid grid-cols-3 gap-2'>
             {props.draft.references.map((asset) => (
               <div key={asset.id} className='space-y-1'>
-                <img
-                  src={asset.url}
-                  alt={t('Reference image')}
-                  className='aspect-square w-full rounded-lg object-cover'
+                <ReferenceThumbnail
+                  image={asset}
+                  drawing={
+                    props.draft.markup?.referenceID === asset.id
+                      ? props.draft.markup
+                      : undefined
+                  }
                 />
                 <Button
                   size='sm'

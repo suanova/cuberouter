@@ -31,7 +31,6 @@ import {
 import { Input } from '@/components/ui/input'
 
 import {
-  markPath,
   validImageMark,
   type ImageMark,
   type MarkPoint,
@@ -39,6 +38,7 @@ import {
 } from '../lib/reference-markup'
 import { newId } from '../workflow-api'
 import type { StudioAsset } from '../workflow-types'
+import { ReferenceMarkPaths } from './reference-drawing'
 
 export function ReferenceEditor(props: {
   image: StudioAsset
@@ -340,22 +340,12 @@ export function ReferenceEditor(props: {
                   aria-hidden='true'
                 />
               )}
-              {[...marks, ...(draft ? [draft] : [])].map((mark) => (
-                <path
-                  key={mark.id}
-                  d={markPath(mark, ratio)}
-                  stroke={kind === 'region' ? 'white' : mark.color}
-                  strokeWidth={mark.width * Math.min(ratio, 1)}
-                  strokeLinecap='round'
-                  strokeLinejoin='round'
-                  fill={
-                    kind === 'region' && mark.tool !== 'brush'
-                      ? 'white'
-                      : 'none'
-                  }
-                  opacity={maskOnly ? 1 : 0.65}
-                />
-              ))}
+              <ReferenceMarkPaths
+                marks={draft ? [...marks, draft] : marks}
+                kind={kind}
+                ratio={ratio}
+                maskOnly={maskOnly}
+              />
             </svg>
           </div>
           <fieldset className='grid min-w-0 grid-cols-2 items-end gap-2 sm:grid-cols-5'>
