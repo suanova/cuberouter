@@ -702,6 +702,11 @@ func postConsumeQuotaWithResultCount(relayInfo *relaycommon.RelayInfo, quota int
 }
 
 func checkAndSendQuotaNotify(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQuota int) {
+	// 组织计费不动个人钱包和订阅：relayInfo.UserQuota 是调用者的个人余额，
+	// 它低于阈值不代表组织额度不足，按个人余额发预警是误报。
+	if IsOrganizationBilling(relayInfo) {
+		return
+	}
 	goBackgroundWork(func() {
 		userSetting := relayInfo.UserSetting
 		threshold := common.QuotaRemindThreshold
