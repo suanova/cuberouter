@@ -17,17 +17,65 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { expect, test, vi } from 'vitest'
 
 import { TemplateGallery } from '../components/template-gallery'
 
-test('template cards top out at five columns so each card stays large', () => {
+test('template columns grow with gallery width when the sidebar leaves less room', () => {
   render(<TemplateGallery disabled={false} onApply={vi.fn()} />)
-  const grid = screen
-    .getByRole('region', { name: 'Template gallery' })
-    .querySelector('div.grid')
-  expect(grid?.className.split(' ')).toEqual(
-    expect.arrayContaining(['grid-cols-2', 'md:grid-cols-4', 'xl:grid-cols-5'])
+  const gallery = screen.getByRole('region', { name: 'Template gallery' })
+  expect(gallery.querySelector('div.grid')).toHaveClass(
+    'grid-cols-2',
+    '@md/gallery:grid-cols-3',
+    '@xl/gallery:grid-cols-4',
+    '@3xl/gallery:grid-cols-5'
   )
+})
+
+test('all templates share one scroll area while the filters stay above it', () => {
+  render(<TemplateGallery disabled={false} onApply={vi.fn()} />)
+  const viewport = screen.getByRole('region', { name: 'Templates' })
+  const animals = screen.getByRole('button', { name: 'Animals' })
+  expect(viewport).toHaveClass('overflow-y-auto')
+  expect(viewport).toHaveAttribute('tabindex', '0')
+  expect(viewport).not.toContainElement(animals)
+  expect(
+    within(viewport).getByAltText('Animal infographic')
+  ).toBeInTheDocument()
+  expect(
+    within(viewport).getByAltText('Photo to watercolor')
+  ).toBeInTheDocument()
+})
+
+test('choosing a template filter resets the gallery scroll position', () => {
+  render(<TemplateGallery disabled={false} onApply={vi.fn()} />)
+  const viewport = screen.getByRole('region', { name: 'Templates' })
+  viewport.scrollTop = 100
+
+  fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
+  expect(screen.getByRole('region', { name: 'Templates' }).scrollTop).toBe(0)
+  expect(screen.getByAltText('Animal infographic')).toBeVisible()
+  expect(screen.queryByAltText('City travel poster')).not.toBeInTheDocument()
+})
+
+test('the pet comic template lets the long story wrap as it is edited', () => {
+  render(<TemplateGallery disabled={false} onApply={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: /Pet comic strip/ }))
+
+  expect(
+    screen.getByRole('textbox', { name: 'Four-panel story' })
+  ).toHaveProperty('type', 'textarea')
+})
+
+test('the template action stays outside the scrolling content on short screens', () => {
+  render(<TemplateGallery disabled={false} onApply={vi.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: /Pet comic strip/ }))
+
+  const story = screen.getByRole('textbox', { name: 'Four-panel story' })
+  const apply = screen.getByRole('button', { name: 'Use this template' })
+  expect(story.parentElement?.closest('.overflow-y-auto')).toContainElement(
+    story
+  )
+  expect(apply.closest('.overflow-y-auto')).toBeNull()
 })

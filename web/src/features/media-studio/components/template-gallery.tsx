@@ -24,14 +24,16 @@ import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
-  DialogTitle,
   DialogDescription,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { withBasePath } from '@/lib/base-path'
 
 import catalog from '../catalog.json'
 import type { StudioTemplate } from '../workflow-types'
+import { GalleryGrid } from './gallery-grid'
 
 export function TemplateGallery(props: {
   disabled: boolean
@@ -47,7 +49,7 @@ export function TemplateGallery(props: {
       filter === 'all' || item.mode === filter || item.collection === filter
   )
   return (
-    <section aria-label={t('Template gallery')} className='space-y-4'>
+    <section aria-label={t('Template gallery')} className='space-y-3'>
       <div className='flex flex-wrap items-center gap-2'>
         {(
           [
@@ -68,13 +70,13 @@ export function TemplateGallery(props: {
           </Button>
         ))}
       </div>
-      <div className='grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5'>
+      <GalleryGrid key={filter} label={t('Templates')}>
         {visible.map((item) => (
           <button
             key={item.id}
             type='button'
             disabled={props.disabled}
-            className='group bg-muted focus-visible:outline-ring relative aspect-[4/5] overflow-hidden rounded-2xl text-left focus-visible:outline-2 disabled:opacity-50'
+            className='group bg-card focus-visible:outline-ring flex min-w-0 flex-col overflow-hidden rounded-xl border text-left focus-visible:outline-2 disabled:opacity-50'
             onClick={() => {
               setSelected(item)
               setValues(
@@ -84,25 +86,29 @@ export function TemplateGallery(props: {
               )
             }}
           >
-            <img
-              src={withBasePath(item.preview)}
-              alt={t(item.title)}
-              className='h-full w-full object-cover transition-transform duration-300 group-hover:scale-105'
-              loading='lazy'
-            />
-            <div className='absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 to-transparent px-2 pt-8 pb-2 text-white'>
-              <span className='mb-0.5 block text-[10px] tracking-wider uppercase'>
+            <div className='bg-muted aspect-[4/3] w-full shrink-0 overflow-hidden'>
+              <img
+                src={withBasePath(item.preview)}
+                alt={t(item.title)}
+                className='h-full w-full object-cover transition-transform duration-300 group-hover:scale-105'
+                loading='lazy'
+              />
+            </div>
+            <div className='space-y-1 p-2 wrap-anywhere'>
+              <span className='block text-xs leading-snug font-medium'>
+                {t(item.title)}
+              </span>
+              <span className='text-muted-foreground block text-xs'>
                 {t(
                   item.mode === 'edit'
                     ? 'Reference image needed'
                     : 'Start from a prompt'
                 )}
               </span>
-              <span className='text-xs font-medium'>{t(item.title)}</span>
             </div>
           </button>
         ))}
-      </div>
+      </GalleryGrid>
       <p className='text-muted-foreground text-xs'>
         {t(
           'Real examples from our image models. Results vary with your prompt and references.'
@@ -114,13 +120,17 @@ export function TemplateGallery(props: {
           if (!open) setSelected(undefined)
         }}
       >
-        <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-3xl'>
-          <DialogTitle>{selected && t(selected.title)}</DialogTitle>
-          <DialogDescription>
-            {selected && t(selected.description)}
-          </DialogDescription>
+        <DialogContent className='flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-3xl'>
+          <DialogHeader className='shrink-0'>
+            <DialogTitle className='pe-8 leading-snug wrap-anywhere'>
+              {selected && t(selected.title)}
+            </DialogTitle>
+            <DialogDescription>
+              {selected && t(selected.description)}
+            </DialogDescription>
+          </DialogHeader>
           {selected && (
-            <div className='grid gap-5 sm:grid-cols-2'>
+            <div className='-mx-1 grid min-h-0 grid-cols-1 gap-5 overflow-y-auto px-1 sm:grid-cols-2'>
               <div className='space-y-2'>
                 <img
                   src={withBasePath(selected.preview)}
@@ -144,7 +154,9 @@ export function TemplateGallery(props: {
                 {selected.fields.map((field) => (
                   <label key={field.key} className='block space-y-1 text-sm'>
                     {t(field.label)}
-                    <Input
+                    <Textarea
+                      className='max-h-32 min-h-9 py-1.5'
+                      rows={2}
                       value={values[field.key] ?? ''}
                       maxLength={2000}
                       onChange={(event) =>
@@ -163,25 +175,27 @@ export function TemplateGallery(props: {
                   <summary className='cursor-pointer text-xs'>
                     {t('View template prompt')}
                   </summary>
-                  <p className='text-muted-foreground mt-2 text-xs whitespace-pre-wrap'>
+                  <p className='text-muted-foreground mt-2 text-xs wrap-anywhere whitespace-pre-wrap'>
                     {selected.prompt.replaceAll(
                       /\{\{(\w+)\}\}/g,
                       (_, key: string) => values[key] ?? ''
                     )}
                   </p>
                 </details>
-                <Button
-                  className='w-full'
-                  disabled={props.disabled}
-                  onClick={() => {
-                    props.onApply(selected, values)
-                    setSelected(undefined)
-                  }}
-                >
-                  {t('Use this template')}
-                </Button>
               </div>
             </div>
+          )}
+          {selected && (
+            <Button
+              className='w-full sm:w-auto sm:self-end'
+              disabled={props.disabled}
+              onClick={() => {
+                props.onApply(selected, values)
+                setSelected(undefined)
+              }}
+            >
+              {t('Use this template')}
+            </Button>
           )}
         </DialogContent>
       </Dialog>

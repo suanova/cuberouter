@@ -22,6 +22,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 import { getStudioModels } from './api'
 import { ImageJobPanel } from './components/image-job-panel'
@@ -160,7 +161,7 @@ export function WorkflowStudio(props: { owner: number }) {
   ].filter(Boolean)
   return (
     <div className='grid items-start gap-6 lg:grid-cols-[350px_minmax(0,1fr)]'>
-      <aside className='bg-card rounded-2xl border p-4'>
+      <aside className='bg-card min-w-0 rounded-2xl border p-4'>
         <WorkflowComposer
           generating={workflow.generation.isPending}
           queued={queued}
@@ -211,7 +212,7 @@ export function WorkflowStudio(props: { owner: number }) {
           />
         )}
       </aside>
-      <main className='min-w-0 space-y-4'>
+      <div className='min-w-0 space-y-4'>
         <nav
           className='flex flex-wrap gap-1 border-b pb-3'
           aria-label={t('Studio views')}
@@ -255,27 +256,58 @@ export function WorkflowStudio(props: { owner: number }) {
           </p>
         )}
         {view === 'templates' && (
-          <div className='space-y-6'>
-            <OfficialSamples
-              disabled={busy}
-              onApply={(patch, edit) => {
-                const models = edit ? catalog.imageToImage : catalog.textToImage
-                setDraft({
-                  ...current,
-                  ...patch,
-                  model: models.includes(current.model)
-                    ? current.model
-                    : (models[0] ?? ''),
-                })
-              }}
-            />
-            <TemplateGallery
-              disabled={busy}
-              onApply={(template, fields) =>
-                setDraft(templateDraft(template, fields, current))
-              }
-            />
-          </div>
+          <Tabs defaultValue='templates' className='gap-4'>
+            <TabsList
+              aria-label={t('Template gallery')}
+              className='max-w-full flex-wrap justify-start gap-1 group-data-horizontal/tabs:h-auto'
+            >
+              <TabsTrigger
+                value='templates'
+                className='h-auto min-h-8 max-w-full flex-none px-3 whitespace-normal'
+              >
+                {t('Templates')}
+              </TabsTrigger>
+              <TabsTrigger
+                value='samples'
+                className='h-auto min-h-8 max-w-full flex-none px-3 whitespace-normal'
+              >
+                {t('Official Qwen examples')}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent
+              value='templates'
+              keepMounted
+              className='data-ending-style:hidden'
+            >
+              <TemplateGallery
+                disabled={busy}
+                onApply={(template, fields) =>
+                  setDraft(templateDraft(template, fields, current))
+                }
+              />
+            </TabsContent>
+            <TabsContent
+              value='samples'
+              keepMounted
+              className='data-ending-style:hidden'
+            >
+              <OfficialSamples
+                disabled={busy}
+                onApply={(patch, edit) => {
+                  const models = edit
+                    ? catalog.imageToImage
+                    : catalog.textToImage
+                  setDraft({
+                    ...current,
+                    ...patch,
+                    model: models.includes(current.model)
+                      ? current.model
+                      : (models[0] ?? ''),
+                  })
+                }}
+              />
+            </TabsContent>
+          </Tabs>
         )}
         {view === 'result' && (
           // 结果与本地历史合并在同一视图：结果在上，历史列表在下。
@@ -312,7 +344,7 @@ export function WorkflowStudio(props: { owner: number }) {
             </p>
           </div>
         )}
-      </main>
+      </div>
     </div>
   )
 }

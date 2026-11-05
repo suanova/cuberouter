@@ -27,6 +27,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
@@ -82,6 +83,30 @@ function page() {
     </QueryClientProvider>
   )
 }
+
+test('the gallery opens on Templates and switches to Qwen examples with the keyboard', async () => {
+  const user = userEvent.setup()
+  page()
+  const gallery = screen.getByRole('tablist', { name: 'Template gallery' })
+  const templates = within(gallery).getByRole('tab', { name: 'Templates' })
+  const samples = within(gallery).getByRole('tab', {
+    name: 'Official Qwen examples',
+  })
+  expect(templates).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('button', { name: 'All templates' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Load example' })).toBeNull()
+
+  templates.focus()
+  await user.keyboard('{ArrowRight}')
+  expect(samples).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(samples).toHaveAttribute('aria-selected', 'true')
+  expect(
+    screen.getAllByRole('button', { name: 'Load example' })[0]
+  ).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'All templates' })).toBeNull()
+})
+
 test('standard channel generation saves actual bytes locally and reloads history', async () => {
   const view = page()
   await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())

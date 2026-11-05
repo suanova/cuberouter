@@ -117,7 +117,7 @@ export function WorkflowComposer(props: {
             key={mode}
             type='button'
             size='sm'
-            className='flex-1'
+            className='h-auto min-h-7 min-w-0 flex-1 whitespace-normal'
             aria-pressed={props.draft.mode === mode}
             variant={props.draft.mode === mode ? 'secondary' : 'ghost'}
             disabled={props.busy}
@@ -189,6 +189,7 @@ export function WorkflowComposer(props: {
                   size='sm'
                   type='button'
                   variant='outline'
+                  className='h-auto min-h-7 w-full px-1 wrap-anywhere whitespace-normal'
                   disabled={props.busy}
                   aria-label={t('Remove reference image')}
                   onClick={() =>
@@ -269,9 +270,10 @@ export function WorkflowComposer(props: {
         />
       </label>
       <div className='grid grid-cols-2 gap-3'>
-        <label className='text-xs'>
+        <label className='flex min-w-0 flex-col gap-1 text-xs'>
           {t('Image size')}
           <Input
+            className='mt-auto h-9'
             value={props.draft.size}
             placeholder='1024x1024'
             disabled={props.busy}
@@ -281,11 +283,11 @@ export function WorkflowComposer(props: {
             onChange={(event) => update({ size: event.target.value })}
           />
         </label>
-        <label className='text-xs'>
+        <label className='flex min-w-0 flex-col gap-1 text-xs'>
           {t('Images per request')}
           <select
             value={props.draft.count}
-            className='bg-background h-9 w-full rounded-lg border px-2'
+            className='bg-background mt-auto h-9 w-full rounded-lg border px-2'
             disabled={props.busy}
             onChange={(event) => update({ count: Number(event.target.value) })}
           >
@@ -314,12 +316,13 @@ export function WorkflowComposer(props: {
           {QUALITY_OPTIONS.map((option) => (
             <div key={option.id} className='flex items-center gap-2'>
               <RadioGroupItem
+                className='shrink-0'
                 value={option.id}
                 id={`workflow-quality-${option.id}`}
               />
               <label
                 htmlFor={`workflow-quality-${option.id}`}
-                className='cursor-pointer text-xs'
+                className='min-w-0 cursor-pointer text-xs wrap-anywhere'
               >
                 {t(option.labelKey)}
               </label>
