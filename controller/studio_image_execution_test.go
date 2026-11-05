@@ -34,6 +34,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -84,6 +85,11 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 			_, _ = io.WriteString(w, `{"state":"ready","gpu_count":1,"control_protocol":"qwen-execution-v1"}`)
 		case "/v1/images/generations", "/v1/images/edits":
 			generations.Add(1)
+			if policy.Load() == "worker-down" {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = io.WriteString(w, `{"error":{"message":"worker unavailable"}}`)
+				return
+			}
 			if r.URL.Path == "/v1/images/edits" {
 				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
 				var request struct {
@@ -135,11 +141,20 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 	require.NoError(t, model.DB.Create(&model.Channel{Id: 1, Name: "worker", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Key: strings.Repeat("g", 32), BaseURL: &base, Group: "default", Models: "studio-native"}).Error)
 	require.NoError(t, model.DB.Create(&model.Channel{Id: 2, Name: "reviewer", Type: constant.ChannelTypeStudioReview, Status: common.ChannelStatusEnabled, Key: strings.Repeat("m", 32), BaseURL: &review, Group: "default", Models: "google/shieldgemma-2-4b-it"}).Error)
 	require.NoError(t, model.DB.Create(&model.Ability{Group: "default", Model: "studio-native", ChannelId: 1, Enabled: true}).Error)
+	reserve := func(t *testing.T, job, mode string, body []byte) *studioqueue.Reservation {
+		t.Helper()
+		r := studioqueue.Request{Owner: 1, Key: job, Model: "studio-native", Mode: mode, Group: "default", Body: body}
+		releaseAccount, err := admitStudioImage(r, job)
+		require.NoError(t, err)
+		t.Cleanup(releaseAccount)
+		reservation := reserveStudioImage(r, job)
+		require.NotNil(t, reservation)
+		return reservation
+	}
 	t.Run("queued edit uses the OpenAI JSON relay", func(t *testing.T) {
 		job := fmt.Sprintf("%032x", 6)
 		request := fmt.Appendf(nil, `{"mode":"edit","user_prompt":"edit this","request":{"model":"studio-native","prompt":"edit this","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0,"image":"data:image/png;base64,%s"}}`, base64.StdEncoding.EncodeToString(encoded.Bytes()))
-		reservation := reserveStudioImage(studioqueue.Request{Owner: 1, Key: job, Model: "studio-native", Mode: "edit", Body: request}, job)
-		require.NotNil(t, reservation)
+		reservation := reserve(t, job, "edit", request)
 		defer reservation.Release()
 
 		result := reservation.Run(context.Background(), make(chan struct{}))
@@ -153,8 +168,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 			policy.Store(decision)
 			request := []byte(`{"mode":"create","user_prompt":"user prompt","request":{"model":"studio-native","prompt":"model prompt","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0}}`)
 			job := fmt.Sprintf("%032x", i+1)
-			reservation := reserveStudioImage(studioqueue.Request{Owner: 1, Key: job, Model: "studio-native", Mode: "create", Body: request}, job)
-			require.NotNil(t, reservation)
+			reservation := reserve(t, job, "create", request)
 			var before model.User
 			require.NoError(t, model.DB.First(&before, 1).Error)
 			cancel := make(chan struct{})
@@ -170,7 +184,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 			if decision == "cancel" {
 				assert.Empty(t, result.PNG, "an in-flight cancellation discards the reviewed result")
 				assert.Empty(t, result.Error)
-				assert.Equal(t, before.Quota-500, after.Quota, "completed inference still settles its native charge")
+				assert.Equal(t, before.Quota, after.Quota, "cancelled inference with no delivered image refunds native pre-consume")
 			} else if decision == "allow" {
 				assert.Empty(t, result.Error)
 				assert.Equal(t, encoded.Bytes(), result.PNG)
@@ -197,8 +211,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 	t.Run("cancelled before provider dispatch", func(t *testing.T) {
 		job := fmt.Sprintf("%032x", 5)
 		request := []byte(`{"mode":"create","user_prompt":"cancelled","request":{"model":"studio-native","prompt":"cancelled","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0}}`)
-		reservation := reserveStudioImage(studioqueue.Request{Owner: 1, Key: job, Model: "studio-native", Mode: "create", Body: request}, job)
-		require.NotNil(t, reservation)
+		reservation := reserve(t, job, "create", request)
 		var before, after model.User
 		require.NoError(t, model.DB.First(&before, 1).Error)
 		cancel := make(chan struct{})
@@ -215,4 +228,37 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 		assert.Equal(t, "cancelled", audit.State)
 	})
 	assert.EqualValues(t, 5, generations.Load(), "pre-dispatch cancellation never invokes inference")
+	t.Run("invalid body or changed scope fails before allocating a worker", func(t *testing.T) {
+		for _, tc := range []struct{ body, code string }{
+			{"{", "invalid_studio_request"},
+			{"{}", "studio_scope_changed"},
+		} {
+			r := studioqueue.Request{Owner: 1, Model: "studio-native", Group: "old-group", Body: []byte(tc.body)}
+			reservation := reserveStudioImage(r, "invalid-job")
+			require.NotNil(t, reservation, "invalid queued work must leave the queue")
+			defer reservation.Release()
+			assert.Equal(t, tc.code, reservation.Run(context.Background(), nil).Error)
+		}
+		assert.EqualValues(t, 5, generations.Load())
+	})
+	t.Run("worker 5xx fences the GPU and releases the account", func(t *testing.T) {
+		policy.Store("worker-down")
+		cancelOnGeneration.Store(nil)
+		q := studioqueue.New(reserveStudioImage)
+		r := studioqueue.Request{Owner: 1, Key: "worker-down-request", Model: "studio-native", Mode: "create", Group: "default",
+			Body: []byte(`{"mode":"create","user_prompt":"test","request":{"model":"studio-native","prompt":"test","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0}}`)}
+		now := time.Now()
+		job, err := q.Submit(r, q.Epoch(), now, func(job string) (func(), error) { return admitStudioImage(r, job) })
+		require.NoError(t, err)
+		q.Tick(context.Background(), now)
+		require.Eventually(t, func() bool {
+			status, _ := q.Lookup(1, job.ID)
+			busy, err := model.StudioImageAccountBusy(1, time.Now())
+			return status.State == "failed" && err == nil && !busy
+		}, 2*time.Second, 10*time.Millisecond)
+		var gpu model.StudioImageLease
+		require.NoError(t, model.DB.First(&gpu, "resource = ?", "gpu:1").Error)
+		assert.Equal(t, job.ID, gpu.Holder)
+		assert.Greater(t, gpu.ExpiresAt, now.Add(14*time.Minute).UnixMilli())
+	})
 }

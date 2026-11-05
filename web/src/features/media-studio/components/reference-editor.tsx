@@ -364,7 +364,7 @@ export function ReferenceEditor(props: {
               <label key={label} className='min-w-0 space-y-1 text-xs'>
                 {t(label)}
                 <Input
-                  aria-label={`${t('Rectangle')} ${label}`}
+                  aria-label={`${t('Rectangle')} ${t(label)}`}
                   type='number'
                   min={0}
                   max={100}

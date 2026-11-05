@@ -56,9 +56,10 @@ func TestStudioQueueCancellationKeepsSlotAndDiscardsLateOutput(t *testing.T) {
 	started, finish, released := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	q := New(func(Request, string) *Reservation {
 		return &Reservation{
-			Run: func(context.Context, <-chan struct{}) Result {
+			Run: func(ctx context.Context, cancel <-chan struct{}) Result {
 				close(started)
 				<-finish
+				assert.False(t, TryCommitResult(ctx, cancel), "accepted cancellation prevents settlement")
 				return Result{PNG: []byte("late image")}
 			},
 			Release: func() { close(released) },
@@ -90,6 +91,80 @@ func TestStudioQueueCancellationKeepsSlotAndDiscardsLateOutput(t *testing.T) {
 	status, found = q.Lookup(1, s.ID)
 	require.True(t, found)
 	assert.False(t, status.RecoveryPending)
+}
+
+func TestStudioQueueKeepsCommittedOutputOnLateCancel(t *testing.T) {
+	committed, finish, released := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	q := New(func(Request, string) *Reservation {
+		return &Reservation{
+			Run: func(ctx context.Context, cancel <-chan struct{}) Result {
+				assert.True(t, TryCommitResult(ctx, cancel))
+				close(committed)
+				<-finish
+				return Result{PNG: []byte("paid result")}
+			},
+			Release: func() { close(released) },
+		}
+	})
+	now := time.Now()
+	job, err := q.Submit(Request{Owner: 1, Key: "committed-image-job", Body: []byte("input")}, q.Epoch(), now)
+	require.NoError(t, err)
+	q.Tick(context.Background(), now)
+	<-committed
+	status, found := q.Cancel(1, job.ID, now)
+	assert.True(t, found)
+	assert.True(t, status.ResultCommitted)
+	assert.False(t, status.CancelRequested)
+	close(finish)
+	<-released
+	status, found = q.Cancel(1, job.ID, now)
+	require.True(t, found)
+	assert.Equal(t, "completed", status.State)
+	image, found := q.Result(1, job.ID)
+	assert.True(t, found)
+	assert.Equal(t, []byte("paid result"), image)
+}
+
+func TestStudioQueueCapsRunningJobsAndReleasesWaitingClaims(t *testing.T) {
+	finish := make(chan struct{})
+	released := make(chan struct{}, MaxRunning+2)
+	q := New(func(Request, string) *Reservation {
+		return &Reservation{
+			Run: func(context.Context, <-chan struct{}) Result {
+				<-finish
+				return Result{Error: "studio_generation_failed"}
+			},
+			Release: func() {},
+		}
+	})
+	defer close(finish)
+	now := time.Now()
+	jobs := make([]Status, 0, MaxRunning+2)
+	for owner := 1; owner <= MaxRunning+2; owner++ {
+		job, err := q.Submit(Request{Owner: owner, Key: "limited-image-job", Body: []byte("input")}, q.Epoch(), now, func(string) (func(), error) {
+			return func() { released <- struct{}{} }, nil
+		})
+		require.NoError(t, err)
+		jobs = append(jobs, job)
+	}
+	q.Tick(context.Background(), now)
+	for i, job := range jobs {
+		status, found := q.Lookup(i+1, job.ID)
+		require.True(t, found)
+		if i < MaxRunning {
+			assert.Equal(t, "running", status.State)
+		} else {
+			assert.Equal(t, "queued", status.State)
+		}
+	}
+	status, found := q.Cancel(MaxRunning+1, jobs[MaxRunning].ID, now)
+	require.True(t, found)
+	assert.Equal(t, "cancelled", status.State)
+	q.Tick(context.Background(), now.Add(15*time.Minute))
+	status, found = q.Lookup(MaxRunning+2, jobs[MaxRunning+1].ID)
+	require.True(t, found)
+	assert.Equal(t, "expired", status.State)
+	assert.Len(t, released, 2)
 }
 
 func TestStudioQueueWaitingExpiryAndAggregateBudget(t *testing.T) {

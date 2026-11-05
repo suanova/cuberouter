@@ -142,8 +142,8 @@ test('reconnecting collects the reviewed PNG without resubmitting or acknowledgi
     new AbortController().signal,
     vi.fn()
   )
-  expect(output.id).toBe('job-a')
-  expect(output.images[0].url).toMatch(/^data:image\/png;base64,/)
+  expect(output?.id).toBe('job-a')
+  expect(output?.images[0].url).toMatch(/^data:image\/png;base64,/)
   expect(http.get).toHaveBeenLastCalledWith(
     `${IMAGE_JOBS}/job-a/result`,
     expect.objectContaining({ responseType: 'blob' })
@@ -211,17 +211,35 @@ test('lost cancellation is remembered and reconnect retries only the cancellatio
   ).toBe(true)
 })
 
-test('a changed gateway epoch marks the draft recoverable without replaying generation', async () => {
-  http.get.mockResolvedValue({ data: { ...status, epoch: 'boot-b' } })
-  const progress = vi.fn()
-  await expect(
-    collectStudioImage(1, record, new AbortController().signal, progress)
-  ).rejects.toThrow('restarted')
-  expect(progress).toHaveBeenLastCalledWith(
-    expect.objectContaining({ state: 'expired' })
-  )
-  expect(http.post).not.toHaveBeenCalled()
-})
+test.each(['legacy response', 'gateway conflict'])(
+  'a changed epoch (%s) keeps the pending draft reconnectable',
+  async (mode) => {
+    await pendingStudioImage(1, record)
+    if (mode === 'gateway conflict') {
+      http.get.mockRejectedValue({
+        isAxiosError: true,
+        response: { status: 409 },
+      })
+    } else {
+      http.get.mockResolvedValue({ data: { ...status, epoch: 'boot-b' } })
+    }
+    const progress = vi.fn()
+    await expect(
+      collectStudioImage(1, record, new AbortController().signal, progress)
+    ).rejects.toThrow('gateway')
+    expect(progress).toHaveBeenLastCalledWith(
+      expect.objectContaining({ state: 'reconnecting' })
+    )
+    expect(http.get).toHaveBeenCalledWith(
+      `${IMAGE_JOBS}/${record.key}`,
+      expect.objectContaining({
+        headers: { 'X-Trial-Epoch': record.epoch },
+      })
+    )
+    expect(http.post).not.toHaveBeenCalled()
+    expect(await pendingStudioImage(1)).toEqual(record)
+  }
+)
 
 test('two tabs racing to submit claim one recovery record and make one inference request', async () => {
   http.get.mockResolvedValue({ data: { epoch: 'boot-a' } })
@@ -246,7 +264,7 @@ test('cancellation intent wins over a completed response before any result is do
   http.post.mockResolvedValue({ data: { ...status, state: 'cancelled' } })
   await expect(
     collectStudioImage(1, record, new AbortController().signal, vi.fn())
-  ).rejects.toThrow()
+  ).resolves.toBeUndefined()
   expect(http.post).toHaveBeenCalledWith(
     `${IMAGE_JOBS}/job-a/cancel`,
     {},
@@ -260,14 +278,14 @@ test('cancellation intent wins over a completed response before any result is do
 test('a late acknowledgement from an old tab cannot erase a newer recovery record', async () => {
   await pendingStudioImage(1, { ...record, key: 'newer-request-1234' })
   http.post.mockResolvedValue({})
-  await acknowledgeStudioImage(1, 'old-job', record.key)
+  await acknowledgeStudioImage(1, 'old-job', record.key, record.epoch)
   expect((await pendingStudioImage(1))?.key).toBe('newer-request-1234')
 })
 
 test('a stale tab cancelling an acknowledged job cannot recreate its cleared recovery record', async () => {
   await pendingStudioImage(1, record)
   http.post.mockResolvedValue({})
-  await acknowledgeStudioImage(1, status.id, record.key)
+  await acknowledgeStudioImage(1, status.id, record.key, record.epoch)
   expect(await pendingStudioImage(1)).toBeUndefined()
   await cancelStudioImage(1, record, status)
   expect(await pendingStudioImage(1)).toBeUndefined()
@@ -287,7 +305,7 @@ test('cancellation recorded while downloading discards the received PNG before c
   http.post.mockResolvedValue({})
   await expect(
     collectStudioImage(1, record, new AbortController().signal, vi.fn())
-  ).rejects.toThrow()
+  ).resolves.toBeUndefined()
   expect(http.post).toHaveBeenCalledWith(
     `${IMAGE_JOBS}/job-a/cancel`,
     {},
@@ -324,3 +342,24 @@ test.each([
     expect((await pendingStudioImage(1))?.key).toBe(current.key)
   }
 )
+
+test('an image committed before cancellation is still collected and saved', async () => {
+  await pendingStudioImage(1, { ...record, cancelRequested: true })
+  http.get
+    .mockResolvedValueOnce({
+      data: { ...status, state: 'completed', result_committed: true },
+    })
+    .mockResolvedValueOnce({
+      data: new Blob(['reviewed'], { type: 'image/png' }),
+    })
+  const job = await collectStudioImage(
+    1,
+    record,
+    new AbortController().signal,
+    vi.fn()
+  )
+  if (!job) throw new Error('missing committed image')
+  expect(await saveStudioJob(1, job, record.key, true)).toBe(true)
+  expect(await listStudioJobs(1)).toHaveLength(1)
+  expect(http.post).not.toHaveBeenCalled()
+})

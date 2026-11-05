@@ -49,29 +49,34 @@ export function ImageAudit() {
   const userID = useAuthStore((state) => state.auth.user?.id)
   const role = useAuthStore((state) => state.auth.user?.role)
   const canView = (role ?? 0) >= ROLE.SUPER_ADMIN
-  const [before, setBefore] = useState<number>()
-  const [beforeID, setBeforeID] = useState<string>()
+  const [cursors, setCursors] = useState<{ time: number; id: string }[]>([])
+  const cursor = cursors.at(-1)
   const [user, setUser] = useState('')
   const validUser =
     user === '' ||
     (/^[1-9]\d*$/.test(user) && Number.isSafeInteger(Number(user)))
   const rows = useQuery({
-    queryKey: ['studio-image-audit', userID, before, beforeID, user],
+    queryKey: ['studio-image-audit', userID, cursor, user],
     enabled: canView && validUser,
     queryFn: async () =>
       (
-        await api.get<{ data: ImageAuditRow[] }>('/api/image-studio-audit', {
-          params: {
-            before,
-            before_job_id: beforeID,
-            user_id: user || undefined,
-          },
-        })
-      ).data.data,
+        await api.get<{ data: ImageAuditRow[]; has_more?: boolean }>(
+          '/api/image-studio-audit',
+          {
+            params: {
+              before: cursor?.time,
+              before_job_id: cursor?.id,
+              user_id: user || undefined,
+            },
+          }
+        )
+      ).data,
   })
+  const records = rows.data?.data ?? []
+  const hasOlder = rows.data?.has_more ?? records.length === 100
   if (!canView) return null
   return (
-    <Main className='space-y-4'>
+    <Main className='space-y-4 overflow-y-auto p-4 sm:p-6'>
       <h1 className='text-2xl font-semibold'>{t('Image output audit')}</h1>
       <p className='text-muted-foreground'>
         {t(
@@ -88,8 +93,7 @@ export function ImageAudit() {
           value={user}
           onChange={(e) => {
             setUser(e.target.value)
-            setBefore(undefined)
-            setBeforeID(undefined)
+            setCursors([])
           }}
         />
       </label>
@@ -102,8 +106,8 @@ export function ImageAudit() {
         </p>
       )}
       {validUser && rows.isPending && <p role='status'>{t('Loading...')}</p>}
-      {rows.data?.length === 0 && <p>{t('No image audit records.')}</p>}
-      {rows.data?.map((row) => (
+      {rows.data && !records.length && <p>{t('No image audit records.')}</p>}
+      {records.map((row) => (
         <details key={row.job_id} className='rounded-xl border p-4'>
           <summary className='cursor-pointer break-all'>
             {new Date(row.created_at).toLocaleString()} / {row.model} /{' '}
@@ -132,26 +136,31 @@ export function ImageAudit() {
           </dl>
         </details>
       ))}
-      <div className='flex gap-2'>
+      <div className='flex flex-wrap gap-2'>
         <Button
           variant='outline'
-          disabled={!validUser}
-          onClick={() => {
-            setBefore(undefined)
-            setBeforeID(undefined)
-            void rows.refetch()
-          }}
+          disabled={!validUser || rows.isFetching}
+          onClick={() => void rows.refetch()}
         >
           {t('Refresh')}
         </Button>
         <Button
           variant='outline'
-          disabled={!validUser || !rows.data?.length || rows.data.length < 100}
+          disabled={!validUser || !cursor}
+          onClick={() => setCursors((pages) => pages.slice(0, -1))}
+        >
+          {t('Newer records')}
+        </Button>
+        <Button
+          variant='outline'
+          disabled={!validUser || !hasOlder}
           onClick={() => {
-            const last = rows.data?.at(-1)
+            const last = records.at(-1)
             if (last) {
-              setBefore(last.created_at)
-              setBeforeID(last.job_id)
+              setCursors((pages) => [
+                ...pages,
+                { time: last.created_at, id: last.job_id },
+              ])
             }
           }}
         >

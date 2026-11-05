@@ -141,6 +141,37 @@ test('standard channel generation saves actual bytes locally and reloads history
   fireEvent.click(screen.getByRole('button', { name: 'Result' }))
   await screen.findByRole('button', { name: 'Open creation: A cat' })
 })
+
+test('a queued edit retains a box even when its model has no image-mask tag', async () => {
+  const getPricing = http.get.getMockImplementation()
+  http.get.mockImplementation(async (url) =>
+    url === '/api/media-studio/config'
+      ? {
+          data: {
+            image_queue_enabled: true,
+            image_queue_access: true,
+            image_queue_models: ['edit-model'],
+          },
+        }
+      : getPricing?.(url)
+  )
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.click(
+    within(screen.getByLabelText('Creation mode')).getByRole('button', {
+      name: 'Image to image',
+    })
+  )
+  fireEvent.change(screen.getByLabelText('Upload reference images'), {
+    target: {
+      files: [new File(['PNG'], 'reference.png', { type: 'image/png' })],
+    },
+  })
+  const surface = await screen.findByRole('group', { name: 'Selection area' })
+  await waitFor(() => expect(surface).toHaveAttribute('aria-disabled', 'false'))
+  fireEvent.keyDown(surface, { key: 'Enter' })
+  expect(screen.getByRole('button', { name: 'Undo box' })).toBeEnabled()
+})
 test('a reference attached in the composer reaches the relay as multipart', async () => {
   // 图生图的成败全在这条契约上：参考图作为 multipart 的 image 文件 part 提交,
   // 标量模型/提示走 form 字段, 全程不碰对象存储。

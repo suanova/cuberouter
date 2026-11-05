@@ -44,10 +44,12 @@ export interface ImageJobStatus {
     | 'failed'
     | 'expired'
     | 'released'
+    | 'reconnecting'
   ahead: number
   error?: string
   recovery_pending: boolean
   cancel_requested: boolean
+  result_committed?: boolean
   created_at: number
 }
 export interface PendingStudioImage {
@@ -122,11 +124,17 @@ export function imageJobMessage(code?: string): string {
     case 'studio_audit_unavailable':
       return 'Image auditing is unavailable. No image was released.'
     case 'studio_account_busy':
-      return 'Your previous image job is still using a worker. Reconnect before trying again.'
+      return 'Your account already has a pending image job. Reconnect before trying again.'
     case 'studio_access_denied':
       return 'Your account does not have access to the image queue.'
     case 'studio_capacity_unavailable':
       return 'Image workers are temporarily unavailable. Try again later.'
+    case 'studio_scope_changed':
+      return 'Your image access or billing account changed. Review your draft and try again.'
+    case 'studio_epoch_changed':
+      return 'Could not reach the gateway for this image job. Reconnect to recover it.'
+    case 'studio_queue_full':
+      return 'The image queue is full. Try again later.'
     default:
       return 'The image job could not complete. Your draft has been kept.'
   }
@@ -196,10 +204,22 @@ export async function cancelStudioImage(
     { ...record, cancelRequested: true },
     { expectedKey: record.key }
   )
-  await api.post(
-    `${IMAGE_JOBS}/${status.id}/cancel`,
+  await sendStudioCancellation(status.id, record.epoch)
+}
+
+function sendStudioCancellation(
+  id: string,
+  epoch: string,
+  signal?: AbortSignal
+) {
+  return api.post(
+    `${IMAGE_JOBS}/${id}/cancel`,
     {},
-    { skipErrorHandler: true }
+    {
+      headers: { 'X-Trial-Epoch': epoch },
+      signal,
+      skipErrorHandler: true,
+    }
   )
 }
 
@@ -208,56 +228,67 @@ export async function collectStudioImage(
   record: PendingStudioImage,
   signal: AbortSignal,
   onStatus: (status: ImageJobStatus) => void
-): Promise<WorkflowJob> {
+): Promise<WorkflowJob | undefined> {
+  const headers = { 'X-Trial-Epoch': record.epoch }
+  const unavailable = (state: 'expired' | 'reconnecting') => {
+    onStatus({
+      id: '',
+      key: record.key,
+      epoch: record.epoch,
+      state,
+      ahead: 0,
+      recovery_pending: false,
+      cancel_requested: false,
+      created_at: record.started,
+    })
+  }
+  const handleLookupError = (error: unknown): never => {
+    if (isAxiosError(error) && error.response?.status === 409) {
+      unavailable('reconnecting')
+      throw new Error(imageJobMessage('studio_epoch_changed'))
+    }
+    if (isAxiosError(error) && error.response?.status === 404) {
+      unavailable('expired')
+    }
+    throw error
+  }
   for (;;) {
     const response = await api
       .get<ImageJobStatus>(`${IMAGE_JOBS}/${encodeURIComponent(record.key)}`, {
+        headers,
         signal,
         skipErrorHandler: true,
       })
-      .catch((error) => {
-        if (isAxiosError(error) && error.response?.status === 404) {
-          onStatus({
-            id: '',
-            key: record.key,
-            epoch: record.epoch,
-            state: 'expired',
-            ahead: 0,
-            recovery_pending: false,
-            cancel_requested: false,
-            created_at: record.started,
-          })
-        }
-        throw error
-      })
+      .catch(handleLookupError)
     const status = response.data
     if (status.epoch !== record.epoch) {
-      onStatus({ ...status, state: 'expired' })
-      throw new Error(
-        'The image service restarted. Review your draft before generating again.'
-      )
+      unavailable('reconnecting')
+      throw new Error(imageJobMessage('studio_epoch_changed'))
     }
     onStatus(status)
+    if (status.state === 'cancelled' && !status.recovery_pending) return
     const latest = await pendingStudioImage(owner)
     if (
       latest?.key === record.key &&
       latest.cancelRequested &&
+      !status.result_committed &&
       !status.cancel_requested &&
       ['queued', 'running', 'completed'].includes(status.state)
     ) {
-      await api.post(
-        `${IMAGE_JOBS}/${status.id}/cancel`,
-        {},
-        { signal, skipErrorHandler: true }
+      await sendStudioCancellation(status.id, record.epoch, signal).catch(
+        handleLookupError
       )
       continue
     }
     if (status.state === 'completed') {
-      const result = await api.get<Blob>(`${IMAGE_JOBS}/${status.id}/result`, {
-        responseType: 'blob',
-        signal,
-        skipErrorHandler: true,
-      })
+      const result = await api
+        .get<Blob>(`${IMAGE_JOBS}/${status.id}/result`, {
+          headers,
+          responseType: 'blob',
+          signal,
+          skipErrorHandler: true,
+        })
+        .catch(handleLookupError)
       if (
         result.data.type !== 'image/png' ||
         result.data.size > 12 * 1024 * 1024
@@ -269,14 +300,9 @@ export async function collectStudioImage(
       if (recovery?.key !== record.key) {
         throw new Error(imageJobMessage())
       }
-      if (recovery.cancelRequested) {
-        await api.post(
-          `${IMAGE_JOBS}/${status.id}/cancel`,
-          {},
-          {
-            signal,
-            skipErrorHandler: true,
-          }
+      if (recovery.cancelRequested && !status.result_committed) {
+        await sendStudioCancellation(status.id, record.epoch, signal).catch(
+          handleLookupError
         )
         continue
       }
@@ -295,7 +321,9 @@ export async function collectStudioImage(
         request_id: status.id,
       }
     }
-    if (!['queued', 'running', 'cancelling'].includes(status.state)) {
+    if (
+      !['queued', 'running', 'cancelling', 'cancelled'].includes(status.state)
+    ) {
       throw new Error(imageJobMessage(status.error))
     }
     await new Promise<void>((resolve, reject) => {
@@ -316,8 +344,16 @@ export async function collectStudioImage(
 export async function acknowledgeStudioImage(
   owner: number,
   id: string,
-  key: string
+  key: string,
+  epoch: string
 ): Promise<void> {
-  await api.post(`${IMAGE_JOBS}/${id}/ack`, {}, { skipErrorHandler: true })
+  await api.post(
+    `${IMAGE_JOBS}/${id}/ack`,
+    {},
+    {
+      headers: { 'X-Trial-Epoch': epoch },
+      skipErrorHandler: true,
+    }
+  )
   await pendingStudioImage(owner, null, { expectedKey: key })
 }

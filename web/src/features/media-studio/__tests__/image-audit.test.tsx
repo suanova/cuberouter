@@ -152,3 +152,40 @@ test('audit details expose the original instruction and blocked reason; filterin
   ).not.toBeInTheDocument()
   client.clear()
 })
+
+test('audit can go back to newer records and refresh the current page', async () => {
+  const latest = {
+    job_id: 'latest-job',
+    created_at: 100,
+    model: 'qwen',
+    user_id: 1,
+  }
+  const older = { ...latest, job_id: 'older-job' }
+  const get = vi
+    .spyOn(api, 'get')
+    .mockResolvedValueOnce({ data: { data: [latest], has_more: true } })
+    .mockResolvedValueOnce({ data: { data: [older], has_more: false } })
+    .mockResolvedValueOnce({ data: { data: [older], has_more: false } })
+    .mockResolvedValue({ data: { data: [latest], has_more: true } })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <ImageAudit />
+    </QueryClientProvider>
+  )
+  await screen.findByText(/latest-job/)
+  fireEvent.click(screen.getByRole('button', { name: 'Older records' }))
+  await screen.findByText(/older-job/)
+  expect(screen.getByRole('button', { name: 'Older records' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+  await waitFor(() => expect(get).toHaveBeenCalledTimes(3))
+  expect(get).toHaveBeenLastCalledWith('/api/image-studio-audit', {
+    params: { before: 100, before_job_id: 'latest-job', user_id: undefined },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Newer records' }))
+  await screen.findByText(/latest-job/)
+  expect(screen.getByRole('button', { name: 'Newer records' })).toBeDisabled()
+  client.clear()
+})

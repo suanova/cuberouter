@@ -37,6 +37,14 @@ export interface ReferenceMarkup {
 }
 
 export function validImageMark(mark: ImageMark): boolean {
+  const first = mark.points[0]
+  const last = mark.points.at(-1)
+  if (
+    mark.tool === 'rectangle' &&
+    (!first || !last || first.x === last.x || first.y === last.y)
+  ) {
+    return false
+  }
   return (
     ['rectangle', 'lasso', 'brush'].includes(mark.tool) &&
     ['blue', 'red', 'green', 'white'].includes(mark.color) &&

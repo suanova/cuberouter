@@ -31,6 +31,7 @@ export const CHANNEL_TYPE_TASK_PLUGIN = 62
 // Fork-local type with no upstream equivalent: CubeStack (SGLang Diffusion) video channels
 // (must match backend constant.ChannelTypeCubeStack).
 export const CHANNEL_TYPE_CUBE_STACK = 64
+export const CHANNEL_TYPE_STUDIO_REVIEW = 65
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -96,7 +97,7 @@ export const CHANNEL_TYPES = {
   // Upstream assigns Task Plugin = 61; remapped to 62 (see CHANNEL_TYPE_TASK_PLUGIN).
   62: 'Task Plugin',
   64: 'CubeStack',
-  65: 'ShieldGemma 2 (Image review)',
+  [CHANNEL_TYPE_STUDIO_REVIEW]: 'ShieldGemma 2 (Image review)',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
@@ -480,7 +481,8 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {
-  65: 'Private output reviewer: use the full HTTPS /v1/moderate URL and a service key. This channel cannot generate images or serve chat.',
+  [CHANNEL_TYPE_STUDIO_REVIEW]:
+    'Private output reviewer: use the full HTTPS /v1/moderate URL and a service key. This channel cannot generate images or serve chat.',
   3: 'For channels added after May 10, 2025, no need to remove "." from model names during deployment',
   8: 'If connecting to upstream One API or CubeRouter relay projects, use OpenAI type instead unless you know what you are doing',
   37: 'Dify channels only support chatflow and agent, and agent does not support images',

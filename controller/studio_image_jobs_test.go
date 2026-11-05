@@ -28,6 +28,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -84,7 +85,7 @@ func TestRequireStudioImageQueueChecksMultipartModel(t *testing.T) {
 	}
 }
 
-func TestStudioImageSubmitCancelsAdmittedJobWhenAuditInsertFails(t *testing.T) {
+func TestStudioImageSubmitRollsBackAccountClaimWhenAuditInsertFails(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
 	require.NoError(t, db.AutoMigrate(&model.StudioImageAudit{}, &model.StudioImageLease{}))
 	t.Setenv("IMAGE_STUDIO_ENABLED", "true")
@@ -134,8 +135,22 @@ func TestStudioImageSubmitCancelsAdmittedJobWhenAuditInsertFails(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(w.Body.Bytes(), &response))
 	assert.Equal(t, "studio_audit_unavailable", response.Error.Code)
-	status, exists := q.Lookup(7007, "audit-failure-request")
-	require.True(t, exists, "the failure occurs after admission, so the idempotency lookup remains available")
-	assert.Equal(t, "cancelled", status.State)
-	assert.True(t, status.CancelRequested)
+	_, exists := q.Lookup(7007, "audit-failure-request")
+	assert.False(t, exists, "an unauditable job must never enter the queue")
+	busy, err := model.StudioImageAccountBusy(7007, time.Now())
+	require.NoError(t, err)
+	assert.False(t, busy, "failed admission releases the shared account lease")
+}
+
+func TestStudioImageJobEpochDistinguishesWrongGatewayFromMissingJob(t *testing.T) {
+	q := imageJobs()
+	router := gin.New()
+	router.GET("/:job", RequireStudioImageJobEpoch, GetStudioImageJob)
+	for epoch, want := range map[string]int{"other-gateway": http.StatusConflict, q.Epoch(): http.StatusNotFound} {
+		req := httptest.NewRequest(http.MethodGet, "/unknown-job", nil)
+		req.Header.Set("X-Trial-Epoch", epoch)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, want, w.Code)
+	}
 }

@@ -80,6 +80,9 @@ test('editing a reviewer restores its CA certificate and saves the entered PEM a
   const field = await screen.findByRole('textbox', {
     name: 'Reviewer CA certificate (optional)',
   })
+  expect(
+    screen.getByRole('textbox', { name: 'Base URL' })
+  ).toHaveAccessibleDescription('Enter the full HTTPS /v1/moderate URL.')
   expect(field).toHaveValue(savedPEM)
   fireEvent.change(field, { target: { value: editedPEM } })
   fireEvent.click(screen.getByRole('button', { name: 'Update Channel' }))

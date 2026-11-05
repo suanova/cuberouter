@@ -34,10 +34,21 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestStudioReviewGateRequiresCallbackForReservedWorker(t *testing.T) {
+	t.Setenv("IMAGE_STUDIO_ENABLED", "false")
+	t.Setenv("IMAGE_STUDIO_CHANNEL_IDS", "41")
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	common.SetContextKey(c, constant.ContextKeyChannelId, 41)
+	require.EqualError(t, GateStudioImageResponse(c, &http.Response{Body: io.NopCloser(strings.NewReader("unreviewed"))}), "output_check_unavailable")
+	common.SetContextKey(c, constant.ContextKeyChannelId, 42)
+	require.NoError(t, GateStudioImageResponse(c, nil))
+}
 
 func TestStudioReviewBindsBytesAndAllPolicyScores(t *testing.T) {
 	data := []byte("PNG bytes")

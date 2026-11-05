@@ -33,10 +33,10 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	imageJobs := studio.Group("/image-jobs", middleware.StudioImageIPRateLimit(), middleware.StudioImageUserRateLimit(), controller.StudioImageAccess)
 	imageJobs.GET("/session", controller.StudioImageSession)
 	imageJobs.POST("", controller.SubmitStudioImageJob)
-	imageJobs.GET("/:job", controller.GetStudioImageJob)
-	imageJobs.POST("/:job/cancel", controller.CancelStudioImageJob)
-	imageJobs.GET("/:job/result", controller.GetStudioImageResult)
-	imageJobs.POST("/:job/ack", controller.AckStudioImageResult)
+	imageJobs.GET("/:job", controller.RequireStudioImageJobEpoch, controller.GetStudioImageJob)
+	imageJobs.POST("/:job/cancel", controller.RequireStudioImageJobEpoch, controller.CancelStudioImageJob)
+	imageJobs.GET("/:job/result", controller.RequireStudioImageJobEpoch, controller.GetStudioImageResult)
+	imageJobs.POST("/:job/ack", controller.RequireStudioImageJobEpoch, controller.AckStudioImageResult)
 	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.GetStudioImageAudit)
 	{
 		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据

@@ -119,6 +119,8 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if reviewErr := service.GateStudioImageResponse(c, httpResp); reviewErr != nil {
 		return types.NewErrorWithStatusCode(reviewErr, types.ErrorCode("studio_output_review"), http.StatusUnprocessableEntity, types.ErrOptionWithSkipRetry())
 	}
+	// The Studio relay captures the response privately. Check cancellation
+	// before the native settlement, so an accepted cancel refunds pre-consume.
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
 	if newAPIError != nil {
 		// reset status code 重置状态码
@@ -155,6 +157,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		logContent = append(logContent, fmt.Sprintf("生成数量 %d", imageN))
 	}
 
+	if value, exists := c.Get(service.StudioCommitContext); exists {
+		commit, ok := value.(func() bool)
+		if !ok || !commit() {
+			return types.NewErrorWithStatusCode(fmt.Errorf("studio_result_not_committed"), types.ErrorCode("studio_result_not_committed"), http.StatusConflict, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
+		}
+	}
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
 }

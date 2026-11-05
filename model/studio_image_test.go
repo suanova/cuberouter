@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 package model
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -27,8 +28,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/glebarez/sqlite"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -45,6 +49,19 @@ func TestStudioImageDatabaseContracts(t *testing.T) {
 				t.Cleanup(func() { _ = sqlDB.Close() })
 			} else {
 				db = openOrganizationNameMigrationConfiguredDB(t, dialect)
+				if dialect == "postgres" {
+					// Both contenders must see the same disposable schema on
+					// separate connections from the test pool.
+					var schema string
+					require.NoError(t, db.Raw("select current_schema()").Scan(&schema).Error)
+					config, err := pgx.ParseConfig(requireEnvOrSkip(t, "TEST_POSTGRES_DSN"))
+					require.NoError(t, err)
+					config.RuntimeParams["search_path"] = schema
+					sqlDB := stdlib.OpenDB(*config)
+					t.Cleanup(func() { _ = sqlDB.Close() })
+					db, err = gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{})
+					require.NoError(t, err)
+				}
 			}
 			original := DB
 			DB = db
@@ -109,27 +126,87 @@ func TestStudioImageDatabaseContracts(t *testing.T) {
 			acquired, err = AcquireStudioImageLease("gpu:1", "job-b", now, time.Minute)
 			require.NoError(t, err)
 			assert.True(t, acquired)
+			// Two gateways competing for a queued account must have one winner.
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			if dialect == "sqlite" {
+				sqlDB.SetMaxOpenConns(1)
+			}
+			type claim struct {
+				holder   string
+				acquired bool
+				err      error
+			}
+			claims := make(chan claim, 2)
+			for _, holder := range []string{"gateway-a-job", "gateway-b-job"} {
+				go func() {
+					acquired, err := AcquireStudioImageLease("account:7", holder, now, time.Minute)
+					claims <- claim{holder, acquired, err}
+				}()
+			}
+			var winner, loser string
+			for range 2 {
+				c := <-claims
+				require.NoError(t, c.err)
+				if c.acquired {
+					require.Empty(t, winner)
+					winner = c.holder
+				} else {
+					loser = c.holder
+				}
+			}
+			require.NotEmpty(t, winner)
+			require.NotEmpty(t, loser)
+			renewed, err := RenewStudioImageLease("account:7", loser, now, time.Minute)
+			require.NoError(t, err)
+			assert.False(t, renewed)
+			renewed, err = RenewStudioImageLease("account:7", winner, now, time.Minute)
+			require.NoError(t, err)
+			assert.True(t, renewed, "even a same-millisecond dispatch renews the lease")
+			renewed, err = RenewStudioImageLease("account:7", winner, now.Add(2*time.Minute), time.Minute)
+			require.NoError(t, err)
+			assert.False(t, renewed, "an expired holder cannot renew the account")
+			require.NoError(t, ReleaseStudioImageLease("account:7", winner))
+			acquired, err = AcquireStudioImageLease("account:7", loser, now, time.Minute)
+			require.NoError(t, err)
+			assert.True(t, acquired)
 			row := &StudioImageAudit{JobID: "job-a", UserID: 7, UserPrompt: "original", CreatedAt: now.UnixMilli()}
 			require.NoError(t, RecordStudioImageAudit(row))
 			row.UserPrompt = "overwrite"
 			require.NoError(t, RecordStudioImageAudit(row))
 			require.NoError(t, UpdateStudioImageAudit("job-a", map[string]any{"state": "completed"}))
-			rows, err := ListStudioImageAudit(0, 7)
+			rows, hasMore, err := ListStudioImageAudit(0, 7)
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
+			assert.False(t, hasMore)
 			assert.Equal(t, "original", rows[0].UserPrompt)
 			require.NoError(t, RecordStudioImageAudit(&StudioImageAudit{JobID: "job-b", UserID: 7, CreatedAt: now.UnixMilli()}))
-			rows, err = ListStudioImageAudit(now.UnixMilli(), 7, "job-b")
+			rows, _, err = ListStudioImageAudit(now.UnixMilli(), 7, "job-b")
 			require.NoError(t, err)
 			require.Len(t, rows, 1)
 			assert.Equal(t, "job-a", rows[0].JobID, "a timestamp tie must not skip the next audit row")
 			require.NoError(t, RecordStudioImageAudit(&StudioImageAudit{JobID: "other-account", UserID: 8, CreatedAt: now.UnixMilli()}))
-			rows, err = ListStudioImageAudit(0, 7)
+			rows, _, err = ListStudioImageAudit(0, 7)
 			require.NoError(t, err)
 			require.Len(t, rows, 2)
 			for _, row := range rows {
 				assert.Equal(t, 7, row.UserID, "account filtering excludes other users' prompts")
 			}
+			pageRows := make([]StudioImageAudit, 101)
+			for i := range pageRows {
+				pageRows[i] = StudioImageAudit{JobID: fmt.Sprintf("page-%03d", i), UserID: 9, CreatedAt: now.UnixMilli()}
+			}
+			require.NoError(t, db.CreateInBatches(&pageRows, 50).Error)
+			rows, hasMore, err = ListStudioImageAudit(0, 9)
+			require.NoError(t, err)
+			require.Len(t, rows, 100)
+			require.True(t, hasMore)
+			last := rows[len(rows)-1]
+			rows, hasMore, err = ListStudioImageAudit(last.CreatedAt, 9, last.JobID)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			assert.False(t, hasMore)
+			assert.Equal(t, "page-000", rows[0].JobID)
 			require.NoError(t, PruneStudioImageAudits(now.Add(31*24*time.Hour)))
 			var count int64
 			require.NoError(t, db.Model(&StudioImageAudit{}).Count(&count).Error)

@@ -107,6 +107,23 @@ test('annotation-only models expose colored guides and reject coordinates outsid
   expect(screen.getByRole('button', { name: 'Add rectangle' })).toBeDisabled()
 })
 
+test('a rectangle with identical corners cannot be applied', () => {
+  render(
+    <ReferenceEditor
+      image={image}
+      regional
+      onClose={vi.fn()}
+      onApply={vi.fn()}
+    />
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'rectangle' }))
+  const surface = screen.getByLabelText('Reference drawing surface')
+  fireEvent.keyDown(surface, { key: ' ' })
+  fireEvent.keyDown(surface, { key: ' ' })
+  fireEvent.keyDown(surface, { key: 'Enter' })
+  expect(screen.getByRole('button', { name: 'Use drawing' })).toBeDisabled()
+})
+
 test('malformed or unbounded paths cannot be rasterized as a valid region', () => {
   const mark = {
     tool: 'lasso' as const,

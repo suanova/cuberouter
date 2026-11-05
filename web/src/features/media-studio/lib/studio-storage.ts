@@ -68,7 +68,8 @@ export async function listStudioJobs(owner: number): Promise<WorkflowJob[]> {
 export async function saveStudioJob(
   owner: number,
   job: WorkflowJob,
-  expectedPendingKey?: string
+  expectedPendingKey?: string,
+  resultCommitted = false
 ): Promise<boolean> {
   if (
     [...job.images, ...job.request.references].some(
@@ -102,7 +103,10 @@ export async function saveStudioJob(
           const current = pending.result as
             | { key?: string; cancelRequested?: boolean }
             | undefined
-          if (current?.key !== expectedPendingKey || current.cancelRequested) {
+          if (
+            current?.key !== expectedPendingKey ||
+            (current.cancelRequested && !resultCommitted)
+          ) {
             recoveryChanged = true
             tx.abort()
           }

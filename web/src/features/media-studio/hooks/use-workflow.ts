@@ -110,26 +110,40 @@ export function useWorkflow(owner: number) {
         )
       let output: { job: WorkflowJob; warning?: string }
       let pendingRecord: PendingStudioImage | undefined
+      let resultCommitted = false
       if (queued) {
         const record = draft.resume ?? (await submitStudioImage(owner, draft))
         setPending(record)
         pendingRecord = record
-        output = {
-          job: await collectStudioImage(
-            owner,
-            record,
-            abort.current.signal,
-            setQueueStatus
-          ),
-        }
+        const job = await collectStudioImage(
+          owner,
+          record,
+          abort.current.signal,
+          (status) => {
+            resultCommitted = status.result_committed === true
+            setQueueStatus(status)
+          }
+        )
+        if (!job) return
+        output = { job }
       } else output = await workflowAPI.generate(draft)
       let notice = output.warning ?? ''
       let recoveryChanged = false
       try {
         recoveryChanged =
-          (await saveStudioJob(owner, output.job, pendingRecord?.key)) === false
+          (await saveStudioJob(
+            owner,
+            output.job,
+            pendingRecord?.key,
+            resultCommitted
+          )) === false
         if (!recoveryChanged && pendingRecord) {
-          await acknowledgeStudioImage(owner, output.job.id, pendingRecord.key)
+          await acknowledgeStudioImage(
+            owner,
+            output.job.id,
+            pendingRecord.key,
+            pendingRecord.epoch
+          )
           setPending(undefined)
           setQueueStatus(undefined)
         }
@@ -145,6 +159,7 @@ export function useWorkflow(owner: number) {
     },
     retry: false,
     onSuccess: (output) => {
+      if (!output) return
       setSelected(output.job)
       setWarning(output.notice)
       void client.invalidateQueries({ queryKey: key })

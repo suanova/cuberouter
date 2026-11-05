@@ -194,7 +194,7 @@ test('a resumed result is acknowledged only after browser history commits', asyn
     expect(post).toHaveBeenCalledWith(
       `${IMAGE_JOBS}/job-a/ack`,
       {},
-      { skipErrorHandler: true }
+      { headers: { 'X-Trial-Epoch': record.epoch }, skipErrorHandler: true }
     )
   )
   expect((await storage.listStudioJobs(1))[0].id).toBe('job-a')

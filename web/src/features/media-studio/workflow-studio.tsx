@@ -65,6 +65,7 @@ export function WorkflowStudio(props: { owner: number }) {
   const queued = !!(
     config?.image_queue_enabled && config.image_queue_models?.includes(model)
   )
+  const canMask = queued || catalog.imageMask.includes(model)
   const current = {
     ...draft,
     model,
@@ -72,17 +73,12 @@ export function WorkflowStudio(props: { owner: number }) {
     markup:
       draft.mode === 'edit' &&
       draft.markup?.referenceID === draft.references[0]?.id &&
-      (draft.markup?.kind !== 'region' ||
-        queued ||
-        catalog.imageMask.includes(model))
+      (draft.markup?.kind !== 'region' || canMask)
         ? draft.markup
         : undefined,
     // 模型被回退替换后可能不再声明 image-mask：草稿里的框选必须一起作废，
     // 否则生成时仍会把蒙版发给不认识它的模型，而页面上已经看不到框了。
-    mask:
-      draft.mode === 'edit' && catalog.imageMask.includes(model)
-        ? draft.mask
-        : undefined,
+    mask: draft.mode === 'edit' && canMask ? draft.mask : undefined,
   }
   const references = useMutation({
     mutationFn: async (files: Blob[]) => {
@@ -203,7 +199,7 @@ export function WorkflowStudio(props: { owner: number }) {
           <ReferenceEditor
             image={current.references[0]}
             value={current.markup}
-            regional={queued || catalog.imageMask.includes(model)}
+            regional={canMask}
             onClose={() => setEditingReference(false)}
             onApply={(markup) => {
               setDraft({ ...current, markup, mask: undefined })

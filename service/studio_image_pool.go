@@ -21,6 +21,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -34,7 +36,20 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"golang.org/x/sync/singleflight"
 )
+
+type studioWorkerHealth struct {
+	ready   bool
+	expires time.Time
+}
+
+var studioHealthClient = studioPrivateClient(studioPrivateTransport(), 2*time.Second)
+var studioHealthProbes singleflight.Group
+var studioHealthCache = struct {
+	sync.Mutex
+	results map[string]studioWorkerHealth
+}{results: make(map[string]studioWorkerHealth)}
 
 func StudioImageEnabled() bool { return os.Getenv("IMAGE_STUDIO_ENABLED") == "true" }
 
@@ -77,21 +92,40 @@ func StudioImageGroupAllowed(group string) bool {
 
 // Readiness is semantic, not HTTP liveness. Bound the entire parallel probe so
 // an unavailable high-priority channel cannot hide a healthy lower replica.
-func ReadyStudioImageChannels(ctx context.Context, group, modelName string) []*model.Channel {
+// Dispatch skips workers already fenced by another execution.
+func ReadyStudioImageChannels(ctx context.Context, group, modelName string, skipLeased bool) []*model.Channel {
 	ids := StudioImageChannelIDs()
 	if len(ids) == 0 || len(ids) > 64 {
 		return nil
 	}
 	channels, err := model.StudioImageWorkerChannels(ids, group, modelName)
-	if err != nil {
+	if err != nil || len(channels) == 0 {
 		return nil
 	}
+	var leases []model.StudioImageLease
+	resources := make([]string, 0, len(channels))
+	for _, channel := range channels {
+		resources = append(resources, "gpu:"+strconv.Itoa(channel.Id))
+	}
+	if model.DB.Where("resource IN ?", resources).Find(&leases).Error != nil {
+		return nil
+	}
+	workerLeases := make(map[int]model.StudioImageLease, len(leases))
+	for _, lease := range leases {
+		if id, err := strconv.Atoi(strings.TrimPrefix(lease.Resource, "gpu:")); err == nil {
+			workerLeases[id] = lease
+		}
+	}
+	now := time.Now().UnixMilli()
 	probeCtx, stop := context.WithTimeout(ctx, 2*time.Second)
 	defer stop()
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	ready := make([]*model.Channel, 0, len(channels))
 	for _, ch := range channels {
+		if skipLeased && workerLeases[ch.Id].ExpiresAt > now {
+			continue
+		}
 		if (ch.ParamOverride != nil && strings.TrimSpace(*ch.ParamOverride) != "" && strings.TrimSpace(*ch.ParamOverride) != "{}") ||
 			(ch.HeaderOverride != nil && strings.TrimSpace(*ch.HeaderOverride) != "" && strings.TrimSpace(*ch.HeaderOverride) != "{}") {
 			continue
@@ -103,7 +137,7 @@ func ReadyStudioImageChannels(ctx context.Context, group, modelName string) []*m
 		wg.Add(1)
 		go func(channel *model.Channel) {
 			defer wg.Done()
-			if ProbeStudioImageWorker(probeCtx, channel) {
+			if cachedStudioImageWorkerHealth(probeCtx, channel) {
 				mu.Lock()
 				ready = append(ready, channel)
 				mu.Unlock()
@@ -111,30 +145,53 @@ func ReadyStudioImageChannels(ctx context.Context, group, modelName string) []*m
 		}(ch)
 	}
 	wg.Wait()
-	var leases []model.StudioImageLease
-	resources := make([]string, 0, len(ids))
-	for _, id := range ids {
-		resources = append(resources, "gpu:"+strconv.Itoa(id))
-	}
-	if model.DB.Where("resource IN ?", resources).Find(&leases).Error != nil {
-		return nil
-	}
-	lastUsed := make(map[int]int64)
-	for _, lease := range leases {
-		if id, err := strconv.Atoi(strings.TrimPrefix(lease.Resource, "gpu:")); err == nil {
-			lastUsed[id] = lease.LastUsed
-		}
-	}
 	sort.Slice(ready, func(i, j int) bool {
 		if ready[i].GetPriority() != ready[j].GetPriority() {
 			return ready[i].GetPriority() > ready[j].GetPriority()
 		}
-		if lastUsed[ready[i].Id] != lastUsed[ready[j].Id] {
-			return lastUsed[ready[i].Id] < lastUsed[ready[j].Id]
+		lastI := workerLeases[ready[i].Id].LastUsed
+		lastJ := workerLeases[ready[j].Id].LastUsed
+		if lastI != lastJ {
+			return lastI < lastJ
 		}
 		return ready[i].Id < ready[j].Id
 	})
 	return ready
+}
+
+func cachedStudioImageWorkerHealth(ctx context.Context, channel *model.Channel) bool {
+	key := fmt.Sprintf("%d:%s:%x", channel.Id, channel.GetBaseURL(), sha256.Sum256([]byte(channel.Key)))
+	get := func() (studioWorkerHealth, bool) {
+		studioHealthCache.Lock()
+		defer studioHealthCache.Unlock()
+		cached, ok := studioHealthCache.results[key]
+		return cached, ok && time.Now().Before(cached.expires)
+	}
+	if cached, ok := get(); ok {
+		return cached.ready
+	}
+	probe := studioHealthProbes.DoChan(key, func() (any, error) {
+		if cached, ok := get(); ok {
+			return cached.ready, nil
+		}
+		ready := ProbeStudioImageWorker(context.Background(), channel)
+		now := time.Now()
+		studioHealthCache.Lock()
+		for id, cached := range studioHealthCache.results {
+			if !now.Before(cached.expires) {
+				delete(studioHealthCache.results, id)
+			}
+		}
+		studioHealthCache.results[key] = studioWorkerHealth{ready: ready, expires: now.Add(2 * time.Second)}
+		studioHealthCache.Unlock()
+		return ready, nil
+	})
+	select {
+	case <-ctx.Done():
+		return false
+	case result := <-probe:
+		return result.Val == true
+	}
 }
 
 func ProbeStudioImageWorker(ctx context.Context, channel *model.Channel) bool {
@@ -142,17 +199,15 @@ func ProbeStudioImageWorker(ctx context.Context, channel *model.Channel) bool {
 		return false
 	}
 	endpoint := strings.TrimRight(channel.GetBaseURL(), "/") + "/health"
-	client, err := StudioPrivateClient(endpoint, "", 2*time.Second)
-	if err != nil {
+	if validateStudioServiceURL(endpoint) != nil {
 		return false
 	}
-	defer client.CloseIdleConnections()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return false
 	}
 	req.Header.Set("Authorization", "Bearer "+channel.Key)
-	resp, err := client.Do(req)
+	resp, err := studioHealthClient.Do(req)
 	if err != nil {
 		return false
 	}

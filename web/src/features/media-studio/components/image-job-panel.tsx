@@ -56,7 +56,7 @@ export function ImageJobPanel(props: {
           )}
         </p>
       )}
-      {active && !status.cancel_requested && (
+      {active && !status.cancel_requested && !status.result_committed && (
         <Button
           type='button'
           variant='outline'
@@ -68,9 +68,11 @@ export function ImageJobPanel(props: {
       )}
       {!w.generation.isPending && (
         <div className='flex flex-wrap gap-2'>
-          <Button type='button' variant='outline' onClick={w.reconnect}>
-            {t('Reconnect to image job')}
-          </Button>
+          {(status?.state !== 'cancelled' || status.recovery_pending) && (
+            <Button type='button' variant='outline' onClick={w.reconnect}>
+              {t('Reconnect to image job')}
+            </Button>
+          )}
           {status && !active && !status.recovery_pending && (
             <Button
               type='button'

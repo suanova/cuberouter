@@ -46,19 +46,11 @@ import (
 func reserveStudioImage(r studioqueue.Request, job string) *studioqueue.Reservation {
 	user, err := model.GetUserById(r.Owner, false)
 	if err != nil || user == nil || user.Status != common.UserStatusEnabled || !service.StudioImageGroupAllowed(user.Group) {
-		return &studioqueue.Reservation{Run: func(context.Context, <-chan struct{}) studioqueue.Result {
-			return studioqueue.Result{Error: "studio_access_denied"}
-		}, Release: func() {}}
+		return failedStudioReservation("studio_access_denied")
 	}
 	var p studioImageSubmission
 	if common.Unmarshal(r.Body, &p) != nil {
-		return nil
-	}
-	upstream := p.Request
-	upstream.Mask = "" // Region preservation is owned by CubeRouter's reviewed compositor.
-	body, err := common.Marshal(upstream)
-	if err != nil {
-		return nil
+		return failedStudioReservation("invalid_studio_request")
 	}
 	buffer := &studioImageBuffer{headers: make(http.Header), code: http.StatusOK}
 	path := "/pg/images/generations"
@@ -66,9 +58,9 @@ func reserveStudioImage(r studioqueue.Request, job string) *studioqueue.Reservat
 		path = "/pg/images/edits"
 	}
 	// The native relay rewrites the playground path to the upstream /v1 path.
-	req, err := http.NewRequest(http.MethodPost, path, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, path, nil)
 	if err != nil {
-		return nil
+		return failedStudioReservation("invalid_studio_request")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	c := &gin.Context{Request: req, Writer: buffer}
@@ -80,47 +72,66 @@ func reserveStudioImage(r studioqueue.Request, job string) *studioqueue.Reservat
 	common.SetContextKey(c, constant.ContextKeyUsingGroup, user.Group)
 	middleware.PlaygroundOrganizationFallback()(c)
 	group := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+	if group != r.Group || common.GetContextKeyInt(c, constant.ContextKeyOrganizationId) != r.OrganizationID {
+		return failedStudioReservation("studio_scope_changed")
+	}
 	if allow := model.GetUserModelAllowList(user.Id); allow != nil && !model.IsModelAllowedByMemberAccess(allow, r.Model) {
-		return &studioqueue.Reservation{Run: func(context.Context, <-chan struct{}) studioqueue.Result {
-			return studioqueue.Result{Error: "studio_model_denied"}
-		}, Release: func() {}}
+		return failedStudioReservation("studio_model_denied")
 	}
 	ctx, stop := context.WithTimeout(context.Background(), 3*time.Second)
 	defer stop()
 	accountResource := fmt.Sprintf("account:%d", r.Owner)
-	accountAcquired, err := model.AcquireStudioImageLease(accountResource, job, time.Now(), 15*time.Minute)
-	if err != nil || !accountAcquired {
-		return nil
-	}
-	for _, channel := range service.ReadyStudioImageChannels(ctx, group, r.Model) {
+	for _, channel := range service.ReadyStudioImageChannels(ctx, group, r.Model, true) {
 		resource := fmt.Sprintf("gpu:%d", channel.Id)
 		acquired, err := model.AcquireStudioImageLease(resource, job, time.Now(), 15*time.Minute)
 		if err != nil || !acquired {
 			continue
 		}
-		execution := &studioImageExecution{request: r, submission: p, id: job, channel: channel, relayContext: c, buffer: buffer, safeToRelease: true}
+		if !service.ProbeStudioImageWorker(ctx, channel) {
+			_ = model.ReleaseStudioImageLease(resource, job)
+			continue
+		}
+		renewed, err := model.RenewStudioImageLease(accountResource, job, time.Now(), studioImageLeaseDuration)
+		if err != nil || !renewed {
+			_ = model.ReleaseStudioImageLease(resource, job)
+			return failedStudioReservation("studio_access_unavailable")
+		}
+		upstream := p.Request
+		upstream.Mask = "" // Region preservation is owned by CubeRouter's reviewed compositor.
+		body, err := common.Marshal(upstream)
+		if err != nil {
+			_ = model.ReleaseStudioImageLease(resource, job)
+			return failedStudioReservation("invalid_studio_request")
+		}
+		req.Body = io.NopCloser(bytes.NewReader(body))
+		req.ContentLength = int64(len(body))
+		execution := &studioImageExecution{request: r, submission: p, id: job, channel: channel, relayContext: c, buffer: buffer, safeToReleaseGPU: true}
 		return &studioqueue.Reservation{Run: execution.run, Release: execution.release}
 	}
-	_ = model.ReleaseStudioImageLease(accountResource, job)
 	return nil
 }
 
+func failedStudioReservation(code string) *studioqueue.Reservation {
+	return &studioqueue.Reservation{Run: func(context.Context, <-chan struct{}) studioqueue.Result {
+		return studioqueue.Result{Error: code}
+	}, Release: func() {}}
+}
+
 type studioImageExecution struct {
-	request       studioqueue.Request
-	submission    studioImageSubmission
-	id            string
-	channel       *model.Channel
-	relayContext  *gin.Context
-	buffer        *studioImageBuffer
-	safeToRelease bool
-	png           []byte
-	gateError     error
+	request          studioqueue.Request
+	submission       studioImageSubmission
+	id               string
+	channel          *model.Channel
+	relayContext     *gin.Context
+	buffer           *studioImageBuffer
+	safeToReleaseGPU bool
+	png              []byte
+	gateError        error
 }
 
 func (execution *studioImageExecution) release() {
-	if execution.safeToRelease {
+	if execution.safeToReleaseGPU {
 		_ = model.ReleaseStudioImageLease(fmt.Sprintf("gpu:%d", execution.channel.Id), execution.id)
-		_ = model.ReleaseStudioImageLease(fmt.Sprintf("account:%d", execution.request.Owner), execution.id)
 	}
 }
 
@@ -140,10 +151,6 @@ func (execution *studioImageExecution) run(execCtx context.Context, cancel <-cha
 	defer service.CleanupFileSources(c)
 	c.Request = c.Request.WithContext(execCtx)
 	c.Set(service.StudioExecutionContext, job)
-	row, err := studioImageAudit(r, job)
-	if err != nil || model.RecordStudioImageAudit(row) != nil {
-		return studioqueue.Result{Error: "studio_audit_unavailable"}
-	}
 	if model.UpdateStudioImageAudit(job, map[string]any{"channel_id": channel.Id, "state": "running"}) != nil {
 		return studioqueue.Result{Error: "studio_audit_unavailable"}
 	}
@@ -172,6 +179,9 @@ func (execution *studioImageExecution) run(execCtx context.Context, cancel <-cha
 		})
 	}
 	c.Set(service.StudioReviewContext, execution.review)
+	c.Set(service.StudioCommitContext, func() bool {
+		return !buffer.overflow && len(execution.png) > 0 && studioqueue.TryCommitResult(execCtx, cancel)
+	})
 	service.GetChannelConstraints(c).AddPin(dto.ChannelPin{ChannelId: channel.Id, Source: dto.ChannelPinSource("studio"), Rank: 20, RetryMode: dto.PinRetrySingleAttempt})
 	// The pool checked current DB abilities and member restrictions. Apply the
 	// same native relay setup to that exact fresh channel, avoiding a cached
@@ -188,11 +198,16 @@ func (execution *studioImageExecution) run(execCtx context.Context, cancel <-cha
 	watchCtx, stopWatch := context.WithCancel(execCtx)
 	defer stopWatch()
 	go cancelStudioImageWorker(watchCtx, channel, job, cancel)
-	execution.safeToRelease = false
+	execution.safeToReleaseGPU = false
 	PlaygroundImage(c)
 	// A transport/5xx failure cannot prove GPU completion. Retain the
 	// physical lease for quarantine, rather than retrying or overlapping.
-	execution.safeToRelease = buffer.code < 500 && execCtx.Err() == nil
+	execution.safeToReleaseGPU = buffer.code < 500 && execCtx.Err() == nil
+	select {
+	case <-cancel:
+		return studioqueue.Result{}
+	default:
+	}
 	if execution.gateError != nil {
 		return studioqueue.Result{Error: execution.gateError.Error()}
 	}
@@ -203,13 +218,7 @@ func (execution *studioImageExecution) run(execCtx context.Context, cancel <-cha
 		_ = model.UpdateStudioImageAudit(job, map[string]any{"state": "failed"})
 		return studioqueue.Result{Error: "studio_generation_failed"}
 	}
-	select {
-	case <-cancel:
-		_ = model.UpdateStudioImageAudit(job, map[string]any{"state": "cancelled"})
-		return studioqueue.Result{}
-	default:
-		return studioqueue.Result{PNG: execution.png}
-	}
+	return studioqueue.Result{PNG: execution.png}
 }
 
 func (execution *studioImageExecution) review(ctx context.Context, image []byte) error {
@@ -227,7 +236,7 @@ func (execution *studioImageExecution) review(ctx context.Context, image []byte)
 	}
 	execution.gateError = err
 	if err == nil {
-		execution.png = append([]byte(nil), image...)
+		execution.png = image
 	}
 	return err
 }
@@ -282,7 +291,7 @@ func cancelStudioImageWorker(ctx context.Context, channel *model.Channel, job st
 // The private relay has no socket to the browser and has a strict byte bound.
 type studioImageBuffer struct {
 	headers  http.Header
-	body     bytes.Buffer
+	size     int
 	code     int
 	written  bool
 	overflow bool
@@ -297,15 +306,16 @@ func (w *studioImageBuffer) WriteHeader(code int) {
 func (w *studioImageBuffer) WriteHeaderNow() { w.written = true }
 func (w *studioImageBuffer) Write(data []byte) (int, error) {
 	w.written = true
-	if w.body.Len()+len(data) > 32<<20 {
+	if w.size+len(data) > 32<<20 {
 		w.overflow = true
 		return 0, errors.New("studio_result_too_large")
 	}
-	return w.body.Write(data)
+	w.size += len(data)
+	return len(data), nil
 }
 func (w *studioImageBuffer) WriteString(s string) (int, error) { return w.Write([]byte(s)) }
 func (w *studioImageBuffer) Status() int                       { return w.code }
-func (w *studioImageBuffer) Size() int                         { return w.body.Len() }
+func (w *studioImageBuffer) Size() int                         { return w.size }
 func (w *studioImageBuffer) Written() bool                     { return w.written }
 func (w *studioImageBuffer) Flush()                            { w.WriteHeaderNow() }
 func (w *studioImageBuffer) CloseNotify() <-chan bool          { return make(chan bool) }

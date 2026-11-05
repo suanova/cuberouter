@@ -37,6 +37,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"time"
 
@@ -49,6 +50,7 @@ import (
 
 const StudioReviewContext = "studio_image_review"
 const StudioExecutionContext = "studio_image_execution"
+const StudioCommitContext = "studio_image_commit"
 
 type StudioReview struct {
 	Protocol        string              `json:"protocol"`
@@ -104,19 +106,10 @@ func ValidateStudioReview(report StudioReview, image []byte) error {
 // Admin-controlled service destinations accept TLS or local HTTP only. Review
 // channels use Other for an optional PEM CA bundle; verification stays enabled.
 func StudioPrivateClient(endpoint, ca string, timeout time.Duration) (*http.Client, error) {
-	u, err := url.Parse(endpoint)
-	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("invalid_studio_service_url")
+	if err := validateStudioServiceURL(endpoint); err != nil {
+		return nil, err
 	}
-	local := u.Hostname() == "localhost"
-	if ip := net.ParseIP(u.Hostname()); ip != nil {
-		local = ip.IsLoopback()
-	}
-	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
-		return nil, errors.New("studio_service_requires_tls")
-	}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
+	transport := studioPrivateTransport()
 	if ca != "" {
 		roots, err := x509.SystemCertPool()
 		if err != nil {
@@ -127,7 +120,32 @@ func StudioPrivateClient(endpoint, ca string, timeout time.Duration) (*http.Clie
 		}
 		transport.TLSClientConfig = &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12}
 	}
-	return &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, nil
+	return studioPrivateClient(transport, timeout), nil
+}
+
+func validateStudioServiceURL(endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		return errors.New("invalid_studio_service_url")
+	}
+	local := u.Hostname() == "localhost"
+	if ip := net.ParseIP(u.Hostname()); ip != nil {
+		local = ip.IsLoopback()
+	}
+	if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+		return errors.New("studio_service_requires_tls")
+	}
+	return nil
+}
+
+func studioPrivateTransport() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	return transport
+}
+
+func studioPrivateClient(transport *http.Transport, timeout time.Duration) *http.Client {
+	return &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 func ReviewStudioPNG(ctx context.Context, job string, image []byte) (StudioReview, error) {
@@ -217,14 +235,19 @@ func requestStudioReview(ctx context.Context, channel model.Channel, image []byt
 // their existing provider behavior.
 func GateStudioImageResponse(c *gin.Context, response *http.Response) error {
 	value, enabled := c.Get(StudioReviewContext)
-	if !enabled {
+	reserved := c.GetString(StudioExecutionContext) != "" ||
+		slices.Contains(StudioImageChannelIDs(), common.GetContextKeyInt(c, constant.ContextKeyChannelId))
+	if !enabled && !reserved {
 		return nil
 	}
-	review, ok := value.(func(context.Context, []byte) error)
-	if !ok || response == nil {
+	if response == nil || response.Body == nil {
 		return errors.New("output_check_unavailable")
 	}
 	defer response.Body.Close()
+	review, ok := value.(func(context.Context, []byte) error)
+	if !ok || review == nil {
+		return errors.New("output_check_unavailable")
+	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, (32<<20)+1))
 	var payload struct {
 		Data []struct {

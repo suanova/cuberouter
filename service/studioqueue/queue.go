@@ -18,7 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 // Package studioqueue owns browser image jobs, independently of relay providers.
-// Images live in bounded RAM; an epoch change requires explicit resubmission.
+// Images live in bounded RAM on the gateway identified by the epoch.
 package studioqueue
 
 import (
@@ -34,13 +34,16 @@ import (
 const MaxBytes = 256 << 20
 const MaxRequestBytes = 16 << 20
 const MaxResultBytes = 12 << 20
+const MaxRunning = 2
 
 type Request struct {
-	Owner int
-	Key   string
-	Model string
-	Mode  string
-	Body  []byte
+	Owner          int
+	Key            string
+	Model          string
+	Mode           string
+	Group          string
+	OrganizationID int
+	Body           []byte
 }
 
 type Status struct {
@@ -51,6 +54,7 @@ type Status struct {
 	Ahead           int    `json:"ahead"`
 	Error           string `json:"error,omitempty"`
 	CancelRequested bool   `json:"cancel_requested"`
+	ResultCommitted bool   `json:"result_committed,omitempty"`
 	RecoveryPending bool   `json:"recovery_pending"`
 	CreatedAt       int64  `json:"created_at"`
 }
@@ -68,17 +72,19 @@ type Reservation struct {
 }
 
 type Reserve func(Request, string) *Reservation
+type Admit func(string) (release func(), err error)
 
 type entry struct {
-	request     Request
-	status      Status
-	fingerprint [32]byte
-	created     time.Time
-	ended       time.Time
-	cancelled   time.Time
-	stop        chan struct{}
-	active      bool
-	result      []byte
+	request          Request
+	status           Status
+	fingerprint      [32]byte
+	created          time.Time
+	ended            time.Time
+	cancelled        time.Time
+	stop             chan struct{}
+	active           bool
+	result           []byte
+	releaseAdmission func()
 }
 
 type Queue struct {
@@ -87,6 +93,7 @@ type Queue struct {
 	entries    map[string]*entry
 	order      []string
 	bytes      int
+	running    int
 	epoch      string
 	reserve    Reserve
 	onState    func(Status)
@@ -118,7 +125,7 @@ func (q *Queue) signal() {
 	}
 }
 
-func (q *Queue) Submit(r Request, epoch string, now time.Time) (Status, error) {
+func (q *Queue) Submit(r Request, epoch string, now time.Time, admit ...Admit) (Status, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if epoch != q.epoch {
@@ -150,9 +157,17 @@ func (q *Queue) Submit(r Request, epoch string, now time.Time) (Status, error) {
 	if waiting >= 10 || len(q.entries) >= 1024 || q.bytes+len(r.Body)+MaxResultBytes > MaxBytes {
 		return Status{}, errors.New("studio_queue_full")
 	}
-	r.Body = append([]byte(nil), r.Body...)
 	s := Status{ID: randomID(), Key: r.Key, Epoch: q.epoch, State: "queued", CreatedAt: now.UnixMilli()}
-	e := &entry{request: r, status: s, fingerprint: fingerprint, created: now, stop: make(chan struct{})}
+	var release func()
+	if len(admit) > 0 {
+		var err error
+		release, err = admit[0](s.ID)
+		if err != nil {
+			return Status{}, err
+		}
+	}
+	r.Body = append([]byte(nil), r.Body...)
+	e := &entry{request: r, status: s, fingerprint: fingerprint, created: now, stop: make(chan struct{}), releaseAdmission: release}
 	q.entries[s.ID] = e
 	q.order = append(q.order, s.ID)
 	q.bytes += len(r.Body) + MaxResultBytes
@@ -201,10 +216,19 @@ func (q *Queue) Session(owner int) []Status {
 
 func (q *Queue) Cancel(owner int, id string, now time.Time) (Status, bool) {
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	var release func()
+	defer func() {
+		q.mu.Unlock()
+		if release != nil {
+			release()
+		}
+	}()
 	e := q.entries[id]
 	if e == nil || e.request.Owner != owner {
 		return Status{}, false
+	}
+	if e.status.ResultCommitted {
+		return q.statusLocked(e), true
 	}
 	if e.status.State == "completed" {
 		q.bytes -= len(e.result)
@@ -224,6 +248,7 @@ func (q *Queue) Cancel(owner int, id string, now time.Time) (Status, bool) {
 			e.ended = now
 			q.bytes -= len(e.request.Body) + MaxResultBytes
 			e.request.Body = nil
+			release = e.releaseAdmission
 		} else if e.status.State != "cancelled" {
 			e.status.State = "cancelling"
 		}
@@ -270,11 +295,14 @@ func (q *Queue) Run(ctx context.Context) {
 
 // Tick is also used with an explicit clock by lifecycle regression tests.
 func (q *Queue) Tick(ctx context.Context, now time.Time) {
-	q.dispatchMu.Lock()
+	if !q.dispatchMu.TryLock() {
+		return
+	}
 	defer q.dispatchMu.Unlock()
 	q.mu.Lock()
 	var queued []*entry
 	var transitions []Status
+	var releases []func()
 	kept := q.order[:0]
 	for _, id := range q.order {
 		e := q.entries[id]
@@ -286,6 +314,9 @@ func (q *Queue) Tick(ctx context.Context, now time.Time) {
 			e.status.State, e.ended = "expired", now
 			q.bytes -= len(e.request.Body) + MaxResultBytes
 			e.request.Body = nil
+			if e.releaseAdmission != nil {
+				releases = append(releases, e.releaseAdmission)
+			}
 			transitions = append(transitions, q.statusLocked(e))
 		}
 		if !e.active && !e.ended.IsZero() && now.Sub(e.ended) >= 10*time.Minute {
@@ -300,6 +331,9 @@ func (q *Queue) Tick(ctx context.Context, now time.Time) {
 	}
 	q.order = kept
 	q.mu.Unlock()
+	for _, release := range releases {
+		release()
+	}
 	if q.onState != nil {
 		for _, status := range transitions {
 			q.onState(status)
@@ -307,6 +341,10 @@ func (q *Queue) Tick(ctx context.Context, now time.Time) {
 	}
 	for _, e := range queued {
 		q.mu.Lock()
+		if q.running >= MaxRunning {
+			q.mu.Unlock()
+			return
+		}
 		if e.status.State != "queued" {
 			q.mu.Unlock()
 			continue
@@ -324,15 +362,50 @@ func (q *Queue) Tick(ctx context.Context, now time.Time) {
 			continue
 		}
 		e.active, e.status.State = true, "running"
+		q.running++
 		q.mu.Unlock()
 		go q.execute(ctx, e, reservation)
 	}
 }
 
+type commitResultKey struct{}
+
+// TryCommitResult serializes billing with cancellation. Once committed, the
+// approved result is held for collection even if a cancellation arrives later.
+func TryCommitResult(ctx context.Context, cancel <-chan struct{}) bool {
+	if commit, ok := ctx.Value(commitResultKey{}).(func() bool); ok {
+		return commit()
+	}
+	select {
+	case <-cancel:
+		return false
+	default:
+		return true
+	}
+}
+
 func (q *Queue) execute(ctx context.Context, e *entry, reservation *Reservation) {
+	defer func() {
+		q.mu.Lock()
+		q.running--
+		q.mu.Unlock()
+		q.signal()
+	}()
+	if e.releaseAdmission != nil {
+		defer e.releaseAdmission()
+	}
 	defer reservation.Release()
 	execCtx, stop := context.WithTimeout(ctx, 11*time.Minute)
 	defer stop()
+	execCtx = context.WithValue(execCtx, commitResultKey{}, func() bool {
+		q.mu.Lock()
+		defer q.mu.Unlock()
+		if e.status.CancelRequested {
+			return false
+		}
+		e.status.ResultCommitted = true
+		return true
+	})
 	result := Result{Error: "studio_generation_failed"}
 	func() {
 		defer func() { _ = recover() }()
@@ -361,5 +434,4 @@ func (q *Queue) execute(ctx context.Context, e *entry, reservation *Reservation)
 	}
 	e.status.State, e.result = "completed", result.PNG
 	q.bytes += len(result.PNG)
-	q.signal()
 }

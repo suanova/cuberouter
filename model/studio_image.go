@@ -21,9 +21,10 @@ package model
 
 import (
 	"fmt"
-	"github.com/QuantumNous/new-api/common"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
@@ -68,6 +69,14 @@ func ReleaseStudioImageLease(resource, holder string) error {
 		Updates(map[string]any{"holder": "", "expires_at": int64(0)}).Error
 }
 
+func RenewStudioImageLease(resource, holder string, now time.Time, duration time.Duration) (bool, error) {
+	expires := now.Add(duration).UnixMilli()
+	result := DB.Model(&StudioImageLease{}).
+		Where("resource = ? AND holder = ? AND expires_at > ?", resource, holder, now.UnixMilli()).
+		Update("expires_at", gorm.Expr("CASE WHEN expires_at >= ? THEN expires_at + 1 ELSE ? END", expires, expires))
+	return result.RowsAffected == 1, result.Error
+}
+
 func RecordStudioImageAudit(row *StudioImageAudit) error {
 	return DB.Clauses(clause.OnConflict{DoNothing: true}).Create(row).Error
 }
@@ -89,7 +98,8 @@ func UpdateStudioImageAudit(job string, updates map[string]any) error {
 	return DB.Model(&StudioImageAudit{}).Where("job_id = ?", job).Updates(updates).Error
 }
 
-func ListStudioImageAudit(before int64, user int, beforeID ...string) ([]StudioImageAudit, error) {
+func ListStudioImageAudit(before int64, user int, beforeID ...string) ([]StudioImageAudit, bool, error) {
+	const pageSize = 100
 	query := DB.Where("created_at >= ?", time.Now().Add(-30*24*time.Hour).UnixMilli())
 	if before > 0 {
 		if len(beforeID) > 0 && beforeID[0] != "" {
@@ -102,8 +112,13 @@ func ListStudioImageAudit(before int64, user int, beforeID ...string) ([]StudioI
 		query = query.Where("user_id = ?", user)
 	}
 	rows := make([]StudioImageAudit, 0)
-	err := query.Order("created_at DESC").Order("job_id DESC").Limit(100).Find(&rows).Error
-	return rows, err
+	if err := query.Order("created_at DESC").Order("job_id DESC").Limit(pageSize + 1).Find(&rows).Error; err != nil {
+		return nil, false, err
+	}
+	if len(rows) > pageSize {
+		return rows[:pageSize], true, nil
+	}
+	return rows, false, nil
 }
 
 func PruneStudioImageAudits(now time.Time) error {
