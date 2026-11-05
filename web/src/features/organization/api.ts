@@ -857,29 +857,32 @@ export async function getOrganizationToken(
   return res.data
 }
 
+/**
+ * Names the organization's account context on a write made outside its
+ * workspace (the personal API Keys page). The write endpoint compares the
+ * request context with the id in the path; setting the header per request keeps
+ * the global context — and every query cached under it — untouched.
+ */
+function organizationAccountContextRequest(accountContextId?: number) {
+  if (!accountContextId) return undefined
+  return {
+    skipAccountContext: true,
+    headers: {
+      [ACCOUNT_CONTEXT_TYPE_HEADER]: ACCOUNT_CONTEXT_TYPE.ORGANIZATION,
+      [ACCOUNT_CONTEXT_ID_HEADER]: String(accountContextId),
+    },
+  }
+}
+
 export async function createOrganizationToken(
   organizationId: number,
   data: OrganizationTokenPayload,
   options: { accountContextId?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
-  // Creating from outside the organization workspace (the personal API Keys
-  // page) has to name the organization's account context explicitly: the write
-  // endpoint compares the request context with the id in the path. The header
-  // is set per request instead of switching the global context, so the page and
-  // everything already cached under the current account stay untouched.
-  const accountContextId = options.accountContextId
   const res = await api.post(
     `/api/organizations/${organizationId}/tokens`,
     data,
-    accountContextId
-      ? {
-          skipAccountContext: true,
-          headers: {
-            [ACCOUNT_CONTEXT_TYPE_HEADER]: ACCOUNT_CONTEXT_TYPE.ORGANIZATION,
-            [ACCOUNT_CONTEXT_ID_HEADER]: String(accountContextId),
-          },
-        }
-      : undefined
+    organizationAccountContextRequest(options.accountContextId)
   )
   return res.data
 }
@@ -912,11 +915,13 @@ export async function updateOrganizationToken(
   surface: OrganizationSurface,
   organizationId: number,
   tokenId: number,
-  data: OrganizationTokenPayload
+  data: OrganizationTokenPayload,
+  options: { accountContextId?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
   const res = await api.patch(
     `${organizationResourceBase(surface, organizationId)}/tokens/${tokenId}`,
-    data
+    data,
+    organizationAccountContextRequest(options.accountContextId)
   )
   return res.data
 }
