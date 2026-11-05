@@ -19,6 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { SelfUsageExportEnvelope } from '@/features/usage/types'
 import { api } from '@/lib/api'
+import {
+  ACCOUNT_CONTEXT_ID_HEADER,
+  ACCOUNT_CONTEXT_TYPE,
+  ACCOUNT_CONTEXT_TYPE_HEADER,
+} from '@/stores/account-context-store'
 
 import { withOrganizationIdempotencyKey } from './lib/organization-idempotency'
 import type { PagedResult } from './lib/organization-pagination'
@@ -854,11 +859,27 @@ export async function getOrganizationToken(
 
 export async function createOrganizationToken(
   organizationId: number,
-  data: OrganizationTokenPayload
+  data: OrganizationTokenPayload,
+  options: { accountContextId?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
+  // Creating from outside the organization workspace (the personal API Keys
+  // page) has to name the organization's account context explicitly: the write
+  // endpoint compares the request context with the id in the path. The header
+  // is set per request instead of switching the global context, so the page and
+  // everything already cached under the current account stay untouched.
+  const accountContextId = options.accountContextId
   const res = await api.post(
     `/api/organizations/${organizationId}/tokens`,
-    data
+    data,
+    accountContextId
+      ? {
+          skipAccountContext: true,
+          headers: {
+            [ACCOUNT_CONTEXT_TYPE_HEADER]: ACCOUNT_CONTEXT_TYPE.ORGANIZATION,
+            [ACCOUNT_CONTEXT_ID_HEADER]: String(accountContextId),
+          },
+        }
+      : undefined
   )
   return res.data
 }

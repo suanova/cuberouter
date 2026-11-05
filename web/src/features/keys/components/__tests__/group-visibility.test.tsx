@@ -24,6 +24,7 @@ const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { QueryClient, QueryClientProvider } =
   await import('@tanstack/react-query')
 const { api } = await import('@/lib/api')
+const { useAuthStore } = await import('@/stores/auth-store')
 const { ApiKeysProvider } = await import('../api-keys-provider')
 const { ApiKeysMutateDrawer } = await import('../api-keys-mutate-drawer')
 
@@ -71,6 +72,15 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
         return {
           data: { success: true, data: { groups: ['default'], max_count: 3 } },
         }
+      case '/api/user/self':
+        return {
+          data: {
+            success: true,
+            data: useAuthStore.getState().auth.user,
+          },
+        }
+      case '/api/organizations':
+        return { data: { success: true, data: [] } }
       default:
         throw new Error(`Unexpected GET ${url}`)
     }
@@ -83,6 +93,12 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
 }
 
 async function renderCreateDrawer(): Promise<void> {
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'tester',
+    role: 1,
+    quota: 1_000_000,
+  })
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
@@ -126,7 +142,7 @@ async function renderCreateDrawer(): Promise<void> {
   )
   await waitFor(
     () => {
-      expect(findButton('Save changes')).toBeEnabled()
+      expect(findButton('Create')).toBeEnabled()
     },
     { timeout: 1500 }
   )
@@ -162,6 +178,7 @@ function getControlByLabel(labelText: string): HTMLInputElement {
 afterEach(() => {
   apiClient.get = originalGet
   apiClient.post = originalPost
+  useAuthStore.getState().auth.setUser(null)
   localStorage.clear()
   if (renderedDrawer) {
     renderedDrawer.queryClient.clear()
@@ -188,7 +205,7 @@ describe('API key drawer group visibility', () => {
     fireEvent.input(getControlByLabel('Name'), {
       target: { value: 'hidden-group' },
     })
-    fireEvent.click(findButton('Save changes'))
+    fireEvent.click(findButton('Create'))
     await waitFor(() => expect(createdPayloads).toHaveLength(1))
 
     // The untouched default survives: the key keeps following the configured

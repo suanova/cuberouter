@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
   Box,
@@ -42,8 +43,10 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import type { SidebarData } from '@/components/layout/types'
+import type { NavItem, SidebarData } from '@/components/layout/types'
+import { getOrganizations } from '@/features/organization/api'
 import { ROLE } from '@/lib/roles'
+import { getAccountContextCacheKey } from '@/stores/account-context-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -53,6 +56,27 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  // The organization center is a management surface. A plain member manages
+  // their organization keys from the personal API Keys page and has no use for
+  // it, so the entry is offered only when at least one organization is theirs
+  // to manage. Kept hidden until the answer is known, so a member never sees it
+  // appear and disappear.
+  const { data: organizations = [], isFetched: organizationsLoaded } = useQuery(
+    {
+      queryKey: ['organizations', 'sidebar', getAccountContextCacheKey()],
+      queryFn: async () => {
+        const result = await getOrganizations()
+        return result.success ? (result.data ?? []) : []
+      },
+      staleTime: 5 * 60 * 1000,
+    }
+  )
+  const showOrganizations =
+    organizationsLoaded &&
+    organizations.some(
+      (organization) =>
+        organization.role === 'owner' || organization.role === 'admin'
+    )
 
   return {
     navGroups: [
@@ -93,11 +117,15 @@ export function useSidebarData(): SidebarData {
             url: '/keys',
             icon: Key,
           },
-          {
-            title: t('Organizations'),
-            url: '/organizations',
-            icon: Building2,
-          },
+          ...(showOrganizations
+            ? [
+                {
+                  title: t('Organizations'),
+                  url: '/organizations',
+                  icon: Building2,
+                } satisfies NavItem,
+              ]
+            : []),
           {
             title: t('Usage'),
             url: '/usage',
