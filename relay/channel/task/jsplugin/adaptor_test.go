@@ -1504,3 +1504,75 @@ export function extractUsage() { return null; }
 		assert.Equal(t, map[string]float64{"seconds": 5}, ratios)
 	})
 }
+
+// 视频按秒表模型的计费口径必须跟随插件自己解析请求的结果：插件把
+// metadata.duration / metadata.resolution 作为上游实际取值时，预扣不能仍按顶层
+// 缺省（720p / 5s）估算。否则按次计费不补差，插件实际出 480P/2s 却按 720P/5s 收款。
+func TestTaskAdaptorVideoPriceTableUsesPluginUsageFacts(t *testing.T) {
+	const model = "metadata-video"
+	source := `
+export const meta = {
+  apiVersion: 1, key: "metadata-video", name: "Metadata Video", version: "1.0.0",
+  author: {name: "Test"},
+  models: ["metadata-video"], fetchMode: "per_task",
+  usageSchema: {seconds: {type: "number", unit: "second"}, resolution_tier: {enum: ["480P", "720P", "1080P"]}},
+  usageExamples: [],
+};
+export function buildSubmitRequest(ctx) { return {url: ctx.baseUrl + "/submit", method: "POST", body: {}}; }
+export function parseSubmitResponse() { return {taskId: "1"}; }
+export function buildQueryRequest() { return {url: "https://provider.example/tasks/1"}; }
+export function parseTaskResult() { return {status: "SUCCESS"}; }
+export function extractUsage(ctx) {
+  const request = ctx.requestBody || {};
+  const metadata = request.metadata || {};
+  return {
+    seconds: Number(metadata.duration || request.duration || 5),
+    resolution_tier: String(metadata.resolution || request.resolution || "720P"),
+  };
+}
+`
+	plugin, err := pluginruntime.NewRegistry().Register(source, pluginruntime.Options{})
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateVideoPriceByJSONString(`{
+	  "metadata-video": {"rows": [
+	    {"resolution":"1080p","normal_price":1.0,"off_peak_price":1.0},
+	    {"resolution":"720p","normal_price":0.6,"off_peak_price":0.6},
+	    {"resolution":"480p","normal_price":0.3,"off_peak_price":0.3}]}
+	}`))
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateVideoPriceByJSONString(`{}`)) })
+
+	estimate := func(t *testing.T, stored any) (map[string]float64, error) {
+		t.Helper()
+		adaptor := New(plugin)
+		info := &relaycommon.RelayInfo{
+			ChannelMeta:     &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example"},
+			TaskRelayInfo:   &relaycommon.TaskRelayInfo{},
+			OriginModelName: model,
+		}
+		adaptor.Init(info)
+		context, _ := gin.CreateTestContext(httptest.NewRecorder())
+		context.Request = httptest.NewRequest(http.MethodPost, "/v1/video/generations", nil)
+		context.Set("task_request", stored)
+		return adaptor.EstimateBillingValidated(context, info)
+	}
+
+	t.Run("metadata values drive the estimate", func(t *testing.T) {
+		ratios, err := estimate(t, map[string]any{
+			"prompt":   "p",
+			"metadata": map[string]any{"duration": float64(2), "resolution": "480P"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]float64{"seconds": 2, "size": 0.3}, ratios)
+	})
+
+	t.Run("plugin facts override top-level values", func(t *testing.T) {
+		ratios, err := estimate(t, map[string]any{
+			"prompt":   "p",
+			"duration": float64(10),
+			"size":     "1080P",
+			"metadata": map[string]any{"duration": float64(2), "resolution": "480P"},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, map[string]float64{"seconds": 2, "size": 0.3}, ratios)
+	})
+}

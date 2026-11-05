@@ -51,6 +51,27 @@ describe('filterNavGroupsByRole', () => {
     expect(result.map((g) => g.id)).toEqual(['console'])
   })
 
+  it('role-gated items stay hidden below their role', () => {
+    const result = filterNavGroupsByRole(
+      [
+        {
+          id: 'general',
+          title: 'General',
+          items: [
+            {
+              title: 'Dashboard',
+              url: '/dashboard/models',
+              requiredRole: 10,
+            },
+            { title: 'Usage', url: '/usage' },
+          ],
+        },
+      ],
+      1
+    )
+    expect(result[0].items.map((item) => item.title)).toEqual(['Usage'])
+  })
+
   it('ops user sees console and ops groups, but not admin', () => {
     const result = filterNavGroupsByRole(groups, 5)
     expect(result.map((g) => g.id)).toEqual(['console', 'ops'])

@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -37,6 +38,51 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestRequireStudioImageQueueChecksMultipartModel(t *testing.T) {
+	t.Setenv("IMAGE_STUDIO_ENABLED", "true")
+	t.Setenv("IMAGE_STUDIO_MODELS", "queued-model")
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		defer common.CleanupBodyStorage(c)
+		c.Next()
+	})
+	router.POST("/pg/images/edits", RequireStudioImageQueue, func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	for _, tc := range []struct {
+		name   string
+		models []string
+		status int
+	}{
+		{"queued", []string{"queued-model"}, http.StatusConflict},
+		{"repeated queued model", []string{"queued-model", "ordinary-model"}, http.StatusConflict},
+		{"ordinary", []string{"ordinary-model"}, http.StatusNoContent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var body bytes.Buffer
+			form := multipart.NewWriter(&body)
+			for _, name := range tc.models {
+				require.NoError(t, form.WriteField("model", name))
+			}
+			part, err := form.CreateFormFile("image", "image.png")
+			require.NoError(t, err)
+			_, err = io.WriteString(part, "reference")
+			require.NoError(t, err)
+			require.NoError(t, form.Close())
+			request := httptest.NewRequest(http.MethodPost, "/pg/images/edits", &body)
+			request.Header.Set("Content-Type", form.FormDataContentType())
+
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			require.Equal(t, tc.status, response.Code)
+			if tc.status == http.StatusConflict {
+				assert.Contains(t, response.Body.String(), "studio_queue_required")
+			}
+		})
+	}
+}
 
 func TestStudioImageSubmitCancelsAdmittedJobWhenAuditInsertFails(t *testing.T) {
 	db := setupModelListControllerTestDB(t)
@@ -56,7 +102,7 @@ func TestStudioImageSubmitCancelsAdmittedJobWhenAuditInsertFails(t *testing.T) {
 	}))
 	defer worker.Close()
 	base := worker.URL
-	require.NoError(t, db.Create(&model.Channel{Id: 7001, Type: constant.ChannelTypeImageEdit, Status: common.ChannelStatusEnabled, Name: "worker", Key: strings.Repeat("w", 32), BaseURL: &base, Models: "studio-audit-model", Group: "image-studio"}).Error)
+	require.NoError(t, db.Create(&model.Channel{Id: 7001, Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Name: "worker", Key: strings.Repeat("w", 32), BaseURL: &base, Models: "studio-audit-model", Group: "image-studio"}).Error)
 	require.NoError(t, db.Create(&model.Channel{Id: 7002, Type: constant.ChannelTypeStudioReview, Status: common.ChannelStatusEnabled, Name: "reviewer", Key: strings.Repeat("r", 32), BaseURL: &base}).Error)
 	require.NoError(t, db.Create(&model.Ability{Group: "image-studio", Model: "studio-audit-model", ChannelId: 7001, Enabled: true}).Error)
 	// Initialize the singleton once, then use an isolated queue with no dispatcher.

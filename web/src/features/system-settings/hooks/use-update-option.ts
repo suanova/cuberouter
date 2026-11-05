@@ -20,6 +20,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import i18next from 'i18next'
 import { toast } from 'sonner'
 
+import { fetchSystemStatus, STATUS_QUERY_KEY } from '@/hooks/use-status'
+
 import { updateSystemOption } from '../api'
 import type { UpdateOptionRequest } from '../types'
 
@@ -28,6 +30,7 @@ const STATUS_RELATED_KEYS = new Set([
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',
+  'Logo',
   'LogConsumeEnabled',
   'QuotaPerUnit',
   'USDExchangeRate',
@@ -54,14 +57,26 @@ export function useUpdateOption() {
         // Always refresh system-options
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
 
-        // If updating frontend-display-related config, also refresh status
+        // If updating frontend-display-related config, also refresh status.
+        // Invalidating alone only refetches when a mounted useStatus observer
+        // exists; settings pages usually have none, so force one fetch — its
+        // query function also mirrors the new values into the system config
+        // store that the header, footer and auth screens read from.
         if (STATUS_RELATED_KEYS.has(variables.key)) {
-          queryClient.invalidateQueries({ queryKey: ['status'] })
           try {
             window.localStorage.removeItem('status')
           } catch {
             /* empty */
           }
+          queryClient
+            .fetchQuery({
+              queryKey: STATUS_QUERY_KEY,
+              queryFn: fetchSystemStatus,
+              staleTime: 0,
+            })
+            .catch(() => {
+              /* the toast below already reports the save outcome */
+            })
         }
 
         toast.success(i18next.t('Setting updated successfully'))

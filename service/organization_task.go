@@ -91,7 +91,7 @@ func ListOrganizationTasks(operatorUserId, organizationId int, accessMode string
 		model.NormalizeTaskBillingScope(task)
 		task.OriginalQuota = organizationTaskOriginalQuota(task)
 	}
-	if err := hydrateOrganizationTaskNames(tasks); err != nil {
+	if err := HydrateOrganizationTaskNames(tasks); err != nil {
 		return nil, 0, err
 	}
 	return tasks, total, nil
@@ -114,11 +114,11 @@ func organizationTaskOriginalQuota(task *model.Task) int {
 	return common.QuotaRound(float64(task.Quota) / context.GroupRatio)
 }
 
-// hydrateOrganizationTaskNames fills the display names for rows written before
+// HydrateOrganizationTaskNames fills the display names for rows written before
 // the task stored them. The stored snapshot wins when present; a deleted token
 // or user is still resolved through Unscoped so an old row keeps a readable
 // name instead of falling back to an id.
-func hydrateOrganizationTaskNames(tasks []*model.Task) error {
+func HydrateOrganizationTaskNames(tasks []*model.Task) error {
 	if len(tasks) == 0 {
 		return nil
 	}

@@ -956,6 +956,35 @@ func TestListUserOrganizationsIncludesDisabledOrganizationsWithRole(t *testing.T
 	require.True(t, organizations[0].Capabilities.CanViewOrganizationLogs)
 }
 
+func TestListUserOrganizationsIncludesMemberQuotaFigures(t *testing.T) {
+	setupServiceTestDB(t)
+	owner := createServiceTestUser(t, "member-quota-list-owner", common.RoleCommonUser)
+	member := createServiceTestUser(t, "member-quota-list-member", common.RoleCommonUser)
+	organization, err := CreateOrganization(owner.Id, CreateOrganizationRequest{Name: "Member Quota List Org"})
+	require.NoError(t, err)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Updates(map[string]any{
+		"quota":      10_000_000,
+		"used_quota": 3_000_000,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{
+		OrganizationId: organization.Id,
+		UserId:         member.Id,
+		Role:           model.OrganizationRoleMember,
+		Status:         model.OrganizationMemberStatusActive,
+		QuotaLimit:     4_000_000,
+		UsedQuota:      1_500_000,
+	}).Error)
+
+	organizations, err := ListUserOrganizations(member.Id, false)
+
+	require.NoError(t, err)
+	require.Len(t, organizations, 1)
+	require.Equal(t, 10_000_000, organizations[0].Quota)
+	require.Equal(t, 3_000_000, organizations[0].UsedQuota)
+	require.Equal(t, 4_000_000, organizations[0].MemberQuotaLimit)
+	require.Equal(t, 1_500_000, organizations[0].MemberUsedQuota)
+}
+
 func TestListUserOrganizationsMarksPlatformDisabledOrganizationReadOnly(t *testing.T) {
 	setupServiceTestDB(t)
 	platformAdmin := createServiceTestUser(t, "platform-disabled-list-platform-admin", common.RoleAdminUser)

@@ -20,10 +20,10 @@ import {
   Activity,
   Box,
   Building2,
+  ChartColumn,
   CreditCard,
   FileText,
   FlaskConical,
-  ImagePlus,
   Key,
   LayoutDashboard,
   ListTodo,
@@ -66,11 +66,6 @@ export function useSidebarData(): SidebarData {
             icon: FlaskConical,
           },
           {
-            title: t('Media Studio'),
-            url: '/media-studio',
-            icon: ImagePlus,
-          },
-          {
             title: t('Chat'),
             icon: MessageSquare,
             type: 'chat-presets',
@@ -85,11 +80,13 @@ export function useSidebarData(): SidebarData {
             title: t('Overview'),
             url: '/dashboard/overview',
             icon: Activity,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('Dashboard'),
             url: '/dashboard/models',
             icon: LayoutDashboard,
+            requiredRole: ROLE.ADMIN,
           },
           {
             title: t('API Keys'),
@@ -100,6 +97,11 @@ export function useSidebarData(): SidebarData {
             title: t('Organizations'),
             url: '/organizations',
             icon: Building2,
+          },
+          {
+            title: t('Usage'),
+            url: '/usage',
+            icon: ChartColumn,
           },
           {
             title: t('Usage Logs'),

@@ -93,7 +93,10 @@ export function getOrganizationReadOnlyState(
   const status = String(input.status ?? '').toLowerCase()
   if (status === 'dissolved') return { readOnly: true, reason: 'dissolved' }
   if (status === 'disabled') return { readOnly: true, reason: 'disabled' }
-  if (input.readOnly || input.accessMode === ORGANIZATION_ACCESS_MODE_READ_ONLY) {
+  if (
+    input.readOnly ||
+    input.accessMode === ORGANIZATION_ACCESS_MODE_READ_ONLY
+  ) {
     return { readOnly: true, reason: 'read_only' }
   }
   return { readOnly: false, reason: null }
@@ -192,17 +195,31 @@ export function getOrganizationTabs(
     },
     {
       key: 'logs',
-      visible: capabilities.can_view_organization_logs,
+      // Members see their organization-billed rows in the usage logs personal
+      // page, not here. This tab is the organization-wide view and requires the
+      // wide-data grant.
+      visible:
+        capabilities.can_view_organization_logs &&
+        capabilities.can_view_organization_wide_data,
       limitedView,
     },
     {
       key: 'usage',
-      visible: capabilities.can_view_organization_usage,
+      // Like Logs and Tasks: members read their own organization-billed usage
+      // on the personal /usage page. This tab is the organization-wide view
+      // and requires the wide grant.
+      visible:
+        capabilities.can_view_organization_usage &&
+        capabilities.can_view_organization_wide_data,
       limitedView,
     },
     {
       key: 'tasks',
-      visible: capabilities.can_view_organization_logs,
+      // Like Logs: the organization-wide task list requires the wide grant.
+      // Members see their own organization tasks in the personal task page.
+      visible:
+        capabilities.can_view_organization_logs &&
+        capabilities.can_view_organization_wide_data,
       limitedView,
     },
     {
@@ -328,7 +345,10 @@ export interface OrganizationMemberRoleUpdatePayload {
 export function buildOrganizationMemberRoleUpdatePayload(
   member: Pick<OrganizationMember, 'role'>,
   nextRole: string,
-  { transferToUserId, reason }: { transferToUserId?: number; reason?: string } = {}
+  {
+    transferToUserId,
+    reason,
+  }: { transferToUserId?: number; reason?: string } = {}
 ): OrganizationMemberRoleUpdatePayload {
   const payload: OrganizationMemberRoleUpdatePayload = { role: nextRole }
   if (!isOrganizationMemberDemotion(member, nextRole)) return payload

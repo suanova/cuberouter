@@ -231,10 +231,20 @@ func GetStudioImageAudit(c *gin.Context) {
 // cannot silently bypass the review gate via the former synchronous endpoint.
 func RequireStudioImageQueue(c *gin.Context) {
 	if service.StudioImageEnabled() {
-		var request struct {
-			Model string `json:"model"`
+		var modelName string
+		switch c.ContentType() {
+		case gin.MIMEPOSTForm, gin.MIMEMultipartPOSTForm:
+			// Match the distributor's first scalar model field for form edits.
+			modelName = middleware.ReadBodyFormValue(c, "model")
+		default:
+			var request struct {
+				Model string `json:"model"`
+			}
+			if common.UnmarshalBodyReusable(c, &request) == nil {
+				modelName = request.Model
+			}
 		}
-		if common.UnmarshalBodyReusable(c, &request) == nil && slices.Contains(service.StudioImageModels(), request.Model) {
+		if slices.Contains(service.StudioImageModels(), modelName) {
 			studioJobError(c, 409, "studio_queue_required")
 			return
 		}

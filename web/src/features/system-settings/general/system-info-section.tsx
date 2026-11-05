@@ -17,10 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Image01Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { type ChangeEvent, useRef } from 'react'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
+import { Button } from '@/components/ui/button'
 import {
   Form,
   FormControl,
@@ -48,6 +52,7 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { isValidLogoFile, isValidLogoValue } from './logo-value'
 import { isValidTaskPublicAddress } from './task-public-address'
 
 // 留空表示未配置对端站点；一旦填写就必须是绝对 HTTP(S) 地址，
@@ -59,7 +64,7 @@ const _systemInfoSchema = z.object({
   SystemName: z.string().min(1),
   ServerAddress: z.string().optional(),
   TaskPublicAddress: z.string().refine(isValidTaskPublicAddress),
-  Logo: z.string().url().optional().or(z.literal('')),
+  Logo: z.string().refine(isValidLogoValue),
   Footer: z.string().optional(),
   About: z.string().optional(),
   HomePageContent: z.string().optional(),
@@ -131,7 +136,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
           'Enter an absolute HTTP(S) URL without credentials, query parameters, or fragments'
         ),
     }),
-    Logo: z.string().url().optional().or(z.literal('')),
+    Logo: z.string().refine(isValidLogoValue, {
+      error: () => t('Logo must be an HTTP(S) URL or an uploaded image'),
+    }),
     Footer: z.string().optional(),
     About: z.string().optional(),
     HomePageContent: z.string().optional(),
@@ -173,6 +180,40 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
         }
       },
     })
+
+  const logoFileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleLogoFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    // Reset the input so selecting the same file again still fires onChange.
+    event.target.value = ''
+    if (!file) return
+
+    if (!isValidLogoFile(file)) {
+      form.setError('Logo', {
+        message: t(
+          'Logo image must be a PNG, JPG, WebP, or SVG file no larger than 200 KB'
+        ),
+      })
+      return
+    }
+
+    const reader = new FileReader()
+    reader.addEventListener('load', () => {
+      const dataUrl = reader.result
+      if (typeof dataUrl !== 'string' || !isValidLogoValue(dataUrl)) {
+        form.setError('Logo', {
+          message: t(
+            'Logo image must be a PNG, JPG, WebP, or SVG file no larger than 200 KB'
+          ),
+        })
+        return
+      }
+      form.clearErrors('Logo')
+      form.setValue('Logo', dataUrl, { shouldDirty: true })
+    })
+    reader.readAsDataURL(file)
+  }
 
   return (
     <>
@@ -252,15 +293,56 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                 name='Logo'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>{t('Logo URL')}</FormLabel>
+                    <FormLabel>{t('Logo')}</FormLabel>
                     <FormControl>
-                      <Input
-                        placeholder={t('https://example.com/logo.png')}
-                        {...field}
-                      />
+                      <div className='flex items-center gap-3'>
+                        <div className='bg-muted flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border'>
+                          {field.value ? (
+                            <img
+                              src={field.value}
+                              alt={t('Logo')}
+                              className='size-full object-contain'
+                            />
+                          ) : (
+                            <HugeiconsIcon
+                              icon={Image01Icon}
+                              className='text-muted-foreground size-5'
+                              aria-hidden='true'
+                            />
+                          )}
+                        </div>
+                        <input
+                          ref={logoFileInputRef}
+                          type='file'
+                          accept='image/png,image/jpeg,image/webp,image/gif,image/svg+xml'
+                          className='hidden'
+                          onChange={handleLogoFileChange}
+                        />
+                        <Button
+                          type='button'
+                          variant='outline'
+                          onClick={() => logoFileInputRef.current?.click()}
+                        >
+                          {field.value ? t('Replace') : t('Upload')}
+                        </Button>
+                        {field.value ? (
+                          <Button
+                            type='button'
+                            variant='ghost'
+                            onClick={() => {
+                              form.clearErrors('Logo')
+                              field.onChange('')
+                            }}
+                          >
+                            {t('Remove')}
+                          </Button>
+                        ) : null}
+                      </div>
                     </FormControl>
                     <FormDescription>
-                      {t('URL to your logo image (optional)')}
+                      {t(
+                        'Upload a PNG, JPG, WebP, or SVG image up to 200 KB. Remove it to use the default logo.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

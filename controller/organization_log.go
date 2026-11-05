@@ -76,6 +76,7 @@ func organizationLogListRequestFromQuery(c *gin.Context, offset int, limit int) 
 		ModelName:         c.Query("model_name"),
 		Group:             c.Query("group"),
 		RequestId:         c.Query("request_id"),
+		UpstreamRequestId: c.Query("upstream_request_id"),
 		StartTimestamp:    startTimestamp,
 		EndTimestamp:      endTimestamp,
 	}

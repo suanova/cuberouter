@@ -21,8 +21,20 @@ import type { ColumnDef } from '@tanstack/react-table'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { DataTablePage, useDataTable } from '@/components/data-table'
+import {
+  DataTablePage,
+  DataTableRow,
+  useDataTable,
+} from '@/components/data-table'
 import { StatusBadge } from '@/components/status-badge'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Tooltip,
   TooltipContent,
@@ -30,13 +42,20 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { CompactDateTimeRangePicker } from '@/features/usage-logs/components/compact-date-time-range-picker'
+import { DetailsDialog } from '@/features/usage-logs/components/dialogs/details-dialog'
 import { LogCostDisplay } from '@/features/usage-logs/components/log-cost-display'
 import {
   LogsFilterField,
+  LogsFilterInput,
   LogsFilterToolbar,
 } from '@/features/usage-logs/components/logs-filter-toolbar'
 import { ModelBadge } from '@/features/usage-logs/components/model-badge'
 import { TimingMetricsCell } from '@/features/usage-logs/components/timing-metrics-cell'
+import { UsageLogsMobileList } from '@/features/usage-logs/components/usage-logs-mobile-card'
+import {
+  LOG_TYPE_ALL_VALUE,
+  LOG_TYPE_FILTERS,
+} from '@/features/usage-logs/constants'
 import { parseLogOther } from '@/features/usage-logs/lib/format'
 import {
   getDefaultTimeRange,
@@ -47,6 +66,7 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { formatLogQuota, formatTimestamp } from '@/lib/format'
 
 import { getOrganizationLogStats, listOrganizationLogs } from '../api'
+import { useOrganizationMemberFilterOptions } from '../hooks/use-organization-member-options'
 import {
   useOrganizationPagedSection,
   useOrganizationResourceSection,
@@ -57,15 +77,15 @@ import {
   organizationLogResponsibleName,
   organizationLogTimeRangeParams,
   organizationLogTimeWindow,
+  organizationLogToUsageLog,
   organizationLogTokenName,
   organizationLogTypeMeta,
   ORGANIZATION_LOG_TYPE,
   setOrganizationTextFilter,
 } from '../lib'
-import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
+import { ORGANIZATION_LOGS_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationLogRow, OrganizationLogStats } from '../types'
 import { OrganizationTextFilter } from './organization-filter-fields'
-import { OrganizationLogDetailsDialog } from './organization-log-details-dialog'
 import {
   useOrganizationSectionRoute,
   useOrganizationSurface,
@@ -76,6 +96,11 @@ import {
 } from './organization-section'
 
 const LOG_COLUMN_VISIBILITY_STORAGE_KEY = 'organization-log-column-visibility'
+
+const logTypeRowTint: Record<number, string> = {
+  [ORGANIZATION_LOG_TYPE.ERROR]: 'bg-rose-50/40 dark:bg-rose-950/20',
+  [ORGANIZATION_LOG_TYPE.REFUND]: 'bg-blue-50/30 dark:bg-blue-950/15',
+}
 
 type OrganizationLogsSectionProps = {
   organizationId: number
@@ -115,13 +140,19 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
     navigate,
     pagination: {
       defaultPage: 1,
-      defaultPageSize: ORGANIZATION_DEFAULT_PAGE_SIZE,
+      defaultPageSize: ORGANIZATION_LOGS_DEFAULT_PAGE_SIZE,
     },
     globalFilter: { enabled: false },
     columnFilters: [
+      { columnId: 'type', searchKey: 'logType', type: 'string' },
       { columnId: 'model_name', searchKey: 'logModel', type: 'string' },
       { columnId: 'token_name', searchKey: 'logToken', type: 'string' },
       { columnId: 'request_id', searchKey: 'logRequest', type: 'string' },
+      {
+        columnId: 'upstream_request_id',
+        searchKey: 'logUpstreamRequest',
+        type: 'string',
+      },
       {
         columnId: 'responsible_user_id',
         searchKey: 'logResponsible',
@@ -133,12 +164,23 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
   const window = organizationLogTimeWindow(search, getDefaultTimeRange())
   const timeRange = organizationLogTimeRangeParams(window.start, window.end)
 
+  const typeFilter = organizationColumnFilterValue(columnFilters, 'type')
   const filters = {
+    type:
+      typeFilter && typeFilter !== LOG_TYPE_ALL_VALUE
+        ? Number(typeFilter)
+        : undefined,
     model_name: organizationColumnFilterValue(columnFilters, 'model_name'),
     token_name: organizationColumnFilterValue(columnFilters, 'token_name'),
     request_id: organizationColumnFilterValue(columnFilters, 'request_id'),
-    responsible_name: props.canViewWideData
-      ? organizationColumnFilterValue(columnFilters, 'responsible_user_id')
+    upstream_request_id: organizationColumnFilterValue(
+      columnFilters,
+      'upstream_request_id'
+    ),
+    responsible_user_id: props.canViewWideData
+      ? Number(
+          organizationColumnFilterValue(columnFilters, 'responsible_user_id')
+        ) || undefined
       : undefined,
   }
 
@@ -171,6 +213,20 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
     enabled: props.canView,
     onForbidden: props.onForbidden,
   })
+
+  const { options: responsibleOptions } = useOrganizationMemberFilterOptions(
+    surface,
+    props.organizationId,
+    props.canViewWideData
+  )
+  const logTypeItems = LOG_TYPE_FILTERS.map((type) => ({
+    value: type.value,
+    label: t(type.label),
+  }))
+  const logTypeValue = typeFilter || LOG_TYPE_ALL_VALUE
+  const logTypeLabel =
+    logTypeItems.find((type) => type.value === logTypeValue)?.label ??
+    t('All Types')
 
   const columns = buildLogColumns(t, props.canViewWideData)
 
@@ -255,6 +311,82 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                     }
                   />
                 </LogsFilterField>
+                <LogsFilterField>
+                  <Select
+                    items={logTypeItems}
+                    value={logTypeValue}
+                    onValueChange={(value) =>
+                      setOrganizationTextFilter(
+                        onColumnFiltersChange,
+                        columnFilters,
+                        'type',
+                        value === null || value === LOG_TYPE_ALL_VALUE
+                          ? ''
+                          : value
+                      )
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue>{logTypeLabel}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent alignItemWithTrigger={false}>
+                      <SelectGroup>
+                        {logTypeItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                </LogsFilterField>
+                {props.canViewWideData ? (
+                  <LogsFilterField>
+                    <Select
+                      items={[
+                        { value: 'all', label: t('All members') },
+                        ...responsibleOptions,
+                      ]}
+                      value={
+                        filters.responsible_user_id
+                          ? String(filters.responsible_user_id)
+                          : 'all'
+                      }
+                      onValueChange={(value) =>
+                        setOrganizationTextFilter(
+                          onColumnFiltersChange,
+                          columnFilters,
+                          'responsible_user_id',
+                          value === null || value === 'all' ? '' : value
+                        )
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue>
+                          {filters.responsible_user_id
+                            ? (responsibleOptions.find(
+                                (option) =>
+                                  option.value ===
+                                  String(filters.responsible_user_id)
+                              )?.label ?? `#${filters.responsible_user_id}`)
+                            : t('All members')}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='all'>
+                            {t('All members')}
+                          </SelectItem>
+                          {responsibleOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </LogsFilterField>
+                ) : null}
                 <OrganizationTextFilter
                   value={filters.model_name}
                   placeholder={t('Model')}
@@ -291,20 +423,20 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
                     )
                   }
                 />
-                {props.canViewWideData ? (
-                  <OrganizationTextFilter
-                    value={filters.responsible_name}
-                    placeholder={t('Responsible user')}
-                    onChange={(value) =>
+                <LogsFilterField>
+                  <LogsFilterInput
+                    placeholder={t('Upstream Request ID')}
+                    value={filters.upstream_request_id ?? ''}
+                    onChange={(event) =>
                       setOrganizationTextFilter(
                         onColumnFiltersChange,
                         columnFilters,
-                        'responsible_user_id',
-                        value
+                        'upstream_request_id',
+                        event.target.value
                       )
                     }
                   />
-                ) : null}
+                </LogsFilterField>
               </>
             }
             stats={<OrganizationLogStatsPills stats={stats.data} />}
@@ -314,6 +446,20 @@ export function OrganizationLogsSection(props: OrganizationLogsSectionProps) {
             onSearch={logs.refetch}
           />
         }
+        mobile={
+          <UsageLogsMobileList
+            table={table}
+            isLoading={logs.isLoading}
+            logCategory='common'
+            emptyTitle={t('No log records yet')}
+          />
+        }
+        renderRow={(row) => {
+          const type = (row.original as OrganizationLogRow).type
+          return (
+            <DataTableRow row={row} className={logTypeRowTint[type] ?? ''} />
+          )
+        }}
       />
     </OrganizationSection>
   )
@@ -420,6 +566,21 @@ function buildLogColumns(
           />
         )
       },
+    },
+    {
+      id: 'user',
+      header: t('Caller'),
+      accessorFn: (row) => row.username ?? '',
+      enableSorting: false,
+      size: 130,
+      cell: ({ row }) =>
+        row.original.username ? (
+          <span className='text-sm whitespace-nowrap'>
+            {row.original.username}
+          </span>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        ),
     },
   ]
 
@@ -575,9 +736,14 @@ function LogDetailsCell(props: {
         {t('View')}
       </button>
       {open ? (
-        <OrganizationLogDetailsDialog
-          row={props.row}
+        <DetailsDialog
+          log={organizationLogToUsageLog(props.row)}
+          isAdmin={false}
+          isRoot={false}
           showResponsible={props.showResponsible}
+          showRequestDetails
+          showGroup={false}
+          open={open}
           onOpenChange={setOpen}
         />
       ) : null}

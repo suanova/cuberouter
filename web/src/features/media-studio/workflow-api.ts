@@ -156,14 +156,14 @@ export async function localImage(url: string): Promise<StudioAsset> {
 }
 export async function prepareWorkflowRequest(
   draft: WorkflowDraft,
-  preserveReferences = false
-): Promise<Record<string, unknown>> {
+  queued = false
+): Promise<Record<string, unknown> | FormData> {
   // 参考图在这里才缩到长边 1024 并重编码：draft 与本地历史留着用户原始字节，所以
   // 「原图对照」、下载和历史都不受影响，同一份原始字节每次下发的编码结果也一致。
   let referenceURLs: string[] = []
   if (draft.mode === 'edit') {
     referenceURLs = draft.references.map((asset) => asset.url)
-    if (!preserveReferences || draft.markup || draft.mask?.length) {
+    if (!queued || draft.markup || draft.mask?.length) {
       referenceURLs = await normalizeReferences(referenceURLs)
     }
   }
@@ -206,7 +206,7 @@ export async function prepareWorkflowRequest(
       }
     }
   }
-  return imageRequest(effective, referenceURLs, mask)
+  return imageRequest(effective, referenceURLs, mask, queued)
 }
 
 export const workflowAPI = {

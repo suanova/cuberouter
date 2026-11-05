@@ -260,3 +260,17 @@ func SearchRateLimit() func(c *gin.Context) {
 	}
 	return userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")
 }
+
+// SearchRateLimitWhenQuery applies the search limiter only when the request
+// actually searches. A list endpoint that also serves its page's search box
+// must not spend the search budget on ordinary pagination.
+func SearchRateLimitWhenQuery() func(c *gin.Context) {
+	limit := SearchRateLimit()
+	return func(c *gin.Context) {
+		if c.Query("keyword") == "" && c.Query("token") == "" {
+			c.Next()
+			return
+		}
+		limit(c)
+	}
+}

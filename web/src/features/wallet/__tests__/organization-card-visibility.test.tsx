@@ -105,6 +105,8 @@ function organization(
     group: 'default',
     quota: 5_000_000,
     used_quota: 2_000_000,
+    member_quota_limit: 3_000_000,
+    member_used_quota: 1_000_000,
     request_count: 0,
     owner_user_id: 1,
     created_by: 1,
@@ -188,9 +190,9 @@ describe('wallet organization card', () => {
 
     expect(await screen.findByText('Organization')).toBeInTheDocument()
     expect(screen.getByText('Organization Quota')).toBeInTheDocument()
-    expect(screen.getByText('$10')).toBeInTheDocument()
+    expect(screen.getByText('$6')).toBeInTheDocument()
     expect(screen.getByText('Used')).toBeInTheDocument()
-    expect(screen.getByText('$4')).toBeInTheDocument()
+    expect(screen.getByText('$2')).toBeInTheDocument()
   })
 
   test('hides the organization card when the user belongs to none', async () => {

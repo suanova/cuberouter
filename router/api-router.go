@@ -171,6 +171,9 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 				// 但显式顺序更安全；详见 router/user_invitees_route_test.go）
 				userReadRoute.GET("/:id/invitees", controller.GetUserInvitees)
 				userReadRoute.GET("/:id/quota-dates", controller.GetUserQuotaDatesByAdmin)
+				// 被编辑用户可见的模型列表：折扣编辑器的模型下拉据此取数，避免
+				// 复用管理员自己的价目表（价目表按查看者分组过滤）。
+				userReadRoute.GET("/:id/models", controller.GetUserModels)
 				userReadRoute.GET("/:id/model-discounts", controller.GetUserModelDiscounts)
 				userReadRoute.GET("/:id", controller.GetUser)
 
@@ -306,6 +309,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		tokenRoute.Use(middleware.UserAuth())
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
+			tokenRoute.GET("/self/all", middleware.SearchRateLimitWhenQuery(), controller.GetSelfTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
 			tokenRoute.GET("/:id", controller.GetToken)
@@ -320,6 +324,8 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
+			usageRoute.GET("/self", middleware.UserAuth(), controller.GetSelfUsage)
+			usageRoute.GET("/self/export", middleware.UserAuth(), controller.ExportSelfUsage)
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{

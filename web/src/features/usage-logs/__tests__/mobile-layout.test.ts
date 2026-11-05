@@ -22,14 +22,17 @@ import { describe, test } from 'vitest'
 import { TASK_MOBILE_SUMMARY_FIELDS } from '../lib/task-mobile-layout'
 
 describe('task log mobile layout', () => {
-  test('keeps plugin, channel, duration, progress, and artifacts visible in the summary', () => {
+  test('keeps billing, member, cost, plugin, channel, duration, progress, and artifacts visible', () => {
     assert.deepEqual(
       TASK_MOBILE_SUMMARY_FIELDS.map((field) => field.id),
       [
         'submit_time',
+        'billing_account',
+        'member',
         'user',
         'plugin',
         'channel_id',
+        'quota',
         'duration',
         'progress',
         'artifacts',

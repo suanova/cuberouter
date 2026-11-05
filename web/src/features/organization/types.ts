@@ -19,6 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type {
+  SelfUsageRange,
+  SelfUsageRows,
+  SelfUsageTokenOption,
+  SelfUsageTotals,
+} from '@/features/usage/types'
 import { organizationCapabilitiesSchema } from '@/lib/account-context'
 
 // ============================================================================
@@ -88,6 +94,10 @@ export type OrganizationDisableState = z.infer<
  */
 export const userOrganizationSchema = organizationSchema.extend({
   role: organizationRoleSchema,
+  /** Quota limit this member may consume inside the organization; 0 = no limit. */
+  member_quota_limit: z.number(),
+  /** Quota this member consumed from the organization. */
+  member_used_quota: z.number(),
   disable_state: organizationDisableStateSchema,
   can_self_enable: z.boolean(),
   capabilities: organizationCapabilitiesSchema,
@@ -394,6 +404,7 @@ export interface OrganizationTokenRow {
   /** `private` keys are only usable by their responsible member. */
   visibility: string
   organization_id?: number
+  organization_name?: string
   creator_user_id?: number
   responsible_user_id?: number
   transfer_reason?: string
@@ -449,6 +460,13 @@ export interface OrganizationLogRow {
   request_id?: string
   upstream_request_id?: string
   other?: string
+  scope_type?: string
+  scope_id?: number
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
+  actor_user_id?: number
   creator_user_id?: number
   creator_name?: string
   responsible_user_id?: number
@@ -461,6 +479,24 @@ export interface OrganizationLogStats {
   quota: number
   rpm: number
   tpm: number
+}
+
+export interface OrganizationUsageUserOption {
+  id: number
+  name: string
+}
+
+/** The organization's daily usage table; rows reuse the personal usage shape. */
+export interface OrganizationUsageData {
+  backfill_complete: boolean
+  range: SelfUsageRange
+  rows: SelfUsageRows
+  totals: SelfUsageTotals
+  filter_options: {
+    models: string[]
+    tokens: SelfUsageTokenOption[]
+    users: OrganizationUsageUserOption[]
+  }
 }
 
 // ============================================================================
@@ -483,6 +519,10 @@ export interface OrganizationTaskRow {
   token_name?: string
   token_unlimited?: boolean
   request_id?: string
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
   actor_user_id?: number
   creator_user_id?: number
   creator_name?: string

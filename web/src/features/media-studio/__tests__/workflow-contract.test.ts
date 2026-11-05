@@ -102,29 +102,34 @@ test('image requests always carry the quality tier with the machine-native defau
     true_cfg_scale: 4,
   })
 })
-test('edit requests inline the references as base64 under "image"', () => {
-  // 编辑渠道只认 base64。单张发字符串，多张发字符串数组；原来的 images[].image_url
-  // 形状会被上游按 base64 解码，报 `Incorrect padding`。
+test('edit requests send the references as multipart image file parts', () => {
+  // 编辑请求改为 multipart/form-data:每张参考图作为一个 image file part,不再
+  // base64 内联进 JSON。
   const base = {
     ...initialDraft,
     mode: 'edit' as const,
     model: 'm',
     prompt: 'Cat',
   }
-  expect(imageRequest(base, [reference.url])).toMatchObject({
-    image: reference.url,
-  })
-  expect(
-    imageRequest(base, [reference.url, 'data:image/png;base64,Yg=='])
-  ).toMatchObject({
-    image: [reference.url, 'data:image/png;base64,Yg=='],
-  })
-  expect(imageRequest(base, [])).not.toHaveProperty('image')
+  const single = imageRequest(base, [reference.url])
+  expect(single).toBeInstanceOf(FormData)
+  const singleFiles = (single as FormData).getAll('image')
+  expect(singleFiles).toHaveLength(1)
+  expect(singleFiles[0]).toBeInstanceOf(File)
+
+  const multiple = imageRequest(base, [
+    reference.url,
+    'data:image/png;base64,Yg==',
+  ]) as FormData
+  expect(multiple.getAll('image')).toHaveLength(2)
+
+  // 没有参考图就不该发图片(会走 JSON 而不是 multipart)。
+  expect(imageRequest(base, [])).not.toBeInstanceOf(FormData)
   expect(
     imageRequest({ ...initialDraft, model: 'm', prompt: 'Cat' }, [
       reference.url,
     ])
-  ).not.toHaveProperty('image')
+  ).not.toBeInstanceOf(FormData)
 })
 test('explicit machine settings override the tier and the machine defaults', () => {
   // 高级设置是覆盖而非新增字段：填了就原样下发，没填才回落到档位/默认值。
@@ -176,20 +181,19 @@ test('ten reference images are accepted and eleven are rejected', () => {
     draftSchema.safeParse({ ...base, references: references(11) }).success
   ).toBe(false)
 })
-test('only ten references are inlined into the edit request', () => {
+test('only ten references become image file parts in the edit request', () => {
   const urls = Array.from(
     { length: 10 },
-    (_, index) => `data:image/png;base64,${index}`
+    () => 'data:image/png;base64,iVBORw0KGgo='
   )
-  expect(
-    imageRequest(
-      { ...initialDraft, mode: 'edit', model: 'm', prompt: 'Cat' },
-      urls
-    ).image
-  ).toEqual(urls)
+  const form = imageRequest(
+    { ...initialDraft, mode: 'edit', model: 'm', prompt: 'Cat' },
+    urls
+  ) as FormData
+  expect(form.getAll('image')).toHaveLength(10)
 })
-test('the rasterized mask rides along with the edit only when a region was boxed', () => {
-  // mask 与 image 是一体的：没有参考图就没有可对齐的蒙版，文生图更不能带。
+test('the rasterized mask is a file part rides only when a region was boxed', () => {
+  // mask 与 image 是一套：没有参考图就没有可对齐的蒙版，文生图更不能带。
   const edit = {
     ...initialDraft,
     mode: 'edit' as const,
@@ -197,14 +201,17 @@ test('the rasterized mask rides along with the edit only when a region was boxed
     prompt: 'Cat',
   }
   const mask = 'data:image/png;base64,TUFTSw=='
-  expect(imageRequest(edit, [reference.url], mask)).toMatchObject({
-    image: reference.url,
-    mask,
-  })
-  expect(imageRequest(edit, [reference.url])).not.toHaveProperty('mask')
+  const withMask = imageRequest(edit, [reference.url], mask) as FormData
+  expect(withMask.getAll('image')).toHaveLength(1)
+  expect(withMask.get('mask')).toBeInstanceOf(File)
+
+  const withoutMask = imageRequest(edit, [reference.url]) as FormData
+  expect(withoutMask.get('mask')).toBeNull()
+
+  // 文生图不带蒙版,且保持 JSON。
   expect(
     imageRequest({ ...initialDraft, model: 'm', prompt: 'Cat' }, [], mask)
-  ).not.toHaveProperty('mask')
+  ).not.toBeInstanceOf(FormData)
 })
 test('boxes outside the image or beyond the cap are rejected before sending', () => {
   // 归一化坐标只允许 0..1；框太多说明是误拖，挡住比让上游报错便宜。

@@ -62,7 +62,12 @@ import { usePricingData } from '@/features/pricing/hooks/use-pricing-data'
 import { formatModelDiscountPercent } from '@/features/pricing/lib/model-helpers'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 import { formatBillingCurrencyFromUSD } from '@/lib/currency'
-import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
+import {
+  formatLogQuota,
+  formatTokens,
+  formatTimestamp,
+  formatUseTime,
+} from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import type { UsageLog } from '../../data/schema'
@@ -71,6 +76,9 @@ import {
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
+  formatModelName,
+  getLogBillingAccount,
+  getLogResponsibleUserName,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   isViolationFeeLog,
@@ -106,9 +114,8 @@ function timingTextColorClass(
   return 'text-rose-600'
 }
 
-/** A label/value line. Exported so the organization logs dialog can lay out its
- * own rows with the same spacing. */
-export function DetailRow(props: {
+/** A label/value line. */
+function DetailRow(props: {
   label: React.ReactNode
   value: React.ReactNode
   mono?: boolean
@@ -132,8 +139,8 @@ export function DetailRow(props: {
   )
 }
 
-/** A titled block of rows. Exported alongside `DetailRow`. */
-export function DetailSection(props: {
+/** A titled block of rows. */
+function DetailSection(props: {
   icon?: React.ReactNode
   iconTone?: IconBadgeTone
   label: string
@@ -225,12 +232,10 @@ function quotaSaturationKindLabel(
 /**
  * The pricing rows behind one charge.
  *
- * Exported for the organization logs dialog, which shows the same breakdown for
- * an organization's own log records. It reads a single value off the log — the
- * quota it settles on — so this takes that number rather than a whole record,
- * which is what lets both callers share it.
+ * It reads a single value off the log — the quota it settles on — so callers
+ * can pass that number rather than a whole record.
  */
-export function BillingBreakdown(props: {
+function BillingBreakdown(props: {
   quota: number
   other: LogOtherData
   isAdmin: boolean
@@ -444,11 +449,7 @@ export function BillingBreakdown(props: {
           ))}
         </>
       )}
-      <DetailRow
-        label={t('Total Cost')}
-        value={formatLogQuota(quota)}
-        mono
-      />
+      <DetailRow label={t('Total Cost')} value={formatLogQuota(quota)} mono />
     </DetailSection>
   )
 }
@@ -525,6 +526,12 @@ interface DetailsDialogProps {
   isRoot: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
+  /** Organization-wide readers see who was responsible for the charge. */
+  showResponsible?: boolean
+  /** Show the request-level fields an organization reader expects (path, model, time, stream). */
+  showRequestDetails?: boolean
+  /** The organization view deliberately omits the internal billing group. */
+  showGroup?: boolean
 }
 
 export function DetailsDialog(props: DetailsDialogProps) {
@@ -615,9 +622,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   // descriptor (shared by audit type=3 and login type=7).
   const operationText = renderAuditContent(other, t)
   const manageRemark =
-    isManage &&
-    props.isAdmin &&
-    typeof other?.op?.params?.remark === 'string'
+    isManage && props.isAdmin && typeof other?.op?.params?.remark === 'string'
       ? other.op.params.remark
       : ''
   const auditRoute = isManage && props.isAdmin ? other?.audit_info : undefined
@@ -673,6 +678,15 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const reasoningEffortVariant = getReasoningEffortVariant(
     other?.reasoning_effort
   )
+  const billingAccount = getLogBillingAccount(props.log)
+  const responsibleUserName = getLogResponsibleUserName(props.log)
+  const modelInfo = formatModelName(props.log)
+  let billingAccountLabel = t('Personal')
+  if (billingAccount.type === 'organization') {
+    billingAccountLabel = billingAccount.name
+      ? `${billingAccount.name} (#${billingAccount.id})`
+      : `#${billingAccount.id}`
+  }
 
   return (
     <Dialog
@@ -745,11 +759,43 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <DetailRow label={t('Token')} value={props.log.token_name} mono />
           )}
 
-          {(props.log.group || other?.group) && (
+          {props.showGroup !== false && (props.log.group || other?.group) && (
             <DetailRow
               label={t('Group')}
               value={props.log.group || other?.group || ''}
               mono
+            />
+          )}
+
+          {props.showRequestDetails && other?.request_path && (
+            <DetailRow label={t('Path')} value={other.request_path} mono />
+          )}
+          {props.showRequestDetails && (
+            <DetailRow label={t('Model')} value={modelInfo.name || '-'} mono />
+          )}
+          {props.showRequestDetails && (
+            <DetailRow
+              label={t('Time')}
+              value={formatTimestamp(props.log.created_at)}
+            />
+          )}
+          {props.showRequestDetails && (
+            <DetailRow
+              label={t('Stream')}
+              value={props.log.is_stream ? t('Yes') : t('No')}
+            />
+          )}
+
+          {(props.isAdmin || billingAccount.type === 'organization') && (
+            <DetailRow
+              label={t('Billing Account')}
+              value={billingAccountLabel}
+            />
+          )}
+          {(props.isAdmin || props.showResponsible) && (
+            <DetailRow
+              label={t('Responsible user')}
+              value={responsibleUserName || '-'}
             />
           )}
 

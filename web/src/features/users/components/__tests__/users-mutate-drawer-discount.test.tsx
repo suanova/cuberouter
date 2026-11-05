@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useState, type ReactNode } from 'react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -28,6 +29,7 @@ import {
   getGroups,
   getPermissionCatalog,
   getUser,
+  getUserEnabledModels,
   getUserModelDiscounts,
   updateUser,
   updateUserModelDiscounts,
@@ -44,14 +46,6 @@ vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: toastSuccess },
 }))
 
-// The editor's model options come from the pricing list; the pricing page
-// itself has nothing to say here.
-vi.mock('@/features/pricing/hooks/use-pricing-data', () => ({
-  usePricingData: () => ({
-    models: [{ model_name: 'm' }, { model_name: 'm2' }],
-  }),
-}))
-
 // Only the drawer's endpoints are stubbed. The request shape belongs to the api
 // module, which runs for real.
 vi.mock('../../api', async (importOriginal) => ({
@@ -59,6 +53,7 @@ vi.mock('../../api', async (importOriginal) => ({
   getGroups: vi.fn(),
   getPermissionCatalog: vi.fn(),
   getUser: vi.fn(),
+  getUserEnabledModels: vi.fn(),
   getUserModelDiscounts: vi.fn(),
   updateUser: vi.fn(),
   updateUserModelDiscounts: vi.fn(),
@@ -67,6 +62,7 @@ vi.mock('../../api', async (importOriginal) => ({
 const getUserMock = vi.mocked(getUser)
 const getGroupsMock = vi.mocked(getGroups)
 const getPermissionCatalogMock = vi.mocked(getPermissionCatalog)
+const getUserEnabledModelsMock = vi.mocked(getUserEnabledModels)
 const getUserModelDiscountsMock = vi.mocked(getUserModelDiscounts)
 const updateUserMock = vi.mocked(updateUser)
 const updateUserModelDiscountsMock = vi.mocked(updateUserModelDiscounts)
@@ -167,6 +163,7 @@ beforeEach(() => {
     .mockReset()
     .mockResolvedValue({ resources: [], roles: [] })
   getUserModelDiscountsMock.mockReset().mockResolvedValue(STORED_DISCOUNTS)
+  getUserEnabledModelsMock.mockReset().mockResolvedValue(['m', 'm2'])
   updateUserMock.mockReset().mockResolvedValue({ success: true, data: {} })
   updateUserModelDiscountsMock.mockReset().mockResolvedValue(undefined)
   toastSuccess.mockReset()
@@ -184,6 +181,31 @@ describe('users mutate drawer model discounts', () => {
       groupHeading.compareDocumentPosition(discountsHeading) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+
+  test('offers the models the edited user can use, not the viewer-side pricing list', async () => {
+    // Regression: the prices the admin sees are filtered by the admin's own
+    // group, so a model living only in the edited user's group is absent there.
+    getUserEnabledModelsMock.mockResolvedValue([
+      'viduq3-turbo-fmi',
+      'viduq3-pro-fmi',
+    ])
+    renderDrawer(buildUser({ group: 'viduvip' }))
+
+    await waitFor(() =>
+      expect(getUserEnabledModelsMock).toHaveBeenCalledWith(EDITED_USER_ID)
+    )
+
+    const user = userEvent.setup()
+    await user.click(
+      await screen.findByRole('combobox', { name: 'Model Discounts' })
+    )
+    expect(
+      await screen.findByRole('option', { name: 'viduq3-turbo-fmi' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: 'viduq3-pro-fmi' })
+    ).toBeInTheDocument()
   })
 
   test('saves the discounts that were loaded', async () => {
@@ -236,10 +258,7 @@ describe('users mutate drawer model discounts', () => {
   })
 
   test('discards a stale user detail response after switching users', async () => {
-    let resolveFirstUser!: (value: {
-      success: boolean
-      data: User
-    }) => void
+    let resolveFirstUser!: (value: { success: boolean; data: User }) => void
     getUserMock.mockImplementation((id) =>
       id === EDITED_USER_ID
         ? new Promise((resolve) => {
@@ -278,6 +297,7 @@ describe('users mutate drawer model discounts', () => {
       screen.queryByRole('button', { name: 'Save discounts' })
     ).not.toBeInTheDocument()
     expect(getUserModelDiscountsMock).not.toHaveBeenCalled()
+    expect(getUserEnabledModelsMock).not.toHaveBeenCalled()
   })
 
   test('shows a placeholder while the discounts load', async () => {

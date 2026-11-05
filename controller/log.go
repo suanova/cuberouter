@@ -22,7 +22,9 @@ func GetAllLogs(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId)
+	billingAccountType := c.Query("billing_account_type")
+	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, upstreamRequestId, billingAccountType, organizationId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -47,7 +49,10 @@ func GetUserLogs(c *gin.Context) {
 	group := c.Query("group")
 	requestId := c.Query("request_id")
 	upstreamRequestId := c.Query("upstream_request_id")
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId)
+	includeOrganization := c.Query("include_organization") == "true"
+	billingAccountType := c.Query("billing_account_type")
+	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
+	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, upstreamRequestId, includeOrganization, billingAccountType, organizationId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -107,7 +112,9 @@ func GetLogsStat(c *gin.Context) {
 	modelName := c.Query("model_name")
 	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group)
+	billingAccountType := c.Query("billing_account_type")
+	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, billingAccountType, organizationId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -126,31 +133,33 @@ func GetLogsStat(c *gin.Context) {
 }
 
 func GetLogsSelfStat(c *gin.Context) {
-	username := c.GetString("username")
 	userId := c.GetInt("id")
-	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	tokenName := c.Query("token_name")
 	modelName := c.Query("model_name")
-	channel, _ := strconv.Atoi(c.Query("channel"))
 	group := c.Query("group")
-	// 个人看板按账单归属收窄：组织消费虽然把这个人记为责任人，但花的是组织的钱，
-	// 算进他的个人统计会让额度消耗凭空多出来一块。
-	quotaNum, err := model.SumUsedQuotaForBillingAccount(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, model.AccountContextTypePersonal, userId)
+	requestId := c.Query("request_id")
+	upstreamRequestId := c.Query("upstream_request_id")
+	includeOrganization := c.Query("include_organization") == "true"
+	billingAccountType := c.Query("billing_account_type")
+	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
+	// 个人看板按“我发起的调用”统计：个人账单 + 责任人是我的组织账单。
+	// 组织额度单独返回，不混进个人消费。
+	stat, err := model.GetUserLogStats(userId, startTimestamp, endTimestamp, modelName, tokenName, group, requestId, upstreamRequestId, includeOrganization, billingAccountType, organizationId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	//tokenNum := model.SumUsedToken(logType, startTimestamp, endTimestamp, modelName, username, tokenName)
 	c.JSON(200, gin.H{
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": quotaNum.Quota,
-			"rpm":   quotaNum.Rpm,
-			"tpm":   quotaNum.Tpm,
-			//"token": tokenNum,
+			"quota":              stat.Quota,
+			"personal_quota":     stat.PersonalQuota,
+			"organization_quota": stat.OrganizationQuota,
+			"rpm":                stat.Rpm,
+			"tpm":                stat.Tpm,
 		},
 	})
 	return

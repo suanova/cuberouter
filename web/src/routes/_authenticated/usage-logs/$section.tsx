@@ -45,6 +45,10 @@ const usageLogsSearchSchema = z.object({
   username: z.string().optional().catch(''),
   requestId: z.string().optional().catch(''),
   upstreamRequestId: z.string().optional().catch(''),
+  billingAccountType: z.string().optional().catch(''),
+  organizationId: z.string().optional().catch(''),
+  status: z.string().optional().catch(''),
+  action: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
 })
@@ -57,15 +61,31 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
         params: { section: USAGE_LOGS_DEFAULT_SECTION },
       })
     }
-    // type 仅 common 使用，非 common 时清掉 URL 里的 type
+    // Section-scoped filters: type is common-only; billing/org are common and
+    // task (task's personal union uses them); status/action are task-only.
+    // Clear a section's keys when the URL moves elsewhere so a link does not
+    // silently carry a filter the new section cannot read.
     const hasTypeSearch = Array.isArray(search?.type)
       ? search.type.length > 0
       : search?.type != null && search.type !== ''
-    if (params.section !== 'common' && hasTypeSearch) {
+    const hasBillingSearch =
+      Boolean(search?.billingAccountType) || Boolean(search?.organizationId)
+    const hasTaskSearch = Boolean(search?.status) || Boolean(search?.action)
+    const shouldClearType = params.section !== 'common' && hasTypeSearch
+    const shouldClearBilling = params.section === 'drawing' && hasBillingSearch
+    const shouldClearTask = params.section !== 'task' && hasTaskSearch
+    if (shouldClearType || shouldClearBilling || shouldClearTask) {
       throw redirect({
         to: '/usage-logs/$section',
         params: { section: params.section },
-        search: { ...search, type: undefined },
+        search: {
+          ...search,
+          ...(shouldClearType ? { type: undefined } : {}),
+          ...(shouldClearBilling
+            ? { billingAccountType: undefined, organizationId: undefined }
+            : {}),
+          ...(shouldClearTask ? { status: undefined, action: undefined } : {}),
+        },
         replace: true,
       })
     }

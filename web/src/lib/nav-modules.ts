@@ -22,9 +22,18 @@ export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
 export type HeaderNavModule = 'rankings' | 'pricing'
 
+/** Header navigation entries that are plain on/off switches rather than access rules. */
+export type HeaderNavBooleanModule =
+  | 'home'
+  | 'console'
+  | 'media_studio'
+  | 'docs'
+  | 'about'
+
 export type HeaderNavModules = {
   home: boolean
   console: boolean
+  media_studio: boolean
   pricing: ModuleAccess
   rankings: ModuleAccess
   docs: boolean
@@ -35,6 +44,7 @@ export type HeaderNavModules = {
 const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   home: true,
   console: true,
+  media_studio: true,
   pricing: { enabled: true, requireAuth: false },
   rankings: { enabled: true, requireAuth: false },
   docs: true,
@@ -183,6 +193,19 @@ export async function getFreshModuleAccess(
   } catch {
     return { enabled: false, requireAuth: true }
   }
+}
+
+/**
+ * Whether an on/off header-navigation entry is enabled. Route guards use this
+ * for pages reachable from the header but living outside it; an absent cache
+ * counts as enabled, matching the default-on header configuration.
+ */
+export function isHeaderNavModuleEnabled(
+  module: HeaderNavBooleanModule
+): boolean {
+  const status = getCachedStatus()
+  if (!status) return true
+  return parseHeaderNavModulesFromStatus(status)[module] !== false
 }
 
 export function isSidebarModuleEnabled(

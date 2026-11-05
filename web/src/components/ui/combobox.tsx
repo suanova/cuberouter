@@ -48,6 +48,7 @@ type LegacyComboboxProps = {
   allowCustomValue?: boolean
   className?: string
   id?: string
+  ariaLabel?: string
   openOnFocus?: boolean
 }
 
@@ -70,6 +71,7 @@ function Combobox(
         placeholder={props.searchPlaceholder ?? props.placeholder}
         emptyText={props.emptyText}
         className={props.className}
+        ariaLabel={props.ariaLabel}
         allowCustomValue={props.allowCustomValue}
         openOnFocus={props.openOnFocus}
       />

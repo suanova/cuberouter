@@ -74,11 +74,13 @@ const organizationDissolveOperation = "organization_dissolve"
 
 type UserOrganizationView struct {
 	model.Organization
-	Role          string                         `json:"role"`
-	DisableState  OrganizationPolicyDisableState `json:"disable_state" gorm:"-"`
-	CanSelfEnable bool                           `json:"can_self_enable" gorm:"-"`
-	Capabilities  OrganizationActorCapabilities  `json:"capabilities" gorm:"-"`
-	AccessMode    string                         `json:"access_mode" gorm:"-"`
+	Role             string                         `json:"role"`
+	MemberQuotaLimit int                            `json:"member_quota_limit"`
+	MemberUsedQuota  int                            `json:"member_used_quota"`
+	DisableState     OrganizationPolicyDisableState `json:"disable_state" gorm:"-"`
+	CanSelfEnable    bool                           `json:"can_self_enable" gorm:"-"`
+	Capabilities     OrganizationActorCapabilities  `json:"capabilities" gorm:"-"`
+	AccessMode       string                         `json:"access_mode" gorm:"-"`
 }
 
 func CreateOrganization(operatorUserId int, req CreateOrganizationRequest, auditMetadata ...OrganizationAuditRequestMetadata) (*model.Organization, error) {
@@ -155,7 +157,9 @@ func CreateOrganization(operatorUserId int, req CreateOrganizationRequest, audit
 func ListUserOrganizations(userId int, includeDissolved bool) ([]UserOrganizationView, error) {
 	var organizations []UserOrganizationView
 	tx := model.DB.Table("organizations").
-		Select("organizations.*, organization_members.role").
+		Select("organizations.*, organization_members.role, "+
+			"organization_members.quota_limit AS member_quota_limit, "+
+			"organization_members.used_quota AS member_used_quota").
 		Joins("JOIN organization_members ON organization_members.organization_id = organizations.id").
 		Where("organization_members.user_id = ? AND organization_members.status = ?", userId, model.OrganizationMemberStatusActive)
 	if !includeDissolved {

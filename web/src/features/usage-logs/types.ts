@@ -54,6 +54,8 @@ export interface CommonLogFilters extends CommonFilters {
   username?: string
   requestId?: string
   upstreamRequestId?: string
+  billingAccountType?: string
+  organizationId?: string
 }
 
 /**
@@ -68,6 +70,10 @@ export interface DrawingLogFilters extends CommonFilters {
  */
 export interface TaskLogFilters extends CommonFilters {
   taskId?: string
+  status?: string
+  action?: string
+  billingAccountType?: string
+  organizationId?: string
 }
 
 /**
@@ -261,6 +267,10 @@ export interface LogOtherData {
  */
 export interface LogStatistics {
   quota: number
+  /** Personal-billed share of the caller's own logs. */
+  personal_quota?: number
+  /** Organization-billed share where the caller is the responsible person. */
+  organization_quota?: number
   rpm: number
   tpm: number
 }
@@ -303,10 +313,18 @@ export interface TaskLog {
   username?: string
   platform: string // suno, kling, runway, etc.
   task_id: string
-  action: string // MUSIC, LYRICS, GENERATE, TEXT_GENERATE, etc.
+  action: string // image_to_video, text_to_video, MUSIC, LYRICS, etc.
   channel_id: number
   group: string
   quota: number
+  token_id?: number
+  token_name?: string
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
+  responsible_user_id?: number
+  responsible_name?: string
   submit_time: number // seconds
   start_time?: number // seconds
   finish_time?: number // seconds
@@ -395,6 +413,9 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  billing_account_type?: 'personal' | 'organization'
+  organization_id?: number
+  include_organization?: boolean
 }
 
 export interface GetLogsResponse {
@@ -419,6 +440,9 @@ export interface GetLogStatsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  billing_account_type?: 'personal' | 'organization'
+  organization_id?: number
+  include_organization?: boolean
 }
 
 export interface GetLogStatsResponse {
@@ -449,6 +473,12 @@ export interface GetTaskLogsParams {
   page_size?: number
   channel_id?: string
   task_id?: string
+  platform?: string
+  status?: string
+  action?: string
+  include_organization?: boolean
+  billing_account_type?: 'personal' | 'organization'
+  organization_id?: number
   start_timestamp?: number
   end_timestamp?: number
 }

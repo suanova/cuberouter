@@ -179,6 +179,14 @@ export function buildApiParams(config: {
     return undefined
   }
 
+  // Only the two billing scopes are meaningful; a stale or hand-edited URL
+  // value must not reach the API as a filter.
+  const billingAccountType =
+    searchParams.billingAccountType === 'personal' ||
+    searchParams.billingAccountType === 'organization'
+      ? searchParams.billingAccountType
+      : undefined
+
   // Build base params from search params
   const params: GetLogsParams = {
     p: page,
@@ -186,7 +194,9 @@ export function buildApiParams(config: {
     ...(searchParams.type ? { type: processType(searchParams.type) } : {}),
     ...(searchParams.model ? { model_name: String(searchParams.model) } : {}),
     ...(searchParams.token ? { token_name: String(searchParams.token) } : {}),
-    ...(searchParams.group ? { group: String(searchParams.group) } : {}),
+    ...(isAdmin && searchParams.group
+      ? { group: String(searchParams.group) }
+      : {}),
     ...(isAdmin && searchParams.channel
       ? { channel: Number(searchParams.channel) || 0 }
       : {}),
@@ -198,6 +208,11 @@ export function buildApiParams(config: {
       : {}),
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
+      : {}),
+    ...(!isAdmin ? { include_organization: true } : {}),
+    ...(billingAccountType ? { billing_account_type: billingAccountType } : {}),
+    ...(searchParams.organizationId
+      ? { organization_id: Number(searchParams.organizationId) || 0 }
       : {}),
     ...buildTimeRangeParams(searchParams, false),
   }
@@ -218,7 +233,7 @@ export function buildApiParams(config: {
           params.token_name = String(value)
           break
         case 'group':
-          params.group = String(value)
+          if (isAdmin) params.group = String(value)
           break
         case 'channel':
           if (isAdmin) params.channel = Number(value) || 0
@@ -271,7 +286,26 @@ export async function fetchLogsByCategory(
       ? { mj_id: searchParams.filter as string | undefined }
       : {}),
     ...(logCategory === 'task'
-      ? { task_id: searchParams.filter as string | undefined }
+      ? {
+          task_id: searchParams.filter as string | undefined,
+          ...(searchParams.status
+            ? { status: String(searchParams.status) }
+            : {}),
+          ...(searchParams.action
+            ? { action: String(searchParams.action) }
+            : {}),
+          ...(!isAdmin ? { include_organization: true } : {}),
+          ...(searchParams.billingAccountType
+            ? {
+                billing_account_type: String(
+                  searchParams.billingAccountType
+                ) as 'personal' | 'organization',
+              }
+            : {}),
+          ...(searchParams.organizationId
+            ? { organization_id: Number(searchParams.organizationId) || 0 }
+            : {}),
+        }
       : {}),
   }
 

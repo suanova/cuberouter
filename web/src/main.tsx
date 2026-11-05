@@ -29,9 +29,8 @@ import ReactDOM from 'react-dom/client'
 import { toast } from 'sonner'
 
 import { getStatus } from '@/lib/api'
-import { basePath, withBasePath } from '@/lib/base-path'
+import { basePath } from '@/lib/base-path'
 import { installBuildMetadata } from '@/lib/build-metadata'
-import { applyFaviconToDom } from '@/lib/dom-utils'
 import '@/lib/dayjs'
 import { initializeFrontendCache } from '@/lib/frontend-cache'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -117,7 +116,10 @@ const rootElement = document.querySelector<HTMLElement>('#root')
 if (!rootElement) {
   throw new Error('Root element not found')
 }
-// Set document.title and favicon from cached status, then refresh from network
+// Set document.title from cached status, then refresh from network.
+// The favicon deliberately stays the bundled app icon from index.html: the
+// system logo is a wide wordmark meant for headers, and renders illegibly small
+// as a tab icon.
 ;(function initSystemBranding() {
   try {
     if (typeof window === 'undefined' || typeof document === 'undefined') return
@@ -134,9 +136,6 @@ if (!rootElement) {
       if (saved) {
         const s = JSON.parse(saved)
         if (s?.system_name) apply(s.system_name)
-        // status.logo is a server path, so it is resolved against the deployment
-        // prefix here -- the one place this value enters the app.
-        if (s?.logo) applyFaviconToDom(withBasePath(s.logo))
       }
     } catch {
       /* empty */
@@ -152,7 +151,6 @@ if (!rootElement) {
             /* empty */
           }
         }
-        if (s?.logo) applyFaviconToDom(withBasePath(s.logo as string))
       })
       .catch(() => {
         /* empty */

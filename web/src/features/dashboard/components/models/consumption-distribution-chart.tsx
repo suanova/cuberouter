@@ -46,6 +46,9 @@ interface ConsumptionDistributionChartProps {
   loading?: boolean
   timeGranularity?: TimeGranularity
   defaultChartType?: ConsumptionDistributionChartType
+  minTrendPoints?: number
+  formatQuota?: (rawQuota: number) => string
+  showChartTypeToggle?: boolean
 }
 
 const CHART_TYPE_ICONS: Record<
@@ -74,6 +77,8 @@ export function ConsumptionDistributionChart(
     (typeof import('@visactor/vchart'))['ThemeManager'] | null
   >(null)
   const timeGranularity = props.timeGranularity ?? DEFAULT_TIME_GRANULARITY
+  const showChartTypeToggle = props.showChartTypeToggle ?? true
+  const activeChartType = showChartTypeToggle ? chartType : 'bar'
 
   useEffect(() => {
     if (props.defaultChartType) setChartType(props.defaultChartType)
@@ -104,14 +109,27 @@ export function ConsumptionDistributionChart(
         props.loading ? [] : props.data,
         timeGranularity,
         t,
-        chartRadius
+        chartRadius,
+        {
+          minTrendPoints: props.minTrendPoints,
+          formatQuota: props.formatQuota,
+        }
       ),
-    [props.data, props.loading, timeGranularity, t, chartRadius]
+    [
+      props.data,
+      props.loading,
+      props.minTrendPoints,
+      props.formatQuota,
+      timeGranularity,
+      t,
+      chartRadius,
+    ]
   )
-  const spec = chartType === 'bar' ? chartData.spec_line : chartData.spec_area
-  const specType = typeof spec?.type === 'string' ? spec.type : chartType
+  const spec =
+    activeChartType === 'bar' ? chartData.spec_line : chartData.spec_area
+  const specType = typeof spec?.type === 'string' ? spec.type : activeChartType
   const chartKey = [
-    chartType,
+    activeChartType,
     specType,
     props.loading ? 'loading' : 'ready',
     props.data.length,
@@ -132,26 +150,28 @@ export function ConsumptionDistributionChart(
           </span>
         </div>
 
-        <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
-          {CONSUMPTION_DISTRIBUTION_CHART_OPTIONS.map((item) => {
-            const Icon = CHART_TYPE_ICONS[item.value]
-            return (
-              <button
-                key={item.value}
-                type='button'
-                onClick={() => setChartType(item.value)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
-                  chartType === item.value
-                    ? 'bg-background text-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <Icon className='size-3.5' />
-                {t(item.labelKey)}
-              </button>
-            )
-          })}
-        </div>
+        {showChartTypeToggle ? (
+          <div className='bg-muted/60 inline-flex h-7 w-full overflow-x-auto rounded-lg border p-0.5 sm:h-8 sm:w-auto'>
+            {CONSUMPTION_DISTRIBUTION_CHART_OPTIONS.map((item) => {
+              const Icon = CHART_TYPE_ICONS[item.value]
+              return (
+                <button
+                  key={item.value}
+                  type='button'
+                  onClick={() => setChartType(item.value)}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors ${
+                    chartType === item.value
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  <Icon className='size-3.5' />
+                  {t(item.labelKey)}
+                </button>
+              )
+            })}
+          </div>
+        ) : null}
       </div>
 
       <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>

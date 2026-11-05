@@ -121,6 +121,37 @@ export function useOrganizationMemberOptions(
 }
 
 /**
+ * Every active member as a filter option.
+ *
+ * The log filter selects a responsible user by ID, so the option value is the
+ * user id rather than the display label. The label prefers the display name and
+ * falls back through the same fields the member table uses.
+ */
+export function useOrganizationMemberFilterOptions(
+  surface: OrganizationSurface,
+  organizationId: number,
+  enabled: boolean
+): { options: Array<{ value: string; label: string }>; isLoading: boolean } {
+  const { members, isLoading } = useOrganizationRoster(
+    surface,
+    organizationId,
+    enabled
+  )
+
+  return {
+    options: members.map((member) => ({
+      value: String(member.user_id),
+      label:
+        member.display_name ||
+        member.username ||
+        member.email ||
+        String(member.user_id),
+    })),
+    isLoading,
+  }
+}
+
+/**
  * The members who could hold an organization key.
  *
  * Narrowed by the key's visibility, so switching a key to public drops the

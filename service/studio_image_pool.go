@@ -96,7 +96,7 @@ func ReadyStudioImageChannels(ctx context.Context, group, modelName string) []*m
 			(ch.HeaderOverride != nil && strings.TrimSpace(*ch.HeaderOverride) != "" && strings.TrimSpace(*ch.HeaderOverride) != "{}") {
 			continue
 		}
-		if (ch.Type != constant.ChannelTypeOpenAI && ch.Type != constant.ChannelTypeImageEdit) || ch.ChannelInfo.IsMultiKey ||
+		if ch.Type != constant.ChannelTypeOpenAI || ch.ChannelInfo.IsMultiKey ||
 			!slices.Contains(strings.Split(ch.Models, ","), modelName) {
 			continue
 		}

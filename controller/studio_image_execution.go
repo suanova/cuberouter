@@ -61,7 +61,12 @@ func reserveStudioImage(r studioqueue.Request, job string) *studioqueue.Reservat
 		return nil
 	}
 	buffer := &studioImageBuffer{headers: make(http.Header), code: http.StatusOK}
-	req, err := http.NewRequest(http.MethodPost, "http://studio.internal/pg/images/"+map[bool]string{true: "edits", false: "generations"}[p.Mode == "edit"], bytes.NewReader(body))
+	path := "/pg/images/generations"
+	if p.Mode == "edit" {
+		path = "/pg/images/edits"
+	}
+	// The native relay rewrites the playground path to the upstream /v1 path.
+	req, err := http.NewRequest(http.MethodPost, path, bytes.NewReader(body))
 	if err != nil {
 		return nil
 	}

@@ -299,14 +299,15 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		logContent := fmt.Sprintf("模型固定价格 %.2f，有效倍率 %.2f，操作 %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, constant.MjActionSwapFace)
 		other := service.GenerateMjOtherInfo(info, priceData)
 		model.RecordConsumeLog(c, info.UserId, service.RelayConsumeLogParams(info, model.RecordConsumeLogParams{
-			ChannelId: billingChannelId,
-			ModelName: modelName,
-			TokenName: tokenName,
-			Quota:     midjourneyTask.Quota,
-			Content:   logContent,
-			TokenId:   midjourneyTask.TokenId,
-			Group:     info.UsingGroup,
-			Other:     other,
+			ChannelId:   billingChannelId,
+			ModelName:   modelName,
+			TokenName:   tokenName,
+			Quota:       midjourneyTask.Quota,
+			Content:     logContent,
+			TokenId:     midjourneyTask.TokenId,
+			Group:       info.UsingGroup,
+			Other:       other,
+			UsageSource: model.LogUsageSourceMJ,
 		}))
 		// 组织计费的用量记在组织账本上，个人看板保持零增长。
 		if !service.IsOrganizationBilling(info) {
@@ -690,14 +691,15 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		logContent := fmt.Sprintf("模型固定价格 %.2f，有效倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
 		other := service.GenerateMjOtherInfo(relayInfo, priceData)
 		model.RecordConsumeLog(c, relayInfo.UserId, service.RelayConsumeLogParams(relayInfo, model.RecordConsumeLogParams{
-			ChannelId: billingChannelId,
-			ModelName: modelName,
-			TokenName: tokenName,
-			Quota:     midjourneyTask.Quota,
-			Content:   logContent,
-			TokenId:   midjourneyTask.TokenId,
-			Group:     relayInfo.UsingGroup,
-			Other:     other,
+			ChannelId:   billingChannelId,
+			ModelName:   modelName,
+			TokenName:   tokenName,
+			Quota:       midjourneyTask.Quota,
+			Content:     logContent,
+			TokenId:     midjourneyTask.TokenId,
+			Group:       relayInfo.UsingGroup,
+			Other:       other,
+			UsageSource: model.LogUsageSourceMJ,
 		}))
 		// 组织计费的用量记在组织账本上，个人看板保持零增长。
 		if !service.IsOrganizationBilling(relayInfo) {

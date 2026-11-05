@@ -11,7 +11,7 @@ import (
 )
 
 func TestSwaggerInfo_GlobalAnnotations(t *testing.T) {
-	assert.Equal(t, "new-api 用户 API", SwaggerInfo.Title)
+	assert.Equal(t, "cuberouter 用户 API", SwaggerInfo.Title)
 	assert.Equal(t, "/api/v2", SwaggerInfo.BasePath)
 	assert.NotEmpty(t, SwaggerInfo.Version, "version 为空")
 }

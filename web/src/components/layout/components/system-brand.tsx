@@ -24,8 +24,8 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import { useBrandLogo } from '@/hooks/use-brand-logo'
 import { useStatus } from '@/hooks/use-status'
-import { withBasePath } from '@/lib/base-path'
 import { cn } from '@/lib/utils'
 
 type SystemBrandProps = {
@@ -48,6 +48,7 @@ type SystemBrandProps = {
 export function SystemBrand(props: SystemBrandProps) {
   const { t } = useTranslation()
   const { status } = useStatus()
+  const { logo, recolorForDark } = useBrandLogo()
 
   const variant = props.variant ?? 'sidebar'
   const name = status?.system_name || props.defaultName || t('CubeRouter')
@@ -65,9 +66,12 @@ export function SystemBrand(props: SystemBrandProps) {
         )}
       >
         <img
-          src={withBasePath('/head.png')}
+          src={logo}
           alt={name}
-          className='h-8 w-auto dark:brightness-0 dark:invert'
+          className={cn(
+            'h-8 w-auto',
+            recolorForDark && 'dark:brightness-0 dark:invert'
+          )}
         />
       </Link>
     )
@@ -82,9 +86,12 @@ export function SystemBrand(props: SystemBrandProps) {
           render={<div />}
         >
           <img
-            src={withBasePath('/head.png')}
+            src={logo}
             alt={name}
-            className='h-8 w-auto group-data-[collapsible=icon]:hidden dark:brightness-0 dark:invert'
+            className={cn(
+              'h-8 w-auto group-data-[collapsible=icon]:hidden',
+              recolorForDark && 'dark:brightness-0 dark:invert'
+            )}
           />
           <div className='grid flex-1 text-start text-sm leading-tight group-data-[collapsible=icon]:hidden'>
             <span className='truncate text-xs'>{version}</span>

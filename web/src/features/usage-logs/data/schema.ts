@@ -45,6 +45,22 @@ export const usageLogSchema = z.object({
   other: z.string().default(''),
   request_id: z.string().default(''),
   upstream_request_id: z.string().default(''),
+  // Billing scope and responsibility. Legacy rows predate these columns; an
+  // empty billing_account_type is personal, and the identity fields fall back
+  // to the caller.
+  scope_type: z.string().default(''),
+  scope_id: z.number().default(0),
+  billing_account_type: z.string().default(''),
+  billing_account_id: z.number().default(0),
+  organization_id: z.number().default(0),
+  organization_name: z.string().default(''),
+  actor_user_id: z.number().default(0),
+  creator_user_id: z.number().default(0),
+  creator_name: z.string().default(''),
+  responsible_user_id: z.number().default(0),
+  responsible_name: z.string().default(''),
+  responsible_username: z.string().default(''),
+  responsible_display_name: z.string().default(''),
 })
 
 export type UsageLog = z.infer<typeof usageLogSchema>

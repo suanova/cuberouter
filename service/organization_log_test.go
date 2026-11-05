@@ -88,6 +88,9 @@ func insertOrganizationLog(t *testing.T, organizationId int, token *model.Token,
 	if overrides.RequestId != "" {
 		log.RequestId = overrides.RequestId
 	}
+	if overrides.UpstreamRequestId != "" {
+		log.UpstreamRequestId = overrides.UpstreamRequestId
+	}
 	if overrides.PromptTokens != 0 {
 		log.PromptTokens = overrides.PromptTokens
 	}
@@ -137,16 +140,17 @@ func useStandaloneLogDBWithOrganizationLogs(t *testing.T, organizationId int) {
 
 func TestOrganizationLogsFiltersByTypeModelTokenGroupRequestId(t *testing.T) {
 	admin, _, organization, memberToken, adminToken := createOrganizationLogFixture(t)
-	insertOrganizationLog(t, organization.Id, memberToken, model.LogTypeError, 0, "error", model.Log{ModelName: "claude-3-5", Group: "vip", RequestId: "req-error"})
-	insertOrganizationLog(t, organization.Id, adminToken, model.LogTypeConsume, 30, "target", model.Log{TokenName: "admin-log-key", ModelName: "gpt-4o-mini", Group: "vip", RequestId: "req-target"})
+	insertOrganizationLog(t, organization.Id, memberToken, model.LogTypeError, 0, "error", model.Log{ModelName: "claude-3-5", Group: "vip", RequestId: "req-error", UpstreamRequestId: "up-error"})
+	insertOrganizationLog(t, organization.Id, adminToken, model.LogTypeConsume, 30, "target", model.Log{TokenName: "admin-log-key", ModelName: "gpt-4o-mini", Group: "vip", RequestId: "req-target", UpstreamRequestId: "up-target"})
 
-	logs, total, err := ListOrganizationLogs(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationLogListRequest{Limit: 20, Type: model.LogTypeConsume, TokenName: "admin-log-key", ModelName: "gpt-4o%", Group: "vip", RequestId: "req-target"})
+	logs, total, err := ListOrganizationLogs(admin.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationLogListRequest{Limit: 20, Type: model.LogTypeConsume, TokenName: "admin-log-key", ModelName: "gpt-4o%", Group: "vip", RequestId: "req-target", UpstreamRequestId: "up-target"})
 
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
 	require.Len(t, logs, 1)
 	require.Equal(t, adminToken.Id, logs[0].TokenId)
 	require.Equal(t, "req-target", logs[0].RequestId)
+	require.Equal(t, "up-target", logs[0].UpstreamRequestId)
 }
 
 func TestOrganizationLogsMemberCannotBypassResponsibleUserFilter(t *testing.T) {

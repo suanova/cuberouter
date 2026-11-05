@@ -58,6 +58,12 @@ export function buildSearchParams(
         ...(commonFilters.upstreamRequestId && {
           upstreamRequestId: commonFilters.upstreamRequestId,
         }),
+        ...(commonFilters.billingAccountType && {
+          billingAccountType: commonFilters.billingAccountType,
+        }),
+        ...(commonFilters.organizationId && {
+          organizationId: commonFilters.organizationId,
+        }),
       }
     }
     case 'drawing': {
@@ -72,6 +78,14 @@ export function buildSearchParams(
       return {
         ...baseParams,
         ...(taskFilters.taskId && { filter: taskFilters.taskId }),
+        ...(taskFilters.status && { status: taskFilters.status }),
+        ...(taskFilters.action && { action: taskFilters.action }),
+        ...(taskFilters.billingAccountType && {
+          billingAccountType: taskFilters.billingAccountType,
+        }),
+        ...(taskFilters.organizationId && {
+          organizationId: taskFilters.organizationId,
+        }),
       }
     }
     default:

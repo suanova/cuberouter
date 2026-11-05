@@ -20,7 +20,6 @@ import { useEffect, useCallback } from 'react'
 
 import { withBasePath } from '@/lib/base-path'
 import { DEFAULT_SYSTEM_NAME, DEFAULT_LOGO } from '@/lib/constants'
-import { applyFaviconToDom } from '@/lib/dom-utils'
 import {
   useSystemConfigStore,
   type CurrencyConfig,
@@ -193,9 +192,6 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
       logo,
       () => {
         setLoadedLogoUrl(logo)
-        // config.logo already went through withBasePath in mapStatusDataToConfig,
-        // so it is ready to use here and must not be resolved a second time.
-        applyFaviconToDom(logo)
       },
       () => {
         if (logo !== DEFAULT_LOGO) {

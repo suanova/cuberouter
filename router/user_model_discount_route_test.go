@@ -90,5 +90,9 @@ func TestUserModelDiscountRoutesRegistered(t *testing.T) {
 			"读取用户模型折扣的路由缺失: GET %s/user/:id/model-discounts", prefix)
 		assert.Containsf(t, routes, http.MethodPut+" "+prefix+"/user/:id/model-discounts",
 			"更新用户模型折扣的路由缺失: PUT %s/user/:id/model-discounts", prefix)
+		// 折扣编辑器的模型下拉必须按被编辑用户可见的模型取数，不能复用管理员
+		// 自己的价目表（价目表按查看者分组过滤，目标用户独占分组的模型会缺席）。
+		assert.Containsf(t, routes, http.MethodGet+" "+prefix+"/user/:id/models",
+			"读取指定用户可用模型的路由缺失: GET %s/user/:id/models", prefix)
 	}
 }

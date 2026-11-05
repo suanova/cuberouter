@@ -23,7 +23,7 @@ import type {
   ApiResponse,
   GetApiKeysParams,
   GetApiKeysResponse,
-  SearchApiKeysParams,
+  GetSelfApiKeysParams,
   ApiKeyFormData,
   TokenAutoGroupsConfig,
 } from './types'
@@ -41,17 +41,13 @@ export async function getApiKeys(
   return res.data
 }
 
-// Search API keys by keyword or token (with pagination)
-export async function searchApiKeys(
-  params: SearchApiKeysParams
+// Get the caller's personal keys and the organization keys they may use, in
+// one paginated list. The backend performs the union and the filtering so the
+// page count and totals stay correct.
+export async function getSelfApiKeys(
+  params: GetSelfApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
-  const { keyword = '', token = '', p, size } = params
-  const queryParams = new URLSearchParams()
-  if (keyword) queryParams.set('keyword', keyword)
-  if (token) queryParams.set('token', token)
-  if (p != null) queryParams.set('p', String(p))
-  if (size != null) queryParams.set('size', String(size))
-  const res = await api.get(`/api/token/search?${queryParams.toString()}`)
+  const res = await api.get('/api/token/self/all', { params })
   return res.data
 }
 

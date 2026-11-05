@@ -252,6 +252,62 @@ export function formatModelName(log: UsageLog): {
   }
 }
 
+export type LogBillingAccount = {
+  type: 'personal' | 'organization'
+  /** Organization name; empty for personal and for unnamed organizations. */
+  name: string
+  /** Organization ID for organization rows, user ID for personal rows. */
+  id: number
+}
+
+type BillingAccountLog = {
+  user_id: number
+  billing_account_type?: string
+  billing_account_id?: number
+  organization_id?: number
+  organization_name?: string
+}
+
+/**
+ * The account a log entry was billed to.
+ *
+ * `billing_account_type` is empty on rows written before scoped billing
+ * existed; those rows were all personal, so an empty value must not read as an
+ * organization.
+ */
+export function getLogBillingAccount(
+  log: BillingAccountLog
+): LogBillingAccount {
+  if (log.billing_account_type === 'organization') {
+    return {
+      type: 'organization',
+      name: log.organization_name ?? '',
+      id: log.organization_id || log.billing_account_id || 0,
+    }
+  }
+  return {
+    type: 'personal',
+    name: '',
+    id: log.billing_account_id || log.user_id,
+  }
+}
+
+/**
+ * The person responsible for a log entry's charge.
+ *
+ * Organization reads hydrate the username/display name; the admin-wide list
+ * only carries the stored responsible_name. Fall back to the caller last.
+ */
+export function getLogResponsibleUserName(log: UsageLog): string {
+  return (
+    log.responsible_display_name ||
+    log.responsible_name ||
+    log.responsible_username ||
+    log.username ||
+    ''
+  )
+}
+
 /**
  * Decode a base64-encoded billing expression. Safely returns an empty string
  * when the input is missing or malformed (e.g. legacy logs without expr_b64).

@@ -82,8 +82,16 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 		switch r.URL.Path {
 		case "/health":
 			_, _ = io.WriteString(w, `{"state":"ready","gpu_count":1,"control_protocol":"qwen-execution-v1"}`)
-		case "/v1/images/generations":
+		case "/v1/images/generations", "/v1/images/edits":
 			generations.Add(1)
+			if r.URL.Path == "/v1/images/edits" {
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				var request struct {
+					Image string `json:"image"`
+				}
+				assert.NoError(t, common.DecodeJson(r.Body, &request))
+				assert.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(encoded.Bytes()), request.Image)
+			}
 			if cancel := cancelOnGeneration.Load(); cancel != nil {
 				close(*cancel)
 			}
@@ -118,14 +126,28 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 			assert.NoError(t, err)
 			_, _ = w.Write(data)
 		default:
+			t.Errorf("unexpected worker request path: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	defer upstream.Close()
 	base, review := upstream.URL, upstream.URL+"/v1/moderate"
-	require.NoError(t, model.DB.Create(&model.Channel{Id: 1, Name: "worker", Type: constant.ChannelTypeImageEdit, Status: common.ChannelStatusEnabled, Key: strings.Repeat("g", 32), BaseURL: &base, Group: "default", Models: "studio-native"}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 1, Name: "worker", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Key: strings.Repeat("g", 32), BaseURL: &base, Group: "default", Models: "studio-native"}).Error)
 	require.NoError(t, model.DB.Create(&model.Channel{Id: 2, Name: "reviewer", Type: constant.ChannelTypeStudioReview, Status: common.ChannelStatusEnabled, Key: strings.Repeat("m", 32), BaseURL: &review, Group: "default", Models: "google/shieldgemma-2-4b-it"}).Error)
 	require.NoError(t, model.DB.Create(&model.Ability{Group: "default", Model: "studio-native", ChannelId: 1, Enabled: true}).Error)
+	t.Run("queued edit uses the OpenAI JSON relay", func(t *testing.T) {
+		job := fmt.Sprintf("%032x", 6)
+		request := fmt.Appendf(nil, `{"mode":"edit","user_prompt":"edit this","request":{"model":"studio-native","prompt":"edit this","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0,"image":"data:image/png;base64,%s"}}`, base64.StdEncoding.EncodeToString(encoded.Bytes()))
+		reservation := reserveStudioImage(studioqueue.Request{Owner: 1, Key: job, Model: "studio-native", Mode: "edit", Body: request}, job)
+		require.NotNil(t, reservation)
+		defer reservation.Release()
+
+		result := reservation.Run(context.Background(), make(chan struct{}))
+		model.WaitForQuotaCacheWorkers()
+		require.Empty(t, result.Error)
+		assert.Equal(t, encoded.Bytes(), result.PNG)
+		assert.EqualValues(t, 1, generations.Load())
+	})
 	for i, decision := range []string{"allow", "block", "cancel", "down"} {
 		t.Run(decision, func(t *testing.T) {
 			policy.Store(decision)
@@ -192,5 +214,5 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 		require.NoError(t, model.DB.First(&audit, "job_id = ?", job).Error)
 		assert.Equal(t, "cancelled", audit.State)
 	})
-	assert.EqualValues(t, 4, generations.Load(), "pre-dispatch cancellation never invokes inference")
+	assert.EqualValues(t, 5, generations.Load(), "pre-dispatch cancellation never invokes inference")
 }

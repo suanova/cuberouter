@@ -105,6 +105,30 @@ test('server image defaults preserve explicit zero CFG and seed values', async (
   )
 })
 
+test('a queued edit posts inline references in the native JSON request', async () => {
+  http.get.mockResolvedValue({ data: { epoch: 'boot-a' } })
+  http.post.mockResolvedValue({ data: status })
+  const references = [
+    { id: 'first', mime: 'image/png', url: 'data:image/png;base64,YQ==' },
+    { id: 'second', mime: 'image/png', url: 'data:image/png;base64,Yg==' },
+  ]
+
+  await submitStudioImage(1, { ...record.draft, mode: 'edit', references })
+
+  expect(http.post).toHaveBeenCalledWith(
+    IMAGE_JOBS,
+    expect.objectContaining({
+      mode: 'edit',
+      request: expect.objectContaining({
+        model: record.draft.model,
+        image: references.map((reference) => reference.url),
+        n: 1,
+      }),
+    }),
+    expect.anything()
+  )
+})
+
 test('reconnecting collects the reviewed PNG without resubmitting or acknowledging', async () => {
   await pendingStudioImage(1, record)
   http.get

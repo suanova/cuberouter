@@ -564,6 +564,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		IsStream:         relayInfo.IsStream,
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
+		CacheTokens:      summary.CacheTokens,
 	}))
 	goBackgroundWork(func() {
 		// 异常结束但已部分结算的流由这里记一次失败样本（客户端看到的是错误，

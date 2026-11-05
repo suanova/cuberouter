@@ -45,6 +45,8 @@ import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
 import {
   formatModelName,
+  getLogBillingAccount,
+  getLogResponsibleUserName,
   getTieredBillingSummary,
   hasAnyCacheTokens,
   parseLogOther,
@@ -559,6 +561,53 @@ export function useCommonLogsColumns(
         },
       }
     )
+  }
+
+  columns.push({
+    id: 'billing_account',
+    header: t('Billing Account'),
+    accessorFn: (row) => row.billing_account_type || 'personal',
+    cell: function BillingAccountCell({ row }) {
+      const account = getLogBillingAccount(row.original)
+      if (account.type === 'personal') {
+        return (
+          <span className='text-muted-foreground text-sm'>{t('Personal')}</span>
+        )
+      }
+      return (
+        <span className='flex min-w-0 flex-col gap-0.5'>
+          <span className='max-w-[160px] truncate text-sm'>
+            {account.name || `#${account.id}`}
+          </span>
+          {account.name && account.id > 0 && (
+            <span className='text-muted-foreground font-mono text-xs'>
+              #{account.id}
+            </span>
+          )}
+        </span>
+      )
+    },
+    size: 170,
+  })
+
+  if (isAdmin) {
+    columns.push({
+      id: 'responsible_user',
+      header: t('Responsible user'),
+      accessorFn: (row) => getLogResponsibleUserName(row),
+      cell: function ResponsibleUserCell({ row }) {
+        if (getLogBillingAccount(row.original).type !== 'organization') {
+          return <span className='text-muted-foreground'>-</span>
+        }
+        const name = getLogResponsibleUserName(row.original)
+        return name ? (
+          <span className='text-sm'>{name}</span>
+        ) : (
+          <span className='text-muted-foreground'>-</span>
+        )
+      },
+      size: 150,
+    })
   }
 
   columns.push({

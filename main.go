@@ -463,6 +463,9 @@ func InitResources() error {
 		return err
 	}
 
+	// Backfill structured usage fields (cache tokens / usage source) once.
+	model.StartLogUsageBackfill()
+
 	perfmetrics.Init()
 
 	// 启动系统监控
