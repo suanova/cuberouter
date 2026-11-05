@@ -237,6 +237,13 @@ redis:
     repository: quay.io/opstree/redis-sentinel
     tag: v7.0.15
     pullPolicy: IfNotPresent
+  # The exporter is disabled in the RedisReplication CR below, but the CRD still
+  # requires an image. Keep the coordinates in values so the operator can pin a
+  # fixed version and rewrite them onto the platform mirror.
+  redisExporter:
+    image:
+      repository: quay.io/oliver006/redis_exporter
+      tag: v1.97.0
   # Extra redis.conf parameters: list of "<key> <value>" strings, applied via CONFIG SET
   # in every deployment mode.
   redisCustomConfig:

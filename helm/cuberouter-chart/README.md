@@ -65,6 +65,7 @@ rolling updates).
 | PostgreSQL instances | `ghcr.io/cloudnative-pg/postgresql:16.14-system-trixie` (tag encodes the PG version) | `postgresql.image` |
 | Redis instances | `quay.io/opstree/redis:v7.0.15` | `redis.image.repository` / `.tag` |
 | Redis sentinel | `quay.io/opstree/redis-sentinel:v7.0.15` | `redis.sentinelImage.repository` / `.tag` |
+| Redis exporter | `quay.io/oliver006/redis_exporter:v1.97.0` (disabled by default, but a required CRD field) | `redis.redisExporter.image.repository` / `.tag` |
 | CloudNativePG operator | `ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0` | `cloudnative-pg.image.*` |
 | OpsTree redis-operator | `quay.io/opstree/redis-operator:v0.26.0` | `redis-operator.image.*` |
 
