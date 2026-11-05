@@ -29,6 +29,35 @@ const image = {
   url: 'data:image/png;base64,YQ==',
 }
 
+test('the canvas and coordinate fields scroll together while drawing actions stay visible', () => {
+  render(
+    <ReferenceEditor
+      image={image}
+      regional
+      onClose={vi.fn()}
+      onApply={vi.fn()}
+    />
+  )
+  const surface = screen.getByLabelText('Reference drawing surface')
+  const coordinates = screen.getByRole('group', {
+    name: 'Rectangle coordinates (%)',
+  })
+  const editorBody = surface.closest('.overflow-y-auto')
+
+  expect(editorBody).toContainElement(coordinates)
+  expect(surface.parentElement).toContainElement(
+    screen.getByRole('img', { name: 'Original reference' })
+  )
+  expect(surface.compareDocumentPosition(coordinates)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING
+  )
+  expect(
+    screen
+      .getByRole('button', { name: 'Use drawing' })
+      .closest('.overflow-y-auto')
+  ).toBeNull()
+})
+
 test('coordinate entry, undo and redo preserve the selected reference and normalized rectangle', () => {
   const apply = vi.fn()
   render(

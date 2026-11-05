@@ -90,313 +90,328 @@ export function ReferenceEditor(props: {
         if (!open) props.onClose()
       }}
     >
-      <DialogContent className='max-h-[90dvh] overflow-y-auto sm:max-w-3xl'>
-        <DialogHeader>
-          <DialogTitle>{t('Edit reference image')}</DialogTitle>
+      <DialogContent className='flex max-h-[90dvh] flex-col overflow-hidden sm:max-w-3xl'>
+        <DialogHeader className='shrink-0'>
+          <DialogTitle className='pe-8 leading-snug wrap-anywhere'>
+            {t('Edit reference image')}
+          </DialogTitle>
           <DialogDescription>
             {t(
               'Region edits preserve pixels outside your selection. Colored marks guide a whole-image edit; describe each color in your prompt.'
             )}
           </DialogDescription>
         </DialogHeader>
-        <div className='flex flex-wrap gap-2'>
-          {props.regional && (
-            <Button
-              type='button'
-              variant={kind === 'region' ? 'secondary' : 'outline'}
-              aria-pressed={kind === 'region'}
-              onClick={() => setKind('region')}
-            >
-              {t('Region selection')}
-            </Button>
-          )}
-          <Button
-            type='button'
-            variant={kind === 'annotation' ? 'secondary' : 'outline'}
-            aria-pressed={kind === 'annotation'}
-            onClick={() => setKind('annotation')}
-          >
-            {t('Colored marks')}
-          </Button>
-          {(['rectangle', 'lasso', 'brush'] as const).map((value) => (
-            <Button
-              key={value}
-              type='button'
-              variant={tool === value ? 'secondary' : 'outline'}
-              aria-pressed={tool === value}
-              onClick={() => setTool(value)}
-            >
-              {t(value)}
-            </Button>
-          ))}
-        </div>
-        <div className='flex flex-wrap items-center gap-3'>
-          <label>
-            {t('Brush width')}
-            <Input
-              aria-label={t('Brush width')}
-              type='number'
-              min={0.5}
-              max={10}
-              step={0.5}
-              value={width * 100}
-              onChange={(e) => setWidth(Number(e.target.value) / 100)}
-            />
-          </label>
-          {kind === 'annotation' && (
-            <label>
-              {t('Stroke color')}
-              <select
-                aria-label={t('Stroke color')}
-                value={color}
-                onChange={(e) => setColor(e.target.value as ImageMark['color'])}
+        <div className='-mx-1 min-h-0 space-y-4 overflow-y-auto px-1'>
+          <div className='flex flex-wrap gap-2'>
+            {props.regional && (
+              <Button
+                type='button'
+                variant={kind === 'region' ? 'secondary' : 'outline'}
+                aria-pressed={kind === 'region'}
+                onClick={() => setKind('region')}
               >
-                {(['blue', 'red', 'green', 'white'] as const).map((value) => (
-                  <option key={value} value={value}>
-                    {t(value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {kind === 'region' && (
-            <label className='flex items-center gap-2'>
-              <input
-                type='checkbox'
-                checked={maskOnly}
-                onChange={(e) => setMaskOnly(e.target.checked)}
+                {t('Region selection')}
+              </Button>
+            )}
+            <Button
+              type='button'
+              variant={kind === 'annotation' ? 'secondary' : 'outline'}
+              aria-pressed={kind === 'annotation'}
+              onClick={() => setKind('annotation')}
+            >
+              {t('Colored marks')}
+            </Button>
+            {(['rectangle', 'lasso', 'brush'] as const).map((value) => (
+              <Button
+                key={value}
+                type='button'
+                variant={tool === value ? 'secondary' : 'outline'}
+                aria-pressed={tool === value}
+                onClick={() => setTool(value)}
+              >
+                {t(value)}
+              </Button>
+            ))}
+          </div>
+          <div className='flex flex-wrap items-center gap-3'>
+            <label>
+              {t('Brush width')}
+              <Input
+                aria-label={t('Brush width')}
+                type='number'
+                min={0.5}
+                max={10}
+                step={0.5}
+                value={width * 100}
+                onChange={(e) => setWidth(Number(e.target.value) / 100)}
               />
-              {t('Show mask only')}
             </label>
-          )}
-        </div>
-        <p id={keyboardHelp} className='text-muted-foreground text-sm'>
-          {t(
-            'Keyboard drawing: arrow keys move, Space adds a point, Enter finishes, Escape discards.'
-          )}
-        </p>
-        <p
-          id={cursorPosition}
-          role='status'
-          aria-atomic='true'
-          className='text-muted-foreground text-sm'
-        >
-          {t('Keyboard cursor: X {{x}}%, Y {{y}}%.', {
-            x: Number((cursor.x * 100).toFixed(1)),
-            y: Number((cursor.y * 100).toFixed(1)),
-          })}
-        </p>
-        <div
-          className='relative mx-auto w-full overflow-hidden rounded-lg border bg-black'
-          style={{
-            aspectRatio: ratio,
-            maxWidth: `min(100%, ${55 * ratio}dvh)`,
-          }}
-        >
-          <img
-            className={`h-full w-full object-contain ${maskOnly && kind === 'region' ? 'invisible' : ''}`}
-            src={props.image.url}
-            alt={t('Original reference')}
-            onLoad={(e) =>
-              setRatio(
-                e.currentTarget.naturalWidth / e.currentTarget.naturalHeight
-              )
-            }
-          />
-          <svg
-            ref={surface}
-            viewBox={`0 0 ${ratio} 1`}
-            preserveAspectRatio='none'
-            className='absolute inset-0 h-full w-full touch-none'
-            role='group'
-            tabIndex={0}
-            aria-label={t('Reference drawing surface')}
-            aria-describedby={`${keyboardHelp} ${cursorPosition}`}
-            onFocus={() => setKeyboardFocus(true)}
-            onBlur={() => setKeyboardFocus(false)}
-            onKeyDown={(event) => {
-              if (pointer.current !== null) return
-              const step = event.shiftKey ? 0.05 : 0.01
-              if (
-                ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(
-                  event.key
-                )
-              ) {
-                event.preventDefault()
-                setCursor((point) => ({
-                  x: Math.max(
-                    0,
-                    Math.min(
-                      1,
-                      point.x +
-                        (event.key === 'ArrowRight' ? step : 0) -
-                        (event.key === 'ArrowLeft' ? step : 0)
-                    )
-                  ),
-                  y: Math.max(
-                    0,
-                    Math.min(
-                      1,
-                      point.y +
-                        (event.key === 'ArrowDown' ? step : 0) -
-                        (event.key === 'ArrowUp' ? step : 0)
-                    )
-                  ),
-                }))
-              } else if (event.key === ' ') {
-                event.preventDefault()
-                if (marks.length >= 100) return
-                setDraft((value) => {
-                  if (!value) {
-                    return { id: newId(), tool, color, width, points: [cursor] }
+            {kind === 'annotation' && (
+              <label>
+                {t('Stroke color')}
+                <select
+                  aria-label={t('Stroke color')}
+                  value={color}
+                  onChange={(e) =>
+                    setColor(e.target.value as ImageMark['color'])
                   }
-                  if (value.points.length >= 2048) return value
-                  const points =
-                    value.tool === 'rectangle'
-                      ? [value.points[0], cursor]
-                      : [...value.points, cursor]
-                  return { ...value, points }
-                })
-              } else if (event.key === 'Enter') {
-                event.preventDefault()
-                if (draft && validImageMark(draft)) {
-                  append(draft)
+                >
+                  {(['blue', 'red', 'green', 'white'] as const).map((value) => (
+                    <option key={value} value={value}>
+                      {t(value)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {kind === 'region' && (
+              <label className='flex items-center gap-2'>
+                <input
+                  type='checkbox'
+                  checked={maskOnly}
+                  onChange={(e) => setMaskOnly(e.target.checked)}
+                />
+                {t('Show mask only')}
+              </label>
+            )}
+          </div>
+          <p id={keyboardHelp} className='text-muted-foreground text-sm'>
+            {t(
+              'Keyboard drawing: arrow keys move, Space adds a point, Enter finishes, Escape discards.'
+            )}
+          </p>
+          <p
+            id={cursorPosition}
+            role='status'
+            aria-atomic='true'
+            className='text-muted-foreground text-sm'
+          >
+            {t('Keyboard cursor: X {{x}}%, Y {{y}}%.', {
+              x: Number((cursor.x * 100).toFixed(1)),
+              y: Number((cursor.y * 100).toFixed(1)),
+            })}
+          </p>
+          <div
+            className='relative mx-auto w-full overflow-hidden rounded-lg border bg-black'
+            style={{
+              aspectRatio: ratio,
+              maxWidth: `min(100%, ${55 * ratio}dvh)`,
+            }}
+          >
+            <img
+              className={`absolute inset-0 size-full object-contain ${maskOnly && kind === 'region' ? 'invisible' : ''}`}
+              src={props.image.url}
+              alt={t('Original reference')}
+              onLoad={(e) =>
+                setRatio(
+                  e.currentTarget.naturalWidth / e.currentTarget.naturalHeight
+                )
+              }
+            />
+            <svg
+              ref={surface}
+              viewBox={`0 0 ${ratio} 1`}
+              preserveAspectRatio='none'
+              className='absolute inset-0 h-full w-full touch-none'
+              role='group'
+              tabIndex={0}
+              aria-label={t('Reference drawing surface')}
+              aria-describedby={`${keyboardHelp} ${cursorPosition}`}
+              onFocus={() => setKeyboardFocus(true)}
+              onBlur={() => setKeyboardFocus(false)}
+              onKeyDown={(event) => {
+                if (pointer.current !== null) return
+                const step = event.shiftKey ? 0.05 : 0.01
+                if (
+                  ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(
+                    event.key
+                  )
+                ) {
+                  event.preventDefault()
+                  setCursor((point) => ({
+                    x: Math.max(
+                      0,
+                      Math.min(
+                        1,
+                        point.x +
+                          (event.key === 'ArrowRight' ? step : 0) -
+                          (event.key === 'ArrowLeft' ? step : 0)
+                      )
+                    ),
+                    y: Math.max(
+                      0,
+                      Math.min(
+                        1,
+                        point.y +
+                          (event.key === 'ArrowDown' ? step : 0) -
+                          (event.key === 'ArrowUp' ? step : 0)
+                      )
+                    ),
+                  }))
+                } else if (event.key === ' ') {
+                  event.preventDefault()
+                  if (marks.length >= 100) return
+                  setDraft((value) => {
+                    if (!value) {
+                      return {
+                        id: newId(),
+                        tool,
+                        color,
+                        width,
+                        points: [cursor],
+                      }
+                    }
+                    if (value.points.length >= 2048) return value
+                    const points =
+                      value.tool === 'rectangle'
+                        ? [value.points[0], cursor]
+                        : [...value.points, cursor]
+                    return { ...value, points }
+                  })
+                } else if (event.key === 'Enter') {
+                  event.preventDefault()
+                  if (draft && validImageMark(draft)) {
+                    append(draft)
+                    setDraft(undefined)
+                  }
+                } else if (event.key === 'Escape' && draft) {
+                  event.preventDefault()
+                  event.stopPropagation()
                   setDraft(undefined)
                 }
-              } else if (event.key === 'Escape' && draft) {
-                event.preventDefault()
-                event.stopPropagation()
-                setDraft(undefined)
-              }
-            }}
-            onPointerDown={(event) => {
-              if (pointer.current !== null || marks.length >= 100) return
-              const point = at(event)
-              if (!point) return
-              pointer.current = event.pointerId
-              event.currentTarget.setPointerCapture?.(event.pointerId)
-              setDraft({ id: newId(), tool, color, width, points: [point] })
-            }}
-            onPointerMove={(event) => {
-              if (pointer.current !== event.pointerId) return
-              const point = at(event)
-              if (point) {
-                setDraft((value) =>
-                  value && value.points.length < 2048
-                    ? {
-                        ...value,
-                        points:
-                          value.tool === 'rectangle'
-                            ? [value.points[0], point]
-                            : [...value.points, point],
-                      }
-                    : value
-                )
-              }
-            }}
-            onPointerUp={(event) => {
-              if (pointer.current !== event.pointerId) return
-              const point = at(event)
-              pointer.current = null
-              if (draft) {
-                append(
-                  point && draft.points.length < 2048
-                    ? {
-                        ...draft,
-                        points:
-                          draft.tool === 'rectangle'
-                            ? [draft.points[0], point]
-                            : [...draft.points, point],
-                      }
-                    : draft
-                )
-              }
-              setDraft(undefined)
-            }}
-            onPointerCancel={() => {
-              pointer.current = null
-              setDraft(undefined)
-            }}
-          >
-            {keyboardFocus && (
-              <circle
-                cx={cursor.x * ratio}
-                cy={cursor.y}
-                r={0.008 * Math.min(ratio, 1)}
-                fill='white'
-                stroke='black'
-                strokeWidth={0.002}
-                aria-hidden='true'
-              />
-            )}
-            {[...marks, ...(draft ? [draft] : [])].map((mark) => (
-              <path
-                key={mark.id}
-                d={markPath(mark, ratio)}
-                stroke={kind === 'region' ? 'white' : mark.color}
-                strokeWidth={mark.width * Math.min(ratio, 1)}
-                strokeLinecap='round'
-                strokeLinejoin='round'
-                fill={
-                  kind === 'region' && mark.tool !== 'brush' ? 'white' : 'none'
-                }
-                opacity={maskOnly ? 1 : 0.65}
-              />
-            ))}
-          </svg>
-        </div>
-        <fieldset className='grid grid-cols-2 gap-2 sm:grid-cols-5'>
-          <legend>{t('Rectangle coordinates (%)')}</legend>
-          {['X', 'Y', 'Width', 'Height'].map((label, index) => (
-            <label key={label}>
-              {t(label)}
-              <Input
-                aria-label={`${t('Rectangle')} ${label}`}
-                type='number'
-                min={0}
-                max={100}
-                value={coordinates[index] * 100}
-                onChange={(e) =>
-                  setCoordinates((values) =>
-                    values.map((value, i) =>
-                      i === index ? Number(e.target.value) / 100 : value
-                    )
+              }}
+              onPointerDown={(event) => {
+                if (pointer.current !== null || marks.length >= 100) return
+                const point = at(event)
+                if (!point) return
+                pointer.current = event.pointerId
+                event.currentTarget.setPointerCapture?.(event.pointerId)
+                setDraft({ id: newId(), tool, color, width, points: [point] })
+              }}
+              onPointerMove={(event) => {
+                if (pointer.current !== event.pointerId) return
+                const point = at(event)
+                if (point) {
+                  setDraft((value) =>
+                    value && value.points.length < 2048
+                      ? {
+                          ...value,
+                          points:
+                            value.tool === 'rectangle'
+                              ? [value.points[0], point]
+                              : [...value.points, point],
+                        }
+                      : value
                   )
                 }
-              />
-            </label>
-          ))}
-          <Button
-            type='button'
-            variant='outline'
-            disabled={
-              coordinates.some(
-                (value) => !Number.isFinite(value) || value < 0 || value > 1
-              ) ||
-              coordinates[2] <= 0 ||
-              coordinates[3] <= 0 ||
-              coordinates[0] + coordinates[2] > 1 ||
-              coordinates[1] + coordinates[3] > 1
-            }
-            onClick={() =>
-              append({
-                tool: 'rectangle',
-                color,
-                width,
-                points: [
-                  { x: coordinates[0], y: coordinates[1] },
-                  {
-                    x: coordinates[0] + coordinates[2],
-                    y: coordinates[1] + coordinates[3],
-                  },
-                ],
-              })
-            }
-          >
-            {t('Add rectangle')}
-          </Button>
-        </fieldset>
-        <div className='flex flex-wrap gap-2'>
+              }}
+              onPointerUp={(event) => {
+                if (pointer.current !== event.pointerId) return
+                const point = at(event)
+                pointer.current = null
+                if (draft) {
+                  append(
+                    point && draft.points.length < 2048
+                      ? {
+                          ...draft,
+                          points:
+                            draft.tool === 'rectangle'
+                              ? [draft.points[0], point]
+                              : [...draft.points, point],
+                        }
+                      : draft
+                  )
+                }
+                setDraft(undefined)
+              }}
+              onPointerCancel={() => {
+                pointer.current = null
+                setDraft(undefined)
+              }}
+            >
+              {keyboardFocus && (
+                <circle
+                  cx={cursor.x * ratio}
+                  cy={cursor.y}
+                  r={0.008 * Math.min(ratio, 1)}
+                  fill='white'
+                  stroke='black'
+                  strokeWidth={0.002}
+                  aria-hidden='true'
+                />
+              )}
+              {[...marks, ...(draft ? [draft] : [])].map((mark) => (
+                <path
+                  key={mark.id}
+                  d={markPath(mark, ratio)}
+                  stroke={kind === 'region' ? 'white' : mark.color}
+                  strokeWidth={mark.width * Math.min(ratio, 1)}
+                  strokeLinecap='round'
+                  strokeLinejoin='round'
+                  fill={
+                    kind === 'region' && mark.tool !== 'brush'
+                      ? 'white'
+                      : 'none'
+                  }
+                  opacity={maskOnly ? 1 : 0.65}
+                />
+              ))}
+            </svg>
+          </div>
+          <fieldset className='grid min-w-0 grid-cols-2 items-end gap-2 sm:grid-cols-5'>
+            <legend className='mb-1'>{t('Rectangle coordinates (%)')}</legend>
+            {['X', 'Y', 'Width', 'Height'].map((label, index) => (
+              <label key={label} className='min-w-0 space-y-1 text-xs'>
+                {t(label)}
+                <Input
+                  aria-label={`${t('Rectangle')} ${label}`}
+                  type='number'
+                  min={0}
+                  max={100}
+                  value={coordinates[index] * 100}
+                  onChange={(e) =>
+                    setCoordinates((values) =>
+                      values.map((value, i) =>
+                        i === index ? Number(e.target.value) / 100 : value
+                      )
+                    )
+                  }
+                />
+              </label>
+            ))}
+            <Button
+              type='button'
+              variant='outline'
+              className='col-span-2 h-auto min-h-8 whitespace-normal sm:col-span-1'
+              disabled={
+                coordinates.some(
+                  (value) => !Number.isFinite(value) || value < 0 || value > 1
+                ) ||
+                coordinates[2] <= 0 ||
+                coordinates[3] <= 0 ||
+                coordinates[0] + coordinates[2] > 1 ||
+                coordinates[1] + coordinates[3] > 1
+              }
+              onClick={() =>
+                append({
+                  tool: 'rectangle',
+                  color,
+                  width,
+                  points: [
+                    { x: coordinates[0], y: coordinates[1] },
+                    {
+                      x: coordinates[0] + coordinates[2],
+                      y: coordinates[1] + coordinates[3],
+                    },
+                  ],
+                })
+              }
+            >
+              {t('Add rectangle')}
+            </Button>
+          </fieldset>
+        </div>
+        <div className='flex shrink-0 flex-wrap gap-2'>
           <Button
             type='button'
             variant='outline'
