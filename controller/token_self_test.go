@@ -77,23 +77,26 @@ func seedSelfTokenController(t *testing.T) {
 	}).Error)
 }
 
-func TestGetSelfOrganizationTokensControllerReturnsUsableOrgKeys(t *testing.T) {
+func TestGetSelfTokensControllerReturnsPersonalAndUsableOrganizationKeys(t *testing.T) {
 	newSelfTokenControllerTestDB(t)
 	seedSelfTokenController(t)
 
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodGet, "/api/token/self/organization?p=1&size=20&organization_id=9", nil)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/token/self/all?p=1&size=20", nil)
 	c.Set("id", 101)
 
-	GetSelfOrganizationTokens(c)
+	GetSelfTokens(c)
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	assert.Contains(t, body, `"total":1`)
+	assert.Contains(t, body, `"total":2`)
+	assert.Contains(t, body, `"name":"personal"`)
+	assert.Contains(t, body, `"name":"acme-public"`)
 	assert.Contains(t, body, `"organization_name":"Acme"`)
 	assert.Contains(t, body, `"key":"acme-public"`)
 	assert.Contains(t, body, `"key_preview":"`)
-	assert.NotContains(t, body, `"name":"personal"`)
+	// The personal row keeps the masked-key behavior of the personal list.
+	assert.Contains(t, body, `"key":"pe****al"`)
 }

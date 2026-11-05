@@ -20,8 +20,6 @@ import { Check, Copy, Loader2 } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { BadgeCell } from '@/components/data-table'
-import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
   Popover,
@@ -33,8 +31,11 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import {
+  organizationTokenFullKey,
+  organizationTokenKeyPreview,
+} from '@/features/organization/lib'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
-import { formatQuota } from '@/lib/format'
 
 import type { ApiKey } from '../types'
 import { useApiKeys } from './api-keys-provider'
@@ -50,28 +51,41 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
   } = useApiKeys()
   const [popoverOpen, setPopoverOpen] = useState(false)
 
-  const isLoading = !!loadingKeys[apiKey.id]
-  const resolvedFullKey = resolvedKeys[apiKey.id]
+  const isOrganizationKey = apiKey.scope_type === 'organization'
+  const fullOrganizationKey = isOrganizationKey
+    ? organizationTokenFullKey(apiKey)
+    : ''
+  const isLoading = !isOrganizationKey && !!loadingKeys[apiKey.id]
+  const resolvedFullKey = isOrganizationKey
+    ? fullOrganizationKey
+    : resolvedKeys[apiKey.id]
   const isCopied = copiedKeyId === apiKey.id
-  const maskedKey = `sk-${apiKey.key}`
+  const maskedKey = isOrganizationKey
+    ? organizationTokenKeyPreview(apiKey)
+    : `sk-${apiKey.key}`
+
+  const resolveFullKey = useCallback(async (): Promise<string | null> => {
+    if (isOrganizationKey) return fullOrganizationKey
+    return resolveRealKey(apiKey.id)
+  }, [apiKey.id, fullOrganizationKey, isOrganizationKey, resolveRealKey])
 
   const handlePopoverOpen = useCallback(
     (open: boolean) => {
       setPopoverOpen(open)
       if (open && !resolvedFullKey) {
-        resolveRealKey(apiKey.id)
+        void resolveFullKey()
       }
     },
-    [resolvedFullKey, resolveRealKey, apiKey.id]
+    [resolvedFullKey, resolveFullKey]
   )
 
   const handleCopy = useCallback(async () => {
-    const realKey = resolvedFullKey || (await resolveRealKey(apiKey.id))
+    const realKey = resolvedFullKey || (await resolveFullKey())
     if (!realKey) return
 
     const ok = await copyToClipboard(realKey)
     if (ok) markKeyCopied(apiKey.id)
-  }, [resolvedFullKey, resolveRealKey, apiKey.id, markKeyCopied])
+  }, [resolvedFullKey, resolveFullKey, apiKey.id, markKeyCopied])
 
   let copyIcon = <Copy className='size-3.5' />
   let copyTooltip = t('Copy API key')
@@ -131,6 +145,7 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
               className='size-7 shrink-0'
               onClick={handleCopy}
               disabled={isLoading}
+              aria-label={t('Copy API key')}
             />
           }
         >
@@ -139,119 +154,5 @@ export function ApiKeyCell({ apiKey }: { apiKey: ApiKey }) {
         <TooltipContent>{copyTooltip}</TooltipContent>
       </Tooltip>
     </div>
-  )
-}
-
-type UnlimitedQuotaBadgeProps = {
-  used: number
-}
-
-export function UnlimitedQuotaBadge(props: UnlimitedQuotaBadgeProps) {
-  const { t } = useTranslation()
-  const formattedUsed = formatQuota(props.used)
-
-  return (
-    <Popover>
-      <PopoverTrigger
-        render={
-          <button
-            type='button'
-            className='focus-visible:ring-ring/50 -ml-1.5 cursor-help rounded-4xl focus-visible:ring-[3px] focus-visible:outline-none'
-            aria-label={`${t('Unlimited')}; ${t('Used:')} ${formattedUsed}`}
-          />
-        }
-      >
-        <StatusBadge
-          label={t('Unlimited')}
-          variant='neutral'
-          copyable={false}
-        />
-      </PopoverTrigger>
-      <PopoverContent className='w-auto p-2' side='top'>
-        <span className='text-xs'>
-          {t('Used:')} {formattedUsed}
-        </span>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-export function ModelLimitsCell({ apiKey }: { apiKey: ApiKey }) {
-  const { t } = useTranslation()
-
-  if (!apiKey.model_limits_enabled || !apiKey.model_limits) {
-    return (
-      <StatusBadge
-        label={t('Unlimited')}
-        variant='neutral'
-        copyable={false}
-        className='-ml-1.5'
-      />
-    )
-  }
-
-  const models = apiKey.model_limits.split(',').filter(Boolean)
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<BadgeCell />}>
-        <StatusBadge
-          label={t('{{count}} model(s)', { count: models.length })}
-          variant='neutral'
-          copyable={false}
-        />
-      </TooltipTrigger>
-      <TooltipContent side='top' className='max-w-xs'>
-        <div className='max-h-[200px] space-y-0.5 overflow-y-auto text-xs'>
-          {models.map((m) => (
-            <div key={m} className='font-mono'>
-              {m}
-            </div>
-          ))}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
-export function IpRestrictionsCell({ apiKey }: { apiKey: ApiKey }) {
-  const { t } = useTranslation()
-  const allowIps = apiKey.allow_ips?.trim()
-
-  if (!allowIps) {
-    return (
-      <StatusBadge
-        label={t('No restriction')}
-        variant='neutral'
-        copyable={false}
-        className='-ml-1.5'
-      />
-    )
-  }
-
-  const ips = allowIps
-    .split('\n')
-    .map((ip) => ip.trim())
-    .filter(Boolean)
-
-  return (
-    <Tooltip>
-      <TooltipTrigger render={<BadgeCell />}>
-        <StatusBadge
-          label={t('{{count}} IP(s)', { count: ips.length })}
-          variant='neutral'
-          copyable={false}
-        />
-      </TooltipTrigger>
-      <TooltipContent side='top' className='max-w-xs'>
-        <div className='max-h-[200px] space-y-0.5 overflow-y-auto text-xs'>
-          {ips.map((ip) => (
-            <div key={ip} className='font-mono'>
-              {ip}
-            </div>
-          ))}
-        </div>
-      </TooltipContent>
-    </Tooltip>
   )
 }

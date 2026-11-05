@@ -46,6 +46,13 @@ export const apiKeySchema = z.object({
   model_limits_enabled: z.boolean(),
   model_limits: z.string().nullish().default(''),
   allow_ips: z.string().nullish().default(''),
+  /** `personal` for the caller's own keys, `organization` for keys they may use. */
+  scope_type: z.string().optional(),
+  organization_id: z.number().optional(),
+  organization_name: z.string().optional(),
+  visibility: z.string().optional(),
+  /** The masked form of an organization key; personal keys arrive already masked. */
+  key_preview: z.string().optional(),
 })
 
 export type ApiKey = z.infer<typeof apiKeySchema>
@@ -65,6 +72,12 @@ export interface GetApiKeysParams {
   size?: number
 }
 
+export interface GetSelfApiKeysParams extends GetApiKeysParams {
+  keyword?: string
+  token?: string
+  status?: number
+}
+
 export interface GetApiKeysResponse {
   success: boolean
   message?: string
@@ -74,13 +87,6 @@ export interface GetApiKeysResponse {
     page: number
     page_size: number
   }
-}
-
-export interface SearchApiKeysParams {
-  keyword?: string
-  token?: string
-  p?: number
-  size?: number
 }
 
 export interface ApiKeyFormData {
@@ -108,6 +114,7 @@ export interface TokenAutoGroupsConfig {
 export type ApiKeysDialogType =
   | 'create'
   | 'update'
+  | 'view'
   | 'delete'
   | 'batch-delete'
   | 'cc-switch'

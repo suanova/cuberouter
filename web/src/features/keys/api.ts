@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { OrganizationTokenRow } from '@/features/organization/types'
 import { api } from '@/lib/api'
 
 import type {
@@ -24,7 +23,7 @@ import type {
   ApiResponse,
   GetApiKeysParams,
   GetApiKeysResponse,
-  SearchApiKeysParams,
+  GetSelfApiKeysParams,
   ApiKeyFormData,
   TokenAutoGroupsConfig,
 } from './types'
@@ -42,50 +41,13 @@ export async function getApiKeys(
   return res.data
 }
 
-// Search API keys by keyword or token (with pagination)
-export async function searchApiKeys(
-  params: SearchApiKeysParams
+// Get the caller's personal keys and the organization keys they may use, in
+// one paginated list. The backend performs the union and the filtering so the
+// page count and totals stay correct.
+export async function getSelfApiKeys(
+  params: GetSelfApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
-  const { keyword = '', token = '', p, size } = params
-  const queryParams = new URLSearchParams()
-  if (keyword) queryParams.set('keyword', keyword)
-  if (token) queryParams.set('token', token)
-  if (p != null) queryParams.set('p', String(p))
-  if (size != null) queryParams.set('size', String(size))
-  const res = await api.get(`/api/token/search?${queryParams.toString()}`)
-  return res.data
-}
-
-export interface GetSelfOrganizationTokensParams {
-  p: number
-  size: number
-  keyword?: string
-  token?: string
-  status?: number
-  visibility?: string
-  organization_id?: number
-}
-
-export interface GetSelfOrganizationTokensResponse {
-  success: boolean
-  message?: string
-  data?: {
-    items: OrganizationTokenRow[]
-    total: number
-    page: number
-    page_size: number
-  }
-}
-
-/**
- * The organization keys the caller may use, across every organization they
- * belong to. Unlike the organization detail endpoint this needs no organization
- * account context, which is what lets the personal API Keys page show them.
- */
-export async function getSelfOrganizationTokens(
-  params: GetSelfOrganizationTokensParams
-): Promise<GetSelfOrganizationTokensResponse> {
-  const res = await api.get('/api/token/self/organization', { params })
+  const res = await api.get('/api/token/self/all', { params })
   return res.data
 }
 

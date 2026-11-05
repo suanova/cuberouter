@@ -27,9 +27,9 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-// SelfOrganizationTokenListRequest is the member-side organization key list:
-// the keys they can use, not every key in the organization.
-type SelfOrganizationTokenListRequest struct {
+// SelfTokenListRequest is the personal API Keys page's list request: the
+// caller's personal keys plus the organization keys they may use.
+type SelfTokenListRequest struct {
 	Offset         int
 	Limit          int
 	Keyword        string
@@ -39,11 +39,11 @@ type SelfOrganizationTokenListRequest struct {
 	OrganizationID int
 }
 
-// ListSelfOrganizationTokens lists the organization keys the user can use
-// across their active memberships. Keys are returned with their full secret,
-// as the organization key page does, because a key the caller may use is a key
-// they may copy.
-func ListSelfOrganizationTokens(userId int, req SelfOrganizationTokenListRequest) ([]*model.Token, int64, error) {
+// ListSelfTokens is the personal API Keys page: personal keys plus the
+// organization keys the caller may use, in one paginated list. The two sets
+// share the tokens table, so the union happens in SQL rather than by merging
+// two paginated responses in the browser.
+func ListSelfTokens(userId int, req SelfTokenListRequest) ([]*model.Token, int64, error) {
 	if userId <= 0 {
 		return nil, 0, errors.New("invalid user token request")
 	}
@@ -58,10 +58,8 @@ func ListSelfOrganizationTokens(userId int, req SelfOrganizationTokenListRequest
 		return nil, 0, errors.New("invalid token visibility")
 	}
 
-	query := model.SelfOrganizationTokensQuery(userId)
+	query := model.SelfTokensQuery(userId)
 	if keyword := strings.TrimSpace(req.Keyword); keyword != "" {
-		// The page's search box is a contains search; the shared LIKE helper
-		// treats a bare term as exact, so add the wildcards here.
 		if !strings.Contains(keyword, "%") {
 			keyword = "%" + keyword + "%"
 		}
@@ -103,22 +101,32 @@ func ListSelfOrganizationTokens(userId int, req SelfOrganizationTokenListRequest
 	for _, token := range tokens {
 		model.NormalizeTokenScope(token)
 	}
-	if err := hydrateOrganizationTokenUserNames(tokens); err != nil {
-		return nil, 0, err
-	}
 	if err := hydrateSelfOrganizationTokenNames(tokens); err != nil {
 		return nil, 0, err
 	}
-	for _, token := range tokens {
-		fillOrganizationTokenKeyPreview(token)
+	if err := hydrateOrganizationTokenUserNames(tokens); err != nil {
+		return nil, 0, err
 	}
 	if err := hydrateOrganizationTokenAvailability(tokens); err != nil {
 		return nil, 0, err
+	}
+	// Organization rows keep the full secret and its key_preview: the page masks
+	// the display while the copy button uses the secret directly.
+	for _, token := range tokens {
+		if token.ScopeType == model.TokenScopePersonal {
+			// The personal list keeps its existing masked-key behavior; the
+			// full secret is fetched per row when the user copies it.
+			token.Key = token.GetMaskedKey()
+			token.KeyPreview = ""
+		}
 	}
 	return tokens, total, nil
 }
 
 func hydrateSelfOrganizationTokenNames(tokens []*model.Token) error {
+	if len(tokens) == 0 {
+		return nil
+	}
 	organizationIds := make([]int, 0)
 	seen := make(map[int]bool)
 	for _, token := range tokens {

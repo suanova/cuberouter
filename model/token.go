@@ -207,6 +207,15 @@ func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	return tokens, err
 }
 
+// SelfTokensQuery is the personal API Keys page's combined source: the caller's
+// personal keys plus every organization key they may use. Both sets live in the
+// same table, so a single query keeps pagination and counts correct.
+func SelfTokensQuery(userId int) *gorm.DB {
+	personalIds := personalTokenScopeQuery(DB.Model(&Token{}).Where("user_id = ?", userId)).Select("id")
+	organizationIds := SelfOrganizationTokensQuery(userId).Select("id")
+	return DB.Model(&Token{}).Where("id IN (?) OR id IN (?)", personalIds, organizationIds)
+}
+
 // TokenKeyColumn is the dialect-quoted `key` column, which is a reserved word
 // in MySQL. Callers that build a raw keyword search on the column need it.
 func TokenKeyColumn() string {
@@ -215,28 +224,20 @@ func TokenKeyColumn() string {
 
 // SelfOrganizationTokensQuery returns the organization keys the user may use:
 // public keys, keys they are responsible for, and keys they created, across
-// the active organizations they belong to. An owner or administrator also sees
-// every key in their organization, matching what the organization key page
-// lets them read; a plain member never sees another member's private key.
+// the active organizations they belong to. This is the personal API Keys view;
+// an organization owner/administrator is treated like any other member here and
+// keeps the full organization key list in the organization detail page.
 func SelfOrganizationTokensQuery(userId int) *gorm.DB {
 	memberOrganizationIds := DB.Table("organization_members").
 		Select("organization_members.organization_id").
 		Joins("JOIN organizations ON organizations.id = organization_members.organization_id").
 		Where("organization_members.user_id = ? AND organization_members.status = ? AND organizations.status <> ?",
 			userId, OrganizationMemberStatusActive, OrganizationStatusDissolved)
-	adminOrganizationIds := DB.Table("organization_members").
-		Select("organization_members.organization_id").
-		Joins("JOIN organizations ON organizations.id = organization_members.organization_id").
-		Where("organization_members.user_id = ? AND organization_members.status = ? AND organizations.status <> ?",
-			userId, OrganizationMemberStatusActive, OrganizationStatusDissolved).
-		Where("organization_members.role IN ? OR organizations.owner_user_id = ?",
-			[]string{OrganizationRoleOwner, OrganizationRoleAdmin}, userId)
 	return DB.Model(&Token{}).
 		Where("scope_type = ? AND organization_id IN (?)", TokenScopeOrganization, memberOrganizationIds).
 		Where(DB.Where("visibility = ?", TokenVisibilityPublic).
 			Or("responsible_user_id = ?", userId).
-			Or("creator_user_id = ?", userId).
-			Or("organization_id IN (?)", adminOrganizationIds))
+			Or("creator_user_id = ?", userId))
 }
 
 // sanitizeLikePattern 校验并清洗用户输入的 LIKE 搜索模式。

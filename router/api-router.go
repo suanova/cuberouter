@@ -301,7 +301,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		tokenRoute.Use(middleware.UserAuth())
 		{
 			tokenRoute.GET("/", controller.GetAllTokens)
-			tokenRoute.GET("/self/organization", controller.GetSelfOrganizationTokens)
+			tokenRoute.GET("/self/all", middleware.SearchRateLimitWhenQuery(), controller.GetSelfTokens)
 			tokenRoute.GET("/search", middleware.SearchRateLimit(), controller.SearchTokens)
 			tokenRoute.GET("/auto-groups", controller.GetTokenAutoGroups)
 			tokenRoute.GET("/:id", controller.GetToken)

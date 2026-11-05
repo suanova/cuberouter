@@ -29,11 +29,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetSelfOrganizationTokens returns the organization keys the caller can use.
-// Unlike the organization key page this is not scoped to one organization, and
-// unlike the personal key list it includes the organization keys the caller
-// holds or may use publicly.
-func GetSelfOrganizationTokens(c *gin.Context) {
+// GetSelfTokens returns the caller's personal keys and the organization keys
+// they may use, in one paginated list for the personal API Keys page.
+func GetSelfTokens(c *gin.Context) {
 	userId := c.GetInt("id")
 	if userId <= 0 {
 		common.ApiErrorMsg(c, "无效的身份信息")
@@ -42,7 +40,7 @@ func GetSelfOrganizationTokens(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	status, _ := strconv.Atoi(c.Query("status"))
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
-	tokens, total, err := service.ListSelfOrganizationTokens(userId, service.SelfOrganizationTokenListRequest{
+	tokens, total, err := service.ListSelfTokens(userId, service.SelfTokenListRequest{
 		Offset:         pageInfo.GetStartIdx(),
 		Limit:          pageInfo.GetPageSize(),
 		Keyword:        c.Query("keyword"),
