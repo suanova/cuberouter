@@ -42,10 +42,10 @@ import {
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
-import { formatQuota } from '@/lib/format'
+import { toIntlLocale } from '@/i18n/languages'
 import { cn } from '@/lib/utils'
 
-import { getApiKeys, searchApiKeys } from '../api'
+import { getSelfApiKeys } from '../api'
 import {
   API_KEY_STATUS,
   API_KEY_STATUS_OPTIONS,
@@ -53,10 +53,10 @@ import {
   ERROR_MESSAGES,
 } from '../constants'
 import type { ApiKey } from '../types'
-import { ApiKeyCell, UnlimitedQuotaBadge } from './api-keys-cells'
+import { ApiKeyTimestampCell } from './api-key-timestamp-cell'
+import { ApiKeyCell } from './api-keys-cells'
 import { useApiKeysColumns } from './api-keys-columns'
 import { useApiKeys } from './api-keys-provider'
-import { DataTableBulkActions } from './data-table-bulk-actions'
 import { DataTableRowActions } from './data-table-row-actions'
 
 const route = getRouteApi('/_authenticated/keys/')
@@ -96,11 +96,14 @@ function ApiKeysMobileSkeleton() {
 function ApiKeysMobileList({
   table,
   isLoading,
+  now,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
+  now: number
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const rows = table.getRowModel().rows
 
   if (isLoading) return <ApiKeysMobileSkeleton />
@@ -130,7 +133,6 @@ function ApiKeysMobileList({
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
-        const total = apiKey.used_quota + apiKey.remain_quota
 
         return (
           <div
@@ -146,7 +148,9 @@ function ApiKeysMobileList({
                   {apiKey.name}
                 </div>
                 <div className='text-muted-foreground text-[11px]'>
-                  {t('API Key')}
+                  {apiKey.scope_type === 'organization'
+                    ? apiKey.organization_name || t('Organization')
+                    : t('Personal')}
                 </div>
               </div>
               {statusConfig && (
@@ -166,18 +170,14 @@ function ApiKeysMobileList({
             </div>
 
             <div className='flex items-center justify-between gap-2 text-xs'>
-              <span className='text-muted-foreground'>{t('Quota')}</span>
-              {apiKey.unlimited_quota ? (
-                <UnlimitedQuotaBadge used={apiKey.used_quota} />
-              ) : (
-                <span className='font-medium tabular-nums'>
-                  {formatQuota(apiKey.remain_quota)}
-                  <span className='text-muted-foreground font-normal'>
-                    {' / '}
-                    {formatQuota(total)}
-                  </span>
-                </span>
-              )}
+              <span className='text-muted-foreground'>{t('Last Used')}</span>
+              <ApiKeyTimestampCell
+                timestamp={apiKey.accessed_time}
+                now={now}
+                locale={locale}
+                justNowLabel={t('Just now')}
+                className='text-muted-foreground'
+              />
             </div>
           </div>
         )
@@ -228,7 +228,13 @@ export function ApiKeysTable() {
     columnId: '_tokenSearch',
     onColumnFiltersChange,
   })
-  const shouldSearch = Boolean(globalFilter?.trim() || tokenFilter.trim())
+  const statusFilter = columnFilters.find(
+    (filter) => filter.id === 'status'
+  )?.value
+  const statusValue = Array.isArray(statusFilter)
+    ? statusFilter[0]
+    : statusFilter
+  const status = Number(statusValue) || undefined
 
   // Fetch data with React Query
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
@@ -239,30 +245,20 @@ export function ApiKeysTable() {
       pagination.pageSize,
       globalFilter,
       tokenFilter,
+      status,
       refreshTrigger,
     ],
     queryFn: async () => {
-      const result = shouldSearch
-        ? await searchApiKeys({
-            keyword: globalFilter,
-            token: tokenFilter,
-            p: pagination.pageIndex + 1,
-            size: pagination.pageSize,
-          })
-        : await getApiKeys({
-            p: pagination.pageIndex + 1,
-            size: pagination.pageSize,
-          })
+      const result = await getSelfApiKeys({
+        p: pagination.pageIndex + 1,
+        size: pagination.pageSize,
+        keyword: globalFilter?.trim() || undefined,
+        token: tokenFilter.trim() || undefined,
+        status,
+      })
 
       if (!result.success) {
-        toast.error(
-          result.message ||
-            t(
-              shouldSearch
-                ? ERROR_MESSAGES.SEARCH_FAILED
-                : ERROR_MESSAGES.LOAD_FAILED
-            )
-        )
+        toast.error(result.message || t(ERROR_MESSAGES.LOAD_FAILED))
         return { items: [], total: 0 }
       }
 
@@ -279,7 +275,6 @@ export function ApiKeysTable() {
   const { table } = useDataTable({
     data: apiKeys,
     columns,
-    enableRowSelection: true,
     columnFilters,
     columnVisibilityStorageKey: API_KEYS_COLUMN_VISIBILITY_STORAGE_KEY,
     globalFilter,
@@ -289,6 +284,7 @@ export function ApiKeysTable() {
     onGlobalFilterChange,
     onColumnFiltersChange,
     manualPagination: true,
+    manualFiltering: true,
     totalCount: data?.total || 0,
     ensurePageInRange,
   })
@@ -326,11 +322,12 @@ export function ApiKeysTable() {
           },
         ],
       }}
-      mobile={<ApiKeysMobileList table={table} isLoading={isLoading} />}
+      mobile={
+        <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
+      }
       getRowClassName={(row) =>
         isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined
       }
-      bulkActions={<DataTableBulkActions table={table} />}
     />
   )
 }

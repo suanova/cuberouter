@@ -18,7 +18,11 @@ concurrency:
 jobs:
   e2e-test:
     name: E2E (KinD)
-    runs-on: ubuntu-latest
+    # ubuntu-latest currently resolves to 26.04, which Playwright 1.55 does not
+    # support ("Playwright does not support chromium on ubuntu26.04-x64").
+    # Keep the browser install on a supported LTS until the pinned Playwright
+    # version is upgraded.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
