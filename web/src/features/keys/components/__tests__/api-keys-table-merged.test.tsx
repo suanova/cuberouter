@@ -54,6 +54,21 @@ vi.mock('../../api', async (importOriginal) => ({
 const getSelfApiKeysMock = vi.mocked(getSelfApiKeys)
 const copyToClipboardMock = vi.mocked(copyToClipboard)
 
+let mobileViewport = false
+Object.defineProperty(window, 'matchMedia', {
+  configurable: true,
+  value: (query: string) => ({
+    matches: mobileViewport && query.includes('(max-width: 640px)'),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  }),
+})
+
 function apiKey(overrides: Partial<ApiKey> = {}): ApiKey {
   return {
     id: 1,
@@ -79,7 +94,7 @@ function apiKey(overrides: Partial<ApiKey> = {}): ApiKey {
 
 const personalKey = apiKey({
   model_limits_enabled: true,
-  model_limits: 'gpt-5,claude-opus',
+  model_limits: '',
   allow_ips: '1.2.3.4',
 })
 
@@ -98,6 +113,7 @@ const organizationKey = apiKey({
 })
 
 beforeEach(() => {
+  mobileViewport = false
   search.value = {
     page: 1,
     pageSize: 20,
@@ -238,6 +254,7 @@ describe('ApiKeysTable', () => {
 
     const sheet = await screen.findByRole('dialog')
     expect(within(sheet).getByText('API Key Details')).toBeInTheDocument()
+    expect(within(sheet).getByText('No models allowed')).toBeInTheDocument()
     expect(within(sheet).getByText('IP Restriction')).toBeInTheDocument()
     expect(within(sheet).getByText('1.2.3.4')).toBeInTheDocument()
     expect(within(sheet).getByText('Remaining quota')).toBeInTheDocument()
@@ -281,5 +298,17 @@ describe('ApiKeysTable', () => {
         status: 1,
       })
     })
+  })
+
+  test('renders mobile cards with billing attribution and last used time', async () => {
+    mobileViewport = true
+    renderTable()
+
+    await screen.findByText('Personal key')
+    await screen.findByText('Team key')
+
+    expect(screen.getByText('Acme')).toBeInTheDocument()
+    expect(screen.getByText('Personal')).toBeInTheDocument()
+    expect(screen.getAllByText('Last Used')).toHaveLength(2)
   })
 })

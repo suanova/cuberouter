@@ -67,13 +67,35 @@ export function ApiKeyDetailSheet(props: {
 
   const isOrganizationKey = apiKey.scope_type === 'organization'
   const statusConfig = API_KEY_STATUSES[apiKey.status]
-  const models = apiKey.model_limits_enabled
+  const modelsEnabled = apiKey.model_limits_enabled
+  const models = modelsEnabled
     ? (apiKey.model_limits ?? '')
         .split(',')
         .map((model) => model.trim())
         .filter(Boolean)
     : []
   const allowIps = apiKey.allow_ips?.trim()
+
+  let modelsContent: ReactNode
+  if (!modelsEnabled) {
+    modelsContent = t('Unlimited')
+  } else if (models.length === 0) {
+    modelsContent = t('No models allowed')
+  } else {
+    modelsContent = (
+      <div className='flex flex-wrap justify-end gap-1'>
+        {models.map((model) => (
+          <Badge
+            key={model}
+            variant='secondary'
+            className='font-mono text-[11px]'
+          >
+            {model}
+          </Badge>
+        ))}
+      </div>
+    )
+  }
 
   return (
     <Sheet open={props.open} onOpenChange={props.onOpenChange}>
@@ -108,23 +130,7 @@ export function ApiKeyDetailSheet(props: {
                 ? apiKey.organization_name || '-'
                 : t('Personal')}
             </DetailRow>
-            <DetailRow label={t('Models')}>
-              {models.length > 0 ? (
-                <div className='flex flex-wrap justify-end gap-1'>
-                  {models.map((model) => (
-                    <Badge
-                      key={model}
-                      variant='secondary'
-                      className='font-mono text-[11px]'
-                    >
-                      {model}
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                t('Unlimited')
-              )}
-            </DetailRow>
+            <DetailRow label={t('Models')}>{modelsContent}</DetailRow>
             {isOrganizationKey ? (
               <DetailRow label={t('Visibility')}>
                 {apiKey.visibility === 'public' ? t('Public') : t('Private')}

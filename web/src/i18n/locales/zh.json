@@ -3575,6 +3575,7 @@
     "No model price changes to save": "没有模型价格变更需要保存",
     "No models available": "没有可用的模型",
     "No models available in this category": "该分类下没有可用模型",
+    "No models allowed": "无可用模型",
     "No models available. Create your first model to get started.": "没有可用的模型。创建您的第一个模型即可开始使用。",
     "No models configured. Use Add model to get started.": "暂无模型配置。使用添加模型开始配置。",
     "No models fetched from upstream": "未从上游获取模型",

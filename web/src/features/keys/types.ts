@@ -117,4 +117,3 @@ export type ApiKeysDialogType =
   | 'view'
   | 'delete'
   | 'batch-delete'
-  | 'cc-switch'

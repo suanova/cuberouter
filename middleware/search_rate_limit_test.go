@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/gin-gonic/gin"
@@ -48,8 +49,11 @@ func TestSearchRateLimitWhenQueryOnlyThrottlesSearchRequests(t *testing.T) {
 	})
 
 	router := gin.New()
+	// The in-memory limiter keeps the key for RateLimitKeyExpirationDuration,
+	// so a per-run user ID keeps repeated `go test -count=N` runs independent.
+	userID := int(time.Now().UnixNano())
 	router.Use(func(c *gin.Context) {
-		c.Set("id", 987654321)
+		c.Set("id", userID)
 	})
 	router.GET("/keys", SearchRateLimitWhenQuery(), func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
