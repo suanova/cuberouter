@@ -34,6 +34,7 @@ import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
+import { Route as AuthenticatedAdminImageOutputAuditRouteImport } from './routes/_authenticated/admin/image-output-audit'
 import { Route as AuthenticatedAdminOrganizationAuditLogsRouteImport } from './routes/_authenticated/admin/organization-audit-logs'
 import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns/index'
 import { Route as AuthenticatedChannelsIndexRouteImport } from './routes/_authenticated/channels/index'
@@ -205,6 +206,12 @@ const authUserResetRoute = authUserResetRouteImport.update({
   path: '/user/reset',
   getParentRoute: () => authRouteRoute,
 } as any)
+const AuthenticatedAdminImageOutputAuditRoute =
+  AuthenticatedAdminImageOutputAuditRouteImport.update({
+    id: '/admin/image-output-audit',
+    path: '/admin/image-output-audit',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminOrganizationAuditLogsRoute =
   AuthenticatedAdminOrganizationAuditLogsRouteImport.update({
     id: '/admin/organization-audit-logs',
@@ -501,6 +508,7 @@ export interface FileRoutesByFullPath {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/admin/image-output-audit': typeof AuthenticatedAdminImageOutputAuditRoute
   '/admin/organization-audit-logs': typeof AuthenticatedAdminOrganizationAuditLogsRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -571,6 +579,7 @@ export interface FileRoutesByTo {
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/admin/image-output-audit': typeof AuthenticatedAdminImageOutputAuditRoute
   '/admin/organization-audit-logs': typeof AuthenticatedAdminOrganizationAuditLogsRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -645,6 +654,7 @@ export interface FileRoutesById {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
+  '/_authenticated/admin/image-output-audit': typeof AuthenticatedAdminImageOutputAuditRoute
   '/_authenticated/admin/organization-audit-logs': typeof AuthenticatedAdminOrganizationAuditLogsRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
   '/_authenticated/dashboard/$section': typeof AuthenticatedDashboardSectionRoute
@@ -718,6 +728,7 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/user/reset'
+    | '/admin/image-output-audit'
     | '/admin/organization-audit-logs'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -788,6 +799,7 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/setup'
     | '/user/reset'
+    | '/admin/image-output-audit'
     | '/admin/organization-audit-logs'
     | '/chat/$chatId'
     | '/dashboard/$section'
@@ -861,6 +873,7 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/(auth)/user/reset'
+    | '/_authenticated/admin/image-output-audit'
     | '/_authenticated/admin/organization-audit-logs'
     | '/_authenticated/chat/$chatId'
     | '/_authenticated/dashboard/$section'
@@ -1104,6 +1117,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/user/reset'
       preLoaderRoute: typeof authUserResetRouteImport
       parentRoute: typeof authRouteRoute
+    }
+    '/_authenticated/admin/image-output-audit': {
+      id: '/_authenticated/admin/image-output-audit'
+      path: '/admin/image-output-audit'
+      fullPath: '/admin/image-output-audit'
+      preLoaderRoute: typeof AuthenticatedAdminImageOutputAuditRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/organization-audit-logs': {
       id: '/_authenticated/admin/organization-audit-logs'
@@ -1516,6 +1536,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedAdminImageOutputAuditRoute: typeof AuthenticatedAdminImageOutputAuditRoute
   AuthenticatedAdminOrganizationAuditLogsRoute: typeof AuthenticatedAdminOrganizationAuditLogsRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
@@ -1552,6 +1573,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedAdminImageOutputAuditRoute:
+    AuthenticatedAdminImageOutputAuditRoute,
   AuthenticatedAdminOrganizationAuditLogsRoute:
     AuthenticatedAdminOrganizationAuditLogsRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,

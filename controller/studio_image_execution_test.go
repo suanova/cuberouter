@@ -1,0 +1,264 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+package controller
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/studioqueue"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
+	setupBillingAliasOptionDB(t)
+	sqlDB, err := model.DB.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	t.Setenv("LOG_SQL_DSN", "")
+	require.NoError(t, model.InitLogDB())
+	require.NoError(t, model.DB.AutoMigrate(&model.Ability{}, &model.StudioImageAudit{}, &model.StudioImageLease{}))
+	t.Setenv("IMAGE_STUDIO_ENABLED", "true")
+	t.Setenv("IMAGE_STUDIO_MODELS", "studio-native")
+	t.Setenv("IMAGE_STUDIO_CHANNEL_IDS", "1")
+	t.Setenv("IMAGE_STUDIO_ALLOWED_GROUPS", "default")
+	oldPrice, oldBatch, oldLog := ratio_setting.ModelPrice2JSONString(), common.BatchUpdateEnabled, common.LogConsumeEnabled
+	common.BatchUpdateEnabled = false
+	common.LogConsumeEnabled = true
+	t.Cleanup(func() {
+		model.WaitForQuotaCacheWorkers()
+		common.BatchUpdateEnabled = oldBatch
+		common.LogConsumeEnabled = oldLog
+		require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(oldPrice))
+	})
+	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"studio-native":0.001}`))
+	require.NoError(t, model.DB.Create(&model.User{Id: 1, Username: "studio", Role: common.RoleRootUser, Status: common.UserStatusEnabled, Group: "default", Quota: 1000000, Setting: `{"billing_preference":"wallet_only"}`}).Error)
+	service.InitHttpClient()
+	var encoded bytes.Buffer
+	img := image.NewNRGBA(image.Rect(0, 0, 4, 4))
+	img.Set(1, 1, color.NRGBA{R: 200, A: 255})
+	require.NoError(t, png.Encode(&encoded, img))
+	var policy atomic.Value
+	policy.Store("allow")
+	var generations atomic.Int32
+	var cancelOnGeneration atomic.Pointer[chan struct{}]
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/health":
+			_, _ = io.WriteString(w, `{"state":"ready","gpu_count":1,"control_protocol":"qwen-execution-v1"}`)
+		case "/v1/images/generations", "/v1/images/edits":
+			generations.Add(1)
+			if policy.Load() == "worker-down" {
+				w.WriteHeader(http.StatusBadGateway)
+				_, _ = io.WriteString(w, `{"error":{"message":"worker unavailable"}}`)
+				return
+			}
+			if r.URL.Path == "/v1/images/edits" {
+				assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+				var request struct {
+					Image string `json:"image"`
+				}
+				assert.NoError(t, common.DecodeJson(r.Body, &request))
+				assert.Equal(t, "data:image/png;base64,"+base64.StdEncoding.EncodeToString(encoded.Bytes()), request.Image)
+			}
+			if cancel := cancelOnGeneration.Load(); cancel != nil {
+				close(*cancel)
+			}
+			assert.Len(t, r.Header.Get("X-Image-Execution-ID"), 32)
+			data, err := common.Marshal(map[string]any{"created": 1, "data": []any{map[string]string{"b64_json": base64.StdEncoding.EncodeToString(encoded.Bytes())}}})
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		case "/v1/moderate":
+			imageBytes, err := io.ReadAll(r.Body)
+			assert.NoError(t, err)
+			assert.Equal(t, encoded.Bytes(), imageBytes)
+			decision := policy.Load().(string)
+			if decision == "cancel" {
+				decision = "allow"
+			}
+			if decision == "down" {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			allow := decision == "allow"
+			score := 0.1
+			if !allow {
+				score = 0.7
+			}
+			data, err := common.Marshal(service.StudioReview{Protocol: "image-moderation-v1", Model: "google/shieldgemma-2-4b-it", Revision: strings.Repeat("a", 40), ImageSHA256: fmt.Sprintf("%x", sha256.Sum256(imageBytes)), Decision: decision, ReleaseAllowed: &allow, WeightsVerified: true, Threshold: func() *float64 { n := 0.5; return &n }(), Scores: map[string]*float64{"sexual": &score, "violence": &score, "dangerous": &score}})
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		case "/internal/cancel":
+			var input map[string]string
+			assert.NoError(t, common.DecodeJson(r.Body, &input))
+			data, err := common.Marshal(map[string]string{"protocol": "qwen-execution-v1", "execution_id": input["execution_id"], "state": "cancelling"})
+			assert.NoError(t, err)
+			_, _ = w.Write(data)
+		default:
+			t.Errorf("unexpected worker request path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+	base, review := upstream.URL, upstream.URL+"/v1/moderate"
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 1, Name: "worker", Type: constant.ChannelTypeOpenAI, Status: common.ChannelStatusEnabled, Key: strings.Repeat("g", 32), BaseURL: &base, Group: "default", Models: "studio-native"}).Error)
+	require.NoError(t, model.DB.Create(&model.Channel{Id: 2, Name: "reviewer", Type: constant.ChannelTypeStudioReview, Status: common.ChannelStatusEnabled, Key: strings.Repeat("m", 32), BaseURL: &review, Group: "default", Models: "google/shieldgemma-2-4b-it"}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{Group: "default", Model: "studio-native", ChannelId: 1, Enabled: true}).Error)
+	reserve := func(t *testing.T, job, mode string, body []byte) *studioqueue.Reservation {
+		t.Helper()
+		r := studioqueue.Request{Owner: 1, Key: job, Model: "studio-native", Mode: mode, Group: "default", Body: body}
+		releaseAccount, err := admitStudioImage(r, job)
+		require.NoError(t, err)
+		t.Cleanup(releaseAccount)
+		reservation := reserveStudioImage(r, job)
+		require.NotNil(t, reservation)
+		return reservation
+	}
+	t.Run("queued edit uses the OpenAI JSON relay", func(t *testing.T) {
+		job := fmt.Sprintf("%032x", 6)
+		request := fmt.Appendf(nil, `{"mode":"edit","user_prompt":"edit this","request":{"model":"studio-native","prompt":"edit this","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0,"image":"data:image/png;base64,%s"}}`, base64.StdEncoding.EncodeToString(encoded.Bytes()))
+		reservation := reserve(t, job, "edit", request)
+		defer reservation.Release()
+
+		result := reservation.Run(context.Background(), make(chan struct{}))
+		model.WaitForQuotaCacheWorkers()
+		require.Empty(t, result.Error)
+		assert.Equal(t, encoded.Bytes(), result.PNG)
+		assert.EqualValues(t, 1, generations.Load())
+	})
+	for i, decision := range []string{"allow", "block", "cancel", "down"} {
+		t.Run(decision, func(t *testing.T) {
+			policy.Store(decision)
+			request := []byte(`{"mode":"create","user_prompt":"user prompt","request":{"model":"studio-native","prompt":"model prompt","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0}}`)
+			job := fmt.Sprintf("%032x", i+1)
+			reservation := reserve(t, job, "create", request)
+			var before model.User
+			require.NoError(t, model.DB.First(&before, 1).Error)
+			cancel := make(chan struct{})
+			cancelOnGeneration.Store(nil)
+			if decision == "cancel" {
+				cancelOnGeneration.Store(&cancel)
+			}
+			result := reservation.Run(context.Background(), cancel)
+			reservation.Release()
+			model.WaitForQuotaCacheWorkers()
+			var after model.User
+			require.NoError(t, model.DB.First(&after, 1).Error)
+			if decision == "cancel" {
+				assert.Empty(t, result.PNG, "an in-flight cancellation discards the reviewed result")
+				assert.Empty(t, result.Error)
+				assert.Equal(t, before.Quota, after.Quota, "cancelled inference with no delivered image refunds native pre-consume")
+			} else if decision == "allow" {
+				assert.Empty(t, result.Error)
+				assert.Equal(t, encoded.Bytes(), result.PNG)
+				assert.Less(t, after.Quota, before.Quota, "approved output settles native image billing")
+			} else {
+				code := "output_blocked"
+				if decision == "down" {
+					code = "output_check_unavailable"
+				}
+				assert.Equal(t, code, result.Error)
+				assert.Empty(t, result.PNG)
+				assert.Equal(t, before.Quota, after.Quota, "rejected output refunds native pre-consume")
+			}
+			var audit model.StudioImageAudit
+			require.NoError(t, model.DB.First(&audit, "job_id = ?", job).Error)
+			assert.Equal(t, "user prompt", audit.UserPrompt)
+			assert.Equal(t, "model prompt", audit.ModelPrompt)
+			assert.Equal(t, fmt.Sprintf("%x", sha256.Sum256(encoded.Bytes())), audit.OutputHash)
+			if decision == "cancel" {
+				assert.Equal(t, "cancelled", audit.State)
+			}
+		})
+	}
+	t.Run("cancelled before provider dispatch", func(t *testing.T) {
+		job := fmt.Sprintf("%032x", 5)
+		request := []byte(`{"mode":"create","user_prompt":"cancelled","request":{"model":"studio-native","prompt":"cancelled","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0}}`)
+		reservation := reserve(t, job, "create", request)
+		var before, after model.User
+		require.NoError(t, model.DB.First(&before, 1).Error)
+		cancel := make(chan struct{})
+		close(cancel)
+		result := reservation.Run(context.Background(), cancel)
+		reservation.Release()
+		model.WaitForQuotaCacheWorkers()
+		require.NoError(t, model.DB.First(&after, 1).Error)
+		assert.Empty(t, result.PNG)
+		assert.Empty(t, result.Error)
+		assert.Equal(t, before.Quota, after.Quota)
+		var audit model.StudioImageAudit
+		require.NoError(t, model.DB.First(&audit, "job_id = ?", job).Error)
+		assert.Equal(t, "cancelled", audit.State)
+	})
+	assert.EqualValues(t, 5, generations.Load(), "pre-dispatch cancellation never invokes inference")
+	t.Run("invalid body or changed scope fails before allocating a worker", func(t *testing.T) {
+		for _, tc := range []struct{ body, code string }{
+			{"{", "invalid_studio_request"},
+			{"{}", "studio_scope_changed"},
+		} {
+			r := studioqueue.Request{Owner: 1, Model: "studio-native", Group: "old-group", Body: []byte(tc.body)}
+			reservation := reserveStudioImage(r, "invalid-job")
+			require.NotNil(t, reservation, "invalid queued work must leave the queue")
+			defer reservation.Release()
+			assert.Equal(t, tc.code, reservation.Run(context.Background(), nil).Error)
+		}
+		assert.EqualValues(t, 5, generations.Load())
+	})
+	t.Run("worker 5xx fences the GPU and releases the account", func(t *testing.T) {
+		policy.Store("worker-down")
+		cancelOnGeneration.Store(nil)
+		q := studioqueue.New(reserveStudioImage)
+		r := studioqueue.Request{Owner: 1, Key: "worker-down-request", Model: "studio-native", Mode: "create", Group: "default",
+			Body: []byte(`{"mode":"create","user_prompt":"test","request":{"model":"studio-native","prompt":"test","size":"256x256","n":1,"quality":"standard","num_inference_steps":1,"true_cfg_scale":0,"seed":0}}`)}
+		now := time.Now()
+		job, err := q.Submit(r, q.Epoch(), now, func(job string) (func(), error) { return admitStudioImage(r, job) })
+		require.NoError(t, err)
+		q.Tick(context.Background(), now)
+		require.Eventually(t, func() bool {
+			status, _ := q.Lookup(1, job.ID)
+			busy, err := model.StudioImageAccountBusy(1, time.Now())
+			return status.State == "failed" && err == nil && !busy
+		}, 2*time.Second, 10*time.Millisecond)
+		var gpu model.StudioImageLease
+		require.NoError(t, model.DB.First(&gpu, "resource = ?", "gpu:1").Error)
+		assert.Equal(t, job.ID, gpu.Holder)
+		assert.Greater(t, gpu.ExpiresAt, now.Add(14*time.Minute).UnixMilli())
+	})
+}

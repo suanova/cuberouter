@@ -35,6 +35,9 @@ export interface StudioModelCatalog {
   imageMask: string[]
 }
 export interface WorkflowDraft {
+  markup?: import('./lib/reference-markup').ReferenceMarkup
+  /** Original user instruction when an editor adds model-facing guidance. */
+  user_prompt?: string
   mode: 'create' | 'edit'
   model: string
   prompt: string

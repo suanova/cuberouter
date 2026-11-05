@@ -51,4 +51,29 @@ test('Simplified Chinese workflow uses simplified wording', async () => {
   })
   expect(i18n.t('Template gallery')).toBe('模板图库')
   expect(i18n.t('Before and after comparison')).toBe('修改前后对比')
+  expect(i18n.t('Width')).toBe('宽度')
+  expect(i18n.t('Server image job')).toBe('服务器图片任务')
+  expect(
+    i18n.t(
+      'PNG, JPEG or WebP · up to 10 MB each · maximum {{max}} references',
+      {
+        max: 10,
+      }
+    )
+  ).toBe('PNG、JPEG 或 WebP · 每张最多 10 MB · 最多 10 张参考图')
+})
+
+test('English reference count uses singular and plural wording', async () => {
+  const i18n = createInstance()
+  await i18n.init({
+    lng: 'en',
+    keySeparator: false,
+    resources: { en: english },
+  })
+  expect(i18n.t('{{count}} reference images', { count: 1 })).toBe(
+    '1 reference image'
+  )
+  expect(i18n.t('{{count}} reference images', { count: 2 })).toBe(
+    '2 reference images'
+  )
 })

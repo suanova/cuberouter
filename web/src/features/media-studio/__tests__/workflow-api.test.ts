@@ -93,7 +93,19 @@ test('an edit without boxes never asks for a mask', async () => {
   // 没框选就退回整图编辑：不白跑一次解码，也不给上游发空蒙版。
   await workflowAPI.generate(draft)
   expect(maskImage).not.toHaveBeenCalled()
-  expect(http.post.mock.calls[0][1]).not.toHaveProperty('mask')
+  const body = http.post.mock.calls[0][1] as FormData
+  expect(body.has('mask')).toBe(false)
+})
+
+test('a boxed edit is refused when no mask can be produced', async () => {
+  vi.mocked(maskImage).mockResolvedValue(undefined)
+  await expect(
+    workflowAPI.generate({
+      ...draft,
+      mask: [{ x: 0.1, y: 0.1, width: 0.4, height: 0.4 }],
+    })
+  ).rejects.toThrow('could not be turned into a mask')
+  expect(http.post).not.toHaveBeenCalled()
 })
 test('an edit sends the normalized reference while the saved image keeps the uploaded bytes', async () => {
   const normalized = 'data:image/webp;base64,UklGRg=='

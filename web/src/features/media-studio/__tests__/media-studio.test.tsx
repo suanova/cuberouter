@@ -27,6 +27,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, test, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
@@ -82,6 +83,30 @@ function page() {
     </QueryClientProvider>
   )
 }
+
+test('the gallery opens on Templates and switches to Qwen examples with the keyboard', async () => {
+  const user = userEvent.setup()
+  page()
+  const gallery = screen.getByRole('tablist', { name: 'Template gallery' })
+  const templates = within(gallery).getByRole('tab', { name: 'Templates' })
+  const samples = within(gallery).getByRole('tab', {
+    name: 'Official Qwen examples',
+  })
+  expect(templates).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('button', { name: 'All templates' })).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'Load example' })).toBeNull()
+
+  templates.focus()
+  await user.keyboard('{ArrowRight}')
+  expect(samples).toHaveFocus()
+  await user.keyboard('{Enter}')
+  expect(samples).toHaveAttribute('aria-selected', 'true')
+  expect(
+    screen.getAllByRole('button', { name: 'Load example' })[0]
+  ).toBeVisible()
+  expect(screen.queryByRole('button', { name: 'All templates' })).toBeNull()
+})
+
 test('standard channel generation saves actual bytes locally and reloads history', async () => {
   const view = page()
   await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
@@ -116,6 +141,99 @@ test('standard channel generation saves actual bytes locally and reloads history
   fireEvent.click(screen.getByRole('button', { name: 'Result' }))
   await screen.findByRole('button', { name: 'Open creation: A cat' })
 })
+
+test('a queued edit retains a box even when its model has no image-mask tag', async () => {
+  const getPricing = http.get.getMockImplementation()
+  http.get.mockImplementation(async (url) =>
+    url === '/api/media-studio/config'
+      ? {
+          data: {
+            image_queue_enabled: true,
+            image_queue_access: true,
+            image_queue_models: ['edit-model'],
+          },
+        }
+      : getPricing?.(url)
+  )
+  page()
+  await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+  fireEvent.click(
+    within(screen.getByLabelText('Creation mode')).getByRole('button', {
+      name: 'Image to image',
+    })
+  )
+  fireEvent.change(screen.getByLabelText('Upload reference images'), {
+    target: {
+      files: [new File(['PNG'], 'reference.png', { type: 'image/png' })],
+    },
+  })
+  const surface = await screen.findByRole('group', { name: 'Selection area' })
+  await waitFor(() => expect(surface).toHaveAttribute('aria-disabled', 'false'))
+  fireEvent.keyDown(surface, { key: 'Enter' })
+  expect(screen.getByRole('button', { name: 'Undo box' })).toBeEnabled()
+})
+
+test.each(['standard', 'queued'])(
+  '%s edit shows applied colored marks on the reference after closing the editor',
+  async (mode) => {
+    const getPricing = http.get.getMockImplementation()
+    http.get.mockImplementation(async (url) =>
+      url === '/api/media-studio/config'
+        ? {
+            data: {
+              image_queue_enabled: mode === 'queued',
+              image_queue_access: true,
+              image_queue_models: ['edit-model'],
+            },
+          }
+        : getPricing?.(url)
+    )
+    page()
+    await waitFor(() => expect(screen.getByLabelText('Model')).toBeEnabled())
+    fireEvent.click(
+      within(screen.getByLabelText('Creation mode')).getByRole('button', {
+        name: 'Image to image',
+      })
+    )
+    fireEvent.change(screen.getByLabelText('Upload reference images'), {
+      target: {
+        files: [new File(['PNG'], 'reference.png', { type: 'image/png' })],
+      },
+    })
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Edit reference image' })
+    )
+    const dialog = within(screen.getByRole('dialog'))
+    fireEvent.click(dialog.getByRole('button', { name: 'Colored marks' }))
+    const surface = dialog.getByRole('group', {
+      name: 'Reference drawing surface',
+    })
+    fireEvent.keyDown(surface, { key: ' ' })
+    fireEvent.keyDown(surface, { key: 'ArrowRight' })
+    fireEvent.keyDown(surface, { key: ' ' })
+    fireEvent.keyDown(surface, { key: 'Enter' })
+    fireEvent.change(dialog.getByLabelText('Stroke color'), {
+      target: { value: 'red' },
+    })
+    fireEvent.keyDown(surface, { key: ' ' })
+    fireEvent.keyDown(surface, { key: 'ArrowDown' })
+    fireEvent.keyDown(surface, { key: ' ' })
+    fireEvent.keyDown(surface, { key: 'Enter' })
+    fireEvent.click(dialog.getByRole('button', { name: 'Use drawing' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    const reference = within(
+      screen.getByRole('region', { name: 'Reference images' })
+    ).getByRole('figure')
+    const preview = within(reference).getByRole('img', {
+      name: 'Applied drawing',
+    })
+    expect(preview).toBeVisible()
+    expect(preview.querySelector('path[stroke="blue"]')).toHaveAttribute('d')
+    expect(preview.querySelector('path[stroke="red"]')).toHaveAttribute('d')
+  }
+)
+
 test('a reference attached in the composer reaches the relay as multipart', async () => {
   // 图生图的成败全在这条契约上：参考图作为 multipart 的 image 文件 part 提交,
   // 标量模型/提示走 form 字段, 全程不碰对象存储。

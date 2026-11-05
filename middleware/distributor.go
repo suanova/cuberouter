@@ -39,6 +39,8 @@ func Distribute() func(c *gin.Context) {
 	return func(c *gin.Context) {
 		var channel *model.Channel
 		constraints := service.GetChannelConstraints(c)
+		constraints.AddFilter(taskdto.ChannelFilter{Kind: taskdto.FilterStudioCapacity,
+			StudioChannelIDs: service.StudioImageChannelIDs(), StudioExecution: c.GetString(service.StudioExecutionContext) != ""})
 		constraints.AddFilter(taskdto.ChannelFilter{
 			Kind:        taskdto.FilterRequestPath,
 			RequestPath: c.Request.URL.Path,
@@ -317,10 +319,10 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 	return &modelRequest, nil
 }
 
-// readBodyFormValue 从 multipart/form-data（或表单 URL 编码）请求体中读出指定表单字段的值。
+// ReadBodyFormValue 从 multipart/form-data（或表单 URL 编码）请求体中读出指定表单字段的值。
 // 与 c.PostForm 不同，它基于可重放的 BodyStorage 读取，不会消费/替换 c.Request.Body，
 // 因此下游仍能用同一份 body 做复用解析（图片编辑的上传文件 part 留待适配器读取）。
-func readBodyFormValue(c *gin.Context, key string) string {
+func ReadBodyFormValue(c *gin.Context, key string) string {
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		return ""
@@ -590,7 +592,7 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		// 改为基于可重放 BodyStorage 读取 model 表单值，不消费 body 也不碰文件 part。
 		contentType := c.ContentType()
 		if slices.Contains([]string{gin.MIMEPOSTForm, gin.MIMEMultipartPOSTForm}, contentType) {
-			model := readBodyFormValue(c, "model")
+			model := ReadBodyFormValue(c, "model")
 			if model != "" {
 				modelRequest.Model = model
 			}
@@ -666,6 +668,9 @@ func getTaskOriginModelName(c *gin.Context) string {
 }
 
 func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, modelName string) *types.NewAPIError {
+	if channel != nil && channel.Type == constant.ChannelTypeStudioReview {
+		return types.NewError(errors.New("private image reviewers cannot relay requests"), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
+	}
 	c.Set("original_model", modelName) // for retry
 	expectedPlugin := c.GetString("expected_task_plugin_key")
 	if channel == nil {

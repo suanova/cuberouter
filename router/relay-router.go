@@ -63,11 +63,11 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundRouter.Use(middleware.RouteTag("relay"))
 	playgroundRouter.Use(middleware.RelayCapacity())
 	playgroundRouter.Use(middleware.SystemPerformanceCheck())
-	playgroundRouter.Use(middleware.UserAuth(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
+	playgroundRouter.Use(middleware.UserAuth(), middleware.PlaygroundOrganizationFallback())
 	{
-		playgroundRouter.POST("/chat/completions", controller.Playground)
-		playgroundRouter.POST("/images/generations", controller.PlaygroundImage)
-		playgroundRouter.POST("/images/edits", controller.PlaygroundImage)
+		playgroundRouter.POST("/chat/completions", middleware.Distribute(), controller.Playground)
+		playgroundRouter.POST("/images/generations", controller.RequireStudioImageQueue, middleware.Distribute(), controller.PlaygroundImage)
+		playgroundRouter.POST("/images/edits", controller.RequireStudioImageQueue, middleware.Distribute(), controller.PlaygroundImage)
 	}
 
 	// 多媒体 studio 视频 tab 的会话鉴权入口（/pg/video/*）。与 /pg 组相同的登录会话 +

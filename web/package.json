@@ -89,6 +89,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.13",
     "@rsbuild/core": "^2.1.4",
     "@rsbuild/plugin-react": "^2.1.0",
     "@rsbuild/plugin-tailwindcss": "^2.0.3",

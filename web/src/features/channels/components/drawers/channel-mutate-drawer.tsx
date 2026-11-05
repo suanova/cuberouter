@@ -143,6 +143,7 @@ import {
   CLAUDE_FIELD_PASSTHROUGH_TYPES,
   CHANNEL_STATUS_LABELS,
   CHANNEL_TYPE_OPTIONS,
+  CHANNEL_TYPE_STUDIO_REVIEW,
   CHANNEL_TYPE_TASK_PLUGIN,
   channelTypeOptionsForTaskPluginBind,
   CHANNEL_TYPE_WARNINGS,
@@ -2228,6 +2229,26 @@ export function ChannelMutateDrawer({
                             className='space-y-4 disabled:opacity-60'
                           >
                             {/* Azure (type 3) */}
+                            {currentType === CHANNEL_TYPE_STUDIO_REVIEW && (
+                              <FormField
+                                control={form.control}
+                                name='other'
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>
+                                      {t('Reviewer CA certificate (optional)')}
+                                    </FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        {...field}
+                                        placeholder='-----BEGIN CERTIFICATE-----'
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
                             {currentType === 3 && (
                               <>
                                 <FormField
@@ -2877,16 +2898,24 @@ export function ChannelMutateDrawer({
                                     </FormLabel>
                                     <FormControl>
                                       <Input
-                                        placeholder={t(
-                                          FIELD_PLACEHOLDERS.BASE_URL
-                                        )}
+                                        placeholder={
+                                          currentType ===
+                                          CHANNEL_TYPE_STUDIO_REVIEW
+                                            ? 'https://reviewer.example.com/v1/moderate'
+                                            : t(FIELD_PLACEHOLDERS.BASE_URL)
+                                        }
                                         {...field}
                                       />
                                     </FormControl>
                                     <FormDescription>
-                                      {t(
-                                        'Custom API base URL. For official channels, CubeRouter has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
-                                      )}
+                                      {currentType ===
+                                      CHANNEL_TYPE_STUDIO_REVIEW
+                                        ? t(
+                                            'Enter the full HTTPS /v1/moderate URL.'
+                                          )
+                                        : t(
+                                            'Custom API base URL. For official channels, CubeRouter has built-in addresses. Only fill this for third-party proxy sites or special endpoints. Do not add /v1 or trailing slash.'
+                                          )}
                                     </FormDescription>
                                     <FormMessage />
                                   </FormItem>

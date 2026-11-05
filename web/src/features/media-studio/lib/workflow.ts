@@ -140,50 +140,44 @@ function extension(mime: string): string {
 export function imageRequest(
   draft: WorkflowDraft,
   referenceURLs: string[] = [],
-  maskURL?: string
+  maskURL?: string,
+  queued = false
 ): Record<string, unknown> | FormData {
-  const formValues: Record<string, string> = {
-    model: draft.model,
-    prompt: draft.prompt.trim(),
-    n: String(draft.count),
-    size: draft.size,
-    quality: draft.quality,
-    // 画质档位既用于按张计费价目表,也决定机器原生推理步数;显式填写的
-    // steps/cfg/seed 优先，留空才回落到档位与机器默认值。
-    num_inference_steps: String(draft.steps ?? qualitySteps(draft.quality)),
-    seed: String(draft.seed ?? DEFAULT_PARAMS.seed),
-    true_cfg_scale: String(draft.cfg ?? DEFAULT_PARAMS.cfg),
-  }
-
-  if (draft.mode === 'edit' && referenceURLs.length) {
-    // 编辑请求走 multipart/form-data:参考图与蒙版各为一个 file part,标量走
-    // form 字段,直接贴合 OpenAI 兼容的 /v1/images/edits 上游,不再把 image/mask
-    // base64 内联进 JSON。
-    const form = new FormData()
-    for (const [key, value] of Object.entries(formValues)) {
-      form.append(key, value)
-    }
-    referenceURLs.forEach((url, index) => {
-      const blob = dataUrlToBlob(url)
-      form.append('image', blob, `image-${index + 1}${extension(blob.type)}`)
-    })
-    // 蒙版是同尺寸 PNG（透明 = 重绘区）,只有用户真的框了区域才带。
-    if (maskURL) {
-      const maskBlob = dataUrlToBlob(maskURL)
-      form.append('mask', maskBlob, `mask${extension(maskBlob.type)}`)
-    }
-    return form
-  }
-
-  // 文生图没有图片,保持原先的 JSON 结构(数值字段仍为数字)。
-  return {
+  const values = {
     model: draft.model,
     prompt: draft.prompt.trim(),
     n: draft.count,
     size: draft.size,
     quality: draft.quality,
+    // 画质档位既用于按张计费价目表,也决定机器原生推理步数;显式填写的
+    // steps/cfg/seed 优先，留空才回落到档位与机器默认值。
     num_inference_steps: draft.steps ?? qualitySteps(draft.quality),
     seed: draft.seed ?? DEFAULT_PARAMS.seed,
     true_cfg_scale: draft.cfg ?? DEFAULT_PARAMS.cfg,
   }
+
+  if (draft.mode !== 'edit' || !referenceURLs.length) return values
+
+  if (queued) {
+    // 队列 API 接收 JSON，参考图和蒙版使用内联 data URL。
+    return {
+      ...values,
+      image: referenceURLs.length === 1 ? referenceURLs[0] : referenceURLs,
+      ...(maskURL ? { mask: maskURL } : {}),
+    }
+  }
+
+  const form = new FormData()
+  for (const [key, value] of Object.entries(values)) {
+    form.append(key, String(value))
+  }
+  referenceURLs.forEach((url, index) => {
+    const blob = dataUrlToBlob(url)
+    form.append('image', blob, `image-${index + 1}${extension(blob.type)}`)
+  })
+  if (maskURL) {
+    const maskBlob = dataUrlToBlob(maskURL)
+    form.append('mask', maskBlob, `mask${extension(maskBlob.type)}`)
+  }
+  return form
 }

@@ -31,6 +31,7 @@ export const CHANNEL_TYPE_TASK_PLUGIN = 62
 // Fork-local type with no upstream equivalent: CubeStack (SGLang Diffusion) video channels
 // (must match backend constant.ChannelTypeCubeStack).
 export const CHANNEL_TYPE_CUBE_STACK = 64
+export const CHANNEL_TYPE_STUDIO_REVIEW = 65
 
 export const CHANNEL_TYPES = {
   0: 'Unknown',
@@ -96,12 +97,13 @@ export const CHANNEL_TYPES = {
   // Upstream assigns Task Plugin = 61; remapped to 62 (see CHANNEL_TYPE_TASK_PLUGIN).
   62: 'Task Plugin',
   64: 'CubeStack',
+  [CHANNEL_TYPE_STUDIO_REVIEW]: 'ShieldGemma 2 (Image review)',
 } as const
 
 const CHANNEL_TYPE_DISPLAY_ORDER: number[] = [
   1, 14, 33, 24, 43, 3, 41, 48, 61, 58, 62, 42, 34, 20, 4, 40, 27, 25, 17, 26,
   15, 46, 23, 18, 45, 31, 35, 49, 19, 47, 37, 38, 39, 11, 8, 57, 60, 22, 21, 44,
-  2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 59, 64,
+  2, 5, 36, 50, 51, 52, 53, 54, 55, 56, 59, 64, 65,
 ]
 
 export const CHANNEL_TYPE_OPTIONS: { value: number; label: string }[] = (() => {
@@ -414,8 +416,30 @@ export const FIELD_DESCRIPTIONS = {
 // ============================================================================
 
 export const MODEL_FETCHABLE_TYPES = new Set([
-  1, 4, 14, 17, 20, 23, 24, 25, 26, 27, 31, 34, 35, 40, 42, 43, 47, 48, 57, 58,
-  59, 60, 61, CHANNEL_TYPE_CUBE_STACK,
+  1,
+  4,
+  14,
+  17,
+  20,
+  23,
+  24,
+  25,
+  26,
+  27,
+  31,
+  34,
+  35,
+  40,
+  42,
+  43,
+  47,
+  48,
+  57,
+  58,
+  59,
+  60,
+  61,
+  CHANNEL_TYPE_CUBE_STACK,
 ])
 
 // Upstream's 59 (Sub2API) is remapped to 60 in this fork; CHANNEL_TYPE_NEW_API is 61.
@@ -457,6 +481,8 @@ export const TYPE_TO_KEY_PROMPT: Record<number, string> = {
 }
 
 export const CHANNEL_TYPE_WARNINGS: Record<number, string> = {
+  [CHANNEL_TYPE_STUDIO_REVIEW]:
+    'Private output reviewer: use the full HTTPS /v1/moderate URL and a service key. This channel cannot generate images or serve chat.',
   3: 'For channels added after May 10, 2025, no need to remove "." from model names during deployment',
   8: 'If connecting to upstream One API or CubeRouter relay projects, use OpenAI type instead unless you know what you are doing',
   37: 'Dify channels only support chatflow and agent, and agent does not support images',

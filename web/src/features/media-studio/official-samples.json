@@ -1,0 +1,139 @@
+[
+  {
+    "id": "research",
+    "title": "Research figure",
+    "preview": "example-43.png",
+    "size": "1536x1248",
+    "inputs": [],
+    "prompt": "Create a fictional academic figure titled UniMind, with six panels for multimodal architecture, ablations, benchmark charts and training objectives. Use a white background, clear readable labels and restrained colors. Mark every chart as illustrative."
+  },
+  {
+    "id": "travel",
+    "title": "Travel app design",
+    "preview": "example-45.png",
+    "size": "928x1664",
+    "inputs": [],
+    "prompt": "Design a polished travel planning app home screen for Santorini. Include a landscape hero photo, a five-day itinerary, flight and hotel shortcuts, and a clean bottom navigation. Use readable English text and a white and blue palette."
+  },
+  {
+    "id": "interior",
+    "title": "Ten-reference interior",
+    "preview": "example-17.png",
+    "size": "1664x1248",
+    "inputs": [
+      {
+        "file": "example-17.png",
+        "crop": [1, 1, 303, 302]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [1, 305, 303, 228]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [1, 535, 303, 227]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [1, 764, 303, 228]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [1, 994, 303, 228]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [1, 1224, 303, 228]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [306, 1, 303, 404]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [306, 407, 303, 431]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [306, 840, 303, 305]
+      },
+      {
+        "file": "example-17.png",
+        "crop": [306, 1147, 303, 305]
+      }
+    ],
+    "prompt": "Furnish the empty room in reference 1 with the nine objects in references 2 through 10. Preserve each object identity, arrange practical walkways, and match the room perspective and lighting."
+  },
+  {
+    "id": "group",
+    "title": "Six-reference portrait",
+    "preview": "example-15.png",
+    "size": "1024x1536",
+    "inputs": [
+      {
+        "file": "example-15.png",
+        "crop": [1, 1, 182, 256]
+      },
+      {
+        "file": "example-15.png",
+        "crop": [1, 259, 182, 182]
+      },
+      {
+        "file": "example-15.png",
+        "crop": [1, 443, 182, 274]
+      },
+      {
+        "file": "example-15.png",
+        "crop": [1, 719, 182, 274]
+      },
+      {
+        "file": "example-15.png",
+        "crop": [1, 995, 182, 273]
+      },
+      {
+        "file": "example-15.png",
+        "crop": [1, 1270, 182, 182]
+      }
+    ],
+    "prompt": "Create one group portrait featuring each of the six people in the references exactly once. Keep their faces recognizable, with consistent photographic lighting and natural proportions."
+  },
+  {
+    "id": "colors",
+    "title": "Three colored edit guides",
+    "preview": "example-19.png",
+    "size": "672x640",
+    "inputs": [
+      {
+        "file": "example-18.png"
+      }
+    ],
+    "prompt": "Remove the watch inside the blue guide, make the red-marked hair black, and change the green-marked clothing to grey linen pajamas. Remove every colored guide in the final photograph."
+  },
+  {
+    "id": "diver",
+    "title": "Painted placement guide",
+    "preview": "example-21.png",
+    "size": "1120x736",
+    "inputs": [
+      {
+        "file": "example-20.png"
+      }
+    ],
+    "prompt": "Add a scuba diver swimming where the white paint appears. Remove the white paint, keep the shark and underwater scene, and match the light and perspective."
+  },
+  {
+    "id": "mask",
+    "title": "Separate reference mask",
+    "preview": "example-24.png",
+    "size": "512x800",
+    "inputs": [
+      {
+        "file": "example-22.png"
+      },
+      {
+        "file": "example-23.png"
+      }
+    ],
+    "prompt": "Edit reference 1 by adding a cowboy on horseback in the white area shown in reference 2. Keep the warm photographic atmosphere and output a finished image without the mask."
+  }
+]
