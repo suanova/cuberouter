@@ -8,7 +8,9 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relaydto "github.com/QuantumNous/new-api/relaykit/dto"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -52,6 +54,52 @@ func GetEnabledModels() []string {
 	// Find distinct models
 	DB.Table("abilities").Where("enabled = ?", true).Distinct("model").Pluck("model", &models)
 	return models
+}
+
+// GetTaskPluginModelsByGroups 列出给定分组里由任务插件渠道托管的模型名。
+//
+// 任务插件渠道里的「模型」（例如 dsh）只是插件入口，并不是能直接对话的模型，
+// 把两者混在同一个下拉里会让用户误以为可以挑选。pluginKey 非空时再限定到
+// task_plugin_key 等于该值的渠道，为空则返回所有任务插件渠道的模型。
+//
+// 与 GetGroupsEnabledModels 一样走数据库，结果与是否开启内存缓存无关。
+func GetTaskPluginModelsByGroups(groups []string, pluginKey string) (map[string]struct{}, error) {
+	result := make(map[string]struct{})
+	if len(groups) == 0 {
+		return result, nil
+	}
+	var rows []struct {
+		Model   string
+		Setting *string
+	}
+	err := DB.Table("abilities").
+		Select("DISTINCT abilities.model as model, channels.setting as setting").
+		Joins("inner join channels on channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? and channels.type = ? and abilities."+commonGroupCol+" in ?", true, constant.ChannelTypeTaskPlugin, groups).
+		Scan(&rows).Error
+	if err != nil {
+		return result, err
+	}
+	for _, row := range rows {
+		if pluginKey != "" && taskPluginKeyFromSetting(row.Setting) != pluginKey {
+			continue
+		}
+		result[row.Model] = struct{}{}
+	}
+	return result, nil
+}
+
+// taskPluginKeyFromSetting 从渠道 setting 列解析插件标识；解析失败视为没有
+// 绑定插件，避免一条脏配置把整个列表查询拖垮。
+func taskPluginKeyFromSetting(setting *string) string {
+	if setting == nil || *setting == "" {
+		return ""
+	}
+	var settings relaydto.ChannelSettings
+	if err := common.UnmarshalJsonStr(*setting, &settings); err != nil {
+		return ""
+	}
+	return settings.TaskPluginKey
 }
 
 func GetAllEnableAbilities() []Ability {

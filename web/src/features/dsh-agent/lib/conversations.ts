@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { TASK_STORAGE_KEY } from '../constants'
+import { DEFAULT_PRESET, TASK_STORAGE_KEY } from '../constants'
 import type { DshConversation, DshConversationsState } from '../types'
 
 const TITLE_MAX_LENGTH = 28
@@ -39,7 +39,7 @@ export function createConversation(model: string): DshConversation {
     id: newId(),
     title: '',
     model,
-    preset: '',
+    preset: DEFAULT_PRESET,
     turns: [],
     updatedAt: now,
   }

@@ -30,9 +30,8 @@ import { useDshTask } from './hooks/use-dsh-task'
 import { isSessionExpiredError } from './lib/payload'
 import type { DshModelOption } from './types'
 
-// 页面默认选带 dsh 字样的模型，没有匹配时退回列表第一项。这里不按
-// endpoint 过滤模型：/api/user/models 只返回用户可用的模型，筛选需要额外
-// 的数据库查询，而管理端尚未提供任务插件专用模型的分组。
+// 模型列表已在 getUserModels 里按任务插件过滤，这里只需挑一个默认值：
+// 优先带 dsh 字样的模型，没有匹配时退回列表第一项。
 function pickDefaultModel(models: DshModelOption[]): string {
   const preferred = models.find((model) => /dsh/i.test(model.value))
   return preferred?.value ?? models[0]?.value ?? ''

@@ -52,7 +52,7 @@ describe('dsh agent api', () => {
       model: 'dsh-model',
       prompt: 'next',
       sessionId: 'sess-1',
-      preset: 'code',
+      preset: 'ptc',
     })
 
     expect(api.post).toHaveBeenCalledWith(
@@ -61,7 +61,7 @@ describe('dsh agent api', () => {
         model: 'dsh-model',
         prompt: 'next',
         sessionId: 'sess-1',
-        preset: 'code',
+        preset: 'ptc',
       },
       { skipErrorHandler: true }
     )
@@ -80,12 +80,15 @@ describe('dsh agent api', () => {
 
   it('maps the user model list and tolerates a failed response', async () => {
     vi.mocked(api.get).mockResolvedValue({
-      data: { success: true, data: ['model-a', 'model-b'] },
+      data: { success: true, data: ['dsh'] },
     })
     await expect(getUserModels()).resolves.toEqual([
-      { label: 'model-a', value: 'model-a' },
-      { label: 'model-b', value: 'model-b' },
+      { label: 'dsh', value: 'dsh' },
     ])
+    // 只列任务插件渠道托管的模型，否则下拉里会混进普通聊天模型。
+    expect(api.get).toHaveBeenCalledWith('/api/user/models', {
+      params: { endpoint: 'agent', plugin: 'dsh' },
+    })
 
     vi.mocked(api.get).mockResolvedValue({ data: { success: false } })
     await expect(getUserModels()).resolves.toEqual([])

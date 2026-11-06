@@ -24,7 +24,7 @@ import type {
 } from '@/features/usage-logs/types'
 import { api } from '@/lib/api'
 
-import { API_ENDPOINTS } from './constants'
+import { AGENT_MODEL_FILTER, API_ENDPOINTS } from './constants'
 import type {
   AgentTaskFetchResponse,
   AgentTaskSubmitResponse,
@@ -92,7 +92,9 @@ export async function fetchTaskArtifacts(
 }
 
 export async function getUserModels(): Promise<DshModelOption[]> {
-  const res = await api.get(API_ENDPOINTS.USER_MODELS)
+  const res = await api.get(API_ENDPOINTS.USER_MODELS, {
+    params: AGENT_MODEL_FILTER,
+  })
   const { data } = res
   if (!data.success || !Array.isArray(data.data)) {
     return []

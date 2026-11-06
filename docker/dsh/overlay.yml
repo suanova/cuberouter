@@ -33,12 +33,17 @@
 
 # 4) 对外任务 API：CubeRouter 的 DSH 任务渠道通过 /api/v1/tasks 提交任务、
 #    轮询结果并下载产物（含 /files/:key 下载路由）。
+#
+#    defaultPreset：请求没带 preset 时挂载的预设。不挂预设 dsh 只有读写工作目录
+#    的工具，模型会回答自己无法写文件或导出 PPT；standard 预设包含 bash/文件
+#    编辑和 Office 技能，是产出 PPT 等交付物的前提。
 - insert:
     - id: dsh-api
       name: dsh-api
       config:
         apiKey: !!js process.env.DSH_API_KEY || ''
         defaultCwd: !!js process.env.DSH_WORKSPACE || '/data/workspace'
+        defaultPreset: standard
         defaultTimeoutMs: 1200000
         maxTimeoutMs: 7200000
         maxArtifactBytes: 67108864

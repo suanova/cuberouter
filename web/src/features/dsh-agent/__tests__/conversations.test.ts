@@ -39,6 +39,12 @@ describe('conversationTitle', () => {
   })
 })
 
+describe('createConversation', () => {
+  it('mounts the standard preset so dsh keeps its file and PPT tools', () => {
+    expect(createConversation('dsh').preset).toBe('standard')
+  })
+})
+
 describe('conversation storage', () => {
   beforeEach(() => {
     window.localStorage.clear()

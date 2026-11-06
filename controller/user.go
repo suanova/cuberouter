@@ -738,6 +738,27 @@ func filterChatModels(models []string, groups []string) []string {
 	return filtered
 }
 
+// filterAgentModels 只保留由任务插件渠道托管的模型，供 Agent 页面使用。
+// 任务插件渠道里的模型名（例如 dsh）是插件入口而不是可挑选的对话模型，和普通
+// 聊天模型混在一起只会让人选错；pluginKey 非空时进一步限定到单个插件。
+// 查询失败时返回空列表而不是退回全量：Agent 页面拿着本不属于它的模型名提交，
+// 只会在选渠道阶段失败，不如让下拉明确显示没有可用模型。
+func filterAgentModels(models []string, groups []string, pluginKey string) []string {
+	taskPluginModels, err := model.GetTaskPluginModelsByGroups(groups, pluginKey)
+	if err != nil {
+		common.SysLog("查询任务插件模型失败: " + err.Error())
+		return []string{}
+	}
+
+	filtered := make([]string, 0, len(models))
+	for _, modelName := range models {
+		if _, ok := taskPluginModels[modelName]; ok {
+			filtered = append(filtered, modelName)
+		}
+	}
+	return filtered
+}
+
 func GetUserModels(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -773,6 +794,11 @@ func GetUserModels(c *gin.Context) {
 	// 模型走不了 chat/completions，选中后必然报错。其他调用方不传该参数，行为不变。
 	if c.Query("endpoint") == "chat" {
 		models = filterChatModels(models, groupsToQuery)
+	}
+	// Agent 页面只需要任务插件渠道托管的模型；plugin 参数按插件 key（如 dsh）
+	// 再收窄一层，其他调用方不传该参数，行为不变。
+	if c.Query("endpoint") == "agent" {
+		models = filterAgentModels(models, groupsToQuery, c.Query("plugin"))
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
