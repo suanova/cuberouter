@@ -76,6 +76,7 @@ export function UsagePage(props: UsagePageProps) {
   const { t } = useTranslation()
   const window = usageWindowFromSearch(props.search)
   const dateParams = usageDateParams(window)
+  const singleDay = dateParams.start === dateParams.end
 
   const organizationsQuery = useQuery({
     queryKey: ['usage-organizations'],
@@ -125,6 +126,7 @@ export function UsagePage(props: UsagePageProps) {
     ...(selectedOrganizationId
       ? { overview_organization_id: selectedOrganizationId }
       : {}),
+    ...(singleDay ? { chart_granularity: 'hour' as const } : {}),
   }
 
   const usageQuery = useQuery({
@@ -261,6 +263,7 @@ export function UsagePage(props: UsagePageProps) {
                 <LazyUsageCharts
                   points={data?.charts ?? []}
                   loading={usageQuery.isLoading}
+                  singleDay={singleDay}
                 />
               </Suspense>
               <div className='rounded-lg border'>

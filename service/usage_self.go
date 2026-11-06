@@ -52,8 +52,10 @@ type SelfUsageQuery struct {
 	BillingAccountType     string
 	OrganizationID         int
 	OverviewOrganizationID int
-	Page                   int
-	PageSize               int
+	// ChartGranularity is "hour" for the single-day chart; the table stays daily.
+	ChartGranularity string
+	Page             int
+	PageSize         int
 }
 
 type usageRow struct {
@@ -283,11 +285,12 @@ func sumSelfUsageTotals(rows []usageRow) dto.SelfUsageTotals {
 	return totals
 }
 
-// buildSelfUsageChartPoints folds the filtered rows into the day/model buckets
+// buildSelfUsageChartPoints folds the filtered rows into the time/model buckets
 // the usage charts draw. It runs on the same rows as the table totals, so the
 // charts inherit the date range, filters, and actor/account scope instead of
-// reading a second data source that could disagree.
-func buildSelfUsageChartPoints(rows []usageRow) []dto.SelfUsageChartPoint {
+// reading a second data source that could disagree. Day buckets serve the
+// table's range; a single day is bucketed by hour for its chart.
+func buildSelfUsageChartPoints(rows []usageRow, granularity string) []dto.SelfUsageChartPoint {
 	type chartKey struct {
 		BucketKey int64
 		ModelName string
@@ -307,7 +310,7 @@ func buildSelfUsageChartPoints(rows []usageRow) []dto.SelfUsageChartPoint {
 	points := make([]dto.SelfUsageChartPoint, 0, len(buckets))
 	for key, agg := range buckets {
 		points = append(points, dto.SelfUsageChartPoint{
-			Date:         model.BillingDayKeyToDate(key.BucketKey),
+			Date:         formatSelfUsageBucket(key.BucketKey, granularity),
 			ModelName:    key.ModelName,
 			RequestCount: agg.RequestCount,
 			Quota:        agg.Quota,
@@ -569,6 +572,24 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 			filtered = append(filtered, row)
 		}
 	}
+	chartGranularity, chartBucketSeconds := normalizeSelfUsageGranularity(query.ChartGranularity)
+	chartRows := filtered
+	if chartGranularity == SelfUsageGranularityHour {
+		if !selfUsageRangeIsSingleDay(query.StartTs, query.EndTs) {
+			chartGranularity = SelfUsageGranularityDay
+		} else {
+			hourlyMerged, err := collectSelfUsageRows(query, chartBucketSeconds)
+			if err != nil {
+				return dto.SelfUsageData{}, err
+			}
+			chartRows = make([]usageRow, 0, len(hourlyMerged))
+			for _, row := range hourlyMerged {
+				if selfUsageMatchesFilters(row, query) {
+					chartRows = append(chartRows, row)
+				}
+			}
+		}
+	}
 	totals := sumSelfUsageTotals(filtered)
 	sortSelfUsageRows(filtered)
 	page, pageSize := normalizeSelfUsagePagination(query.Page, query.PageSize)
@@ -606,7 +627,7 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 			Items:    items,
 		},
 		Totals:        totals,
-		Charts:        buildSelfUsageChartPoints(filtered),
+		Charts:        buildSelfUsageChartPoints(chartRows, chartGranularity),
 		FilterOptions: filterOptions,
 	}, nil
 }
@@ -661,6 +682,18 @@ func normalizeSelfUsageGranularity(value string) (string, int64) {
 		return SelfUsageGranularityHour, model.SelfUsageHourSeconds
 	}
 	return SelfUsageGranularityDay, model.SelfUsageDaySeconds
+}
+
+// selfUsageRangeIsSingleDay reports whether both ends fall on the same local
+// calendar day. The hourly chart is only offered for that shape; a wider range
+// falls back to day buckets so a public request cannot multiply its rows by 24.
+func selfUsageRangeIsSingleDay(startTs, endTs int64) bool {
+	if startTs > endTs {
+		return false
+	}
+	startDate := time.Unix(startTs, 0).In(time.Local).Format("2006-01-02")
+	endDate := time.Unix(endTs, 0).In(time.Local).Format("2006-01-02")
+	return startDate == endDate
 }
 
 // formatSelfUsageBucket restores the local wall-clock label from a bucket key.

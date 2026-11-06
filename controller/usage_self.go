@@ -55,6 +55,7 @@ func selfUsageQueryFromRequest(c *gin.Context) (service.SelfUsageQuery, error) {
 		BillingAccountType:     c.Query("billing_account_type"),
 		OrganizationID:         organizationId,
 		OverviewOrganizationID: overviewOrganizationId,
+		ChartGranularity:       c.Query("chart_granularity"),
 		Page:                   pageInfo.Page,
 		PageSize:               pageInfo.PageSize,
 	}, nil

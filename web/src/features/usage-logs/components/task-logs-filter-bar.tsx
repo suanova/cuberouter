@@ -165,7 +165,13 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
   )
 
   const handleApply = useCallback(() => {
-    const filterParams = buildSearchParams(filters, props.logCategory)
+    const filtersForParams =
+      props.logCategory === 'task' &&
+      !isAdmin &&
+      (filters as TaskLogFilters).billingAccountType !== 'organization'
+        ? { ...(filters as TaskLogFilters), organizationId: undefined }
+        : filters
+    const filterParams = buildSearchParams(filtersForParams, props.logCategory)
     navigate({
       to: '/usage-logs/$section',
       params: { section: props.logCategory },
@@ -175,7 +181,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       },
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
-  }, [filters, navigate, props.logCategory, queryClient])
+  }, [filters, isAdmin, navigate, props.logCategory, queryClient])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -387,12 +393,15 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       <Select
         items={billingAccountTypeItems}
         value={billingAccountTypeValue}
-        onValueChange={(value) =>
-          handleChange(
-            'billingAccountType',
-            value === null || value === 'all' ? undefined : value
-          )
-        }
+        onValueChange={(value) => {
+          const next = value === null || value === 'all' ? undefined : value
+          handleChange('billingAccountType', next)
+          // The organization filter only means anything under organization
+          // billing; clearing the type clears the organization with it.
+          if (next !== 'organization') {
+            handleChange('organizationId', undefined)
+          }
+        }}
       >
         <SelectTrigger>
           <SelectValue>{billingAccountTypeLabel}</SelectValue>
@@ -410,7 +419,9 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     </LogsFilterField>
   )
   const organizationFilter =
-    !isAdmin && organizations.length > 0 ? (
+    !isAdmin &&
+    organizations.length > 0 &&
+    billingAccountTypeValue === 'organization' ? (
       <LogsFilterField>
         <Select
           items={organizationItems}

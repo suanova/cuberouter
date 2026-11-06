@@ -364,6 +364,50 @@ func TestGetSelfUsageChartsAggregateFilteredRowsByDayAndModel(t *testing.T) {
 	}, video.Charts)
 }
 
+func TestGetSelfUsageChartsUseHourlyBucketsForSingleDay(t *testing.T) {
+	db := newSelfUsageTestDB(t)
+	day := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local)
+	require.NoError(t, db.Create(&model.User{Id: 7, Username: "u7"}).Error)
+	require.NoError(t, db.Create(&model.Model{ModelName: "gpt-4o", Tags: "工具"}).Error)
+	at := func(hour, minute int) int64 {
+		return day.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute).Unix()
+	}
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(10, 5), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "h1", Quota: 10},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(10, 55), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "h2", Quota: 20},
+		{UserId: 7, ActorUserId: 7, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(11, 10), ModelName: "gpt-4o", BillingAccountType: "personal", RequestId: "h3", Quota: 30},
+	}).Error)
+
+	start := day.Unix()
+	end := day.Add(24*time.Hour - time.Second).Unix()
+	got, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: start, EndTs: end,
+		ChartGranularity: SelfUsageGranularityHour,
+		Page:             1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []dto.SelfUsageChartPoint{
+		{Date: "2026-11-03 10:00", ModelName: "gpt-4o", RequestCount: 2, Quota: 30},
+		{Date: "2026-11-03 11:00", ModelName: "gpt-4o", RequestCount: 1, Quota: 30},
+	}, got.Charts)
+
+	// The table keeps its day bucket even when the chart is hourly.
+	require.Len(t, got.Rows.Items, 1)
+	assert.Equal(t, "2026-11-03", got.Rows.Items[0].Date)
+	assert.Equal(t, 60, got.Totals.Quota)
+
+	// A multi-day range ignores the hourly request and stays daily.
+	multi, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: 7, StartTs: start, EndTs: day.Add(48 * time.Hour).Unix(),
+		ChartGranularity: SelfUsageGranularityHour,
+		Page:             1, PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []dto.SelfUsageChartPoint{
+		{Date: "2026-11-03", ModelName: "gpt-4o", RequestCount: 3, Quota: 60},
+	}, multi.Charts)
+}
+
 func TestExportSelfUsageGroupsByDayAndHour(t *testing.T) {
 	db := newSelfUsageTestDB(t)
 	base := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local)

@@ -27,15 +27,49 @@ import type { SelfUsageChartPoint } from '../types'
  * day the usage table shows.
  */
 export function usageChartItems(
-  points: SelfUsageChartPoint[]
+  points: SelfUsageChartPoint[],
+  bucketHours = 1
 ): QuotaDataItem[] {
-  return points.map((point) => {
-    const [year, month, day] = point.date.split('-').map(Number)
-    return {
-      created_at: Math.floor(new Date(year, month - 1, day).getTime() / 1000),
-      model_name: point.model_name,
-      count: point.request_count,
-      quota: point.quota,
+  const size = Number.isInteger(bucketHours) && bucketHours > 0 ? bucketHours : 1
+  // Hourly points are keyed by their bucket start; a size above one folds
+  // adjacent hours into one bar, e.g. the single-day chart's two-hour view.
+  const byBucket = new Map<
+    string,
+    { createdAt: number; modelName: string; count: number; quota: number }
+  >()
+  for (const point of points) {
+    const [datePart, timePart] = point.date.split(' ')
+    const [year, month, day] = datePart.split('-').map(Number)
+    const parsedHour = timePart ? Number.parseInt(timePart, 10) : 0
+    const hour = Number.isFinite(parsedHour) ? parsedHour : 0
+    const bucketHour = timePart ? Math.floor(hour / size) * size : 0
+    const createdAt = Math.floor(
+      new Date(year, month - 1, day, bucketHour).getTime() / 1000
+    )
+    const key = `${createdAt}|${point.model_name}`
+    const existing = byBucket.get(key)
+    if (existing) {
+      existing.count += point.request_count
+      existing.quota += point.quota
+    } else {
+      byBucket.set(key, {
+        createdAt,
+        modelName: point.model_name,
+        count: point.request_count,
+        quota: point.quota,
+      })
     }
-  })
+  }
+  return [...byBucket.values()]
+    .sort(
+      (left, right) =>
+        left.createdAt - right.createdAt ||
+        left.modelName.localeCompare(right.modelName)
+    )
+    .map((item) => ({
+      created_at: item.createdAt,
+      model_name: item.modelName,
+      count: item.count,
+      quota: item.quota,
+    }))
 }

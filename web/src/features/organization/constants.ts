@@ -177,9 +177,9 @@ export const ORGANIZATION_TAB_LABEL_KEYS: Record<
   members: 'Members',
   invitations: 'Invitations',
   tokens: 'API Keys',
-  logs: 'Logs',
+  logs: 'Usage Logs',
   usage: 'Usage',
-  tasks: 'Tasks',
+  tasks: 'Task Logs',
   'audit-logs': 'Audit Logs',
   settings: 'Settings',
 }

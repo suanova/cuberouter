@@ -85,6 +85,11 @@ export interface ProcessChartDataOptions {
    * the chart agrees with the cost shown in its overview and table.
    */
   formatQuota?: (rawQuota: number) => string
+  /**
+   * Explicit x-axis buckets. The usage page uses this to draw a single day as
+   * all 24 hours, including hours with no usage, instead of leaving gaps.
+   */
+  timePoints?: string[]
 }
 
 /**
@@ -329,7 +334,7 @@ export function processChartData(
     )
     return padded
   }
-  const chartTimes = fillTimePoints(sortedTimes)
+  const chartTimes = options?.timePoints ?? fillTimePoints(sortedTimes)
 
   const totalTimes = Array.from(modelTotalsMap.values()).reduce(
     (sum, x) => sum + (Number(x.count) || 0),

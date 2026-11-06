@@ -102,6 +102,24 @@ export interface AccountContextResponse {
   data?: AccountContext
 }
 
+/**
+ * Whether the user administers at least one organization.
+ *
+ * A login for such a user opens the organization center so the sidebar's
+ * Organizations entry is the focused one; the account context itself is left
+ * alone. A plain member — or a user with no organizations — keeps the ordinary
+ * personal landing page.
+ */
+export function hasAdministrableOrganization(
+  contexts: AccountContext[]
+): boolean {
+  return contexts.some(
+    (context) =>
+      context.type === ACCOUNT_CONTEXT_TYPE.ORGANIZATION &&
+      (context.role === 'owner' || context.role === 'admin')
+  )
+}
+
 /** 当前是否处在组织上下文里。个人上下文下 current 为 null。 */
 export function isOrganizationContext(): boolean {
   const current = useAccountContextStore.getState().accountContext.current

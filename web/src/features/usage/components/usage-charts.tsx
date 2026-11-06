@@ -28,16 +28,27 @@ import type { SelfUsageChartPoint } from '../types'
 interface UsageChartsProps {
   points: SelfUsageChartPoint[]
   loading: boolean
+  /** A one-day range is drawn as 24 hourly buckets instead of one bar. */
+  singleDay?: boolean
 }
 
+const HOURS_OF_DAY = Array.from(
+  { length: 12 },
+  (_, index) => `${String(index * 2).padStart(2, '0')}:00`
+)
+
 export function UsageCharts(props: UsageChartsProps) {
-  const data = useMemo(() => usageChartItems(props.points), [props.points])
+  const data = useMemo(
+    () => usageChartItems(props.points, props.singleDay ? 2 : 1),
+    [props.points, props.singleDay]
+  )
 
   return (
     <ConsumptionDistributionChart
       data={data}
       loading={props.loading}
-      timeGranularity='day'
+      timeGranularity={props.singleDay ? 'hour-of-day' : 'day'}
+      timePoints={props.singleDay ? HOURS_OF_DAY : undefined}
       minTrendPoints={0}
       formatQuota={formatLogQuota}
       showChartTypeToggle={false}

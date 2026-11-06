@@ -109,7 +109,7 @@ beforeEach(() => {
 })
 
 describe('organization members section', () => {
-  test('offers the settings entry when only the quota grant is held', async () => {
+  test('offers the quota entry when only the quota grant is held', async () => {
     renderSection({
       canManageMemberModels: false,
       canManageMemberDiscounts: false,
@@ -120,8 +120,11 @@ describe('organization members section', () => {
     await userEvent.click(menus[0])
 
     expect(
-      await screen.findByRole('menuitem', { name: 'Model Settings' })
+      await screen.findByRole('menuitem', { name: 'Add quota' })
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: 'Model Settings' })
+    ).not.toBeInTheDocument()
   })
 
   test('leaves the settings entry out when no member-management grant is held', async () => {
@@ -138,6 +141,9 @@ describe('organization members section', () => {
     // member — so what is asserted is the missing item, not a missing menu.
     expect(
       screen.queryByRole('menuitem', { name: 'Model Settings' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: 'Add quota' })
     ).not.toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: 'Remove' })).toBeInTheDocument()
   })
