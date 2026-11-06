@@ -78,7 +78,7 @@ services:
   # DSH（DeepSeek Harness）智能体运行时：为 DSH 任务渠道提供 /api/v1/tasks
   # 接口，并内置 Office 技能（可直接生成 PPT/DOCX/XLSX）。
   # 数据（profile、会话、工作目录与生成的演示文稿）落在宿主机
-  # ./data/dsh/zhongshan，容器内即 /data。
+  # /data/dsh/zhongshan，容器内即 /data。
   dsh:
     build:
       context: ./docker/dsh
@@ -91,7 +91,7 @@ services:
     ports:
       - "3080:3080"
     volumes:
-      - ./data/dsh/zhongshan:/data
+      - /data/dsh/zhongshan:/data
     environment:
       - DSH_HOME=/data
       - TZ=Asia/Shanghai
