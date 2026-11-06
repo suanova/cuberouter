@@ -22,6 +22,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { useAccountContextStore } from '@/stores/account-context-store'
 
 import {
+  hasAdministrableOrganization,
   isOrganizationContext,
   organizationCapabilitiesSchema,
   refreshAccountContexts,
@@ -99,6 +100,25 @@ describe('refreshAccountContexts', () => {
     const payload = await refreshAccountContexts()
 
     expect(payload).toEqual({ current: null, contexts: [] })
+  })
+})
+
+describe('hasAdministrableOrganization', () => {
+  const memberOrg = { ...organizationContext(9), role: 'member' }
+  const adminOrg = { ...organizationContext(8), role: 'admin' }
+  const ownerOrg = { ...organizationContext(7), role: 'owner' }
+
+  test('is true when the user owns or administers an organization', () => {
+    expect(hasAdministrableOrganization([memberOrg, adminOrg])).toBe(true)
+    expect(hasAdministrableOrganization([ownerOrg])).toBe(true)
+  })
+
+  test('is false for a plain member', () => {
+    expect(hasAdministrableOrganization([memberOrg])).toBe(false)
+  })
+
+  test('is false without organizations', () => {
+    expect(hasAdministrableOrganization([])).toBe(false)
   })
 })
 

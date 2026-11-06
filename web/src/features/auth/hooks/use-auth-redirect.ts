@@ -23,6 +23,10 @@ import {
   getSavedLanguage,
   sanitizeAuthRedirect,
 } from '@/features/auth/lib/auth-redirect'
+import {
+  hasAdministrableOrganization,
+  refreshAccountContexts,
+} from '@/lib/account-context'
 import { applyAuthBundle } from '@/lib/api'
 import type { AuthBundle } from '@/stores/auth-store'
 
@@ -47,8 +51,21 @@ export function useAuthRedirect() {
       await i18n.changeLanguage(savedLang)
     }
 
+    // An organization owner/administrator lands on the organization center so
+    // the sidebar's Organizations entry is the focused one. The account context
+    // is deliberately untouched: this is a landing page, not a workspace switch.
+    let focusOrganizations = false
+    try {
+      const contexts = await refreshAccountContexts()
+      focusOrganizations = hasAdministrableOrganization(contexts.contexts)
+    } catch {
+      // The landing choice is an enhancement; a failed context read must not
+      // block login.
+    }
+
     const targetPath =
-      sanitizeAuthRedirect(redirectTo, window.location.origin) ?? '/dashboard'
+      sanitizeAuthRedirect(redirectTo, window.location.origin) ??
+      (focusOrganizations ? '/organizations' : '/dashboard')
     navigate({ href: targetPath, replace: true })
   }
 
