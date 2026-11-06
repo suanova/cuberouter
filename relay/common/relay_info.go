@@ -1058,6 +1058,18 @@ type TaskSubmitReq struct {
 	// 会话 id 与预设。非会话插件忽略它们。
 	SessionID string `json:"sessionId,omitempty"`
 	Preset    string `json:"preset,omitempty"`
+	// Attachments 是已上传到共享卷的附件清单（见 service.DshAttachment）。
+	// 同样必须在这里声明：/pg 入口按本结构体解码，未声明的字段不会到达插件。
+	Attachments []TaskAttachment `json:"attachments,omitempty"`
+}
+
+// TaskAttachment 是随任务提交的附件。Path 指向上游运行时能直接读取的本地路径，
+// 由网关的上传接口生成，客户端只负责回传。
+type TaskAttachment struct {
+	Name     string `json:"name,omitempty"`
+	Path     string `json:"path,omitempty"`
+	MimeType string `json:"mimeType,omitempty"`
+	Size     int64  `json:"size,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {

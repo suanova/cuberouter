@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -468,7 +470,7 @@ func TestTaskAdaptorRejectsInvalidArtifactProjection(t *testing.T) {
 		{name: "name with path separator", projection: `[{key:"pptx",type:"file",name:"a/b.pptx"}]`},
 		{name: "name with newline", projection: `[{key:"pptx",type:"file",name:"a\nb.pptx"}]`},
 		{name: "non-string name", projection: `[{key:"pptx",type:"file",name:42}]`},
-		{name: "overlong name", projection: `[{key:"pptx",type:"file",name:"`+strings.Repeat("a",256)+`.pptx"}]`},
+		{name: "overlong name", projection: `[{key:"pptx",type:"file",name:"` + strings.Repeat("a", 256) + `.pptx"}]`},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -1621,4 +1623,61 @@ export function extractUsage(ctx) {
 		require.NoError(t, err)
 		assert.Equal(t, map[string]float64{"seconds": 2, "size": 0.3}, ratios)
 	})
+}
+
+func TestTaskAdaptorValidatesDshAttachmentPathsAgainstTheSubmittingUser(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("DSH_UPLOAD_DIR", dir)
+	t.Setenv("DSH_UPLOAD_MOUNT", "/data/uploads")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "7"), 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "7", "abc-report.pdf"), []byte("%PDF"), 0o600))
+
+	source := `
+export const meta = {apiVersion:1,key:"dsh",name:"DSH",version:"1.0.0",author:{name:"Test"},models:["m"],fetchMode:"per_task"};
+export function buildSubmitRequest(ctx) { return {url:ctx.baseUrl+"/submit"}; }
+export function parseSubmitResponse(){return {taskId:"1"}} export function buildQueryRequest(){return {}} export function parseTaskResult(){return {status:"SUCCESS"}}
+`
+	plugin, err := pluginruntime.NewRegistry().Register(source, pluginruntime.Options{})
+	require.NoError(t, err)
+
+	cases := []struct {
+		name    string
+		userId  int
+		path    string
+		wantErr string
+	}{
+		{name: "own upload", userId: 7, path: "/data/uploads/7/abc-report.pdf"},
+		{name: "another user's upload", userId: 8, path: "/data/uploads/7/abc-report.pdf", wantErr: "must come from this user's uploads"},
+		{name: "host file", userId: 7, path: "/etc/passwd", wantErr: "must come from this user's uploads"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			adaptor := New(plugin)
+			info := &relaycommon.RelayInfo{
+				ChannelMeta:   &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example"},
+				TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+				UserId:        testCase.userId,
+			}
+			adaptor.Init(info)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+			c.Set("task_request", map[string]any{
+				"model":  "m",
+				"prompt": "hi",
+				"attachments": []any{
+					map[string]any{"name": "report.pdf", "path": testCase.path},
+				},
+			})
+
+			taskErr := adaptor.ValidateRequestAndSetAction(c, info)
+
+			if testCase.wantErr == "" {
+				require.Nil(t, taskErr)
+				return
+			}
+			require.NotNil(t, taskErr)
+			assert.Equal(t, http.StatusBadRequest, taskErr.StatusCode)
+			assert.Contains(t, taskErr.Message, testCase.wantErr)
+		})
+	}
 }

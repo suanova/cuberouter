@@ -34,6 +34,22 @@ export type DshTranscriptEntry = {
   text: string
 }
 
+// 已落到网关共享卷的附件：path 是 dsh 容器内可直接读取的绝对路径，智能体
+// 靠提示词里的这份清单找到文件。
+export type DshAttachment = {
+  name: string
+  path: string
+  mimeType?: string
+  size?: number
+}
+
+export type DshUploadSettings = {
+  enabled: boolean
+  maxBytes: number
+  maxFiles: number
+  accept: string[]
+}
+
 export type DshTurn = {
   id: string
   taskId: string
@@ -42,6 +58,7 @@ export type DshTurn = {
   reply: string
   toolCalls: DshToolCall[]
   transcript: DshTranscriptEntry[]
+  attachments?: DshAttachment[]
   error?: string
   turnEnd?: string
   createdAt: number

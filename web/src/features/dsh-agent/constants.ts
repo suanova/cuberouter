@@ -21,6 +21,8 @@ export const API_ENDPOINTS = {
   USER_MODELS: '/api/user/models',
   AGENT_TASKS: '/pg/agent/tasks',
   TASK_ARTIFACTS: '/api/task',
+  DSH_UPLOADS: '/api/dsh/uploads',
+  DSH_UPLOAD_SETTINGS: '/api/dsh/uploads/config',
 } as const
 
 // 模型下拉只列任务插件渠道托管的模型：渠道里的 dsh 只是插件入口，混在普通

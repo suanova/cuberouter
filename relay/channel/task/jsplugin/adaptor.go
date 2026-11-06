@@ -23,15 +23,15 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	pluginruntime "github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay/channel"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	kitdto "github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -118,6 +118,9 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			return taskErr
 		}
 	}
+	if err := a.validateAttachments(c, info); err != nil {
+		return service.TaskErrorWrapperLocal(err, "plugin_request_invalid", http.StatusBadRequest)
+	}
 	if request, exists := c.Get("task_request"); exists {
 		if err := a.validateResolvedUsageRequest(request); err != nil {
 			return service.TaskErrorWrapperLocal(err, "plugin_usage_invalid", http.StatusBadRequest)
@@ -127,6 +130,20 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(err, "plugin_request_invalid", http.StatusBadRequest)
 	}
 	return nil
+}
+
+// validateAttachments 只约束 DSH 插件：附件由网关写进共享卷，插件再把路径拼进
+// 提示词，因此每个路径都必须是当前用户自己的上传产物，不能让调用方借字段读宿主
+// 机上的任意文件。其它插件没有这套上传约定，原样放行。
+func (a *TaskAdaptor) validateAttachments(c *gin.Context, info *relaycommon.RelayInfo) error {
+	if a.plugin.Meta.Key != "dsh" {
+		return nil
+	}
+	request, err := relaycommon.GetTaskRequestCoerced(c)
+	if err != nil || len(request.Attachments) == 0 {
+		return nil
+	}
+	return service.ValidateDshAttachments(info.UserId, request.Attachments)
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {

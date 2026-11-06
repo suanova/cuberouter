@@ -28,7 +28,9 @@ import { AGENT_MODEL_FILTER, API_ENDPOINTS } from './constants'
 import type {
   AgentTaskFetchResponse,
   AgentTaskSubmitResponse,
+  DshAttachment,
   DshModelOption,
+  DshUploadSettings,
 } from './types'
 
 export type SubmitAgentTaskBody = {
@@ -36,6 +38,7 @@ export type SubmitAgentTaskBody = {
   prompt: string
   sessionId?: string
   preset?: string
+  attachments?: DshAttachment[]
   signal?: AbortSignal
 }
 
@@ -53,10 +56,71 @@ export async function submitAgentTask(
       prompt: body.prompt,
       ...(body.sessionId ? { sessionId: body.sessionId } : {}),
       ...(body.preset ? { preset: body.preset } : {}),
+      ...(body.attachments?.length ? { attachments: body.attachments } : {}),
     },
     { signal: body.signal, skipErrorHandler: true } as Record<string, unknown>
   )
   return res.data
+}
+
+// 网关上传接口沿用服务端的 snake_case 字段，提交任务时再换成与 sessionId
+// 一致的小驼峰形状。
+type DshUploadSettingsResponse = {
+  enabled?: boolean
+  max_bytes?: number
+  max_files?: number
+  accept?: string[]
+}
+
+type DshAttachmentResponse = {
+  name?: string
+  path?: string
+  mime_type?: string
+  size?: number
+}
+
+/**
+ * 附件能力依赖网关与 dsh 共享的数据卷；未配置时 enabled=false，页面不显示回形针。
+ */
+export async function fetchDshUploadSettings(): Promise<DshUploadSettings> {
+  const res = await api.get<DshUploadSettingsResponse>(
+    API_ENDPOINTS.DSH_UPLOAD_SETTINGS,
+    { skipErrorHandler: true } as Record<string, unknown>
+  )
+  const data = res.data ?? {}
+  return {
+    enabled: data.enabled === true,
+    maxBytes: Number(data.max_bytes) || 0,
+    maxFiles: Number(data.max_files) || 1,
+    accept: Array.isArray(data.accept) ? data.accept : [],
+  }
+}
+
+/**
+ * 单个文件一次请求：网关按用户目录落盘并返回 dsh 容器内的绝对路径，页面只负责
+ * 在提交任务时把这份清单回传。
+ */
+export async function uploadDshAttachment(
+  file: File,
+  signal?: AbortSignal
+): Promise<DshAttachment> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await api.post<DshAttachmentResponse>(
+    API_ENDPOINTS.DSH_UPLOADS,
+    form,
+    { signal, skipErrorHandler: true } as Record<string, unknown>
+  )
+  const data = res.data ?? {}
+  if (!data.path) {
+    throw new Error('Upload response has no path')
+  }
+  return {
+    name: data.name || file.name,
+    path: data.path,
+    ...(data.mime_type ? { mimeType: data.mime_type } : {}),
+    size: data.size ?? file.size,
+  }
 }
 
 /**

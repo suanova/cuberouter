@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-import { getUserModels } from './api'
+import { fetchDshUploadSettings, getUserModels } from './api'
 import { ConversationList } from './components/conversation-list'
 import { DshComposer } from './components/dsh-composer'
 import { DshHeader } from './components/dsh-header'
@@ -29,7 +29,7 @@ import { useDshConversations } from './hooks/use-dsh-conversations'
 import { useDshTask } from './hooks/use-dsh-task'
 import { isSessionExpiredError } from './lib/payload'
 import { estimateTurnDuration } from './lib/turn-duration'
-import type { DshModelOption } from './types'
+import type { DshAttachment, DshModelOption } from './types'
 
 // 模型列表已在 getUserModels 里按任务插件过滤，这里只需挑一个默认值：
 // 优先带 dsh 字样的模型，没有匹配时退回列表第一项。
@@ -82,6 +82,13 @@ export function DshAgent() {
     staleTime: 5 * 60 * 1000,
   })
 
+  // 附件能力由共享卷配置决定：未配置时接口返回 enabled=false，回形针不出现。
+  const { data: uploadSettings = null } = useQuery({
+    queryKey: ['dsh-agent', 'upload-settings'],
+    queryFn: fetchDshUploadSettings,
+    staleTime: 5 * 60 * 1000,
+  })
+
   const activeId = activeConversation?.id ?? null
   const activeModel = activeConversation?.model ?? ''
 
@@ -131,11 +138,11 @@ export function DshAgent() {
   }, [activeModel, createNew, models])
 
   const handleSubmit = useCallback(
-    (prompt: string) => {
+    (prompt: string, attachments: DshAttachment[]) => {
       if (!activeConversation) {
         return
       }
-      void sendPrompt(activeConversation, prompt)
+      void sendPrompt(activeConversation, prompt, attachments)
     },
     [activeConversation, sendPrompt]
   )
@@ -184,6 +191,7 @@ export function DshAgent() {
           disabled={!activeConversation || !activeModel}
           isRunning={isRunning(activeId)}
           onSubmit={handleSubmit}
+          uploads={uploadSettings}
         />
       </div>
     </div>

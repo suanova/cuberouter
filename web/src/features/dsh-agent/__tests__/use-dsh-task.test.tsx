@@ -153,4 +153,48 @@ describe('useDshTask', () => {
     // 续轮询不能重新提交一次任务。
     expect(submitAgentTask).not.toHaveBeenCalled()
   })
+
+  it('sends uploaded attachments with the turn and keeps them for display', async () => {
+    vi.mocked(submitAgentTask).mockClear()
+    vi.mocked(submitAgentTask).mockResolvedValue({ task_id: 'task-5' })
+    vi.mocked(fetchAgentTask).mockResolvedValue(
+      completedPoll('sess-3', 'read it') as never
+    )
+    const hook = renderTaskHook()
+    const attachment = {
+      name: 'report.pdf',
+      path: '/data/uploads/1/ab-report.pdf',
+      mimeType: 'application/pdf',
+      size: 8,
+    }
+
+    await act(async () => {
+      await hook.result.current.sendPrompt(hook.getConversation(), '看看附件', [
+        attachment,
+      ])
+    })
+
+    expect(vi.mocked(submitAgentTask).mock.calls[0][0].attachments).toEqual([
+      attachment,
+    ])
+    expect(hook.getConversation().turns[0].attachments).toEqual([attachment])
+  })
+
+  it('leaves attachments off the request when none were uploaded', async () => {
+    vi.mocked(submitAgentTask).mockClear()
+    vi.mocked(submitAgentTask).mockResolvedValue({ task_id: 'task-6' })
+    vi.mocked(fetchAgentTask).mockResolvedValue(
+      completedPoll('sess-4', 'ok') as never
+    )
+    const hook = renderTaskHook()
+
+    await act(async () => {
+      await hook.result.current.sendPrompt(hook.getConversation(), 'hi')
+    })
+
+    expect(vi.mocked(submitAgentTask).mock.calls[0][0]).not.toHaveProperty(
+      'attachments'
+    )
+    expect(hook.getConversation().turns[0].attachments).toBeUndefined()
+  })
 })

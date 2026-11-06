@@ -116,6 +116,43 @@ func TestDSHBuildSubmitRequest(t *testing.T) {
 		}, descriptor["body"])
 	})
 
+	t.Run("appends uploaded files to the prompt as a readable manifest", func(t *testing.T) {
+		value, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", dshSubmitContext(map[string]any{
+			"model":  "dsh",
+			"prompt": "总结这两份材料",
+			"attachments": []any{
+				map[string]any{"name": "报告.pdf", "path": "/data/uploads/7/ab12-报告.pdf"},
+				map[string]any{"name": "photo.png", "path": "/data/uploads/7/cd34-photo.png", "size": float64(1024)},
+			},
+		}))
+		require.NoError(t, err)
+		descriptor := decodePluginValue(t, value)
+
+		// dsh-api 不认识附件字段，清单只能进提示词；原始 attachments 不能透传。
+		assert.Equal(t, map[string]any{
+			"prompt": "总结这两份材料\n\n[Uploaded files]\n" +
+				"The user attached these files; they are readable on disk:\n" +
+				"- /data/uploads/7/ab12-报告.pdf (报告.pdf)\n" +
+				"- /data/uploads/7/cd34-photo.png (photo.png)",
+		}, descriptor["body"])
+	})
+
+	t.Run("drops malformed attachment entries", func(t *testing.T) {
+		value, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", dshSubmitContext(map[string]any{
+			"model":  "dsh",
+			"prompt": "hi",
+			"attachments": []any{
+				"not-an-object",
+				map[string]any{"path": "relative/path.pdf", "name": "relative.pdf"},
+				map[string]any{"path": "/data/uploads/7/line\nbreak.pdf", "name": "break.pdf"},
+				map[string]any{"name": "no-path.pdf"},
+			},
+		}))
+		require.NoError(t, err)
+		descriptor := decodePluginValue(t, value)
+		assert.Equal(t, map[string]any{"prompt": "hi"}, descriptor["body"])
+	})
+
 	t.Run("normalizes a trailing slash in the channel base URL", func(t *testing.T) {
 		ctx := dshSubmitContext(map[string]any{"model": "dsh", "prompt": "hi"})
 		ctx["baseUrl"] = dshBaseURL + "///"
@@ -326,6 +363,23 @@ func TestDSHContinuationFieldsSurviveTheTaskRequestStruct(t *testing.T) {
 	}, descriptor["body"])
 }
 
+// 附件清单同样走 /pg 入口的结构体解码：不在 TaskSubmitReq 上声明就会被丢掉，
+// 智能体只会收到一条不含任何文件信息的提示词。
+func TestDSHAttachmentsSurviveTheTaskRequestStruct(t *testing.T) {
+	var request relaycommon.TaskSubmitReq
+	require.NoError(t, common.Unmarshal([]byte(`{"model":"dsh","prompt":"看看这张图","attachments":[{"name":"a.png","path":"/data/uploads/7/x-a.png","mimeType":"image/png","size":2048}]}`), &request))
+	require.Len(t, request.Attachments, 1)
+
+	value, err := loadDSHPlugin(t).Engine.Call(t.Context(), "buildSubmitRequest", dshSubmitContext(decodePluginValue(t, request)))
+	require.NoError(t, err)
+	descriptor := decodePluginValue(t, value)
+	assert.Equal(t, map[string]any{
+		"prompt": "看看这张图\n\n[Uploaded files]\n" +
+			"The user attached these files; they are readable on disk:\n" +
+			"- /data/uploads/7/x-a.png (a.png)",
+	}, descriptor["body"])
+}
+
 func dshArtifactTaskContext(status string, data map[string]any) map[string]any {
 	return map[string]any{
 		"taskId": "task-1",
@@ -375,6 +429,7 @@ func TestDSHListArtifacts(t *testing.T) {
 		"key":      "medical-llms.pptx",
 		"type":     "file",
 		"mimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"name":     "medical-llms.pptx",
 	}, artifacts[0])
 	assert.Equal(t, map[string]any{"key": "cover.png", "type": "image", "mimeType": "image/png"}, artifacts[1])
 	assert.Equal(t, map[string]any{"key": "intro.mp4", "type": "video", "mimeType": "video/mp4"}, artifacts[2])

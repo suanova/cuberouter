@@ -29,7 +29,7 @@ import {
   resolveTurnStatus,
   unwrapTaskPayload,
 } from '../lib/payload'
-import type { DshConversation, DshTurn } from '../types'
+import type { DshAttachment, DshConversation, DshTurn } from '../types'
 
 const MAX_CONSECUTIVE_POLL_ERRORS = 5
 
@@ -144,7 +144,11 @@ export function useDshTask(updateConversation: ConversationUpdater) {
   )
 
   const sendPrompt = useCallback(
-    async (conversation: DshConversation, prompt: string) => {
+    async (
+      conversation: DshConversation,
+      prompt: string,
+      attachments: DshAttachment[] = []
+    ) => {
       if (!conversation.model || controllersRef.current.has(conversation.id)) {
         return
       }
@@ -168,6 +172,7 @@ export function useDshTask(updateConversation: ConversationUpdater) {
             reply: '',
             toolCalls: [],
             transcript: [],
+            ...(attachments.length ? { attachments } : {}),
             createdAt,
           },
         ],
@@ -179,6 +184,7 @@ export function useDshTask(updateConversation: ConversationUpdater) {
           prompt,
           sessionId: conversation.sessionId,
           preset: conversation.preset || undefined,
+          ...(attachments.length ? { attachments } : {}),
           signal: controller.signal,
         })
         const taskId = submitted.task_id ?? submitted.id ?? ''

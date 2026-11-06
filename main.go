@@ -490,6 +490,7 @@ func InitResources() error {
 	}
 
 	service.StartAuthArtifactCleanup()
+	service.StartDshUploadCleanup()
 
 	return nil
 }

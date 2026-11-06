@@ -25,6 +25,12 @@ import { DshAgent } from '..'
 
 vi.mock('../api', () => ({
   getUserModels: vi.fn(async () => []),
+  fetchDshUploadSettings: vi.fn(async () => ({
+    enabled: false,
+    maxBytes: 0,
+    maxFiles: 1,
+    accept: [],
+  })),
   submitAgentTask: vi.fn(),
   fetchAgentTask: vi.fn(),
   getRequestErrorMessage: vi.fn((error: unknown) => String(error)),

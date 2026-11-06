@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { BotIcon } from 'lucide-react'
+import { BotIcon, PaperclipIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -190,7 +190,33 @@ export function DshThread(props: DshThreadProps) {
             props.turns.map((turn) => (
               <div className='space-y-3' key={turn.id}>
                 <Message from='user'>
-                  <MessageContent variant='flat'>{turn.prompt}</MessageContent>
+                  <div className='flex flex-col items-end gap-1.5'>
+                    <MessageContent variant='flat'>
+                      {turn.prompt}
+                    </MessageContent>
+                    {(turn.attachments?.length ?? 0) > 0 && (
+                      <ul
+                        aria-label={t('Attached files')}
+                        className='flex flex-wrap justify-end gap-1.5'
+                      >
+                        {turn.attachments?.map((attachment) => (
+                          <li
+                            className='bg-muted/50 text-muted-foreground flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs'
+                            key={attachment.path}
+                            title={attachment.path}
+                          >
+                            <PaperclipIcon
+                              aria-hidden='true'
+                              className='size-3 shrink-0'
+                            />
+                            <span className='max-w-56 truncate'>
+                              {attachment.name}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </Message>
                 <Message from='assistant'>
                   <TurnResult

@@ -6353,6 +6353,11 @@
     "Conversations": "会话",
     "Delete conversation": "删除会话",
     "Files produced by this turn": "本轮生成的文件",
-    "Download {{name}}": "下载 {{name}}"
+    "Download {{name}}": "下载 {{name}}",
+    "Attached files": "附件",
+    "Uploading…": "上传中…",
+    "Upload failed": "上传失败",
+    "The file is too large. The limit is {{size}}.": "文件太大了，单个文件上限 {{size}}。",
+    "You can attach up to {{count}} files.": "最多只能附加 {{count}} 个文件。"
   }
 }

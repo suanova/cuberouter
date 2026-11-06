@@ -6353,6 +6353,11 @@
     "Conversations": "Conversations",
     "Delete conversation": "Delete conversation",
     "Files produced by this turn": "Files produced by this turn",
-    "Download {{name}}": "Download {{name}}"
+    "Download {{name}}": "Download {{name}}",
+    "Attached files": "Attached files",
+    "Uploading…": "Uploading…",
+    "Upload failed": "Upload failed",
+    "The file is too large. The limit is {{size}}.": "The file is too large. The limit is {{size}}.",
+    "You can attach up to {{count}} files.": "You can attach up to {{count}} files."
   }
 }

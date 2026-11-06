@@ -38,6 +38,9 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	imageJobs.GET("/:job/result", controller.RequireStudioImageJobEpoch, controller.GetStudioImageResult)
 	imageJobs.POST("/:job/ack", controller.RequireStudioImageJobEpoch, controller.AckStudioImageResult)
 	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.GetStudioImageAudit)
+	dsh := apiRouter.Group("/dsh", middleware.UserAuth())
+	dsh.GET("/uploads/config", controller.DshUploadSettings)
+	dsh.POST("/uploads", middleware.UserCriticalRateLimit("dsh-upload"), controller.DshUpload)
 	{
 		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据
 		// perf_metrics_setting.export_enabled/export_token 自鉴权。

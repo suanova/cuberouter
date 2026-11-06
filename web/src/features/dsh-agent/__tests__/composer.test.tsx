@@ -17,13 +17,31 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, test, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
+import { uploadDshAttachment } from '../api'
 import { DshComposer } from '../components/dsh-composer'
+import type { DshAttachment, DshUploadSettings } from '../types'
+
+vi.mock('../api', () => ({
+  uploadDshAttachment: vi.fn(),
+  getRequestErrorMessage: vi.fn((error: unknown) => String(error)),
+}))
+
+const uploads: DshUploadSettings = {
+  enabled: true,
+  maxBytes: 25 * 1024 * 1024,
+  maxFiles: 10,
+  accept: ['.pdf', '.png'],
+}
 
 function renderComposer(
-  overrides: { isRunning?: boolean; disabled?: boolean } = {}
+  overrides: {
+    isRunning?: boolean
+    disabled?: boolean
+    uploads?: DshUploadSettings | null
+  } = {}
 ) {
   const onSubmit = vi.fn()
   render(
@@ -31,19 +49,33 @@ function renderComposer(
       disabled={overrides.disabled ?? false}
       isRunning={overrides.isRunning ?? false}
       onSubmit={onSubmit}
+      uploads={overrides.uploads === undefined ? uploads : overrides.uploads}
     />
   )
   return { onSubmit, textarea: screen.getByRole('textbox') }
 }
 
+function uploadFile(name = 'report.pdf'): DshAttachment {
+  return {
+    name,
+    path: `/data/uploads/1/ab-${name}`,
+    mimeType: 'application/pdf',
+    size: 8,
+  }
+}
+
 describe('DshComposer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   test('sends the trimmed prompt on Enter', () => {
     const { onSubmit, textarea } = renderComposer()
 
     fireEvent.change(textarea, { target: { value: '  做一份 PPT  ' } })
     fireEvent.keyDown(textarea, { key: 'Enter' })
 
-    expect(onSubmit).toHaveBeenCalledWith('做一份 PPT')
+    expect(onSubmit).toHaveBeenCalledWith('做一份 PPT', [])
   })
 
   test('keeps Shift+Enter as a newline', () => {
@@ -67,7 +99,7 @@ describe('DshComposer', () => {
     fireEvent.compositionEnd(textarea)
     fireEvent.keyDown(textarea, { key: 'Enter' })
 
-    expect(onSubmit).toHaveBeenCalledWith('hello')
+    expect(onSubmit).toHaveBeenCalledWith('hello', [])
   })
 
   test('ignores Enter while a turn is running or the composer is disabled', () => {
@@ -75,5 +107,48 @@ describe('DshComposer', () => {
     fireEvent.change(running.textarea, { target: { value: '排队中' } })
     fireEvent.keyDown(running.textarea, { key: 'Enter' })
     expect(running.onSubmit).not.toHaveBeenCalled()
+  })
+
+  test('uploads a file and submits the gateway path with the prompt', async () => {
+    const attachment = uploadFile()
+    vi.mocked(uploadDshAttachment).mockResolvedValue(attachment)
+    const { onSubmit, textarea } = renderComposer()
+
+    fireEvent.change(screen.getByLabelText('Upload file'), {
+      target: {
+        files: [
+          new File(['%PDF-1.7'], 'report.pdf', { type: 'application/pdf' }),
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('report.pdf')).toBeInTheDocument()
+    })
+    fireEvent.change(textarea, { target: { value: '看看这份报告' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+
+    expect(onSubmit).toHaveBeenCalledWith('看看这份报告', [attachment])
+  })
+
+  test('does not send while an attachment is still uploading', () => {
+    vi.mocked(uploadDshAttachment).mockReturnValue(new Promise(() => {}))
+    const { onSubmit, textarea } = renderComposer()
+
+    fireEvent.change(screen.getByLabelText('Upload file'), {
+      target: { files: [new File(['x'], 'slow.pdf')] },
+    })
+    fireEvent.change(textarea, { target: { value: '等等附件' } })
+    fireEvent.keyDown(textarea, { key: 'Enter' })
+
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  test('hides the attach control when uploads are not configured', () => {
+    renderComposer({ uploads: { ...uploads, enabled: false } })
+
+    expect(
+      screen.queryByRole('button', { name: 'Attach' })
+    ).not.toBeInTheDocument()
   })
 })

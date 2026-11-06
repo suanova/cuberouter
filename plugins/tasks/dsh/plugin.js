@@ -33,7 +33,7 @@ export const meta = {
     en: "DeepSeek Harness agent turns through the dsh-api task interface.",
     zh: "通过 dsh-api 任务接口调用 DeepSeek Harness 智能体。",
   },
-  version: "1.2.0",
+  version: "1.3.0",
   author: { name: "CubeRouter" },
   models: ["dsh"],
   fetchMode: "per_task",
@@ -47,6 +47,33 @@ const ACTION = "agent";
 // 自身配置的模型路由。
 const STRING_OPTIONS = ["preset", "cwd", "reasoningEffort", "system"];
 const NUMBER_OPTIONS = ["maxTokens", "timeoutMs"];
+
+// dsh-api 的任务接口没有上传字段：网关先把附件写进两边共享的数据卷，这里只把
+// 清单拼进提示词，智能体再用自己的文件工具读取。
+const MAX_ATTACHMENTS = 10;
+
+function attachmentManifest(body) {
+  const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+  const lines = [];
+  for (const attachment of attachments) {
+    if (!attachment || typeof attachment !== "object") continue;
+    const path = typeof attachment.path === "string" ? attachment.path.trim() : "";
+    // 只接受服务端生成的绝对路径；换行会破坏清单结构，一律丢弃。
+    if (!path.startsWith("/") || /[\r\n]/.test(path)) continue;
+    const name =
+      typeof attachment.name === "string" && attachment.name.trim()
+        ? attachment.name.trim()
+        : path.split("/").pop();
+    lines.push("- " + path + " (" + name + ")");
+    if (lines.length >= MAX_ATTACHMENTS) break;
+  }
+  if (!lines.length) return "";
+  return (
+    "\n\n[Uploaded files]\n" +
+    "The user attached these files; they are readable on disk:\n" +
+    lines.join("\n")
+  );
+}
 
 // dsh 自己会区分「被策略拦停/超时/截断」等结束原因。网关只有四种轮询状态，
 // max-tokens 与 canceled 仍保留 reply，按成功结算（页面据 data.status 区分展示）；
@@ -136,7 +163,7 @@ export function buildSubmitRequest(ctx) {
   const prompt = typeof body.prompt === "string" ? body.prompt : "";
   if (!prompt.trim()) throw new Error("prompt is required");
 
-  const upstream = { prompt: prompt };
+  const upstream = { prompt: prompt + attachmentManifest(body) };
   // dsh 只接受 server 端已存在且由本 API 创建的 sessionId；首轮不带。
   const sessionId = optionalString(body, "sessionId");
   if (sessionId) upstream.sessionId = sessionId;
