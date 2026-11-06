@@ -539,9 +539,27 @@ func deliverOrganizationEmailInvite(persisted *persistedOrganizationEmailInvite)
 			return errors.New("organization invite delivery is not pending")
 		}
 		inviteURL := strings.TrimRight(system_setting.ServerAddress, "/") + "/organization/invite/" + persisted.RawToken
-		subject = fmt.Sprintf("%s organization invitation", organization.Name)
+		var inviter model.User
+		_ = tx.Select("username", "display_name").Where("id = ?", invite.InviterUserId).First(&inviter).Error
+		inviterName := strings.TrimSpace(inviter.DisplayName)
+		if inviterName == "" {
+			inviterName = strings.TrimSpace(inviter.Username)
+		}
+		subject = common.WrapBilingualSubject(
+			fmt.Sprintf("You're invited to join %s on %s", organization.Name, common.SystemName),
+			fmt.Sprintf("邀请您加入 %s", organization.Name),
+		)
 		receiver = invite.TargetEmail
-		content = buildOrganizationInviteEmailContent(organization.Name, invite.Role, inviteURL)
+		content = buildOrganizationInviteEmailContent(organizationInviteEmailData{
+			SystemName:       common.SystemName,
+			OrganizationName: organization.Name,
+			Role:             invite.Role,
+			InviterName:      inviterName,
+			InviteURL:        inviteURL,
+			SignupURL:        strings.TrimRight(system_setting.ServerAddress, "/") + "/sign-up",
+			TargetEmail:      invite.TargetEmail,
+			ExpiresAt:        invite.ExpiredAt,
+		})
 		persisted.Invite = invite
 		return nil
 	})
@@ -806,6 +824,54 @@ func generateOrganizationInviteToken() (string, error) {
 	return base64.RawURLEncoding.EncodeToString(buf), nil
 }
 
-func buildOrganizationInviteEmailContent(organizationName string, role string, inviteURL string) string {
-	return fmt.Sprintf("<p>You have been invited to join <strong>%s</strong> as <strong>%s</strong>.</p><p><a href=\"%s\">Accept invitation</a></p>", html.EscapeString(organizationName), html.EscapeString(role), html.EscapeString(inviteURL))
+type organizationInviteEmailData struct {
+	SystemName       string
+	OrganizationName string
+	Role             string
+	InviterName      string
+	InviteURL        string
+	SignupURL        string
+	TargetEmail      string
+	ExpiresAt        int64
+}
+
+func buildOrganizationInviteEmailContent(data organizationInviteEmailData) string {
+	roleEn, roleZh := "member", "成员"
+	if data.Role == model.OrganizationRoleAdmin {
+		roleEn, roleZh = "administrator", "管理员"
+	}
+	inviterEn := strings.TrimSpace(data.InviterName)
+	inviterZh := inviterEn
+	if inviterEn == "" {
+		inviterEn, inviterZh = "An organization administrator", "组织管理员"
+	}
+	expires := ""
+	if data.ExpiresAt > 0 {
+		expires = time.Unix(data.ExpiresAt, 0).UTC().Format("2006-01-02 15:04 UTC")
+	}
+	organization := html.EscapeString(data.OrganizationName)
+	system := html.EscapeString(data.SystemName)
+	inviterEn = html.EscapeString(inviterEn)
+	inviterZh = html.EscapeString(inviterZh)
+	targetEmail := html.EscapeString(data.TargetEmail)
+	inviteURL := html.EscapeString(data.InviteURL)
+	signupURL := html.EscapeString(data.SignupURL)
+	expires = html.EscapeString(expires)
+	if expires == "" {
+		expires = "—"
+	}
+
+	enContent := fmt.Sprintf(`<p>Hello, <strong>%s</strong> has invited you to join <strong>%s</strong> on %s as a <strong>%s</strong>.</p>
+<p><a href="%s" style="display:inline-block;padding:10px 18px;background:#f97316;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">Accept invitation</a></p>
+<p>If you do not have a %s account yet, please <a href="%s">register</a> with this email address (%s) first, then open the invitation link.</p>
+<p>This invitation expires on %s. If you were not expecting this invitation, you can safely ignore this email.</p>`,
+		inviterEn, organization, system, roleEn, inviteURL, system, signupURL, targetEmail, expires)
+
+	zhContent := fmt.Sprintf(`<p>您好，<strong>%s</strong> 邀请您以 <strong>%s</strong> 身份加入 <strong>%s</strong>（%s）。</p>
+<p><a href="%s" style="display:inline-block;padding:10px 18px;background:#f97316;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;">接受邀请</a></p>
+<p>如果您还没有 %s 账号，请先使用该邮箱（%s）<a href="%s">注册</a>，再打开邀请链接。</p>
+<p>邀请有效期至：%s。如果这不是您预期的邀请，请忽略此邮件。</p>`,
+		inviterZh, roleZh, organization, system, inviteURL, system, targetEmail, signupURL, expires)
+
+	return common.WrapBilingualContent(enContent, zhContent)
 }

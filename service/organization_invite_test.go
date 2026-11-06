@@ -1351,3 +1351,65 @@ func TestOrganizationInviteRevokedInviteCannotAccept(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not pending")
 }
+
+func TestOrganizationInviteEmailContentIncludesEscapedValuesAndSignupLink(t *testing.T) {
+	content := buildOrganizationInviteEmailContent(organizationInviteEmailData{
+		SystemName:       "CubeRouter",
+		OrganizationName: "yeebo & co",
+		Role:             model.OrganizationRoleAdmin,
+		InviterName:      "Alice",
+		InviteURL:        "https://example.com/organization/invite/token123",
+		SignupURL:        "https://example.com/sign-up",
+		TargetEmail:      "target@example.com",
+		ExpiresAt:        time.Date(2026, 11, 12, 8, 30, 0, 0, time.UTC).Unix(),
+	})
+	require.Contains(t, content, "yeebo &amp; co")
+	require.NotContains(t, content, "yeebo & co")
+	require.Contains(t, content, "administrator")
+	require.Contains(t, content, "管理员")
+	require.Contains(t, content, "Alice")
+	require.Contains(t, content, "target@example.com")
+	require.Contains(t, content, "2026-11-12 08:30 UTC")
+	require.Contains(t, content, "https://example.com/organization/invite/token123")
+	require.Contains(t, content, "https://example.com/sign-up")
+	require.Contains(t, content, "register")
+	require.Contains(t, content, "注册")
+	require.Contains(t, content, "CubeRouter")
+	require.NotContains(t, content, "Invitation details")
+	require.NotContains(t, content, "邀请详情")
+
+	fallback := buildOrganizationInviteEmailContent(organizationInviteEmailData{
+		SystemName:       "CubeRouter",
+		OrganizationName: "yeebo",
+		Role:             model.OrganizationRoleMember,
+		InviteURL:        "https://example.com/organization/invite/token456",
+		SignupURL:        "https://example.com/sign-up",
+		TargetEmail:      "target@example.com",
+	})
+	require.Contains(t, fallback, "An organization administrator")
+	require.Contains(t, fallback, "组织管理员")
+	require.Contains(t, fallback, "member")
+	require.Contains(t, fallback, "成员")
+}
+
+func TestCreateEmailInviteSendsDetailedBilingualEmail(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	var subject, content string
+	withInviteEmailSender(t, func(s, _ string, c string) error {
+		subject, content = s, c
+		return nil
+	})
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email: "target@example.com",
+		Role:  model.OrganizationRoleMember,
+	})
+	require.NoError(t, err)
+	require.Contains(t, subject, common.SystemName)
+	require.Contains(t, subject, "邀请您加入")
+	require.Contains(t, content, "invite-admin")
+	require.Contains(t, content, "member")
+	require.Contains(t, content, "成员")
+	require.Contains(t, content, "/organization/invite/"+invite.Token)
+	require.Contains(t, content, "target@example.com")
+}
