@@ -33,6 +33,8 @@ type DshComposerProps = {
 export function DshComposer(props: DshComposerProps) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
+  // 输入法组词期间按回车是「确认候选」，不是发送；组一结束就恢复。
+  const [isComposing, setIsComposing] = useState(false)
 
   const canSend = !props.disabled && !props.isRunning && text.trim() !== ''
 
@@ -45,19 +47,25 @@ export function DshComposer(props: DshComposerProps) {
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      submit()
+    if (event.key !== 'Enter' || event.shiftKey) {
+      return
     }
+    if (isComposing || event.nativeEvent.isComposing) {
+      return
+    }
+    event.preventDefault()
+    submit()
   }
 
   return (
     <div className='border-t'>
-      <div className='mx-auto w-full max-w-3xl space-y-2 p-3'>
+      <div className='mx-auto w-full max-w-4xl space-y-2 px-4 py-3'>
         <Textarea
           aria-label={t('Message the DSH agent')}
           disabled={props.disabled}
           onChange={(event) => setText(event.target.value)}
+          onCompositionEnd={() => setIsComposing(false)}
+          onCompositionStart={() => setIsComposing(true)}
           onKeyDown={handleKeyDown}
           placeholder={t('Describe the task for the agent…')}
           rows={3}

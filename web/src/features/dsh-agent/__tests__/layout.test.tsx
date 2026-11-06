@@ -61,4 +61,17 @@ describe('DshAgent layout', () => {
       'overflow-hidden'
     )
   })
+
+  test('the message log and composer share one centered column', () => {
+    renderAgent()
+
+    const log = screen.getByRole('log')
+    // 左右留白来自居中列的宽度限制，而不是滚动容器的内边距：
+    // 两者必须同宽，输入框才和消息左右对齐。
+    const content = log.querySelector('.max-w-4xl')
+    const composer = screen.getByRole('textbox').closest('.max-w-4xl')
+
+    expect(content).toHaveClass('mx-auto', 'w-full', 'px-4')
+    expect(composer).toHaveClass('mx-auto', 'w-full', 'px-4')
+  })
 })

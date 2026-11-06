@@ -174,40 +174,44 @@ export function DshThread(props: DshThreadProps) {
 
   return (
     <Conversation>
-      <ConversationContent className='mx-auto w-full max-w-3xl space-y-5'>
-        {props.turns.length === 0 ? (
-          <ConversationEmptyState
-            description={t(
-              'Ask the agent to inspect code, run commands, or walk through a problem.'
-            )}
-            icon={<BotIcon className='size-8' />}
-            title={t('Start a DSH conversation')}
-          />
-        ) : (
-          props.turns.map((turn) => (
-            <div className='space-y-3' key={turn.id}>
-              <Message from='user'>
-                <MessageContent variant='flat'>{turn.prompt}</MessageContent>
-              </Message>
-              <Message from='assistant'>
-                <TurnResult
-                  expectedTurnDuration={props.expectedTurnDuration}
-                  turn={turn}
-                />
-              </Message>
-            </div>
-          ))
-        )}
-        {props.sessionExpired && (
-          <Alert>
-            <AlertTitle>{t('Session expired')}</AlertTitle>
-            <AlertDescription>
-              {t(
-                'This DSH session can no longer be continued because the harness restarted or the session expired. Start a new conversation to keep going.'
+      {/* 与 playground 一致：滚动容器不带内边距，居中内容单独限宽，
+          否则左右留白会比同一站点的对话页明显宽。 */}
+      <ConversationContent className='p-0'>
+        <div className='mx-auto w-full max-w-4xl space-y-5 px-4 py-4'>
+          {props.turns.length === 0 ? (
+            <ConversationEmptyState
+              description={t(
+                'Ask the agent to inspect code, run commands, or walk through a problem.'
               )}
-            </AlertDescription>
-          </Alert>
-        )}
+              icon={<BotIcon className='size-8' />}
+              title={t('Start a DSH conversation')}
+            />
+          ) : (
+            props.turns.map((turn) => (
+              <div className='space-y-3' key={turn.id}>
+                <Message from='user'>
+                  <MessageContent variant='flat'>{turn.prompt}</MessageContent>
+                </Message>
+                <Message from='assistant'>
+                  <TurnResult
+                    expectedTurnDuration={props.expectedTurnDuration}
+                    turn={turn}
+                  />
+                </Message>
+              </div>
+            ))
+          )}
+          {props.sessionExpired && (
+            <Alert>
+              <AlertTitle>{t('Session expired')}</AlertTitle>
+              <AlertDescription>
+                {t(
+                  'This DSH session can no longer be continued because the harness restarted or the session expired. Start a new conversation to keep going.'
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
       </ConversationContent>
       <ConversationScrollButton />
     </Conversation>
