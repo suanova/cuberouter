@@ -1,0 +1,8 @@
+# pnpm 11 的依赖构建策略（profile 目录内生效）。
+#
+# Office 技能经 libreoffice-kit 间接依赖 koffi，而 koffi 的 install 脚本只用于
+# 在没有预编译包时现场编译；@koromix/koffi-<platform> 可选依赖已带有
+# koffi.node，koffi 的加载器会自动回落到它。这里明确禁止执行该脚本：既避免
+# 容器里缺少编译工具链，也避免 pnpm 因“忽略构建脚本”报错退出。
+allowBuilds:
+  koffi: false

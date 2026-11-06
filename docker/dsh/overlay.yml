@@ -1,0 +1,44 @@
+# DSH 容器运行时配置覆盖层。
+#
+# 由 `dsh web --patch /opt/dsh/overlay.yml` 加载：应用顺序为
+# dsh-base → dsh-web-app → profile 用户层 → 本文件，因此这里的值优先。
+#
+# 注意：`- id:` 行会整体替换该行的 config，所以下面把行内原有的键一并重述。
+
+# 1) 监听地址：dsh 0.2.2 起明确拒绝 0.0.0.0 等通配地址（避免把远程执行能力
+#    暴露到所有网卡），只接受本机某个具体网卡的 IPv4/IPv6 字面量。容器内默认的
+#    127.0.0.1 无法被发布的 3080 端口访问，因此由 entrypoint 解析容器网卡地址
+#    写进 DSH_BIND_HOST；单独运行时回落到 127.0.0.1。
+- id: webserver
+  config:
+    host: !!js process.env.DSH_BIND_HOST || '127.0.0.1'
+    port: 3080
+    compression: gzip
+    compressionLevel: 1
+    compressionThresholdBytes: 1024
+
+# 2) 模型端点：密钥由 DEEPSEEK_API_KEY 环境变量提供；DSH_LLM_BASE_URL 可把
+#    DeepSeek 适配器指向任意 OpenAI 兼容端点（例如本网关的 /v1）。
+- id: llm-deepseek
+  config:
+    apiKeyEnv: DEEPSEEK_API_KEY
+    baseURL: !!js process.env.DSH_LLM_BASE_URL || undefined
+
+# 3) Office 技能：Word / PowerPoint / Excel 的创建、编辑与 OOXML 结构校验。
+#    对应 @deepseek-ai/dsh-skill-office 包内置的 office-docx / office-pptx /
+#    office-xlsx 三个技能，镜像里已安装 python-pptx / python-docx / openpyxl。
+- insert:
+    - id: skill-office
+      name: '@deepseek-ai/dsh-skill-office'
+
+# 4) 对外任务 API：CubeRouter 的 DSH 任务渠道通过 /api/v1/tasks 提交任务、
+#    轮询结果并下载产物（含 /files/:key 下载路由）。
+- insert:
+    - id: dsh-api
+      name: dsh-api
+      config:
+        apiKey: !!js process.env.DSH_API_KEY || ''
+        defaultCwd: !!js process.env.DSH_WORKSPACE || '/data/workspace'
+        defaultTimeoutMs: 1200000
+        maxTimeoutMs: 7200000
+        maxArtifactBytes: 67108864

@@ -3,6 +3,9 @@
 # Quick Start:
 #   1. docker-compose up -d
 #   2. Access at http://localhost:3000
+#   3. DSH agent runtime (optional) at http://localhost:3080; it builds from
+#      ./docker/dsh, stores data in ./data/dsh/zhongshan and ships the Office
+#      skills used to generate PPT/DOCX/XLSX deliverables.
 #
 # Using MySQL instead of PostgreSQL:
 #   1. Comment out the postgres service and SQL_DSN line 15
@@ -66,6 +69,38 @@ services:
       - cuberouter-network
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # DSH（DeepSeek Harness）智能体运行时：为 DSH 任务渠道提供 /api/v1/tasks
+  # 接口，并内置 Office 技能（可直接生成 PPT/DOCX/XLSX）。
+  # 数据（profile、会话、工作目录与生成的演示文稿）落在宿主机
+  # ./data/dsh/zhongshan，容器内即 /data。
+  dsh:
+    build:
+      context: ./docker/dsh
+      args:
+        DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.1}
+        DSH_SKILL_OFFICE_VERSION: ${DSH_SKILL_OFFICE_VERSION:-0.2.2-rc.1}
+    image: cuberouter-dsh:${DSH_IMAGE_TAG:-latest}
+    container_name: dsh
+    restart: always
+    ports:
+      - "3080:3080"
+    volumes:
+      - ./data/dsh/zhongshan:/data
+    environment:
+      - DSH_HOME=/data
+      - TZ=Asia/Shanghai
+      - DSH_API_KEY=${DSH_API_KEY:-}  # CubeRouter DSH 渠道使用的密钥（X-API-Key / Bearer）；留空则关闭鉴权
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}  # Agent 调用模型所需的密钥
+      - DSH_LLM_BASE_URL=${DSH_LLM_BASE_URL:-}  # 可选：把模型请求指向其它 OpenAI 兼容端点（例如本网关的 http://cuberouter:3000/v1）；留空用官方端点
+      - DSH_TRUSTED_HOST=${DSH_TRUSTED_HOST:-}  # 可选：通过非 loopback 域名/IP 访问 3080 时填入该 authority（空格分隔，含端口写 host:port）
+    networks:
+      - cuberouter-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header=\"X-API-Key: $$DSH_API_KEY\" \"http://$$(cat /tmp/dsh-bind-host):3080/api/v1/health\" || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
