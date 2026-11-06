@@ -1190,6 +1190,9 @@ func taskPluginProtocolRendererContext(
 		if artifact.MimeType != "" {
 			item["mimeType"] = artifact.MimeType
 		}
+		if artifact.Name != "" {
+			item["name"] = artifact.Name
+		}
 		rendererArtifacts[artifact.Key] = item
 	}
 	rendererContext["artifacts"] = rendererArtifacts

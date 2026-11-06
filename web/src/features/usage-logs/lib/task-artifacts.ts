@@ -129,6 +129,14 @@ function parseTaskArtifact(value: unknown): TaskArtifact {
     }
     artifact.mime_type = mimeType
   }
+  if (typeof value.name === 'string') {
+    const name = value.name.trim()
+    // 名字会原样显示并用作下载文件名，只接受不含路径分隔符的纯文件名。
+    if (name.length === 0 || name.length > 255 || /[\r\n/\\]/.test(name)) {
+      throw new TaskArtifactApiError('invalid_artifact')
+    }
+    artifact.name = name
+  }
   return artifact
 }
 

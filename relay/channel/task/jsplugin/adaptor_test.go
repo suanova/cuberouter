@@ -407,7 +407,7 @@ export function buildSubmitRequest(ctx){return {url:ctx.baseUrl+"/submit"}} expo
 
 func TestTaskAdaptorBuildContentRequestHookAndMissingFallback(t *testing.T) {
 	source := strings.Replace(mockPlugin, `export function listArtifacts() { return []; }
-export function buildContentRequest() { throw new Error("artifact_not_found"); }`, `export function listArtifacts(task) { return [{key: "video", type: "video", mimeType: "video/mp4"}]; }
+export function buildContentRequest() { throw new Error("artifact_not_found"); }`, `export function listArtifacts(task) { return [{key: "video", type: "video", mimeType: "video/mp4", name: "clip.mp4"}]; }
 export function buildContentRequest(ctx) {
   if (ctx.data.id !== "raw-upstream" || ctx.upstreamTaskId !== "upstream-task" || ctx.producerVersion !== "0.9.0") throw new Error("bad task context");
   return {url: ctx.baseUrl + "/content/" + ctx.artifactKey, method: ctx.clientRequest.method, headers: {"X-Content": "plugin"}};
@@ -429,7 +429,7 @@ export function buildContentRequest(ctx) {
 	}
 	artifacts, err := adaptor.ListArtifacts(task)
 	require.NoError(t, err)
-	require.Equal(t, []channel.TaskArtifact{{Key: "video", Type: "video", MimeType: "video/mp4"}}, artifacts)
+	require.Equal(t, []channel.TaskArtifact{{Key: "video", Type: "video", MimeType: "video/mp4", Name: "clip.mp4"}}, artifacts)
 	descriptor, err := adaptor.BuildContentRequest(task, "video", channel.TaskArtifactClientRequest{Method: http.MethodHead})
 	require.NoError(t, err)
 	require.NotNil(t, descriptor)
@@ -465,6 +465,10 @@ func TestTaskAdaptorRejectsInvalidArtifactProjection(t *testing.T) {
 		{name: "upstream url", projection: `[{key:"video",type:"video",url:"https://cdn.example/video.mp4"}]`},
 		{name: "invalid key", projection: `[{key:"video/0",type:"video"}]`},
 		{name: "unsupported type", projection: `[{key:"video",type:"text"}]`},
+		{name: "name with path separator", projection: `[{key:"pptx",type:"file",name:"a/b.pptx"}]`},
+		{name: "name with newline", projection: `[{key:"pptx",type:"file",name:"a\nb.pptx"}]`},
+		{name: "non-string name", projection: `[{key:"pptx",type:"file",name:42}]`},
+		{name: "overlong name", projection: `[{key:"pptx",type:"file",name:"`+strings.Repeat("a",256)+`.pptx"}]`},
 	}
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {

@@ -1121,7 +1121,7 @@ func validateTaskArtifacts(value any) ([]channel.TaskArtifact, error) {
 	keys := make(map[string]struct{}, len(items))
 	for _, item := range items {
 		for field := range item {
-			if field != "key" && field != "type" && field != "mimeType" {
+			if field != "key" && field != "type" && field != "mimeType" && field != "name" {
 				return nil, fmt.Errorf("plugin artifact contains unsupported field %q", field)
 			}
 		}
@@ -1150,13 +1150,39 @@ func validateTaskArtifacts(value any) ([]channel.TaskArtifact, error) {
 				return nil, fmt.Errorf("plugin artifact has invalid mimeType")
 			}
 		}
+		name := ""
+		if rawName, exists := item["name"]; exists {
+			var nameOK bool
+			name, nameOK = rawName.(string)
+			if !nameOK {
+				return nil, fmt.Errorf("plugin artifact has invalid name")
+			}
+			if name, err = normalizeTaskArtifactName(name); err != nil {
+				return nil, err
+			}
+		}
 		artifacts = append(artifacts, channel.TaskArtifact{
 			Key:      key,
 			Type:     artifactType,
 			MimeType: mimeType,
+			Name:     name,
 		})
 	}
 	return artifacts, nil
+}
+
+// normalizeTaskArtifactName keeps display names to a bare filename: the value
+// is rendered as-is in the dashboard and used as the download filename, so path
+// separators and control characters must not survive.
+func normalizeTaskArtifactName(name string) (string, error) {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "", nil
+	}
+	if len(trimmed) > 255 || strings.ContainsAny(trimmed, "\r\n/\\") {
+		return "", fmt.Errorf("plugin artifact has invalid name")
+	}
+	return trimmed, nil
 }
 
 func (a *TaskAdaptor) buildSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*requestDescriptor, error) {

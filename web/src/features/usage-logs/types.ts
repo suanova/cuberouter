@@ -378,6 +378,8 @@ export interface TaskArtifact {
   key: string
   type: TaskArtifactType
   mime_type?: string
+  // 显示用文件名；key 是受限标识符（非 ASCII 会被折叠成横线），下载时用这个名字。
+  name?: string
   content_url: string
 }
 

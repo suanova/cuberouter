@@ -25,12 +25,11 @@ import {
   Video01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
-import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 
 import type { TaskArtifactType } from '@/features/usage-logs/types'
 
-import { fetchTaskArtifacts } from '../api'
+import { useTaskArtifacts } from '../hooks/use-task-artifacts'
 
 type TurnArtifactsProps = {
   taskId: string
@@ -56,14 +55,7 @@ function artifactIcon(type: TaskArtifactType) {
 export function TurnArtifacts(props: TurnArtifactsProps) {
   const { t } = useTranslation()
 
-  const artifactsQuery = useQuery({
-    queryKey: ['dsh-agent', 'task-artifacts', props.taskId],
-    queryFn: () => fetchTaskArtifacts(props.taskId),
-    enabled: props.taskId !== '',
-    retry: false,
-    staleTime: 60_000,
-  })
-
+  const artifactsQuery = useTaskArtifacts(props.taskId)
   const artifacts = artifactsQuery.data?.artifacts ?? []
   if (artifacts.length === 0) {
     return null
@@ -78,30 +70,34 @@ export function TurnArtifacts(props: TurnArtifactsProps) {
         {t('Files produced by this turn')}
       </p>
       <ul className='mt-1 space-y-1'>
-        {artifacts.map((artifact) => (
-          <li key={artifact.key}>
-            <a
-              aria-label={t('Download {{name}}', { name: artifact.key })}
-              className='hover:bg-muted focus-visible:ring-ring flex items-center gap-2 rounded-md px-1 py-1 text-sm focus-visible:ring-2 focus-visible:outline-none'
-              download={artifact.key}
-              href={artifact.content_url}
-              rel='noopener noreferrer'
-              target='_blank'
-            >
-              <HugeiconsIcon
-                aria-hidden='true'
-                className='text-muted-foreground size-4 shrink-0'
-                icon={artifactIcon(artifact.type)}
-              />
-              <span className='truncate font-mono text-xs'>{artifact.key}</span>
-              <HugeiconsIcon
-                aria-hidden='true'
-                className='text-muted-foreground ml-auto size-4 shrink-0'
-                icon={Download01Icon}
-              />
-            </a>
-          </li>
-        ))}
+        {artifacts.map((artifact) => {
+          // key 是受限标识符（中文名会折叠成横线），有真实文件名时优先展示它。
+          const name = artifact.name ?? artifact.key
+          return (
+            <li key={artifact.key}>
+              <a
+                aria-label={t('Download {{name}}', { name })}
+                className='hover:bg-muted focus-visible:ring-ring flex items-center gap-2 rounded-md px-1 py-1 text-sm focus-visible:ring-2 focus-visible:outline-none'
+                download={name}
+                href={artifact.content_url}
+                rel='noopener noreferrer'
+                target='_blank'
+              >
+                <HugeiconsIcon
+                  aria-hidden='true'
+                  className='text-muted-foreground size-4 shrink-0'
+                  icon={artifactIcon(artifact.type)}
+                />
+                <span className='truncate text-xs'>{name}</span>
+                <HugeiconsIcon
+                  aria-hidden='true'
+                  className='text-muted-foreground ml-auto size-4 shrink-0'
+                  icon={Download01Icon}
+                />
+              </a>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

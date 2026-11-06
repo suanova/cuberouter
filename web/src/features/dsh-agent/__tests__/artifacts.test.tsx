@@ -81,6 +81,27 @@ describe('TurnArtifacts', () => {
     expect(fetchArtifactsMock).toHaveBeenCalledWith('task-1')
   })
 
+  test('prefers the reported filename over the artifact key', async () => {
+    fetchArtifactsMock.mockResolvedValue({
+      artifacts: [
+        {
+          key: 'pptx',
+          type: 'file',
+          name: '大模型入门-程序员版.pptx',
+          content_url: CONTENT_URL,
+        },
+      ],
+    })
+
+    renderArtifacts('task-1')
+
+    const deck = await screen.findByRole('link', {
+      name: 'Download 大模型入门-程序员版.pptx',
+    })
+    expect(deck).toHaveAttribute('download', '大模型入门-程序员版.pptx')
+    expect(deck).toHaveTextContent('大模型入门-程序员版.pptx')
+  })
+
   test('renders nothing when the turn produced no files', async () => {
     fetchArtifactsMock.mockResolvedValue({ artifacts: [] })
 

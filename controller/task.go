@@ -25,6 +25,7 @@ type taskArtifactResponse struct {
 	Key        string `json:"key"`
 	Type       string `json:"type"`
 	MimeType   string `json:"mime_type,omitempty"`
+	Name       string `json:"name,omitempty"`
 	ContentURL string `json:"content_url"`
 }
 
@@ -107,6 +108,7 @@ func writeTaskArtifacts(c *gin.Context, task *model.Task, dashboard bool) {
 			Key:        artifact.Key,
 			Type:       artifact.Type,
 			MimeType:   artifact.MimeType,
+			Name:       artifact.Name,
 			ContentURL: contentURL,
 		})
 	}
@@ -169,6 +171,9 @@ func validateProjectedTaskArtifacts(artifacts []relaychannel.TaskArtifact) ([]re
 		}
 		if len(artifacts[i].MimeType) > 255 || strings.ContainsAny(artifacts[i].MimeType, "\r\n") {
 			return nil, fmt.Errorf("%w: invalid artifact mime type", errTaskArtifactPlugin)
+		}
+		if len(artifacts[i].Name) > 255 || strings.ContainsAny(artifacts[i].Name, "\r\n/\\") {
+			return nil, fmt.Errorf("%w: invalid artifact name", errTaskArtifactPlugin)
 		}
 	}
 	return artifacts, nil

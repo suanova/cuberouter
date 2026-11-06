@@ -33,7 +33,7 @@ export const meta = {
     en: "DeepSeek Harness agent turns through the dsh-api task interface.",
     zh: "通过 dsh-api 任务接口调用 DeepSeek Harness 智能体。",
   },
-  version: "1.1.0",
+  version: "1.2.0",
   author: { name: "CubeRouter" },
   models: ["dsh"],
   fetchMode: "per_task",
@@ -214,6 +214,23 @@ export function parseTaskResult(ctx, body, resp) {
 
 // dsh-api 在任务结束时给出 files 摘要：本轮智能体写出并通过文件系统校验的文件。
 // 只有成功任务才有产物；键由 dsh-api 归一化，可直接作为网关的 artifact key。
+//
+// 只收录可交付的文件：智能体为了生成 PPT 临时写下的 build_deck.py / check.py
+// 属于工作文件，列在「本轮生成的文件」里会让用户误以为它们是结果。扩展名白名单
+// 与 dsh-api 的快照白名单保持一致；扩展名未知时保留，避免把正常的产物藏掉。
+const DELIVERABLE_EXTENSIONS = new Set([
+  "pptx", "ppt", "docx", "doc", "xlsx", "xls", "pdf",
+  "md", "html", "htm", "csv", "json", "txt", "svg",
+  "png", "jpg", "jpeg", "gif", "webp", "mp4", "webm", "mp3", "wav", "zip",
+]);
+
+function extensionOf(name) {
+  const base = String(name || "");
+  const dot = base.lastIndexOf(".");
+  if (dot < 0 || dot === base.length - 1) return "";
+  return base.slice(dot + 1).toLowerCase();
+}
+
 function artifactType(mimeType) {
   const value = String(mimeType || "").toLowerCase();
   if (value.startsWith("video/")) return "video";
@@ -233,10 +250,14 @@ export function listArtifacts(task) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const key = typeof item.key === "string" ? item.key.trim() : "";
     if (!key || seen.has(key)) continue;
+    const name = typeof item.name === "string" ? item.name.trim() : "";
+    const extension = extensionOf(name || key);
+    if (extension && !DELIVERABLE_EXTENSIONS.has(extension)) continue;
     seen.add(key);
     const artifact = { key: key, type: artifactType(item.mimeType) };
     const mimeType = typeof item.mimeType === "string" ? item.mimeType.trim() : "";
     if (mimeType) artifact.mimeType = mimeType;
+    if (name) artifact.name = name;
     artifacts.push(artifact);
   }
   return artifacts;
