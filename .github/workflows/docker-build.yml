@@ -55,7 +55,7 @@ jobs:
           fi
           echo "TAG=${TAG}" >> $GITHUB_ENV
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "${TAG}" > VERSION
+          echo "${TAG}-$(git rev-parse --short HEAD)" > VERSION
           echo "Building tag: ${TAG} for ${{ matrix.arch }}"
 
       - name: Set up Docker Buildx
