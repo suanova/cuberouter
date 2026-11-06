@@ -33,6 +33,12 @@ import { Response } from '@/components/ai-elements/response'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 
+import { useTaskArtifacts } from '../hooks/use-task-artifacts'
+import { rewriteArtifactLinks } from '../lib/artifact-links'
+import {
+  approximateMinutes,
+  type TurnDurationEstimate,
+} from '../lib/turn-duration'
 import type { DshTurn } from '../types'
 import { ToolCallsPanel } from './tool-calls-panel'
 import { TurnArtifacts } from './turn-artifacts'
@@ -40,9 +46,13 @@ import { TurnArtifacts } from './turn-artifacts'
 type DshThreadProps = {
   turns: DshTurn[]
   sessionExpired: boolean
+  expectedTurnDuration: TurnDurationEstimate
 }
 
-function RunningIndicator(props: { startedAt: number }) {
+function RunningIndicator(props: {
+  startedAt: number
+  expectedTurnDuration: TurnDurationEstimate
+}) {
   const { t } = useTranslation()
   const [seconds, setSeconds] = useState(0)
 
@@ -53,6 +63,19 @@ function RunningIndicator(props: { startedAt: number }) {
     const timer = window.setInterval(update, 1000)
     return () => window.clearInterval(timer)
   }, [props.startedAt])
+
+  // 超出预期一半还没结束就不再给具体数字，改口说明还在跑，免得计时器一直违背承诺。
+  const overdue = seconds * 1000 > props.expectedTurnDuration.milliseconds * 1.5
+  let expectation = t('Usually takes a few minutes.')
+  if (overdue) {
+    expectation = t('Taking longer than usual, the agent is still working.')
+  } else if (props.expectedTurnDuration.fromHistory) {
+    expectation = t('Usually takes about {{duration}}.', {
+      duration: t('{{minutes}} min', {
+        minutes: approximateMinutes(props.expectedTurnDuration.milliseconds),
+      }),
+    })
+  }
 
   return (
     <div className='space-y-1 py-1'>
@@ -65,6 +88,7 @@ function RunningIndicator(props: { startedAt: number }) {
           {t('{{seconds}}s', { seconds })}
         </span>
       </div>
+      <p className='text-muted-foreground text-xs'>{expectation}</p>
       <p className='text-muted-foreground text-xs'>
         {t(
           'DSH returns the reply after the whole turn finishes, so output may arrive at once.'
@@ -74,11 +98,26 @@ function RunningIndicator(props: { startedAt: number }) {
   )
 }
 
-function TurnResult(props: { turn: DshTurn }) {
+function TurnResult(props: {
+  turn: DshTurn
+  expectedTurnDuration: TurnDurationEstimate
+}) {
   const { t } = useTranslation()
+  // 产物清单也用来修回复里的文件链接：模型写的 /data/workspace/... 路径在浏览器里
+  // 打不开，能对上产物文件名的链接换成签名下载地址。与产物卡片共用缓存，只发一次请求。
+  const artifactsQuery = useTaskArtifacts(
+    props.turn.taskId,
+    props.turn.status !== 'running' && props.turn.status !== 'failed'
+  )
+  const artifacts = artifactsQuery.data?.artifacts ?? []
 
   if (props.turn.status === 'running') {
-    return <RunningIndicator startedAt={props.turn.createdAt} />
+    return (
+      <RunningIndicator
+        expectedTurnDuration={props.expectedTurnDuration}
+        startedAt={props.turn.createdAt}
+      />
+    )
   }
 
   if (props.turn.status === 'failed') {
@@ -116,7 +155,9 @@ function TurnResult(props: { turn: DshTurn }) {
       )}
       {props.turn.reply ? (
         <MessageContent variant='flat'>
-          <Response final>{props.turn.reply}</Response>
+          <Response final>
+            {rewriteArtifactLinks(props.turn.reply, artifacts)}
+          </Response>
         </MessageContent>
       ) : (
         <p className='text-muted-foreground text-sm'>
@@ -149,7 +190,10 @@ export function DshThread(props: DshThreadProps) {
                 <MessageContent variant='flat'>{turn.prompt}</MessageContent>
               </Message>
               <Message from='assistant'>
-                <TurnResult turn={turn} />
+                <TurnResult
+                  expectedTurnDuration={props.expectedTurnDuration}
+                  turn={turn}
+                />
               </Message>
             </div>
           ))

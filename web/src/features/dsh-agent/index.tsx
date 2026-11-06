@@ -18,7 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { getUserModels } from './api'
 import { ConversationList } from './components/conversation-list'
@@ -28,6 +28,7 @@ import { DshThread } from './components/dsh-thread'
 import { useDshConversations } from './hooks/use-dsh-conversations'
 import { useDshTask } from './hooks/use-dsh-task'
 import { isSessionExpiredError } from './lib/payload'
+import { estimateTurnDuration } from './lib/turn-duration'
 import type { DshModelOption } from './types'
 
 // 模型列表已在 getUserModels 里按任务插件过滤，这里只需挑一个默认值：
@@ -145,6 +146,13 @@ export function DshAgent() {
     )
   )
 
+  // 运行中的计时旁边要给出「大概还要多久」，用已完成轮次的耗时中位数估计；
+  // 没有任何历史时返回经验默认值并让 UI 用模糊说法，不假装精确。
+  const expectedTurnDuration = useMemo(
+    () => estimateTurnDuration(conversations),
+    [conversations]
+  )
+
   return (
     <div className='flex size-full min-h-0 overflow-hidden'>
       <ConversationList
@@ -167,6 +175,7 @@ export function DshAgent() {
             才能把内部内容区变成可滚动区域，否则消息区会被外层裁掉。 */}
         <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
           <DshThread
+            expectedTurnDuration={expectedTurnDuration}
             sessionExpired={sessionExpired}
             turns={activeConversation?.turns ?? []}
           />
