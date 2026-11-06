@@ -89,12 +89,25 @@ describe('estimateTurnDuration', () => {
     ).toBe(30 * 60 * 1000)
   })
 
-  it('ignores turns without a finish timestamp', () => {
+  it('ignores turns that produced no result', () => {
+    // 卡死 12 分钟后被用户停止的轮次不能抬高之后所有轮次的预期。
     const estimate = estimateTurnDuration([
-      conversation([turn('a', 'failed', null), turn('b', 'canceled', 60_000)]),
+      conversation([
+        turn('a', 'canceled', 12 * 60 * 1000),
+        turn('b', 'failed', 8 * 60 * 1000),
+        turn('c', 'completed', 3 * 60 * 1000),
+      ]),
     ])
 
-    expect(estimate).toEqual({ milliseconds: 60_000, fromHistory: true })
+    expect(estimate).toEqual({ milliseconds: 3 * 60 * 1000, fromHistory: true })
+  })
+
+  it('counts a truncated turn as a finished turn', () => {
+    const estimate = estimateTurnDuration([
+      conversation([turn('a', 'max-tokens', 2 * 60 * 1000)]),
+    ])
+
+    expect(estimate).toEqual({ milliseconds: 2 * 60 * 1000, fromHistory: true })
   })
 })
 

@@ -33,8 +33,8 @@ export type TurnDurationEstimate = {
 
 /**
  * 用本机已完成轮次的中位数估计一轮要跑多久，运行中的计时上方展示给用户一个预期。
- * 只用已结算且有耗时记录的轮次：浏览器刷新后 resume 的轮次保留原来的 createdAt，
- * 但 finishedAt 为空时不计入。
+ * 只统计真正跑出结果的轮次：失败、超时、用户手动停止的轮次耗时不能代表正常一轮,
+ * 把它们算进去会让卡死过一次之后的预期一路上涨。
  */
 export function estimateTurnDuration(
   conversations: DshConversation[]
@@ -42,7 +42,10 @@ export function estimateTurnDuration(
   const durations: number[] = []
   for (const conversation of conversations) {
     for (const turn of conversation.turns) {
-      if (turn.status === 'running' || !turn.finishedAt) {
+      if (turn.status !== 'completed' && turn.status !== 'max-tokens') {
+        continue
+      }
+      if (!turn.finishedAt) {
         continue
       }
       const duration = turn.finishedAt - turn.createdAt
