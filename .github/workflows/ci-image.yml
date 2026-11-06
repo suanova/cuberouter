@@ -86,6 +86,12 @@ jobs:
           IMAGE=harbor.isuanova.com/suanova/cuberouter
           SHA_TAG="${GITHUB_SHA}"
 
+          # The maintenance page reports this value. The checkout is shallow,
+          # so take the channel label from VERSION (tags may not be fetched)
+          # and append the built commit's short SHA.
+          BASE_VERSION="$(cat VERSION)"
+          echo "${BASE_VERSION}-$(git rev-parse --short HEAD)" > VERSION
+
           # Push the immutable, commit-addressed tag. Safe for any commit that
           # ever landed on main, even if a newer commit now exists.
           docker build -t "${IMAGE}:${SHA_TAG}" .
