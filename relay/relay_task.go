@@ -377,9 +377,19 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapperLocal(errors.New("upstream returned an empty response"), "fail_to_fetch_task", http.StatusBadGateway)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	// 异步提交的上游回执不必是 200：dsh-api 等按 HTTP 语义用 202 Accepted 表示
+	// “任务已入队”。只要落在 2xx 就交给适配器解析，非 2xx 才按上游错误上报。
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		message := string(responseBody)
+		// 插件适配器能把上游错误信封（如 dsh 的 {ok:false,error:{code,message}}）
+		// 渲染成可读文案；不适配时仍回退到原始响应体，保持既有行为。
+		if formatter, ok := adaptor.(channel.TaskSubmitErrorFormatter); ok {
+			if formatted := strings.TrimSpace(formatter.FormatSubmitError(c, info, resp, responseBody)); formatted != "" {
+				message = formatted
+			}
+		}
+		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", message), "fail_to_fetch_task", resp.StatusCode)
 	}
 
 	// 10. Parse only. The controller presents the response after the durable

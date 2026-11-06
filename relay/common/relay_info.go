@@ -1052,6 +1052,12 @@ type TaskSubmitReq struct {
 	Seconds        string                 `json:"seconds,omitempty"`
 	InputReference string                 `json:"input_reference,omitempty"`
 	Metadata       map[string]interface{} `json:"metadata,omitempty"`
+	// SessionID 与 Preset 是会话式任务插件（如 dsh）的续接字段。固定插件入口
+	// （/v1/tasks/:key、原生路由）把原始 JSON 直接交给插件，而 /pg 与 legacy 任务
+	// 入口按本结构体解码并回填 task_request：不声明这两个字段，续轮会静默丢掉
+	// 会话 id 与预设。非会话插件忽略它们。
+	SessionID string `json:"sessionId,omitempty"`
+	Preset    string `json:"preset,omitempty"`
 }
 
 func (t *TaskSubmitReq) GetPrompt() string {

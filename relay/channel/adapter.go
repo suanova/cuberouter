@@ -80,6 +80,15 @@ type TaskAdaptor interface {
 	ParseTaskResult(task *model.Task, resp *http.Response, respBody []byte) (*relaycommon.TaskInfo, error)
 }
 
+// TaskSubmitErrorFormatter is an optional capability: a task adaptor that can
+// turn a non-2xx submit response into a readable error message. The gateway
+// calls it instead of echoing the raw upstream body, so plugin adaptors can
+// surface upstream codes such as dsh `unknown_session` as text. Returning ""
+// keeps the raw-body fallback.
+type TaskSubmitErrorFormatter interface {
+	FormatSubmitError(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, body []byte) string
+}
+
 // TaskSubmitResponse is the transport-independent result of parsing an
 // upstream task submission. Parsing must not write to the client response.
 type TaskSubmitResponse struct {

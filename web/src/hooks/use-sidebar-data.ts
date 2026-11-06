@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as
@@ -18,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  Bot,
   Box,
   Building2,
   ChartColumn,
@@ -64,6 +66,11 @@ export function useSidebarData(): SidebarData {
             title: t('Playground'),
             url: '/playground',
             icon: FlaskConical,
+          },
+          {
+            title: t('DSH Agent'),
+            url: '/dsh',
+            icon: Bot,
           },
           {
             title: t('Chat'),

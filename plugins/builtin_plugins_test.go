@@ -63,7 +63,7 @@ func TestBuiltInVendorPluginsDeclareNativeRoutesAndLegacyChannelTypes(t *testing
 }
 
 func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
-	expectedKeys := []string{"alibaba", "doubao", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu"}
+	expectedKeys := []string{"alibaba", "doubao", "dsh", "google", "hailuo", "jimeng", "kling", "sora", "sunoapi", "vertex-ai", "vidu"}
 	generation := jsplugin.DefaultRegistry.Generation()
 	require.NotNil(t, generation)
 
@@ -87,6 +87,20 @@ func TestBuiltInTaskPluginResponsesAndUsageContracts(t *testing.T) {
 			registry := jsplugin.NewRegistry()
 			plugin, registerErr := registry.RegisterFactory(source, jsplugin.Options{Key: key})
 			require.NoError(t, registerErr)
+
+			// dsh 是纯驱动插件：任务经通用任务 API 驱动，模型调用由 harness 侧
+			// 计费，因此既不声明 openai_responses 协议，也没有可上报的用量事实。
+			if key == "dsh" {
+				assert.Equal(t, "per_task", plugin.Meta.FetchMode)
+				assert.Empty(t, plugin.Meta.Protocols)
+				assert.Empty(t, plugin.Meta.UsageSchema)
+				for _, hook := range []string{"buildSubmitRequest", "parseSubmitResponse", "buildQueryRequest", "parseTaskResult"} {
+					callable, callableErr := plugin.Engine.HasExport(t.Context(), hook)
+					require.NoError(t, callableErr)
+					assert.True(t, callable, hook)
+				}
+				return
+			}
 
 			var responsesClaim jsplugin.ProtocolClaim
 			foundResponses := false

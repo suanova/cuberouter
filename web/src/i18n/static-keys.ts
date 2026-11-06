@@ -962,4 +962,9 @@ export const STATIC_I18N_KEYS = [
   // Image jobs, drawing tools and official samples.
   'This job runs on the server. You may refresh and reconnect without generating again.',
   'Use 256–1664 pixels per side, multiples of 32, and at most 2,097,152 pixels in total.',
+
+  // DSH agent preset labels are passed into t() from constants.
+  'Default preset',
+  'Minimal',
+  'Cordis',
 ] as const

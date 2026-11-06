@@ -1,0 +1,171 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { BotIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from '@/components/ai-elements/conversation'
+import { Loader } from '@/components/ai-elements/loader'
+import { Message, MessageContent } from '@/components/ai-elements/message'
+import { Response } from '@/components/ai-elements/response'
+import { Shimmer } from '@/components/ai-elements/shimmer'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+
+import type { DshTurn } from '../types'
+import { ToolCallsPanel } from './tool-calls-panel'
+import { TurnArtifacts } from './turn-artifacts'
+
+type DshThreadProps = {
+  turns: DshTurn[]
+  sessionExpired: boolean
+}
+
+function RunningIndicator(props: { startedAt: number }) {
+  const { t } = useTranslation()
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    const update = () =>
+      setSeconds(Math.max(0, Math.floor((Date.now() - props.startedAt) / 1000)))
+    update()
+    const timer = window.setInterval(update, 1000)
+    return () => window.clearInterval(timer)
+  }, [props.startedAt])
+
+  return (
+    <div className='space-y-1 py-1'>
+      <div className='flex items-center gap-2'>
+        <Loader />
+        <Shimmer className='text-sm' duration={1}>
+          {t('Agent is working…')}
+        </Shimmer>
+        <span className='text-muted-foreground text-xs'>
+          {t('{{seconds}}s', { seconds })}
+        </span>
+      </div>
+      <p className='text-muted-foreground text-xs'>
+        {t(
+          'DSH returns the reply after the whole turn finishes, so output may arrive at once.'
+        )}
+      </p>
+    </div>
+  )
+}
+
+function TurnResult(props: { turn: DshTurn }) {
+  const { t } = useTranslation()
+
+  if (props.turn.status === 'running') {
+    return <RunningIndicator startedAt={props.turn.createdAt} />
+  }
+
+  if (props.turn.status === 'failed') {
+    return (
+      <Alert variant='destructive'>
+        <AlertTitle>{t('Task failed')}</AlertTitle>
+        <AlertDescription>
+          {props.turn.error || t('The agent task failed.')}
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  const truncated = props.turn.status === 'max-tokens'
+  const canceled = props.turn.status === 'canceled'
+
+  return (
+    <div className='w-full space-y-3'>
+      <ToolCallsPanel toolCalls={props.turn.toolCalls} />
+      {truncated && (
+        <Alert>
+          <AlertTitle>{t('Reply truncated')}</AlertTitle>
+          <AlertDescription>
+            {t('The agent reached its output token limit.')}
+          </AlertDescription>
+        </Alert>
+      )}
+      {canceled && (
+        <Alert>
+          <AlertTitle>{t('Task canceled')}</AlertTitle>
+          <AlertDescription>
+            {t('The agent turn was canceled before it finished.')}
+          </AlertDescription>
+        </Alert>
+      )}
+      {props.turn.reply ? (
+        <MessageContent variant='flat'>
+          <Response final>{props.turn.reply}</Response>
+        </MessageContent>
+      ) : (
+        <p className='text-muted-foreground text-sm'>
+          {t('The agent finished without a text reply.')}
+        </p>
+      )}
+      {props.turn.taskId && <TurnArtifacts taskId={props.turn.taskId} />}
+    </div>
+  )
+}
+
+export function DshThread(props: DshThreadProps) {
+  const { t } = useTranslation()
+
+  return (
+    <Conversation>
+      <ConversationContent className='mx-auto w-full max-w-3xl space-y-5'>
+        {props.turns.length === 0 ? (
+          <ConversationEmptyState
+            description={t(
+              'Ask the agent to inspect code, run commands, or walk through a problem.'
+            )}
+            icon={<BotIcon className='size-8' />}
+            title={t('Start a DSH conversation')}
+          />
+        ) : (
+          props.turns.map((turn) => (
+            <div className='space-y-3' key={turn.id}>
+              <Message from='user'>
+                <MessageContent variant='flat'>{turn.prompt}</MessageContent>
+              </Message>
+              <Message from='assistant'>
+                <TurnResult turn={turn} />
+              </Message>
+            </div>
+          ))
+        )}
+        {props.sessionExpired && (
+          <Alert>
+            <AlertTitle>{t('Session expired')}</AlertTitle>
+            <AlertDescription>
+              {t(
+                'This DSH session can no longer be continued because the harness restarted or the session expired. Start a new conversation to keep going.'
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+      </ConversationContent>
+      <ConversationScrollButton />
+    </Conversation>
+  )
+}

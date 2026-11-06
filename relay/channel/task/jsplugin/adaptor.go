@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -537,6 +538,34 @@ func (a *TaskAdaptor) ParseResponse(c *gin.Context, resp *http.Response, info *r
 		Immediate:      immediate,
 		PluginState:    pluginState,
 	}, nil
+}
+
+// FormatSubmitError asks the plugin's parseSubmitResponse hook to describe a
+// non-2xx submit response (dsh-api answers {ok:false,error:{code,message}}, and
+// the hook renders that as "dsh <code>: <message>"). HookError.Message is the
+// plugin's own text without the "plugin ... hook ... failed" wrapper. A hook
+// that accepts the body (returns a task id) yields "", so the caller keeps the
+// raw-body fallback: the submit still failed regardless of what the hook says.
+func (a *TaskAdaptor) FormatSubmitError(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response, body []byte) string {
+	if resp == nil || c == nil || !a.hasHook(c.Request.Context(), "parseSubmitResponse") {
+		return ""
+	}
+	responseBody := any(string(body))
+	var decoded any
+	if common.Unmarshal(body, &decoded) == nil {
+		responseBody = decoded
+	}
+	headers := make(map[string][]string, len(resp.Header))
+	maps.Copy(headers, resp.Header)
+	_, err := a.plugin.Engine.Call(c.Request.Context(), "parseSubmitResponse", a.submitContext(c, info), map[string]any{"statusCode": resp.StatusCode, "headers": headers, "body": responseBody})
+	if err == nil {
+		return ""
+	}
+	var hookErr *pluginruntime.HookError
+	if errors.As(err, &hookErr) && strings.TrimSpace(hookErr.Message) != "" {
+		return hookErr.Message
+	}
+	return ""
 }
 
 func (a *TaskAdaptor) GetModelList() []string { return append([]string(nil), a.plugin.Meta.Models...) }

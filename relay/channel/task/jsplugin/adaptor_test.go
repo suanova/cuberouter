@@ -79,6 +79,48 @@ func TestTaskAdaptorRejectsDeprecatedClientResponse(t *testing.T) {
 	assert.Contains(t, taskErr.Error.Error(), "must not return clientResponse")
 }
 
+// submitErrorPlugin 模拟 dsh 一类把错误信封交给插件的上游：非 2xx 时
+// parseSubmitResponse 抛错，宿主应把这条文案回给客户端，而不是原始 JSON。
+const submitErrorPlugin = `
+export const meta = {apiVersion:1,key:"submit-error",name:"Submit Error",version:"1.0.0",author:{name:"Test"},models:["m"],fetchMode:"per_task"};
+export function buildSubmitRequest(ctx) { return {url: ctx.baseUrl + "/submit", method: "POST", body: {}}; }
+export function parseSubmitResponse(ctx, resp) {
+  const error = resp.body && resp.body.error ? resp.body.error : {};
+  throw new Error("dsh " + error.code + ": " + error.message);
+}
+export function buildQueryRequest() { return {url: "https://example.com"}; }
+export function parseTaskResult() { return {status: "SUCCESS"}; }
+`
+
+func TestTaskAdaptorFormatsSubmitErrorWithPluginHook(t *testing.T) {
+	plugin, err := pluginruntime.NewRegistry().Register(submitErrorPlugin, pluginruntime.Options{})
+	require.NoError(t, err)
+	adaptor := New(plugin)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"}}
+	adaptor.Init(info)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/tasks/submit-error", nil)
+	response := &http.Response{StatusCode: http.StatusNotFound, Header: make(http.Header)}
+	body := []byte(`{"ok":false,"error":{"code":"unknown_session","message":"session gone"}}`)
+
+	// HookError.Message 是插件文案本身，不带 "plugin ... hook ... failed" 包装。
+	assert.Equal(t, "dsh unknown_session: session gone", adaptor.FormatSubmitError(c, info, response, body))
+}
+
+func TestTaskAdaptorSubmitErrorKeepsRawFallbackWhenHookAcceptsBody(t *testing.T) {
+	plugin, err := pluginruntime.NewRegistry().Register(mockPlugin, pluginruntime.Options{})
+	require.NoError(t, err)
+	adaptor := New(plugin)
+	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, TaskRelayInfo: &relaycommon.TaskRelayInfo{PublicTaskID: "task_public"}}
+	adaptor.Init(info)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+	response := &http.Response{StatusCode: http.StatusBadRequest, Header: make(http.Header)}
+
+	// 插件没有拒绝这个响应体时不提供文案，调用方回退到原始响应体。
+	assert.Empty(t, adaptor.FormatSubmitError(c, info, response, []byte(`{"id":"upstream"}`)))
+}
+
 func TestTaskAdaptorBuildsMultipartFromOpaqueFileReference(t *testing.T) {
 	source := `
 export const meta = {apiVersion:1,key:"multipart",name:"Multipart",version:"1.0.0",author:{name:"Test"},models:["m"],fetchMode:"per_task"};

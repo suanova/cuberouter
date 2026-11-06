@@ -85,6 +85,20 @@ func SetRelayRouter(router *gin.Engine) {
 		playgroundVideoRouter.POST("/generations", controller.PlaygroundVideo)
 		playgroundVideoRouter.GET("/generations/:task_id", controller.PlaygroundVideoFetch)
 	}
+
+	// Agent 页面（DSH 等任务插件）的会话鉴权入口（/pg/agent/*）。与 /pg/video
+	// 同构：登录会话 + 统一任务体，Task Plugin 渠道需要在选渠道前放行，所以
+	// AllowTaskPluginChannel 单独成组并排在 Distribute 之前。
+	playgroundAgentRouter := router.Group("/pg/agent")
+	playgroundAgentRouter.Use(middleware.RouteTag("relay"))
+	playgroundAgentRouter.Use(middleware.RelayCapacity())
+	playgroundAgentRouter.Use(middleware.SystemPerformanceCheck())
+	playgroundAgentRouter.Use(middleware.AllowTaskPluginChannel())
+	playgroundAgentRouter.Use(middleware.UserAuth(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
+	{
+		playgroundAgentRouter.POST("/tasks", controller.PlaygroundAgentTask)
+		playgroundAgentRouter.GET("/tasks/:task_id", controller.PlaygroundAgentTaskFetch)
+	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))
 	relayV1Router.Use(middleware.RelayCapacity())

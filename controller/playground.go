@@ -140,7 +140,7 @@ func PlaygroundVideoFetch(c *gin.Context) {
 		}
 	}()
 
-	preparePlaygroundVideoFetchScope(c)
+	preparePlaygroundTaskFetchScope(c)
 	if _, newAPIError = preparePlaygroundContext(c, types.RelayFormatTask); newAPIError != nil {
 		return
 	}
@@ -148,16 +148,59 @@ func PlaygroundVideoFetch(c *gin.Context) {
 	RelayTaskFetch(c)
 }
 
-// preparePlaygroundVideoFetchScope 在视频轮询前把任务归属者的计费作用域还原到上下文。
+// PlaygroundAgentTask 是 /pg/agent/tasks 的会话鉴权任务提交入口（Agent 页面使用）。
+// 与 PlaygroundVideo 相同：登录会话 + 临时 token 上下文；请求体是统一任务体，
+// 走标准任务 relay（异步：提交即返回 task_id，前端轮询 PlaygroundAgentTaskFetch）。
+func PlaygroundAgentTask(c *gin.Context) {
+	var newAPIError *types.NewAPIError
+
+	defer func() {
+		if newAPIError != nil {
+			c.JSON(newAPIError.StatusCode, gin.H{
+				"error": newAPIError.ToOpenAIError(),
+			})
+		}
+	}()
+
+	if _, newAPIError = preparePlaygroundContext(c, types.RelayFormatTask); newAPIError != nil {
+		return
+	}
+
+	RelayTask(c)
+}
+
+// PlaygroundAgentTaskFetch 是 /pg/agent/tasks/:task_id 的会话鉴权任务查询入口。
+// 按 task_id 在本用户作用域内查任务并回传统一 TaskResponse，data 中带插件的原始
+// 任务数据（例如 DSH 的 reply/transcript/toolCalls/sessionId）。
+func PlaygroundAgentTaskFetch(c *gin.Context) {
+	var newAPIError *types.NewAPIError
+
+	defer func() {
+		if newAPIError != nil {
+			c.JSON(newAPIError.StatusCode, gin.H{
+				"error": newAPIError.ToOpenAIError(),
+			})
+		}
+	}()
+
+	preparePlaygroundTaskFetchScope(c)
+	if _, newAPIError = preparePlaygroundContext(c, types.RelayFormatTask); newAPIError != nil {
+		return
+	}
+
+	RelayTaskFetch(c)
+}
+
+// preparePlaygroundTaskFetchScope 在任务轮询前把任务归属者的计费作用域还原到上下文。
 //
-// /pg/video 的提交可能由组织额度兜底承担（billing_account_type=organization），
+// /pg/video 与 /pg/agent 的提交可能由组织额度兜底承担（billing_account_type=organization），
 // 而任务查询按上下文作用域隔离（AsyncTaskScopeFromContext）；轮询若固定用个人
 // 作用域会查不到任务。这里按 task_id + 调用者归属无作用域加载任务，命中则把任务
 // 行上的作用域写回上下文；不属于调用者或加载失败时保持现状（后续查询自然 not-found）。
-func preparePlaygroundVideoFetchScope(c *gin.Context) {
+func preparePlaygroundTaskFetchScope(c *gin.Context) {
 	task, exist, err := model.GetByTaskIdAndUser(c.Param("task_id"), c.GetInt("id"))
 	if err != nil {
-		common.SysLog(fmt.Sprintf("playground video fetch: load task failed (taskId=%s): %s", c.Param("task_id"), err.Error()))
+		common.SysLog(fmt.Sprintf("playground task fetch: load task failed (taskId=%s): %s", c.Param("task_id"), err.Error()))
 		return
 	}
 	if !exist || task == nil {

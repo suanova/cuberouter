@@ -17,6 +17,8 @@
   "Regenerate token": "Regenerate token",
   "Regenerating immediately invalidates any existing token.": "Regenerating immediately invalidates any existing token.",
   "Save this token now. You won't be able to view it again after closing this dialog.": "Save this token now. You won't be able to view it again after closing this dialog.",
+  "Tokens": "Tokens",
   "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.": "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.",
-  "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap."
+  "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.",
+  "Cordis": "Cordis"
 }

@@ -138,7 +138,7 @@ func TestPreparePlaygroundVideoFetchScopeRestoresOwnedTaskScope(t *testing.T) {
 			c.Params = gin.Params{{Key: "task_id", Value: task.TaskID}}
 			c.Set("id", test.taskUserId)
 
-			preparePlaygroundVideoFetchScope(c)
+			preparePlaygroundTaskFetchScope(c)
 
 			assert.Equal(t, test.wantBillingType, common.GetContextKeyString(c, constant.ContextKeyBillingAccountType))
 			assert.Equal(t, test.wantBillingId, common.GetContextKeyInt(c, constant.ContextKeyBillingAccountId))
@@ -169,7 +169,7 @@ func TestPreparePlaygroundVideoFetchScopeIgnoresOtherUsersTask(t *testing.T) {
 	c.Params = gin.Params{{Key: "task_id", Value: task.TaskID}}
 	c.Set("id", 7)
 
-	preparePlaygroundVideoFetchScope(c)
+	preparePlaygroundTaskFetchScope(c)
 
 	assert.Empty(t, common.GetContextKeyString(c, constant.ContextKeyBillingAccountType))
 	assert.Equal(t, 0, common.GetContextKeyInt(c, constant.ContextKeyBillingAccountId))
