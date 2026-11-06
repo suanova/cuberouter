@@ -194,22 +194,22 @@ export function getOrganizationTabs(
       limitedView: !capabilities.can_manage_all_tokens,
     },
     {
-      key: 'logs',
-      // Members see their organization-billed rows in the usage logs personal
-      // page, not here. This tab is the organization-wide view and requires the
-      // wide-data grant.
-      visible:
-        capabilities.can_view_organization_logs &&
-        capabilities.can_view_organization_wide_data,
-      limitedView,
-    },
-    {
       key: 'usage',
       // Like Logs and Tasks: members read their own organization-billed usage
       // on the personal /usage page. This tab is the organization-wide view
       // and requires the wide grant.
       visible:
         capabilities.can_view_organization_usage &&
+        capabilities.can_view_organization_wide_data,
+      limitedView,
+    },
+    {
+      key: 'logs',
+      // Members see their organization-billed rows in the usage logs personal
+      // page, not here. This tab is the organization-wide view and requires the
+      // wide-data grant.
+      visible:
+        capabilities.can_view_organization_logs &&
         capabilities.can_view_organization_wide_data,
       limitedView,
     },
