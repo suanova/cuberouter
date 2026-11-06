@@ -164,7 +164,9 @@ export function DshAgent() {
           onPresetChange={handlePresetChange}
           preset={activeConversation?.preset ?? ''}
         />
-        <div className='min-h-0 flex-1 overflow-hidden'>
+        {/* 滚动容器必须是受限的 flex 列：StickToBottom 只在父级高度确定时
+            才能把内部内容区变成可滚动区域，否则消息区会被外层裁掉。 */}
+        <div className='flex min-h-0 flex-1 flex-col overflow-hidden'>
           <DshThread
             sessionExpired={sessionExpired}
             turns={activeConversation?.turns ?? []}
