@@ -26,14 +26,18 @@ describe('MaintenanceInfoSection', () => {
   test('shows version and uptime without an update check control', () => {
     render(
       <MaintenanceInfoSection
-        currentVersion='v2.0.0-fafdd71'
+        currentVersion='latest-fafdd71'
         startTime={1_700_000_000}
       />
     )
 
     expect(screen.getByText('Current version')).toBeInTheDocument()
-    expect(screen.getByText('v2.0.0-fafdd71')).toBeInTheDocument()
+    expect(screen.getByText('latest-fafdd71')).toBeInTheDocument()
     expect(screen.getByText('Uptime since')).toBeInTheDocument()
+    expect(
+      screen.getByText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Unknown')).not.toBeInTheDocument()
     expect(
       screen.queryByRole('button', { name: 'Check for updates' })
     ).not.toBeInTheDocument()

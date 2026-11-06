@@ -28,6 +28,9 @@ type MaintenanceInfoSectionProps = {
   startTime?: number | null
 }
 
+/**
+ * Read-only maintenance overview: the running build's version and uptime.
+ */
 export function MaintenanceInfoSection(props: MaintenanceInfoSectionProps) {
   const { t } = useTranslation()
   const uptime = props.startTime
