@@ -164,6 +164,8 @@ export interface GetSelfUsageParams {
   billing_account_type?: string
   organization_id?: number
   overview_organization_id?: number
+  /** "hour" asks the backend for hourly chart buckets; the table stays daily. */
+  chart_granularity?: 'hour'
   p: number
   page_size: number
 }

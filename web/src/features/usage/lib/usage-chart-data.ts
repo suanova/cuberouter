@@ -30,9 +30,16 @@ export function usageChartItems(
   points: SelfUsageChartPoint[]
 ): QuotaDataItem[] {
   return points.map((point) => {
-    const [year, month, day] = point.date.split('-').map(Number)
+    const [datePart, timePart] = point.date.split(' ')
+    const [year, month, day] = datePart.split('-').map(Number)
+    // Day buckets have no time part; a single-day chart arrives as
+    // "YYYY-MM-DD HH:00" and keeps the exact local hour.
+    const parsedHour = timePart ? Number.parseInt(timePart, 10) : 0
+    const hour = Number.isFinite(parsedHour) ? parsedHour : 0
     return {
-      created_at: Math.floor(new Date(year, month - 1, day).getTime() / 1000),
+      created_at: Math.floor(
+        new Date(year, month - 1, day, hour).getTime() / 1000
+      ),
       model_name: point.model_name,
       count: point.request_count,
       quota: point.quota,

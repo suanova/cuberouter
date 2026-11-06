@@ -47,6 +47,7 @@ interface ConsumptionDistributionChartProps {
   timeGranularity?: TimeGranularity
   defaultChartType?: ConsumptionDistributionChartType
   minTrendPoints?: number
+  timePoints?: string[]
   formatQuota?: (rawQuota: number) => string
   showChartTypeToggle?: boolean
 }
@@ -112,6 +113,7 @@ export function ConsumptionDistributionChart(
         chartRadius,
         {
           minTrendPoints: props.minTrendPoints,
+          timePoints: props.timePoints,
           formatQuota: props.formatQuota,
         }
       ),
@@ -119,6 +121,7 @@ export function ConsumptionDistributionChart(
       props.data,
       props.loading,
       props.minTrendPoints,
+      props.timePoints,
       props.formatQuota,
       timeGranularity,
       t,
@@ -135,6 +138,8 @@ export function ConsumptionDistributionChart(
     props.data.length,
     resolvedTheme,
     customization.preset,
+    timeGranularity,
+    props.timePoints?.length ?? 0,
   ].join('-')
 
   return (

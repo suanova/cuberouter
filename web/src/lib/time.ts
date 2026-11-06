@@ -24,7 +24,7 @@ import dayjs from '@/lib/dayjs'
 /**
  * Time granularity type
  */
-export type TimeGranularity = 'hour' | 'day' | 'week'
+export type TimeGranularity = 'hour' | 'hour-of-day' | 'day' | 'week'
 
 /**
  * Convert Date object to Unix timestamp (seconds)
@@ -168,6 +168,8 @@ export function formatChartTime(
 
   if (granularity === 'hour') {
     result += ` ${d.format('HH')}:00`
+  } else if (granularity === 'hour-of-day') {
+    result = `${d.format('HH')}:00`
   } else if (granularity === 'week') {
     const weekEnd = d.add(6, 'day')
     result += ` - ${weekEnd.format('MM-DD')}`

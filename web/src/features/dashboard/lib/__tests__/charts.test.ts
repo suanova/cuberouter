@@ -53,6 +53,25 @@ describe('processChartData options', () => {
     ).toBe(1)
   })
 
+  test('uses the caller time points as the x-axis buckets', () => {
+    const timePoints = ['00:00', '08:00', '10:00', '15:00', '23:00']
+    const chart = processChartData(
+      singleDay(),
+      'hour-of-day',
+      undefined,
+      undefined,
+      { minTrendPoints: 0, timePoints }
+    )
+    const values = chart.spec_line.data[0].values as Array<{
+      Time: string
+      rawQuota: number
+    }>
+    expect([...new Set(values.map((value) => value.Time))]).toEqual(timePoints)
+    expect(
+      values.find((value) => value.Time === '10:00')?.rawQuota
+    ).toBe(10)
+  })
+
   test('formats the quota total with the caller formatter', () => {
     const chart = processChartData(singleDay(), 'day', undefined, undefined, {
       formatQuota: (quota) => `¥${quota.toFixed(2)}`,

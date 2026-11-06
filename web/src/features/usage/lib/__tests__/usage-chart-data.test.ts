@@ -42,6 +42,26 @@ describe('usageChartItems', () => {
     ])
   })
 
+  test('maps hourly buckets to the exact local hour', () => {
+    expect(
+      usageChartItems([
+        {
+          date: '2026-11-03 10:00',
+          model_name: 'gpt-4o',
+          request_count: 2,
+          quota: 30,
+        },
+      ])
+    ).toEqual([
+      {
+        created_at: Math.floor(new Date(2026, 10, 3, 10).getTime() / 1000),
+        model_name: 'gpt-4o',
+        count: 2,
+        quota: 30,
+      },
+    ])
+  })
+
   test('returns an empty series for an empty response', () => {
     expect(usageChartItems([])).toEqual([])
   })

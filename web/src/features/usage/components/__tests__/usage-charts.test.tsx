@@ -29,6 +29,7 @@ vi.mock(
       data: Array<{ count?: number }>
       loading?: boolean
       timeGranularity?: string
+      timePoints?: string[]
       minTrendPoints?: number
       formatQuota?: (rawQuota: number) => string
       showChartTypeToggle?: boolean
@@ -38,6 +39,7 @@ vi.mock(
         data-count={props.data[0]?.count}
         data-loading={props.loading}
         data-granularity={props.timeGranularity}
+        data-time-points={props.timePoints?.length ?? 0}
         data-window={props.minTrendPoints}
         data-has-formatter={Boolean(props.formatQuota)}
         data-show-toggle={props.showChartTypeToggle}
@@ -47,6 +49,28 @@ vi.mock(
 )
 
 describe('UsageCharts', () => {
+  test('draws a single day as all 24 hourly buckets', () => {
+    render(
+      <UsageCharts
+        points={[
+          {
+            date: '2026-11-03 10:00',
+            model_name: 'gpt-4o',
+            request_count: 3,
+            quota: 37,
+          },
+        ]}
+        loading={false}
+        singleDay
+      />
+    )
+
+    const chart = screen.getByTestId('consumption-chart')
+    expect(chart).toHaveAttribute('data-granularity', 'hour-of-day')
+    expect(chart).toHaveAttribute('data-time-points', '24')
+    expect(chart).toHaveAttribute('data-count', '3')
+  })
+
   test('renders the cost bar chart from the shared series without extra padding', () => {
     render(
       <UsageCharts
@@ -66,6 +90,7 @@ describe('UsageCharts', () => {
     expect(chart).toHaveAttribute('data-count', '3')
     expect(chart).toHaveAttribute('data-loading', 'false')
     expect(chart).toHaveAttribute('data-granularity', 'day')
+    expect(chart).toHaveAttribute('data-time-points', '0')
     expect(chart).toHaveAttribute('data-window', '0')
     expect(chart).toHaveAttribute('data-has-formatter', 'true')
     expect(chart).toHaveAttribute('data-show-toggle', 'false')
