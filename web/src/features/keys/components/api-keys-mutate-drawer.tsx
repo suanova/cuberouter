@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { DateTimePicker } from '@/components/datetime-picker'
+import { Dialog } from '@/components/dialog'
 import {
   SideDrawerSection,
   SideDrawerSectionHeader,
@@ -51,6 +52,15 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Sheet,
   SheetClose,
@@ -62,9 +72,15 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  createOrganizationToken,
+  getOrganizations,
+} from '@/features/organization/api'
 import { useStatus } from '@/hooks/use-status'
-import { getUserModels, getUserGroups } from '@/lib/api'
+import { getSelf, getUserModels, getUserGroups } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { getAccountContextCacheKey } from '@/stores/account-context-store'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   createApiKey,
@@ -98,6 +114,8 @@ type ApiKeyMutateDrawerProps = {
   currentRow?: ApiKey
 }
 
+type BillingAccount = 'personal' | 'organization'
+
 export function ApiKeysMutateDrawer({
   open,
   onOpenChange,
@@ -114,12 +132,20 @@ export function ApiKeysMutateDrawer({
     null
   )
   const defaultUseAutoGroup = status?.default_use_auto_group === true
+  const user = useAuthStore((state) => state.auth.user)
+  const [billingAccount, setBillingAccount] = useState<BillingAccount | null>(
+    null
+  )
+  const [selectedOrganizationId, setSelectedOrganizationId] = useState<
+    number | null
+  >(null)
 
-  // Fetch models
+  // Fetch models. Only the edit form exposes the model-limit picker; a create
+  // key is name-only, so the list would be an unused request there.
   const { data: modelsData } = useQuery({
     queryKey: ['user-models'],
     queryFn: getUserModels,
-    enabled: open,
+    enabled: open && isUpdate,
     staleTime: 0,
   })
 
@@ -156,6 +182,76 @@ export function ApiKeysMutateDrawer({
     enabled: open,
     staleTime: 0,
   })
+
+  // The balance decides both the default billing account and whether a
+  // personal key may be created at all. The authenticated user carries a quota,
+  // but it is only as fresh as the last login or wallet refresh — top-ups do
+  // not write it back — so the drawer asks for the current value when it opens.
+  const {
+    data: selfData,
+    isFetched: selfFetched,
+    isError: selfFailed,
+  } = useQuery({
+    queryKey: ['user-self', 'api-key-create', getAccountContextCacheKey()],
+    queryFn: getSelf,
+    enabled: open && !isUpdate,
+    staleTime: 0,
+  })
+  const personalQuota = Number(selfData?.data?.quota ?? user?.quota ?? 0)
+
+  // Organization keys created here are limited to organizations where the
+  // caller is an ordinary member. Owners and administrators keep their full
+  // creation form in the organization workspace, so those organizations are
+  // deliberately not offered.
+  const {
+    data: organizations = [],
+    isFetched: organizationsFetched,
+    isError: organizationsFailed,
+  } = useQuery({
+    queryKey: ['keys', 'billing-organizations', getAccountContextCacheKey()],
+    queryFn: async () => {
+      const result = await getOrganizations()
+      return result.success ? (result.data ?? []) : []
+    },
+    enabled: open && !isUpdate,
+    staleTime: 60 * 1000,
+  })
+
+  const billingOrganizations = useMemo(
+    () =>
+      organizations
+        .filter(
+          (organization) =>
+            organization.status === 'active' &&
+            !organization.capabilities.can_manage_all_tokens
+        )
+        .sort((left, right) => {
+          const leftRemaining = left.quota - left.used_quota
+          const rightRemaining = right.quota - right.used_quota
+          if (leftRemaining !== rightRemaining) {
+            return rightRemaining - leftRemaining
+          }
+          return left.id - right.id
+        }),
+    [organizations]
+  )
+  const organizationItems = useMemo(
+    () =>
+      billingOrganizations.map((organization) => ({
+        value: String(organization.id),
+        label: organization.name,
+      })),
+    [billingOrganizations]
+  )
+  const defaultOrganizationId = billingOrganizations[0]?.id ?? null
+  const defaultBillingAccount: BillingAccount =
+    personalQuota <= 0 && defaultOrganizationId !== null
+      ? 'organization'
+      : 'personal'
+  const activeBillingAccount = billingAccount ?? defaultBillingAccount
+  const activeOrganizationId = selectedOrganizationId ?? defaultOrganizationId
+  const personalCreationBlocked =
+    !isUpdate && activeBillingAccount === 'personal' && personalQuota <= 0
 
   const models = modelsData?.data || []
   const groups = useMemo<ApiKeyGroupOption[]>(
@@ -217,6 +313,8 @@ export function ApiKeysMutateDrawer({
     }
     if (isUpdate && (!apiKeyFetched || apiKeyFetching)) return
     if (!isUpdate && statusLoading) return
+    if (!isUpdate && !selfFetched && !selfFailed) return
+    if (!isUpdate && !organizationsFetched && !organizationsFailed) return
 
     const target = isUpdate && currentRow ? `update:${currentRow.id}` : 'create'
     if (initializedTarget === target) return
@@ -255,6 +353,10 @@ export function ApiKeysMutateDrawer({
     availableAutoGroupNames,
     maxAutoGroups,
     initializedTarget,
+    selfFetched,
+    selfFailed,
+    organizationsFetched,
+    organizationsFailed,
   ])
 
   const formTarget =
@@ -283,11 +385,9 @@ export function ApiKeysMutateDrawer({
   const onSubmit = async (data: ApiKeyFormValues) => {
     setIsSubmitting(true)
     try {
-      const basePayload = transformFormDataToPayload(data)
-
       if (isUpdate && currentRow) {
         const result = await updateApiKey({
-          ...basePayload,
+          ...transformFormDataToPayload(data),
           id: currentRow.id,
         })
         if (result.success) {
@@ -297,36 +397,43 @@ export function ApiKeysMutateDrawer({
         } else {
           toast.error(result.message || t(ERROR_MESSAGES.UPDATE_FAILED))
         }
-      } else {
-        // Create mode - handle batch creation
-        const count = data.tokenCount || 1
-        let successCount = 0
+        return
+      }
 
-        for (let i = 0; i < count; i++) {
-          const result = await createApiKey({
-            ...basePayload,
-            name:
-              i === 0 && data.name
-                ? data.name
-                : `${data.name || 'default'}-${Math.random().toString(36).slice(2, 8)}`,
-          })
-          if (result.success) {
-            successCount++
-          } else {
-            toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
-            break
-          }
+      if (personalCreationBlocked) {
+        toast.error(
+          t('Insufficient balance. Please top up or contact an administrator.')
+        )
+        return
+      }
+
+      if (activeBillingAccount === 'organization') {
+        if (!activeOrganizationId) {
+          toast.error(t('Please select an organization'))
+          return
         }
-
-        if (successCount > 0) {
-          toast.success(
-            t('Successfully created {{count}} API Key(s)', {
-              count: successCount,
-            })
-          )
+        const result = await createOrganizationToken(
+          activeOrganizationId,
+          { name: data.name.trim() },
+          { accountContextId: activeOrganizationId }
+        )
+        if (result.success) {
+          toast.success(t('Organization key created'))
           onOpenChange(false)
           triggerRefresh()
+        } else {
+          toast.error(result.message || t('Failed to create organization key'))
         }
+        return
+      }
+
+      const result = await createApiKey(transformFormDataToPayload(data))
+      if (result.success) {
+        toast.success(t(SUCCESS_MESSAGES.API_KEY_CREATED))
+        onOpenChange(false)
+        triggerRefresh()
+      } else {
+        toast.error(result.message || t(ERROR_MESSAGES.CREATE_FAILED))
       }
     } catch {
       toast.error(t(ERROR_MESSAGES.UNEXPECTED))
@@ -357,6 +464,154 @@ export function ApiKeysMutateDrawer({
   const quotaPlaceholder = t('Enter the native quota amount')
   const autoGroupsMode = form.watch('auto_groups_mode')
   const unlimitedQuota = form.watch('unlimited_quota')
+  if (!isUpdate) {
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={(value) => {
+          onOpenChange(value)
+          if (!value) {
+            form.reset()
+            setBillingAccount(null)
+            setSelectedOrganizationId(null)
+          }
+        }}
+        title={t('Create API Key')}
+        contentClassName='sm:max-w-lg'
+        bodyClassName='space-y-5'
+        footer={
+          <>
+            <Button
+              type='button'
+              variant='outline'
+              onClick={() => onOpenChange(false)}
+              disabled={isSubmitting}
+            >
+              {t('Close')}
+            </Button>
+            <Button
+              type='submit'
+              form='api-key-create-form'
+              disabled={
+                !isFormInitialized || isSubmitting || personalCreationBlocked
+              }
+            >
+              {isSubmitting ? t('Saving...') : t('Create')}
+            </Button>
+          </>
+        }
+      >
+        <Form {...form}>
+          <form
+            id='api-key-create-form'
+            onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+            aria-busy={!isFormInitialized}
+            inert={!isFormInitialized || isSubmitting ? true : undefined}
+            className='space-y-5'
+          >
+            <div className='space-y-3'>
+              <div>
+                <div className='text-sm font-medium'>
+                  {t('Billing Account')}
+                </div>
+                <p className='text-muted-foreground mt-1 text-xs'>
+                  {t('Choose who pays for the requests made with this key')}
+                </p>
+              </div>
+              <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4'>
+                <RadioGroup
+                  value={activeBillingAccount}
+                  onValueChange={(value) =>
+                    setBillingAccount(value as BillingAccount)
+                  }
+                  className='flex w-auto flex-wrap items-center gap-4'
+                >
+                  <div className='flex items-center gap-2'>
+                    <RadioGroupItem
+                      value='personal'
+                      id='api-key-billing-personal'
+                    />
+                    <Label
+                      htmlFor='api-key-billing-personal'
+                      className='cursor-pointer font-normal'
+                    >
+                      {t('Personal')}
+                    </Label>
+                  </div>
+                  {organizationItems.length > 0 && (
+                    <div className='flex items-center gap-2'>
+                      <RadioGroupItem
+                        value='organization'
+                        id='api-key-billing-organization'
+                      />
+                      <Label
+                        htmlFor='api-key-billing-organization'
+                        className='cursor-pointer font-normal'
+                      >
+                        {t('Organization')}
+                      </Label>
+                    </div>
+                  )}
+                </RadioGroup>
+                {organizationItems.length > 0 && (
+                  <Select
+                    items={organizationItems}
+                    value={String(activeOrganizationId)}
+                    onValueChange={(value) =>
+                      setSelectedOrganizationId(Number(value))
+                    }
+                    disabled={activeBillingAccount !== 'organization'}
+                  >
+                    <SelectTrigger
+                      className='w-full sm:w-64'
+                      aria-label={t('Select an organization')}
+                    >
+                      <SelectValue placeholder={t('Select an organization')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {organizationItems.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+              {activeBillingAccount === 'organization' && (
+                <p className='text-muted-foreground text-xs'>
+                  {t(
+                    "Quota, expiration and model access are set by the organization's policy."
+                  )}
+                </p>
+              )}
+              {personalCreationBlocked && (
+                <p className='text-destructive text-xs'>
+                  {t(
+                    'Insufficient balance. Please top up or contact an administrator.'
+                  )}
+                </p>
+              )}
+            </div>
+
+            <FormField
+              control={form.control}
+              name='name'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Name')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} placeholder={t('Enter a name')} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </form>
+        </Form>
+      </Dialog>
+    )
+  }
 
   return (
     <Sheet
@@ -372,13 +627,9 @@ export function ApiKeysMutateDrawer({
         className={sideDrawerContentClassName('max-w-none sm:!max-w-[620px]')}
       >
         <SheetHeader className={sideDrawerHeaderClassName()}>
-          <SheetTitle>
-            {isUpdate ? t('Update API Key') : t('Create API Key')}
-          </SheetTitle>
+          <SheetTitle>{t('Update API Key')}</SheetTitle>
           <SheetDescription>
-            {isUpdate
-              ? t('Update the API key by providing necessary info.')
-              : t('Add a new API key by providing necessary info.')}
+            {t('Update the API key by providing necessary info.')}
           </SheetDescription>
         </SheetHeader>
         <Form {...form}>
@@ -570,37 +821,6 @@ export function ApiKeysMutateDrawer({
                   </FormItem>
                 )}
               />
-
-              {!isUpdate && (
-                <FormField
-                  control={form.control}
-                  name='tokenCount'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Quantity')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min='1'
-                          placeholder={t('Number of keys to create')}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 1
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Create multiple API keys at once (random suffix will be added to names)'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              )}
             </SideDrawerSection>
 
             <SideDrawerSection>

@@ -29,6 +29,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
+import { updateOrganizationToken } from '@/features/organization/api'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import { apiKeySchema } from '../types'
@@ -71,24 +74,23 @@ export function DataTableRowActions<TData>({
 }: DataTableRowActionsProps<TData>) {
   const { t } = useTranslation()
   const apiKey = apiKeySchema.parse(row.original)
+  const currentUserId = useAuthStore((state) => state.auth.user?.id)
   const { setOpen, setCurrentRow, triggerRefresh } = useApiKeys()
   const isOrganizationKey = apiKey.scope_type === 'organization'
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
+  // A member may switch off a key they created, but a public key belongs to the
+  // organization and stays with its administrators. Deletion is deliberately
+  // absent here: the key is the organization's, not the member's.
+  const canToggleOrganizationKey =
+    isOrganizationKey &&
+    apiKey.visibility === 'private' &&
+    apiKey.creator_user_id !== undefined &&
+    apiKey.creator_user_id === currentUserId
 
   const openView = () => {
     setCurrentRow(apiKey)
     setOpen('view')
-  }
-
-  if (isOrganizationKey) {
-    return (
-      <div className='-ml-1.5 flex items-center gap-1'>
-        <ActionButton label={t('View')} onClick={openView}>
-          <Eye />
-        </ActionButton>
-      </div>
-    )
   }
 
   const toggleLabel = isEnabled ? t('Disable') : t('Enable')
@@ -100,6 +102,46 @@ export function DataTableRowActions<TData>({
 
     setIsTogglingStatus(true)
     try {
+      if (isOrganizationKey) {
+        if (!apiKey.organization_id) {
+          toast.error(t(ERROR_MESSAGES.UNEXPECTED))
+          return
+        }
+        const result = await updateOrganizationToken(
+          'member',
+          apiKey.organization_id,
+          apiKey.id,
+          {
+            name: apiKey.name,
+            status: newStatus,
+            expired_time: apiKey.expired_time,
+            remain_quota: apiKey.remain_quota,
+            unlimited_quota: apiKey.unlimited_quota,
+            model_limits_enabled: apiKey.model_limits_enabled,
+            model_limits: apiKey.model_limits ?? '',
+            allow_ips: apiKey.allow_ips ?? '',
+            group: apiKey.group ?? '',
+            cross_group_retry: !!apiKey.cross_group_retry,
+            visibility: apiKey.visibility,
+            responsible_user_id: apiKey.responsible_user_id,
+          },
+          { accountContextId: apiKey.organization_id }
+        )
+        if (result.success) {
+          toast.success(
+            newStatus === API_KEY_STATUS.ENABLED
+              ? t('Organization key enabled')
+              : t('Organization key disabled')
+          )
+          triggerRefresh()
+        } else {
+          toast.error(
+            result.message || t('Failed to update organization key')
+          )
+        }
+        return
+      }
+
       const result = await updateApiKeyStatus(apiKey.id, newStatus)
       if (result.success) {
         const message = isEnabled
@@ -122,6 +164,30 @@ export function DataTableRowActions<TData>({
     statusIcon = <Loader2 className='size-4 animate-spin' />
   } else if (isEnabled) {
     statusIcon = <PowerOff className='size-4' />
+  }
+
+  if (isOrganizationKey) {
+    return (
+      <div className='-ml-1.5 flex items-center gap-1'>
+        {canToggleOrganizationKey && (
+          <ActionButton
+            label={toggleLabel}
+            onClick={() => void handleToggleStatus()}
+            disabled={isTogglingStatus}
+            className={
+              isEnabled
+                ? 'text-destructive hover:text-destructive'
+                : 'text-emerald-600 hover:text-emerald-600 dark:text-emerald-400 dark:hover:text-emerald-400'
+            }
+          >
+            {statusIcon}
+          </ActionButton>
+        )}
+        <ActionButton label={t('View')} onClick={openView}>
+          <Eye />
+        </ActionButton>
+      </div>
+    )
   }
 
   return (

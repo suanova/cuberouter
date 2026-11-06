@@ -19,6 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { SelfUsageExportEnvelope } from '@/features/usage/types'
 import { api } from '@/lib/api'
+import {
+  ACCOUNT_CONTEXT_ID_HEADER,
+  ACCOUNT_CONTEXT_TYPE,
+  ACCOUNT_CONTEXT_TYPE_HEADER,
+} from '@/stores/account-context-store'
 
 import { withOrganizationIdempotencyKey } from './lib/organization-idempotency'
 import type { PagedResult } from './lib/organization-pagination'
@@ -852,13 +857,32 @@ export async function getOrganizationToken(
   return res.data
 }
 
+/**
+ * Names the organization's account context on a write made outside its
+ * workspace (the personal API Keys page). The write endpoint compares the
+ * request context with the id in the path; setting the header per request keeps
+ * the global context — and every query cached under it — untouched.
+ */
+function organizationAccountContextRequest(accountContextId?: number) {
+  if (!accountContextId) return undefined
+  return {
+    skipAccountContext: true,
+    headers: {
+      [ACCOUNT_CONTEXT_TYPE_HEADER]: ACCOUNT_CONTEXT_TYPE.ORGANIZATION,
+      [ACCOUNT_CONTEXT_ID_HEADER]: String(accountContextId),
+    },
+  }
+}
+
 export async function createOrganizationToken(
   organizationId: number,
-  data: OrganizationTokenPayload
+  data: OrganizationTokenPayload,
+  options: { accountContextId?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
   const res = await api.post(
     `/api/organizations/${organizationId}/tokens`,
-    data
+    data,
+    organizationAccountContextRequest(options.accountContextId)
   )
   return res.data
 }
@@ -891,11 +915,13 @@ export async function updateOrganizationToken(
   surface: OrganizationSurface,
   organizationId: number,
   tokenId: number,
-  data: OrganizationTokenPayload
+  data: OrganizationTokenPayload,
+  options: { accountContextId?: number } = {}
 ): Promise<OrganizationApiResponse<OrganizationTokenRow>> {
   const res = await api.patch(
     `${organizationResourceBase(surface, organizationId)}/tokens/${tokenId}`,
-    data
+    data,
+    organizationAccountContextRequest(options.accountContextId)
   )
   return res.data
 }

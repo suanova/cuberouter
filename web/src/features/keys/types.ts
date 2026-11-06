@@ -51,6 +51,8 @@ export const apiKeySchema = z.object({
   organization_id: z.number().optional(),
   organization_name: z.string().optional(),
   visibility: z.string().optional(),
+  creator_user_id: z.number().optional(),
+  responsible_user_id: z.number().optional(),
   /** The masked form of an organization key; personal keys arrive already masked. */
   key_preview: z.string().optional(),
 })

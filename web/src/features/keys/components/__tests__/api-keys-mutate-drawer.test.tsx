@@ -19,11 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
-// The group picker ships hidden (SHOW_KEY_GROUP_SELECTOR = false). Every case in
-// this file drives that picker and the Auto controls that hang off it, so the
-// flag is forced on here to keep covering the behaviour that returns when it is
-// flipped back. The shipped, picker-hidden default is covered separately in
-// ./group-visibility.test.tsx.
+import type { ApiKey } from '../../types'
+
+// The group picker ships hidden (SHOW_KEY_GROUP_SELECTOR = false). The edit form
+// still carries it, so it is forced on here to keep covering the Auto-order
+// behaviour that returns when the flag is flipped back.
 vi.mock('../../constants', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../constants')>()),
   SHOW_KEY_GROUP_SELECTOR: true,
@@ -34,6 +34,7 @@ const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { QueryClient, QueryClientProvider } =
   await import('@tanstack/react-query')
 const { api } = await import('@/lib/api')
+const { useAuthStore } = await import('@/stores/auth-store')
 const { ApiKeysProvider } = await import('../api-keys-provider')
 const { ApiKeysMutateDrawer } = await import('../api-keys-mutate-drawer')
 
@@ -43,21 +44,67 @@ await i18n.use(initReactI18next).init({
   resources: { en: { translation: {} } },
 })
 
-type ApiMethod = (url: string, data?: unknown) => Promise<{ data: unknown }>
+type ApiRequestConfig = {
+  headers?: Record<string, string>
+  skipAccountContext?: boolean
+}
+type ApiMethod = (
+  url: string,
+  data?: unknown,
+  config?: ApiRequestConfig
+) => Promise<{ data: unknown }>
 type MockableApi = {
   get: ApiMethod
   post: ApiMethod
+  put: ApiMethod
 }
 type RenderedDrawer = {
   queryClient: InstanceType<typeof QueryClient>
 }
+type CapturedRequest = {
+  url: string
+  data: unknown
+  config?: ApiRequestConfig
+}
+type OrganizationFixture = Record<string, unknown>
 
 const apiClient = api as unknown as MockableApi
 const originalGet = apiClient.get
 const originalPost = apiClient.post
+const originalPut = apiClient.put
 let renderedDrawer: RenderedDrawer | null = null
+let postedRequests: CapturedRequest[] = []
+let putRequests: CapturedRequest[] = []
 
-function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
+function organizationFixture(
+  overrides: OrganizationFixture
+): OrganizationFixture {
+  return {
+    id: 1,
+    name: 'Organization',
+    slug: 'organization',
+    status: 'active',
+    quota: 0,
+    used_quota: 0,
+    role: 'member',
+    capabilities: { can_manage_all_tokens: false },
+    ...overrides,
+  }
+}
+
+function setPersonalQuota(quota: number) {
+  useAuthStore.getState().auth.setUser({
+    id: 1,
+    username: 'tester',
+    role: 1,
+    quota,
+  })
+}
+
+function installApiFixtures(options: {
+  organizations?: OrganizationFixture[]
+  apiKey?: Record<string, unknown>
+} = {}) {
   apiClient.get = async (url) => {
     switch (url) {
       case '/api/status':
@@ -82,88 +129,77 @@ function installApiFixtures(createdPayloads: Array<Record<string, unknown>>) {
             data: { groups: ['vip', 'default'], max_count: 3 },
           },
         }
+      case '/api/user/self':
+        return {
+          data: {
+            success: true,
+            data: useAuthStore.getState().auth.user,
+          },
+        }
+      case '/api/organizations':
+        return { data: { success: true, data: options.organizations ?? [] } }
+      case '/api/token/1':
+        return { data: { success: true, data: options.apiKey ?? {} } }
       default:
         throw new Error(`Unexpected GET ${url}`)
     }
   }
-  apiClient.post = async (url, data) => {
-    expect(url).toBe('/api/token/')
-    expect(data && typeof data === 'object').toBeTruthy()
-    createdPayloads.push(data as Record<string, unknown>)
+  apiClient.post = async (url, data, config) => {
+    postedRequests.push({ url, data, config })
+    return { data: { success: true, data: {} } }
+  }
+  apiClient.put = async (url, data, config) => {
+    putRequests.push({ url, data, config })
     return { data: { success: true, data: {} } }
   }
 }
 
-async function renderCreateDrawer(): Promise<void> {
+async function renderDrawer(
+  currentRow?: ApiKey,
+  waitForEnabled = true
+): Promise<void> {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  const freshAt = Date.now() + 60_000
-  queryClient.setQueryData(
-    ['status'],
-    { default_use_auto_group: true },
-    { updatedAt: freshAt }
-  )
-  queryClient.setQueryData(
-    ['user-models'],
-    { success: true, data: [] },
-    { updatedAt: freshAt }
-  )
-  queryClient.setQueryData(
-    ['user-groups'],
-    {
-      success: true,
-      data: {
-        auto: { desc: 'Automatic routing', ratio: 'auto' },
-        default: { desc: 'Standard access', ratio: 1 },
-        vip: { desc: 'Priority access', ratio: 2 },
-      },
-    },
-    { updatedAt: freshAt }
-  )
-  queryClient.setQueryData(
-    ['token-auto-groups'],
-    {
-      success: true,
-      data: { groups: ['vip', 'default'], max_count: 3 },
-    },
-    { updatedAt: freshAt }
-  )
   renderedDrawer = { queryClient }
 
   render(
     <QueryClientProvider client={queryClient}>
       <I18nextProvider i18n={i18n}>
         <ApiKeysProvider>
-          <ApiKeysMutateDrawer open onOpenChange={() => undefined} />
+          <ApiKeysMutateDrawer
+            open
+            onOpenChange={() => undefined}
+            currentRow={currentRow}
+          />
         </ApiKeysProvider>
       </I18nextProvider>
     </QueryClientProvider>
   )
-  await waitFor(
-    () => {
-      const saveButton = findButton('Save changes', false)
-      expect(saveButton).toBeEnabled()
-    },
-    { timeout: 1500 }
-  )
+  if (waitForEnabled) {
+    await waitFor(
+      () => {
+        const submitButton = findButton(currentRow ? 'Save changes' : 'Create')
+        expect(submitButton).toBeEnabled()
+      },
+      { timeout: 1500 }
+    )
+    return
+  }
+
+  await waitFor(() => expect(screen.getByText('Billing Account')).toBeTruthy())
 }
 
-function findButton(text: string, required: true): HTMLButtonElement
-function findButton(text: string, required: false): HTMLButtonElement | null
-function findButton(text: string, required = true): HTMLButtonElement | null {
+function findButton(text: string): HTMLButtonElement {
   const button = screen
     .queryAllByRole<HTMLButtonElement>('button')
     .find((candidate) => candidate.textContent?.includes(text))
-  if (required && !button) {
+  if (!button) {
     throw new Error(`Expected button containing "${text}"`)
   }
-  return button ?? null
+  return button
 }
 
-function getControlByLabel(labelText: 'Name' | 'Quantity'): HTMLInputElement
-function getControlByLabel(labelText: 'Group'): HTMLButtonElement
-function getControlByLabel(labelText: 'Auto group order'): HTMLElement
 function getControlByLabel(labelText: string): HTMLElement {
   const label = [...document.querySelectorAll<HTMLLabelElement>('label')].find(
     (candidate) => candidate.textContent?.trim() === labelText
@@ -185,12 +221,12 @@ function getControlByLabel(labelText: string): HTMLElement {
   return control
 }
 
-function changeInput(input: HTMLInputElement, value: string): void {
+function changeInput(input: HTMLElement, value: string): void {
   fireEvent.input(input, { target: { value } })
 }
 
 function selectComboboxOption(
-  trigger: HTMLButtonElement,
+  trigger: HTMLElement,
   optionDescription: string
 ): void {
   fireEvent.click(trigger)
@@ -203,9 +239,18 @@ function selectComboboxOption(
   fireEvent.click(option)
 }
 
+function findOrganizationRadio(): HTMLElement | null {
+  const control = document.querySelector('#api-key-billing-organization')
+  return control instanceof HTMLElement ? control : null
+}
+
 afterEach(() => {
   apiClient.get = originalGet
   apiClient.post = originalPost
+  apiClient.put = originalPut
+  useAuthStore.getState().auth.setUser(null)
+  postedRequests = []
+  putRequests = []
   localStorage.clear()
   if (renderedDrawer) {
     renderedDrawer.queryClient.clear()
@@ -213,78 +258,193 @@ afterEach(() => {
   }
 })
 
-describe('API keys mutate drawer Auto group integration', () => {
-  test('inherits the root Auto order and sends an empty override for every batch-created key', async () => {
-    const createdPayloads: Array<Record<string, unknown>> = []
-    installApiFixtures(createdPayloads)
-    await renderCreateDrawer()
+describe('API keys create drawer billing account', () => {
+  test('creates a personal key with the default settings when only a name is entered', async () => {
+    setPersonalQuota(1_000_000)
+    installApiFixtures({
+      organizations: [organizationFixture({ id: 2, name: 'Team' })],
+    })
+    await renderDrawer()
 
-    const groupTrigger = getControlByLabel('Group')
-    expect(groupTrigger.textContent?.includes('auto')).toBe(true)
-    expect(
-      document.body.textContent?.includes(
-        'Using the complete global Auto order (2 groups)'
-      )
-    ).toBe(true)
-    expect(
-      [
-        ...document.querySelectorAll('[data-slot="global-auto-order-name"]'),
-      ].map((item) => item.textContent)
-    ).toEqual(['vip', 'default'])
-    expect(findButton('Restore global Auto', true).disabled).toBe(true)
+    expect(screen.getByText('Billing Account')).toBeTruthy()
+    expect(screen.getByRole('radio', { name: 'Personal' })).toBeChecked()
+    changeInput(getControlByLabel('Name'), 'personal-key')
+    fireEvent.click(findButton('Create'))
 
-    changeInput(getControlByLabel('Name'), 'batch')
-    changeInput(getControlByLabel('Quantity'), '2')
-    fireEvent.click(findButton('Save changes', true))
-    await waitFor(() => expect(createdPayloads).toHaveLength(2))
-
-    expect(createdPayloads.length).toBe(2)
-    expect(createdPayloads[0]?.name).toBe('batch')
-    for (const payload of createdPayloads) {
-      expect(payload.group).toBe('auto')
-      expect(payload.auto_groups).toEqual([])
-      expect(payload.cross_group_retry).toBe(true)
-    }
+    await waitFor(() => expect(postedRequests).toHaveLength(1))
+    expect(postedRequests[0].url).toBe('/api/token/')
+    expect(postedRequests[0].data).toMatchObject({
+      name: 'personal-key',
+      remain_quota: 0,
+      expired_time: -1,
+      unlimited_quota: true,
+      model_limits_enabled: false,
+      model_limits: '',
+      allow_ips: '',
+      group: 'auto',
+      auto_groups: [],
+      cross_group_retry: true,
+    })
   })
 
-  test('preserves an unsaved custom order and mode after Auto to ordinary to Auto changes', async () => {
-    const createdPayloads: Array<Record<string, unknown>> = []
-    installApiFixtures(createdPayloads)
-    await renderCreateDrawer()
+  test('defaults to the organization with the most remaining quota when the personal balance is empty', async () => {
+    setPersonalQuota(0)
+    installApiFixtures({
+      organizations: [
+        organizationFixture({
+          id: 1,
+          name: 'Small',
+          quota: 100,
+          used_quota: 0,
+        }),
+        organizationFixture({
+          id: 2,
+          name: 'Large',
+          quota: 500,
+          used_quota: 0,
+        }),
+        organizationFixture({
+          id: 3,
+          name: 'Owned',
+          quota: 9_000,
+          used_quota: 0,
+          role: 'owner',
+          capabilities: { can_manage_all_tokens: true },
+        }),
+      ],
+    })
+    await renderDrawer()
 
-    const autoOrderControl = getControlByLabel('Auto group order')
-    const addGroupTrigger = autoOrderControl.querySelector<HTMLButtonElement>(
-      'button[role="combobox"]'
-    )
-    if (!addGroupTrigger) {
-      throw new Error('Expected Auto group order combobox')
-    }
-    selectComboboxOption(addGroupTrigger, 'Priority access')
-
+    expect(screen.getByRole('radio', { name: 'Organization' })).toBeChecked()
     expect(
-      document.querySelector('button[aria-label="Remove vip"]')
+      screen.getByRole('combobox', { name: 'Select an organization' }).textContent
+    ).toContain('Large')
+
+    changeInput(getControlByLabel('Name'), 'org-key')
+    fireEvent.click(findButton('Create'))
+
+    await waitFor(() => expect(postedRequests).toHaveLength(1))
+    expect(postedRequests[0].url).toBe('/api/organizations/2/tokens')
+    expect(postedRequests[0].data).toEqual({ name: 'org-key' })
+    expect(postedRequests[0].config).toMatchObject({
+      skipAccountContext: true,
+      headers: {
+        'X-Account-Context-Type': 'organization',
+        'X-Account-Context-Id': '2',
+      },
+    })
+  })
+
+  test('blocks personal creation and explains why when the balance is empty', async () => {
+    setPersonalQuota(0)
+    installApiFixtures({
+      organizations: [organizationFixture({ id: 2, name: 'Team' })],
+    })
+    await renderDrawer()
+
+    // An empty balance defaults to organization, so the form stays usable.
+    expect(screen.getByRole('radio', { name: 'Organization' })).toBeChecked()
+    expect(findButton('Create').disabled).toBe(false)
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Personal' }))
+    expect(
+      screen.getByText(
+        'Insufficient balance. Please top up or contact an administrator.'
+      )
     ).toBeTruthy()
-    expect(document.body.textContent?.includes('1 / 3 groups selected')).toBe(
-      true
-    )
-    expect(findButton('Restore global Auto', true).disabled).toBe(false)
+    expect(findButton('Create').disabled).toBe(true)
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Organization' }))
+    expect(findButton('Create').disabled).toBe(false)
+  })
+
+  test('blocks personal creation when there is no organization to fall back to', async () => {
+    setPersonalQuota(0)
+    installApiFixtures({ organizations: [] })
+    await renderDrawer(undefined, false)
+
+    expect(screen.getByRole('radio', { name: 'Personal' })).toBeChecked()
+    expect(
+      screen.getByText(
+        'Insufficient balance. Please top up or contact an administrator.'
+      )
+    ).toBeTruthy()
+    expect(findButton('Create').disabled).toBe(true)
+  })
+
+  test('offers no organization when the caller only manages organizations', async () => {
+    setPersonalQuota(1_000_000)
+    installApiFixtures({
+      organizations: [
+        organizationFixture({
+          id: 3,
+          name: 'Owned',
+          role: 'owner',
+          capabilities: { can_manage_all_tokens: true },
+        }),
+      ],
+    })
+    await renderDrawer()
+
+    expect(findOrganizationRadio()).toBeNull()
+    changeInput(getControlByLabel('Name'), 'personal-fallback')
+    fireEvent.click(findButton('Create'))
+
+    await waitFor(() => expect(postedRequests).toHaveLength(1))
+    expect(postedRequests[0].url).toBe('/api/token/')
+  })
+})
+
+describe('API keys edit drawer Auto group integration', () => {
+  test('preserves an unsaved custom order after Auto to ordinary to Auto changes', async () => {
+    installApiFixtures({
+      apiKey: {
+        id: 1,
+        name: 'existing',
+        status: 1,
+        remain_quota: 0,
+        used_quota: 0,
+        unlimited_quota: true,
+        expired_time: -1,
+        created_time: 0,
+        accessed_time: 0,
+        group: 'auto',
+        auto_groups: ['vip'],
+        cross_group_retry: true,
+        model_limits_enabled: false,
+        model_limits: '',
+        allow_ips: '',
+      },
+    })
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    getControlByLabel('Auto group order')
+    expect(
+      document.body.textContent?.includes('1 / 3 groups selected')
+    ).toBe(true)
 
     const groupTrigger = getControlByLabel('Group')
     selectComboboxOption(groupTrigger, 'Standard access')
-    expect(document.querySelector('button[aria-label="Remove vip"]')).toBe(null)
+    expect(
+      document.querySelector('button[aria-label="Remove vip"]')
+    ).toBeNull()
     selectComboboxOption(groupTrigger, 'Automatic routing')
 
     expect(
       document.querySelector('button[aria-label="Remove vip"]')
     ).toBeTruthy()
-    expect(document.body.textContent?.includes('1 / 3 groups selected')).toBe(
-      true
-    )
-    expect(findButton('Restore global Auto', true).disabled).toBe(false)
+    expect(
+      document.body.textContent?.includes('1 / 3 groups selected')
+    ).toBe(true)
 
-    changeInput(getControlByLabel('Name'), 'custom')
-    fireEvent.click(findButton('Save changes', true))
-    await waitFor(() => expect(createdPayloads).toHaveLength(1))
-    expect(createdPayloads[0]?.auto_groups).toEqual(['vip'])
+    fireEvent.click(findButton('Save changes'))
+    await waitFor(() => expect(putRequests).toHaveLength(1))
+    expect(putRequests[0].data).toMatchObject({
+      id: 1,
+      name: 'existing',
+      group: 'auto',
+      auto_groups: ['vip'],
+      cross_group_retry: true,
+    })
   })
 })

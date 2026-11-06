@@ -20,9 +20,10 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getSelfApiKeys } from '../../api'
 import type { ApiKey } from '../../types'
@@ -31,6 +32,7 @@ import { ApiKeysProvider } from '../api-keys-provider'
 import { ApiKeysTable } from '../api-keys-table'
 
 const search = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
+const updateOrganizationTokenMock = vi.hoisted(() => vi.fn())
 const navigate = vi.hoisted(() => vi.fn())
 const routeApi = vi.hoisted(() => ({
   useSearch: () => search.value,
@@ -40,6 +42,11 @@ const routeApi = vi.hoisted(() => ({
 vi.mock('@tanstack/react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@tanstack/react-router')>()),
   getRouteApi: () => routeApi,
+}))
+
+vi.mock('@/features/organization/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/features/organization/api')>()),
+  updateOrganizationToken: updateOrganizationTokenMock,
 }))
 
 vi.mock('@/lib/copy-to-clipboard', () => ({
@@ -98,6 +105,19 @@ const personalKey = apiKey({
   allow_ips: '1.2.3.4',
 })
 
+const memberOrganizationKey = apiKey({
+  id: 5,
+  name: 'My org key',
+  scope_type: 'organization',
+  organization_id: 9,
+  organization_name: 'Acme',
+  visibility: 'private',
+  creator_user_id: 7,
+  responsible_user_id: 7,
+  unlimited_quota: false,
+  remain_quota: 500_000,
+})
+
 const organizationKey = apiKey({
   id: 2,
   name: 'Team key',
@@ -114,6 +134,7 @@ const organizationKey = apiKey({
 
 beforeEach(() => {
   mobileViewport = false
+  updateOrganizationTokenMock.mockReset()
   search.value = {
     page: 1,
     pageSize: 20,
@@ -266,6 +287,46 @@ describe('ApiKeysTable', () => {
     ).not.toBeInTheDocument()
   })
 
+  test('lets a member disable their own private organization key, without edit or delete', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 7,
+      username: 'member',
+      role: 1,
+    })
+    getSelfApiKeysMock.mockResolvedValue({
+      success: true,
+      data: {
+        items: [memberOrganizationKey],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+    })
+    updateOrganizationTokenMock.mockResolvedValue({ success: true })
+    renderTable()
+
+    const row = await findRow('My org key')
+    expect(within(row).queryByRole('button', { name: 'Edit' })).toBeNull()
+    expect(within(row).queryByRole('button', { name: 'Delete' })).toBeNull()
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Disable' }))
+    await waitFor(() =>
+      expect(updateOrganizationTokenMock).toHaveBeenCalledTimes(1)
+    )
+    expect(updateOrganizationTokenMock).toHaveBeenCalledWith(
+      'member',
+      9,
+      5,
+      expect.objectContaining({
+        name: 'My org key',
+        status: 2,
+        visibility: 'private',
+        responsible_user_id: 7,
+      }),
+      { accountContextId: 9 }
+    )
+  })
+
   test('copies an organization key directly from the list', async () => {
     renderTable()
 
@@ -311,4 +372,8 @@ describe('ApiKeysTable', () => {
     expect(screen.getByText('Personal')).toBeInTheDocument()
     expect(screen.getAllByText('Last Used')).toHaveLength(2)
   })
+})
+
+afterEach(() => {
+  useAuthStore.getState().auth.setUser(null)
 })
