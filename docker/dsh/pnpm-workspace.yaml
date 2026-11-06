@@ -1,8 +1,18 @@
-# pnpm 11 的依赖构建策略（profile 目录内生效）。
+# pnpm 11 的 profile 设置（放在 dsh 初始化之前，initProfile 不会覆盖已存在的文件）。
 #
-# Office 技能经 libreoffice-kit 间接依赖 koffi，而 koffi 的 install 脚本只用于
-# 在没有预编译包时现场编译；@koromix/koffi-<platform> 可选依赖已带有
+# packages / nodeLinker / autoInstallPeers 三行与 dsh 0.2.2 的 profile 初始化模板
+# 保持一致：node_modules 必须是 hoisted 布局，否则第二次 `dsh plugin add` 会以
+# ERR_PNPM_NODE_LINKER_DIFF 失败。
+#
+# allowBuilds：Office 技能经 libreoffice-kit 间接依赖 koffi，而 koffi 的 install
+# 脚本只用于在没有预编译包时现场编译；@koromix/koffi-<platform> 可选依赖已带有
 # koffi.node，koffi 的加载器会自动回落到它。这里明确禁止执行该脚本：既避免
 # 容器里缺少编译工具链，也避免 pnpm 因“忽略构建脚本”报错退出。
+packages:
+  - .
+
+nodeLinker: hoisted
+autoInstallPeers: false
+
 allowBuilds:
   koffi: false

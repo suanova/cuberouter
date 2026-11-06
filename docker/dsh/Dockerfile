@@ -24,15 +24,14 @@ RUN npm install -g "@deepseek-ai/dsh@${DSH_VERSION}" pnpm@11
 #
 # pnpm 11 遇到未放行的依赖构建脚本会直接失败（Office 技能经 libreoffice-kit
 # 间接依赖 koffi）。koffi 的平台预编译包 @koromix/koffi-<platform> 已随包提供
-# koffi.node，无需执行其 install 脚本，因此在 profile 里先写好 allowBuilds
-# 策略，再安装该技能。
+# koffi.node，无需执行其 install 脚本，因此在 profile 里先写好包含 allowBuilds
+# 的 pnpm 设置；文件必须在首次 `dsh plugin add` 之前存在，initProfile 只补齐
+# 缺失文件、不会覆盖它，同时保证 node_modules 采用新装即用的 hoisted 布局。
 COPY plugins/dsh-api /opt/dsh-plugins/dsh-api
-COPY pnpm-workspace.yaml /opt/dsh/pnpm-workspace.yaml
+COPY pnpm-workspace.yaml /opt/dsh-seed/profiles/web/pnpm-workspace.yaml
 RUN DSH_HOME=/opt/dsh-seed dsh plugin --profile web add /opt/dsh-plugins/dsh-api \
-    && cp /opt/dsh/pnpm-workspace.yaml /opt/dsh-seed/profiles/web/pnpm-workspace.yaml \
     && DSH_HOME=/opt/dsh-seed dsh plugin --profile web add \
-        "@deepseek-ai/dsh-skill-office@${DSH_SKILL_OFFICE_VERSION}" \
-    && rm /opt/dsh/pnpm-workspace.yaml
+        "@deepseek-ai/dsh-skill-office@${DSH_SKILL_OFFICE_VERSION}"
 
 COPY overlay.yml /opt/dsh/overlay.yml
 COPY workspace-AGENTS.md /opt/dsh/workspace-AGENTS.md
