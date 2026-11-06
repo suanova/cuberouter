@@ -49,7 +49,7 @@ vi.mock(
 )
 
 describe('UsageCharts', () => {
-  test('draws a single day as all 24 hourly buckets', () => {
+  test('draws a single day as twelve two-hour buckets', () => {
     render(
       <UsageCharts
         points={[
@@ -67,7 +67,7 @@ describe('UsageCharts', () => {
 
     const chart = screen.getByTestId('consumption-chart')
     expect(chart).toHaveAttribute('data-granularity', 'hour-of-day')
-    expect(chart).toHaveAttribute('data-time-points', '24')
+    expect(chart).toHaveAttribute('data-time-points', '12')
     expect(chart).toHaveAttribute('data-count', '3')
   })
 

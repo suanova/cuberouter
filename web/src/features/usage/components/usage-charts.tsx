@@ -33,12 +33,15 @@ interface UsageChartsProps {
 }
 
 const HOURS_OF_DAY = Array.from(
-  { length: 24 },
-  (_, hour) => `${String(hour).padStart(2, '0')}:00`
+  { length: 12 },
+  (_, index) => `${String(index * 2).padStart(2, '0')}:00`
 )
 
 export function UsageCharts(props: UsageChartsProps) {
-  const data = useMemo(() => usageChartItems(props.points), [props.points])
+  const data = useMemo(
+    () => usageChartItems(props.points, props.singleDay ? 2 : 1),
+    [props.points, props.singleDay]
+  )
 
   return (
     <ConsumptionDistributionChart

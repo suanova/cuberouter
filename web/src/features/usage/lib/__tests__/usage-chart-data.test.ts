@@ -62,6 +62,47 @@ describe('usageChartItems', () => {
     ])
   })
 
+  test('folds adjacent hours into two-hour buckets', () => {
+    expect(
+      usageChartItems(
+        [
+          {
+            date: '2026-11-03 10:00',
+            model_name: 'gpt-4o',
+            request_count: 1,
+            quota: 10,
+          },
+          {
+            date: '2026-11-03 11:00',
+            model_name: 'gpt-4o',
+            request_count: 2,
+            quota: 20,
+          },
+          {
+            date: '2026-11-03 11:00',
+            model_name: 'other',
+            request_count: 1,
+            quota: 5,
+          },
+        ],
+        2
+      )
+    ).toEqual([
+      {
+        created_at: Math.floor(new Date(2026, 10, 3, 10).getTime() / 1000),
+        model_name: 'gpt-4o',
+        count: 3,
+        quota: 30,
+      },
+      {
+        created_at: Math.floor(new Date(2026, 10, 3, 10).getTime() / 1000),
+        model_name: 'other',
+        count: 1,
+        quota: 5,
+      },
+    ])
+  })
+
   test('returns an empty series for an empty response', () => {
     expect(usageChartItems([])).toEqual([])
   })
