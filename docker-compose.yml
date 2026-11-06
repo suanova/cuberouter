@@ -4,7 +4,7 @@
 #   1. docker-compose up -d
 #   2. Access at http://localhost:3000
 #   3. DSH agent runtime (optional) at http://localhost:3080; it builds from
-#      ./docker/dsh, stores data in ./data/dsh/zhongshan and ships the Office
+#      ./docker/dsh, stores data in /data/dsh/zhongshan and ships the Office
 #      skills used to generate PPT/DOCX/XLSX deliverables.
 #
 # Using MySQL instead of PostgreSQL:
