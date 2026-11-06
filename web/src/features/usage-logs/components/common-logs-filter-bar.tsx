@@ -214,7 +214,12 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const handleApply = useCallback(() => {
-    const filterParams = buildSearchParams(filters, 'common')
+    const filterParams = buildSearchParams(
+      !isAdmin && filters.billingAccountType !== 'organization'
+        ? { ...filters, organizationId: undefined }
+        : filters,
+      'common'
+    )
     navigate({
       to: '/usage-logs/$section',
       params: { section: 'common' },
@@ -226,7 +231,7 @@ export function CommonLogsFilterBar<TData>(
     })
     queryClient.invalidateQueries({ queryKey: ['logs'] })
     queryClient.invalidateQueries({ queryKey: ['usage-logs-stats'] })
-  }, [filters, logType, navigate, queryClient])
+  }, [filters, isAdmin, logType, navigate, queryClient])
 
   const handleReset = useCallback(() => {
     const { start, end } = getDefaultTimeRange()
@@ -266,11 +271,11 @@ export function CommonLogsFilterBar<TData>(
     filters.model,
     filters.group,
     hasTypeFilter ? 'type' : undefined,
-    isAdmin ? filters.billingAccountType : undefined,
+    filters.billingAccountType,
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
-    isAdmin ? filters.organizationId : undefined,
+    filters.organizationId,
     filters.requestId,
     filters.upstreamRequestId,
   ].filter(Boolean)
@@ -420,10 +425,13 @@ export function CommonLogsFilterBar<TData>(
         items={billingAccountTypeItems}
         value={billingAccountTypeValue}
         onValueChange={(value) => {
-          handleChange(
-            'billingAccountType',
-            value === null || value === 'all' ? undefined : value
-          )
+          const next = value === null || value === 'all' ? undefined : value
+          handleChange('billingAccountType', next)
+          // The organization filter only means anything under organization
+          // billing; clearing the type clears the organization with it.
+          if (next !== 'organization') {
+            handleChange('organizationId', undefined)
+          }
         }}
       >
         <SelectTrigger>
@@ -442,7 +450,9 @@ export function CommonLogsFilterBar<TData>(
     </LogsFilterField>
   )
   const organizationFilter =
-    !isAdmin && organizations.length > 0 ? (
+    !isAdmin &&
+    organizations.length > 0 &&
+    billingAccountTypeValue === 'organization' ? (
       <LogsFilterField>
         <Select
           items={[
