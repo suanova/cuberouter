@@ -25,6 +25,7 @@ import {
   Settings2,
   Trash2,
   UserPlus,
+  Wallet,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -71,6 +72,7 @@ import {
   OrganizationRemoveMemberDialog,
 } from './organization-member-dialogs'
 import { OrganizationMemberModelSettingsDialog } from './organization-member-model-settings-dialog'
+import { OrganizationMemberQuotaDialog } from './organization-member-quota-dialog'
 import {
   useOrganizationSectionRoute,
   useOrganizationSurface,
@@ -156,6 +158,9 @@ export function OrganizationMembersSection(
   const [demoting, setDemoting] = useState<OrganizationMemberRow | null>(null)
   const [editing, setEditing] = useState<OrganizationMemberRow | null>(null)
   const [configuring, setConfiguring] = useState<OrganizationMemberRow | null>(
+    null
+  )
+  const [quotaTarget, setQuotaTarget] = useState<OrganizationMemberRow | null>(
     null
   )
 
@@ -251,6 +256,7 @@ export function OrganizationMembersSection(
         onChangeStatus: (member, status) => void changeStatus(member, status),
         onEdit: (member) => setEditing(member),
         onModelSettings: (member) => setConfiguring(member),
+        onQuotaSettings: (member) => setQuotaTarget(member),
         onRemove: (member) => setRemoving(member),
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -370,8 +376,13 @@ export function OrganizationMembersSection(
         member={configuring}
         canManageMemberModels={props.canManageMemberModels}
         canManageMemberDiscounts={props.canManageMemberDiscounts}
-        canManageMemberQuotas={props.canManageMemberQuotas}
         onOpenChange={(open) => !open && setConfiguring(null)}
+      />
+
+      <OrganizationMemberQuotaDialog
+        organizationId={props.organizationId}
+        member={quotaTarget}
+        onOpenChange={(open) => !open && setQuotaTarget(null)}
       />
 
       <OrganizationExitDialog
@@ -401,6 +412,7 @@ type MemberColumnContext = {
   ) => void
   onEdit: (member: OrganizationMemberRow) => void
   onModelSettings: (member: OrganizationMemberRow) => void
+  onQuotaSettings: (member: OrganizationMemberRow) => void
   onRemove: (member: OrganizationMemberRow) => void
 }
 
@@ -600,9 +612,10 @@ function MemberRowActions(props: {
   // page, and the organization endpoint only exists for a member.
   const canManageModelSettings =
     (props.context.canManageMemberDiscounts ||
-      props.context.canManageMemberModels ||
-      props.context.canManageMemberQuotas) &&
+      props.context.canManageMemberModels) &&
     flags.canChangeStatus
+  const canManageQuotaLimit =
+    props.context.canManageMemberQuotas && flags.canChangeStatus
 
   return (
     <DataTableRowActionMenu ariaLabel={t('Open menu')} contentClassName='w-40'>
@@ -637,6 +650,17 @@ function MemberRowActions(props: {
           {t('Model Settings')}
           <DropdownMenuShortcut>
             <Settings2 size={16} />
+          </DropdownMenuShortcut>
+        </DropdownMenuItem>
+      ) : null}
+
+      {canManageQuotaLimit ? (
+        <DropdownMenuItem
+          onSelect={() => props.context.onQuotaSettings(props.member)}
+        >
+          {t('Add quota')}
+          <DropdownMenuShortcut>
+            <Wallet size={16} />
           </DropdownMenuShortcut>
         </DropdownMenuItem>
       ) : null}

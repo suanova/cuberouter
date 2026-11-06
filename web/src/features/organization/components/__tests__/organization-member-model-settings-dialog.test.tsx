@@ -29,45 +29,31 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
-import {
-  formatQuota,
-  parseQuotaFromDollars,
-  quotaUnitsToEditableAmount,
-} from '@/lib/format'
-import {
-  DEFAULT_CURRENCY_CONFIG,
-  useSystemConfigStore,
-} from '@/stores/system-config-store'
 
 import {
   getOrganizationMemberModelAccess,
   getOrganizationMemberModelDiscounts,
-  getOrganizationMemberQuota,
   listOrganizationMembers,
   updateOrganizationMemberModelAccess,
   updateOrganizationMemberModelDiscounts,
-  updateOrganizationMemberQuota,
 } from '../../api'
 import type {
   MemberModelAccess,
-  MemberQuota,
   OrganizationMemberRow,
   UserModelDiscounts,
 } from '../../types'
 import { OrganizationMembersSection } from '../organization-members-section'
 
 /**
- * The members table's way into a member's settings: the one entry behind which
- * the model allow-list, the per-model discounts and the cumulative quota limit
- * are edited and saved together.
+ * The members table's way into a member's model settings: the one entry behind
+ * which the model allow-list and the per-model discounts are edited and saved
+ * together.
  *
- * What this file pins is the gate (any one capability opens the entry, none
+ * What this file pins is the gate (either capability opens the entry, neither
  * hides it), the reads the dialog waits for, the link between the allow-list
  * and the discount rows it frames, and the payload rules that are easy to get
- * wrong: an empty allow-list is "no restriction" rather than "no models", the
- * discount record travels out whole, and the quota block converts the dollar
- * amount the operator types back into quota units — with an emptied input
- * meaning "no limit" rather than a limit of nothing.
+ * wrong: an empty allow-list is "no restriction" rather than "no models", and
+ * the discount record travels out whole.
  */
 const { toastSuccess } = vi.hoisted(() => ({ toastSuccess: vi.fn() }))
 
@@ -104,21 +90,17 @@ vi.mock('../../api', async (importOriginal) => ({
   listOrganizationMembers: vi.fn(),
   getOrganizationMemberModelAccess: vi.fn(),
   getOrganizationMemberModelDiscounts: vi.fn(),
-  getOrganizationMemberQuota: vi.fn(),
   updateOrganizationMemberModelAccess: vi.fn(),
   updateOrganizationMemberModelDiscounts: vi.fn(),
-  updateOrganizationMemberQuota: vi.fn(),
 }))
 
 const listMembersMock = vi.mocked(listOrganizationMembers)
 const getModelAccessMock = vi.mocked(getOrganizationMemberModelAccess)
 const getModelDiscountsMock = vi.mocked(getOrganizationMemberModelDiscounts)
-const getQuotaMock = vi.mocked(getOrganizationMemberQuota)
 const updateModelAccessMock = vi.mocked(updateOrganizationMemberModelAccess)
 const updateModelDiscountsMock = vi.mocked(
   updateOrganizationMemberModelDiscounts
 )
-const updateQuotaMock = vi.mocked(updateOrganizationMemberQuota)
 
 const ORGANIZATION_ID = 7
 const MEMBER_USER_ID = 9
@@ -132,26 +114,6 @@ const STORED_DISCOUNTS = { m1: 0.5, m3: 0.9 }
 const SECOND_MEMBER_ACCESS = ['m2']
 const SECOND_MEMBER_DISCOUNTS = { m2: 0.4 }
 const ACCESS_PLACEHOLDER = 'Select allowed models; leave empty for no limit'
-/**
- * The stored quota record, in quota units. Against the default display
- * currency (500,000 units to $1) it reads as $0.20 used of a $0.50 limit,
- * with $18 of the $20 organization quota still allocatable.
- */
-const STORED_QUOTA: MemberQuota = {
-  limit: 250_000,
-  used: 100_000,
-  organization_quota: 10_000_000,
-  allocated: 1_000_000,
-  over_allocated: false,
-}
-const QUOTA_INPUT_NAME = 'Cumulative consumption limit'
-const QUOTA_INVALID_AMOUNT_ERROR =
-  'Enter a non-negative amount, or leave the field empty for no limit.'
-const QUOTA_TOO_SMALL_ERROR =
-  'The amount is too small to be a limit. Enter a larger amount or leave the field empty for no limit.'
-const OVER_ALLOCATION_WARNING =
-  "Member quota limits exceed the organization quota. Lower a member's limit or raise the organization quota before setting another."
-
 function memberRow(
   overrides: Partial<OrganizationMemberRow> = {}
 ): OrganizationMemberRow {
@@ -230,12 +192,7 @@ async function openSettingsDialog(rowIndex = 0): Promise<void> {
   await userEvent.click(
     screen.getByRole('menuitem', { name: 'Model Settings' })
   )
-  await screen.findByText('Member Settings')
-}
-
-/** The quota block's dollar limit input. */
-function quotaLimitInput(): HTMLElement {
-  return screen.getByRole('textbox', { name: QUOTA_INPUT_NAME })
+  await screen.findByRole('heading', { name: 'Model Settings' })
 }
 
 /** The allow-list control's own input. */
@@ -293,11 +250,6 @@ function lockedRowInput(model: string): HTMLElement {
 }
 
 beforeEach(() => {
-  // The quota block is displayed in the configured currency; every case starts
-  // from the site default so a display setting cannot leak between tests.
-  useSystemConfigStore.setState((state) => ({
-    config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
-  }))
   listMembersMock.mockReset().mockResolvedValue({
     success: true,
     data: { page: 1, page_size: 10, total: 1, items: [memberRow()] },
@@ -307,10 +259,8 @@ beforeEach(() => {
     models: UNIVERSE,
   })
   getModelDiscountsMock.mockReset().mockResolvedValue(STORED_DISCOUNTS)
-  getQuotaMock.mockReset().mockResolvedValue(STORED_QUOTA)
   updateModelAccessMock.mockReset().mockResolvedValue(undefined)
   updateModelDiscountsMock.mockReset().mockResolvedValue(undefined)
-  updateQuotaMock.mockReset().mockResolvedValue(undefined)
   toastSuccess.mockReset()
 })
 
@@ -525,13 +475,9 @@ describe('organization member model settings entry', () => {
     expect(updateModelAccessMock.mock.invocationCallOrder[0]).toBeLessThan(
       updateModelDiscountsMock.mock.invocationCallOrder[0]
     )
-    // The quota field was never touched, so no quota write is sent: saving the
-    // other records must not overwrite a concurrent admin's limit with the
-    // value this dialog read when it opened.
-    expect(updateQuotaMock).not.toHaveBeenCalled()
     expect(toastSuccess).toHaveBeenCalledWith('Operation successful')
     await waitFor(() =>
-      expect(screen.queryByText('Member Settings')).not.toBeInTheDocument()
+      expect(screen.queryByText('Model Settings')).not.toBeInTheDocument()
     )
   })
 
@@ -596,7 +542,7 @@ describe('organization member model settings entry', () => {
       )
     )
     await waitFor(() =>
-      expect(screen.queryByText('Member Settings')).not.toBeInTheDocument()
+      expect(screen.queryByText('Model Settings')).not.toBeInTheDocument()
     )
 
     // Reopen within the stale window and edit only a discount.
@@ -654,7 +600,6 @@ describe('organization member model settings entry', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
     expect(modelAccessInput()).toBeDisabled()
     expect(lockedRowInput('m1')).toBeDisabled()
-    expect(quotaLimitInput()).toBeDisabled()
 
     discountsWrite.resolve(undefined)
     await waitFor(() =>
@@ -689,9 +634,6 @@ describe('organization member model settings entry', () => {
     getModelDiscountsMock.mockImplementation(
       realOrganizationApi.getOrganizationMemberModelDiscounts
     )
-    getQuotaMock.mockImplementation(
-      realOrganizationApi.getOrganizationMemberQuota
-    )
     // The server reports a refused read (member no longer active) as HTTP 200
     // with `success: false`; the api module is what turns that envelope into a
     // rejection. Defaulting it would present the member as unrestricted and
@@ -705,7 +647,7 @@ describe('organization member model settings entry', () => {
     await openSettingsDialog()
 
     await waitFor(() =>
-      expect(screen.getAllByText('Failed to load')).toHaveLength(3)
+      expect(screen.getAllByText('Failed to load')).toHaveLength(2)
     )
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
@@ -739,9 +681,8 @@ describe('organization member model settings entry', () => {
     // The allow-list never landed, so the later writes were not sent either:
     // the writes share one operator intent.
     expect(updateModelDiscountsMock).not.toHaveBeenCalled()
-    expect(updateQuotaMock).not.toHaveBeenCalled()
     expect(toastSuccess).not.toHaveBeenCalled()
-    expect(screen.getByText('Member Settings')).toBeInTheDocument()
+    expect(screen.getByText('Model Settings')).toBeInTheDocument()
     expect(lockedRowInput('m1')).toHaveValue(80)
   })
 
@@ -767,7 +708,7 @@ describe('organization member model settings entry', () => {
     // the dialog's job to report, and it stays open with the edit to retry.
     expect(updateModelAccessMock).toHaveBeenCalledTimes(1)
     expect(toastSuccess).not.toHaveBeenCalled()
-    expect(screen.getByText('Member Settings')).toBeInTheDocument()
+    expect(screen.getByText('Model Settings')).toBeInTheDocument()
   })
 
   test('renders only the allow-list for a caller who may not manage discounts', async () => {
@@ -851,347 +792,14 @@ describe('organization member model settings entry', () => {
     await openSettingsDialog()
     await waitFor(() => expect(selectedModels()).toEqual(['m1']))
     fireEvent.input(lockedRowInput('m1'), { target: { value: '80' } })
-    fireEvent.input(quotaLimitInput(), { target: { value: '7' } })
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     await openSettingsDialog(1)
 
     await waitFor(() => expect(selectedModels()).toEqual(['m2']))
     expect(lockedRowInput('m2')).toHaveValue(40)
-    expect(quotaLimitInput()).toHaveValue(
-      String(quotaUnitsToEditableAmount(STORED_QUOTA.limit))
-    )
     expect(screen.queryByDisplayValue('80')).not.toBeInTheDocument()
     expect(updateModelAccessMock).not.toHaveBeenCalled()
     expect(updateModelDiscountsMock).not.toHaveBeenCalled()
-    expect(updateQuotaMock).not.toHaveBeenCalled()
-  })
-})
-
-describe('organization member quota block', () => {
-  test('opens on the stored quota with its usage and allocatable remainder', async () => {
-    renderSection(true, true, true)
-    await openSettingsDialog()
-
-    expect(getQuotaMock).toHaveBeenCalledWith(
-      ORGANIZATION_ID,
-      MEMBER_USER_ID,
-      'member'
-    )
-    expect(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME })
-    ).toHaveValue(String(quotaUnitsToEditableAmount(STORED_QUOTA.limit)))
-    expect(screen.getByText(formatQuota(STORED_QUOTA.used))).toBeInTheDocument()
-    expect(
-      screen.getByText(formatQuota(STORED_QUOTA.limit))
-    ).toBeInTheDocument()
-    expect(
-      screen.getByText(
-        formatQuota(STORED_QUOTA.organization_quota - STORED_QUOTA.allocated)
-      )
-    ).toBeInTheDocument()
-    expect(screen.queryByText(OVER_ALLOCATION_WARNING)).not.toBeInTheDocument()
-  })
-
-  test('states the quota rule alongside the allow-list rule when both render', async () => {
-    renderSection(true, true, true)
-    await openSettingsDialog()
-
-    // The allow-list sentence frames the discount rows and the quota sentence
-    // frames the limit input; showing both blocks means stating both rules.
-    expect(
-      screen.getByText(
-        'All models are available by default; select models to restrict this member. Clear the selection to remove the restriction. Set the total this member may consume inside the organization. Leave it empty for no limit.'
-      )
-    ).toBeInTheDocument()
-  })
-
-  test('explains the default quota for member-created keys', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    expect(
-      screen.getByText(
-        'Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.'
-      )
-    ).toBeInTheDocument()
-  })
-
-  test('saves a whole dollar amount as literal quota units and shows it unchanged', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    const input = await screen.findByRole('textbox', {
-      name: QUOTA_INPUT_NAME,
-    })
-    fireEvent.change(input, { target: { value: '3' } })
-
-    // The site default is 500,000 quota units to the dollar, so $3 is exactly
-    // 1,500,000 units — a literal, not the production parser compared to itself.
-    expect(input).toHaveValue('3')
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    await waitFor(() =>
-      expect(updateQuotaMock).toHaveBeenCalledWith(
-        ORGANIZATION_ID,
-        MEMBER_USER_ID,
-        1_500_000,
-        'member'
-      )
-    )
-  })
-
-  test('keeps a fractional amount while it is typed character by character', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    const input = await screen.findByRole('textbox', {
-      name: QUOTA_INPUT_NAME,
-    })
-
-    // Typing "0.5" one change at a time: each event carries the field's text.
-    // Converting to quota units between keystrokes would render "0" as an
-    // empty field and turn the remaining "5" into a five-dollar limit.
-    fireEvent.change(input, { target: { value: '0' } })
-    expect(input).toHaveValue('0')
-    fireEvent.change(input, { target: { value: '0.' } })
-    fireEvent.change(input, { target: { value: '0.5' } })
-    expect(input).toHaveValue('0.5')
-
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() =>
-      expect(updateQuotaMock).toHaveBeenCalledWith(
-        ORGANIZATION_ID,
-        MEMBER_USER_ID,
-        parseQuotaFromDollars(0.5),
-        'member'
-      )
-    )
-  })
-
-  test('initializes the input from the editable display amount', async () => {
-    // A limit stored from a $3 entry is 205,479 units under CNY at 7.3. The
-    // raw unit-to-amount conversion renders that as 2.9999934; the editable
-    // amount is the 3 the operator typed.
-    useSystemConfigStore.setState((state) => ({
-      config: {
-        ...state.config,
-        currency: {
-          ...DEFAULT_CURRENCY_CONFIG,
-          quotaDisplayType: 'CNY',
-          usdExchangeRate: 7.3,
-        },
-      },
-    }))
-    getQuotaMock.mockResolvedValue({
-      ...STORED_QUOTA,
-      limit: parseQuotaFromDollars(3),
-    })
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    expect(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME })
-    ).toHaveValue('3')
-  })
-
-  test('saves 0, meaning no limit, when the input is emptied', async () => {
-    renderSection(true, true, true)
-    await openSettingsDialog()
-
-    fireEvent.input(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME }),
-      { target: { value: '' } }
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    await waitFor(() =>
-      expect(updateQuotaMock).toHaveBeenCalledWith(
-        ORGANIZATION_ID,
-        MEMBER_USER_ID,
-        0,
-        'member'
-      )
-    )
-  })
-
-  test('rejects a negative amount without saving or closing the dialog', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    // A negative amount must not be read as "no limit" by clamping it to zero:
-    // the backend treats zero as an unlimited member, which is the opposite of
-    // what the operator typed.
-    fireEvent.change(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME }),
-      { target: { value: '-3' } }
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      QUOTA_INVALID_AMOUNT_ERROR
-    )
-    expect(updateQuotaMock).not.toHaveBeenCalled()
-    expect(toastSuccess).not.toHaveBeenCalled()
-    expect(screen.getByText('Member Settings')).toBeInTheDocument()
-  })
-
-  test('rejects a non-finite amount without saving or closing the dialog', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    // 1e999 parses to Infinity; converting it through the quota rounding would
-    // overflow into a meaningless limit, so it is refused like a negative one.
-    fireEvent.change(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME }),
-      { target: { value: '1e999' } }
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      QUOTA_INVALID_AMOUNT_ERROR
-    )
-    expect(updateQuotaMock).not.toHaveBeenCalled()
-    expect(toastSuccess).not.toHaveBeenCalled()
-    expect(screen.getByText('Member Settings')).toBeInTheDocument()
-  })
-
-  test('rejects a positive amount that rounds to zero quota units', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    // Under the default 500,000 units per dollar, a fraction of a unit rounds
-    // to 0 — which again would silently clear the cap instead of setting it.
-    fireEvent.change(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME }),
-      { target: { value: '0.0000001' } }
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      QUOTA_TOO_SMALL_ERROR
-    )
-    expect(updateQuotaMock).not.toHaveBeenCalled()
-    expect(toastSuccess).not.toHaveBeenCalled()
-    expect(screen.getByText('Member Settings')).toBeInTheDocument()
-  })
-
-  test('clears the amount error when the input changes', async () => {
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    const input = await screen.findByRole('textbox', {
-      name: QUOTA_INPUT_NAME,
-    })
-    fireEvent.change(input, { target: { value: '-3' } })
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    expect(await screen.findByRole('alert')).toBeInTheDocument()
-    expect(input).toHaveAttribute('aria-invalid', 'true')
-
-    // Correcting the field clears the complaint immediately; it belongs to the
-    // value that was refused, not to the field forever.
-    fireEvent.change(input, { target: { value: '3' } })
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(input).toHaveAttribute('aria-invalid', 'false')
-  })
-
-  test('keeps the dialog open when the quota write is refused', async () => {
-    updateQuotaMock.mockRejectedValue(
-      new Error('member quota limit would exceed the organization quota')
-    )
-    renderSection(true, true, true)
-    await openSettingsDialog()
-
-    fireEvent.input(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME }),
-      { target: { value: '3' } }
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-
-    await waitFor(() => expect(updateQuotaMock).toHaveBeenCalled())
-    // The refusal is reported by the API client; the dialog's job is to stay
-    // open on the edit so the operator can correct it and retry.
-    expect(toastSuccess).not.toHaveBeenCalled()
-    expect(screen.getByText('Member Settings')).toBeInTheDocument()
-    expect(quotaLimitInput()).toHaveValue('3')
-  })
-
-  test('reopening after a save keeps the saved quota', async () => {
-    // The app sets staleTime to 10s (main.tsx); without publishing the saved
-    // record to the cache, reopening within that window serves the pre-save
-    // limit and the next save writes it back over the change.
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false, staleTime: 10_000 } },
-    })
-    renderSection(true, true, true, queryClient)
-    await openSettingsDialog()
-
-    const savedLimit = parseQuotaFromDollars(3)
-    getQuotaMock.mockResolvedValue({ ...STORED_QUOTA, limit: savedLimit })
-    fireEvent.input(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME }),
-      { target: { value: '3' } }
-    )
-    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
-    await waitFor(() =>
-      expect(updateQuotaMock).toHaveBeenCalledWith(
-        ORGANIZATION_ID,
-        MEMBER_USER_ID,
-        savedLimit,
-        'member'
-      )
-    )
-    await waitFor(() =>
-      expect(screen.queryByText('Member Settings')).not.toBeInTheDocument()
-    )
-
-    await openSettingsDialog()
-    expect(
-      await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME })
-    ).toHaveValue('3')
-  })
-
-  test('leaves the quota block out when the caller may not manage quotas', async () => {
-    renderSection(true, false, false)
-    await openSettingsDialog()
-
-    expect(screen.queryByText('Quota Limit')).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('textbox', { name: QUOTA_INPUT_NAME })
-    ).not.toBeInTheDocument()
-    expect(getQuotaMock).not.toHaveBeenCalled()
-
-    // The entry itself still belongs to the allow-list grant the caller holds.
-    expect(screen.getByText('Model Access')).toBeInTheDocument()
-  })
-
-  test('shows the over-allocation warning when member limits exceed the organization quota', async () => {
-    getQuotaMock.mockResolvedValue({ ...STORED_QUOTA, over_allocated: true })
-    renderSection(true, true, true)
-    await openSettingsDialog()
-
-    expect(await screen.findByText(OVER_ALLOCATION_WARNING)).toBeInTheDocument()
-  })
-
-  test('keeps saving unavailable until the quota read lands', async () => {
-    const quota = deferred<MemberQuota>()
-    getQuotaMock.mockReturnValue(quota.promise)
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    const saveButton = screen.getByRole('button', { name: 'Save' })
-    expect(saveButton).toBeDisabled()
-
-    quota.resolve(STORED_QUOTA)
-    await waitFor(() => expect(saveButton).toBeEnabled())
-  })
-
-  test('keeps saving unavailable when the quota read fails', async () => {
-    getQuotaMock.mockRejectedValue(new Error('member not active'))
-    renderSection(true, false, true)
-    await openSettingsDialog()
-
-    expect(await screen.findByText('Failed to load')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
   })
 })
