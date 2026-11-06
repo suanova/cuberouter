@@ -6331,6 +6331,7 @@
     "Message the DSH agent": "Message the DSH agent",
     "Describe the task for the agent…": "Describe the task for the agent…",
     "Waiting for the current turn to finish…": "Waiting for the current turn to finish…",
+    "Stop waiting": "Stop waiting",
     "Enter to send, Shift + Enter for a new line.": "Enter to send, Shift + Enter for a new line.",
     "Agent is working…": "Agent is working…",
     "{{seconds}}s": "{{seconds}}s",

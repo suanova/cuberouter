@@ -23,6 +23,7 @@ import {
   LoaderCircleIcon,
   PaperclipIcon,
   SendIcon,
+  SquareIcon,
   XIcon,
 } from 'lucide-react'
 import { type KeyboardEvent, useRef, useState } from 'react'
@@ -54,6 +55,7 @@ type DshComposerProps = {
   disabled: boolean
   isRunning: boolean
   uploads?: DshUploadSettings | null
+  onCancel: () => void
   onSubmit: (prompt: string, attachments: DshAttachment[]) => void
 }
 
@@ -314,16 +316,28 @@ export function DshComposer(props: DshComposerProps) {
               ? t('Waiting for the current turn to finish…')
               : t('Enter to send, Shift + Enter for a new line.')}
           </p>
-          <Button
-            aria-label={t('Send')}
-            className='ml-auto'
-            disabled={!canSend}
-            onClick={submit}
-            size='sm'
-          >
-            <SendIcon aria-hidden='true' />
-            {t('Send')}
-          </Button>
+          {props.isRunning ? (
+            <Button
+              className='border-destructive/25 bg-destructive/10 text-destructive hover:bg-destructive/15 ml-auto font-medium'
+              onClick={props.onCancel}
+              size='sm'
+              variant='secondary'
+            >
+              <SquareIcon aria-hidden='true' className='fill-current' />
+              {t('Stop waiting')}
+            </Button>
+          ) : (
+            <Button
+              aria-label={t('Send')}
+              className='ml-auto'
+              disabled={!canSend}
+              onClick={submit}
+              size='sm'
+            >
+              <SendIcon aria-hidden='true' />
+              {t('Send')}
+            </Button>
+          )}
         </div>
       </div>
     </div>

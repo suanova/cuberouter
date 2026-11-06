@@ -256,9 +256,33 @@ export function useDshTask(updateConversation: ConversationUpdater) {
     [pollUntilSettled, setRunning, updateConversation]
   )
 
+  // 网关没有取消任务插件的接口：卡住的轮次只能停止等待——中止本地轮询并把它标成
+  // 已取消，解锁输入框，用户可以去开新会话。
+  const cancel = useCallback(
+    (conversationId: string) => {
+      const controller = controllersRef.current.get(conversationId)
+      if (!controller) {
+        return
+      }
+      controller.abort()
+      controllersRef.current.delete(conversationId)
+      setRunning(conversationId, false)
+      updateConversation(conversationId, (current) => ({
+        ...current,
+        turns: current.turns.map((turn) =>
+          turn.status === 'running'
+            ? { ...turn, status: 'canceled' as const, finishedAt: Date.now() }
+            : turn
+        ),
+      }))
+    },
+    [setRunning, updateConversation]
+  )
+
   return {
     sendPrompt,
     resumeTask,
+    cancel,
     isRunning: (conversationId: string | null | undefined) =>
       Boolean(conversationId) && runningIds.includes(conversationId as string),
   }

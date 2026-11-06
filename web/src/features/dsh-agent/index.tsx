@@ -47,7 +47,8 @@ export function DshAgent() {
     selectConversation,
     removeConversation,
   } = useDshConversations()
-  const { sendPrompt, resumeTask, isRunning } = useDshTask(updateConversation)
+  const { sendPrompt, resumeTask, cancel, isRunning } =
+    useDshTask(updateConversation)
 
   // 刷新前仍在运行的一轮：网关还在跟踪任务，导入时带着 taskId 重新挂上轮询；
   // 连 taskId 都没有说明提交没完成，直接标记失败，避免永远转圈。
@@ -137,6 +138,12 @@ export function DshAgent() {
     createNew(activeModel || pickDefaultModel(models))
   }, [activeModel, createNew, models])
 
+  const handleCancel = useCallback(() => {
+    if (activeId) {
+      cancel(activeId)
+    }
+  }, [activeId, cancel])
+
   const handleSubmit = useCallback(
     (prompt: string, attachments: DshAttachment[]) => {
       if (!activeConversation) {
@@ -190,6 +197,7 @@ export function DshAgent() {
         <DshComposer
           disabled={!activeConversation || !activeModel}
           isRunning={isRunning(activeId)}
+          onCancel={handleCancel}
           onSubmit={handleSubmit}
           uploads={uploadSettings}
         />

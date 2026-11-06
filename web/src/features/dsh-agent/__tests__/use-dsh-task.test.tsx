@@ -197,4 +197,41 @@ describe('useDshTask', () => {
     )
     expect(hook.getConversation().turns[0].attachments).toBeUndefined()
   })
+
+  it('stops waiting without resubmitting when the user cancels a stuck turn', async () => {
+    vi.mocked(submitAgentTask).mockClear()
+    vi.mocked(submitAgentTask).mockResolvedValue({ task_id: 'task-4' })
+    // 卡在 dsh 里的轮次：轮询一直不返回，只有 abort 才能结束。
+    vi.mocked(fetchAgentTask).mockImplementation(
+      ((_taskId: string, signal?: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError'))
+          )
+        })) as never
+    )
+    const hook = renderTaskHook()
+
+    let sending: Promise<void> | undefined
+    await act(async () => {
+      sending = hook.result.current.sendPrompt(hook.getConversation(), '慢慢来')
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(hook.getConversation().turns[0].status).toBe('running')
+    expect(hook.result.current.isRunning(hook.getConversation().id)).toBe(true)
+
+    await act(async () => {
+      hook.result.current.cancel(hook.getConversation().id)
+      await sending
+    })
+
+    const turn = hook.getConversation().turns[0]
+    expect(turn.status).toBe('canceled')
+    expect(turn.finishedAt).toBeGreaterThan(0)
+    expect(hook.result.current.isRunning(hook.getConversation().id)).toBe(false)
+    // 停止等待只中止本地轮询，不能再提交一次任务。
+    expect(vi.mocked(submitAgentTask).mock.calls).toHaveLength(1)
+  })
 })

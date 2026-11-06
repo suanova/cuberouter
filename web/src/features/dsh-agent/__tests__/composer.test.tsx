@@ -44,15 +44,17 @@ function renderComposer(
   } = {}
 ) {
   const onSubmit = vi.fn()
+  const onCancel = vi.fn()
   render(
     <DshComposer
       disabled={overrides.disabled ?? false}
       isRunning={overrides.isRunning ?? false}
+      onCancel={onCancel}
       onSubmit={onSubmit}
       uploads={overrides.uploads === undefined ? uploads : overrides.uploads}
     />
   )
-  return { onSubmit, textarea: screen.getByRole('textbox') }
+  return { onSubmit, onCancel, textarea: screen.getByRole('textbox') }
 }
 
 function uploadFile(name = 'report.pdf'): DshAttachment {
@@ -106,6 +108,19 @@ describe('DshComposer', () => {
     const running = renderComposer({ isRunning: true })
     fireEvent.change(running.textarea, { target: { value: '排队中' } })
     fireEvent.keyDown(running.textarea, { key: 'Enter' })
+    expect(running.onSubmit).not.toHaveBeenCalled()
+  })
+
+  test('offers a stop button instead of send while a turn is running', () => {
+    const running = renderComposer({ isRunning: true })
+
+    expect(
+      screen.queryByRole('button', { name: 'Send' })
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop waiting' }))
+
+    expect(running.onCancel).toHaveBeenCalledTimes(1)
     expect(running.onSubmit).not.toHaveBeenCalled()
   })
 

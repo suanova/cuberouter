@@ -6331,6 +6331,7 @@
     "Message the DSH agent": "向 DSH 智能体发送消息",
     "Describe the task for the agent…": "描述要交给智能体的任务…",
     "Waiting for the current turn to finish…": "正在等待当前轮次完成…",
+    "Stop waiting": "停止等待",
     "Enter to send, Shift + Enter for a new line.": "Enter 发送，Shift + Enter 换行。",
     "Agent is working…": "智能体正在工作…",
     "{{seconds}}s": "{{seconds}} 秒",
