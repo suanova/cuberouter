@@ -67,3 +67,6 @@ knowledge/.upstream-cache/
 
 # Ignore models yaml (it includes sensitive credential information)
 *.models.yaml
+
+# Local git worktrees
+.worktrees/
