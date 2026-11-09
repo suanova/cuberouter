@@ -43,6 +43,14 @@ describe('createConversation', () => {
   it('mounts the standard preset so dsh keeps its file and PPT tools', () => {
     expect(createConversation('dsh').preset).toBe('standard')
   })
+
+  it('pins the organization when one is known', () => {
+    expect(createConversation('dsh', 12).organizationId).toBe(12)
+  })
+
+  it('omits the organization so the backend can resolve it', () => {
+    expect(createConversation('dsh', 0)).not.toHaveProperty('organizationId')
+  })
 })
 
 describe('conversation storage', () => {
@@ -51,17 +59,19 @@ describe('conversation storage', () => {
   })
 
   it('round-trips conversations and the active id', () => {
-    const first = createConversation('model-a')
+    const first = createConversation('model-a', 12)
     const second = createConversation('model-b')
     saveConversations({
       conversations: [first, second],
       activeId: second.id,
     })
 
+    // 组织随会话一起持久化：刷新后提交仍落在同一个 dsh 容器。
     expect(loadConversations()).toEqual({
       conversations: [first, second],
       activeId: second.id,
     })
+    expect(loadConversations()?.conversations[0]?.organizationId).toBe(12)
   })
 
   it('falls back to the first conversation when the stored active id is gone', () => {

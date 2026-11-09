@@ -89,15 +89,18 @@ func SetRelayRouter(router *gin.Engine) {
 	// Agent 页面（DSH 等任务插件）的会话鉴权入口（/pg/agent/*）。与 /pg/video
 	// 同构：登录会话 + 统一任务体，Task Plugin 渠道需要在选渠道前放行，所以
 	// AllowTaskPluginChannel 单独成组并排在 Distribute 之前。
+	//
+	// 组织解析与渠道 pin 只挂在提交路径上：轮询不需要重新解析组织，也不该因为
+	// 调用方此刻没有组织而挡住已提交任务的状态读取。
 	playgroundAgentRouter := router.Group("/pg/agent")
 	playgroundAgentRouter.Use(middleware.RouteTag("relay"))
 	playgroundAgentRouter.Use(middleware.RelayCapacity())
 	playgroundAgentRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundAgentRouter.Use(middleware.AllowTaskPluginChannel())
-	playgroundAgentRouter.Use(middleware.UserAuth(), middleware.DshAccess(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
+	playgroundAgentRouter.Use(middleware.UserAuth(), middleware.DshAccess())
 	{
-		playgroundAgentRouter.POST("/tasks", controller.PlaygroundAgentTask)
-		playgroundAgentRouter.GET("/tasks/:task_id", controller.PlaygroundAgentTaskFetch)
+		playgroundAgentRouter.POST("/tasks", middleware.DshOrganization(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute(), controller.PlaygroundAgentTask)
+		playgroundAgentRouter.GET("/tasks/:task_id", middleware.Distribute(), controller.PlaygroundAgentTaskFetch)
 	}
 	relayV1Router := router.Group("/v1")
 	relayV1Router.Use(middleware.RouteTag("relay"))

@@ -32,3 +32,90 @@ export function normalizeDshOrganizationIds(values: unknown[]): number[] {
   }
   return [...ids].sort((a, b) => a - b)
 }
+
+/**
+ * Add one organization to the selection without disturbing the rest. Binding a
+ * channel also allow-lists the organization on the server, so the local chip
+ * has to follow or the next save would drop it again.
+ */
+export function mergeDshOrganizationSelection(
+  selected: string[],
+  organizationId: number
+): string[] {
+  if (!Number.isInteger(organizationId) || organizationId <= 0) {
+    return selected
+  }
+  const value = String(organizationId)
+  return selected.includes(value) ? selected : [...selected, value]
+}
+
+export type DshChannelChoice = {
+  // 0 stands for "unbound"; the channel ids are always positive.
+  id: number
+  name: string
+  disabled: boolean
+  reason: 'disabled' | 'bound_elsewhere' | 'missing' | null
+}
+
+type DshChannelChoiceInput = {
+  id: number
+  name: string
+  enabled: boolean
+  boundOrganizationId: number
+}
+
+/**
+ * Build the channel dropdown for one organization: "unbound" first, then every
+ * DSH channel. A channel that is stopped or already owned by another
+ * organization stays visible but cannot be picked — except for the channel this
+ * organization is currently bound to, which must remain selectable so the row
+ * reflects reality even when that channel was since disabled or deleted.
+ */
+export function buildDshChannelChoices(
+  channels: DshChannelChoiceInput[],
+  organizationId: number,
+  currentChannelId: number
+): DshChannelChoice[] {
+  const choices: DshChannelChoice[] = [
+    { id: 0, name: '', disabled: false, reason: null },
+  ]
+  let hasCurrent = currentChannelId <= 0
+  for (const channel of channels) {
+    if (channel.id === currentChannelId) {
+      hasCurrent = true
+      choices.push({
+        id: channel.id,
+        name: channel.name,
+        disabled: false,
+        reason: null,
+      })
+      continue
+    }
+    let reason: DshChannelChoice['reason'] = null
+    if (!channel.enabled) {
+      reason = 'disabled'
+    } else if (
+      channel.boundOrganizationId > 0 &&
+      channel.boundOrganizationId !== organizationId
+    ) {
+      reason = 'bound_elsewhere'
+    }
+    choices.push({
+      id: channel.id,
+      name: channel.name,
+      disabled: reason !== null,
+      reason,
+    })
+  }
+  if (!hasCurrent) {
+    // The bound channel was deleted: keep its id visible so an administrator
+    // can tell what the organization points at before re-binding.
+    choices.splice(1, 0, {
+      id: currentChannelId,
+      name: '',
+      disabled: false,
+      reason: 'missing',
+    })
+  }
+  return choices
+}

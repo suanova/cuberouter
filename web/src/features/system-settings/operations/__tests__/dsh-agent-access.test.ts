@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { normalizeDshOrganizationIds } from '../dsh-agent-access'
+import {
+  buildDshChannelChoices,
+  mergeDshOrganizationSelection,
+  normalizeDshOrganizationIds,
+} from '../dsh-agent-access'
 
 describe('normalizeDshOrganizationIds', () => {
   it('keeps positive integer IDs from numbers and numeric strings', () => {
@@ -36,5 +40,63 @@ describe('normalizeDshOrganizationIds', () => {
     expect(JSON.stringify(normalizeDshOrganizationIds(['2', 2, 1]))).toBe(
       '[1,2]'
     )
+  })
+})
+
+describe('mergeDshOrganizationSelection', () => {
+  it('appends a newly bound organization without disturbing the others', () => {
+    expect(mergeDshOrganizationSelection(['3', '1'], 12)).toEqual(['3', '1', '12'])
+  })
+
+  it('keeps the selection unchanged for an organization that is already selected', () => {
+    expect(mergeDshOrganizationSelection(['12'], 12)).toEqual(['12'])
+  })
+
+  it('ignores invalid organization IDs', () => {
+    expect(mergeDshOrganizationSelection(['1'], 0)).toEqual(['1'])
+    expect(mergeDshOrganizationSelection(['1'], 1.5)).toEqual(['1'])
+  })
+})
+
+describe('buildDshChannelChoices', () => {
+  const channels = [
+    { id: 34, name: 'org-12', enabled: true, boundOrganizationId: 0 },
+    { id: 35, name: 'stopped', enabled: false, boundOrganizationId: 0 },
+    { id: 36, name: 'other', enabled: true, boundOrganizationId: 13 },
+  ]
+
+  it('always offers "unbound" first and lists every DSH channel', () => {
+    const choices = buildDshChannelChoices(channels, 12, 0)
+
+    expect(choices.map((choice) => choice.id)).toEqual([0, 34, 35, 36])
+    expect(choices[0]).toMatchObject({ disabled: false, reason: null })
+  })
+
+  it('disables stopped channels and channels owned by another organization', () => {
+    const choices = buildDshChannelChoices(channels, 12, 0)
+
+    expect(choices[2]).toMatchObject({ id: 35, disabled: true, reason: 'disabled' })
+    expect(choices[3]).toMatchObject({
+      id: 36,
+      disabled: true,
+      reason: 'bound_elsewhere',
+    })
+  })
+
+  it('keeps the current organization channel selectable even when it is stopped', () => {
+    const choices = buildDshChannelChoices(channels, 12, 35)
+
+    expect(choices[2]).toMatchObject({ id: 35, disabled: false, reason: null })
+  })
+
+  it('surfaces a deleted binding as a missing placeholder', () => {
+    const choices = buildDshChannelChoices(channels, 12, 99)
+
+    expect(choices[1]).toEqual({
+      id: 99,
+      name: '',
+      disabled: false,
+      reason: 'missing',
+    })
   })
 })

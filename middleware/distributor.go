@@ -82,6 +82,22 @@ func Distribute() func(c *gin.Context) {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": common.GetContextKeyString(c, constant.ContextKeyUsingGroup), "Model": modelRequest.Model}), types.ErrorCode(kind))
 				return
 			}
+			if pin.Source == taskdto.PinSourceOrganization {
+				// 组织 pin 是服务端替成员选的路由，不应因此绕过该成员的模型白名单。
+				// 与 else 分支同一套：actor 优先，空模型跳过。
+				actorUserId := common.GetContextKeyInt(c, constant.ContextKeyActorUserId)
+				if actorUserId <= 0 {
+					actorUserId = common.GetContextKeyInt(c, constant.ContextKeyUserId)
+				}
+				var allow []string
+				if actorUserId > 0 {
+					allow = model.GetUserModelAllowList(actorUserId)
+				}
+				if allow != nil && modelRequest.Model != "" && !model.IsModelAllowedByMemberAccess(allow, modelRequest.Model) {
+					abortWithOpenAiMessage(c, http.StatusForbidden, i18n.T(c, i18n.MsgDistributorMemberModelForbidden, map[string]any{"Model": modelRequest.Model}))
+					return
+				}
+			}
 		} else {
 			// Select a channel for the user
 			// check token model mapping

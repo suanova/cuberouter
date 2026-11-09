@@ -76,13 +76,32 @@ export function useDshConversations() {
     })
   }, [])
 
-  const createNew = useCallback((model: string) => {
-    const conversation = createConversation(model)
+  const createNew = useCallback((model: string, organizationId?: number) => {
+    const conversation = createConversation(model, organizationId)
     setState((prev) => ({
       conversations: [conversation, ...prev.conversations],
       activeId: conversation.id,
     }))
     return conversation
+  }, [])
+
+  // 旧版本持久化的会话没有 organizationId：拿到当前解析结果后统一补写，
+  // 让历史会话也固定在同一个组织实例上。
+  const assignOrganization = useCallback((organizationId: number) => {
+    if (!Number.isInteger(organizationId) || organizationId <= 0) {
+      return
+    }
+    setState((prev) => {
+      let changed = false
+      const conversations = prev.conversations.map((item) => {
+        if (item.organizationId && item.organizationId > 0) {
+          return item
+        }
+        changed = true
+        return { ...item, organizationId }
+      })
+      return changed ? { ...prev, conversations } : prev
+    })
   }, [])
 
   const selectConversation = useCallback((id: string) => {
@@ -109,6 +128,7 @@ export function useDshConversations() {
     updateConversation,
     updateActive,
     createNew,
+    assignOrganization,
     selectConversation,
     removeConversation,
   }

@@ -24,6 +24,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
@@ -48,11 +49,33 @@ func DshAccess() gin.HandlerFunc {
 
 // DshSubmitAccess gates task-plugin submits whose resolved plugin is DSH. It
 // must run after PrepareTaskPluginSubmit, which stores the resolved key.
+//
+// It no longer consults CanAccessDsh: for /v1 tasks the token scope is the
+// authority. A personal token carries no organization, so DSH submits are
+// rejected strictly — administrators and root included.
 func DshSubmitAccess() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if c.GetString("expected_task_plugin_key") == setting.DshTaskPluginKey &&
-			!service.CanAccessDsh(dshRequesterUserId(c)) {
-			abortWithOpenAiMessage(c, http.StatusForbidden, common.TranslateMessage(c, i18n.MsgDshAccessDenied))
+		if c.GetString("expected_task_plugin_key") != setting.DshTaskPluginKey {
+			c.Next()
+			return
+		}
+		userId := dshRequesterUserId(c)
+		organizationId := common.GetContextKeyInt(c, constant.ContextKeyOrganizationId)
+		if userId <= 0 || organizationId <= 0 {
+			abortDshOrganizationError(c, service.ErrDshOrganizationRequired)
+			return
+		}
+		_, channelId, err := service.ResolveDshOrganizationForToken(userId, organizationId)
+		if err != nil {
+			abortDshOrganizationError(c, err)
+			return
+		}
+		AddDshOrganizationPin(c, channelId)
+		// TokenAuth 会在管理员令牌 key 带 "-<channelId>" 后缀时加 rank-0 的
+		// PinSourceToken；那种 pin 必须在这里暴露出来，否则任务会被引到别的实例。
+		pin, found, _ := service.GetChannelConstraints(c).ResolvedPin()
+		if !found || pin.Source != dto.PinSourceOrganization || pin.ChannelId != channelId {
+			abortDshOrganizationError(c, service.ErrDshChannelUnavailable)
 			return
 		}
 		c.Next()

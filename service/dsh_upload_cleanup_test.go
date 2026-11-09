@@ -31,20 +31,21 @@ import (
 
 func writeDshUploadFile(t *testing.T, dir, name string, modTime time.Time) string {
 	t.Helper()
+	require.NoError(t, os.MkdirAll(dir, 0o700))
 	filePath := filepath.Join(dir, name)
 	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o600))
 	require.NoError(t, os.Chtimes(filePath, modTime, modTime))
 	return filePath
 }
 
-func TestCleanupDshUploadsRemovesExpiredAndExcessFiles(t *testing.T) {
-	dir := t.TempDir()
-	userDir := filepath.Join(dir, "1")
-	require.NoError(t, os.MkdirAll(userDir, 0o700))
-	otherUserDir := filepath.Join(dir, "2")
-	require.NoError(t, os.MkdirAll(otherUserDir, 0o700))
-	notesDir := filepath.Join(dir, "notes")
-	require.NoError(t, os.MkdirAll(notesDir, 0o700))
+func TestCleanupDshUploadsRemovesExpiredAndExcessFilesPerOrganization(t *testing.T) {
+	root := t.TempDir()
+	userDir := filepath.Join(root, "org-12", "uploads", "1")
+	otherUserDir := filepath.Join(root, "org-12", "uploads", "2")
+	secondOrgDir := filepath.Join(root, "org-13", "uploads", "1")
+	notesDir := filepath.Join(root, "org-12", "notes")
+	looseDir := filepath.Join(root, "notes", "1")
+	invalidOrgDir := filepath.Join(root, "org-abc", "uploads", "1")
 
 	now := time.Now()
 	expired := writeDshUploadFile(t, userDir, "expired.pdf", now.Add(-10*24*time.Hour))
@@ -52,9 +53,12 @@ func TestCleanupDshUploadsRemovesExpiredAndExcessFiles(t *testing.T) {
 	newer := writeDshUploadFile(t, userDir, "newer.pdf", now.Add(-time.Hour))
 	newest := writeDshUploadFile(t, userDir, "newest.pdf", now)
 	otherUser := writeDshUploadFile(t, otherUserDir, "keep.pdf", now.Add(-time.Hour))
+	secondOrg := writeDshUploadFile(t, secondOrgDir, "keep.pdf", now.Add(-time.Hour))
 	note := writeDshUploadFile(t, notesDir, "keep.txt", now.Add(-30*24*time.Hour))
+	loose := writeDshUploadFile(t, looseDir, "keep.txt", now.Add(-30*24*time.Hour))
+	invalidOrg := writeDshUploadFile(t, invalidOrgDir, "keep.txt", now.Add(-30*24*time.Hour))
 
-	removed, err := CleanupDshUploads(dir, DshUploadRetention{Age: 7 * 24 * time.Hour, MaxFiles: 2}, now)
+	removed, err := CleanupDshUploads(root, DshUploadRetention{Age: 7 * 24 * time.Hour, MaxFiles: 2}, now)
 	require.NoError(t, err)
 	// 一个按时间过期，一个按数量超出。
 	assert.Equal(t, 2, removed)
@@ -63,18 +67,20 @@ func TestCleanupDshUploadsRemovesExpiredAndExcessFiles(t *testing.T) {
 	assert.NoFileExists(t, secondNewest)
 	assert.FileExists(t, newer)
 	assert.FileExists(t, newest)
-	// 其它用户目录和非数字目录不参与清理。
+	// 其它用户、其它组织以及非 org-<id>/uploads 目录都不参与清理。
 	assert.FileExists(t, otherUser)
+	assert.FileExists(t, secondOrg)
 	assert.FileExists(t, note)
+	assert.FileExists(t, loose)
+	assert.FileExists(t, invalidOrg)
 }
 
 func TestCleanupDshUploadsKeepsFilesWhenRulesAreDisabled(t *testing.T) {
-	dir := t.TempDir()
-	userDir := filepath.Join(dir, "1")
-	require.NoError(t, os.MkdirAll(userDir, 0o700))
+	root := t.TempDir()
+	userDir := filepath.Join(root, "org-12", "uploads", "1")
 	old := writeDshUploadFile(t, userDir, "old.pdf", time.Now().Add(-365*24*time.Hour))
 
-	removed, err := CleanupDshUploads(dir, DshUploadRetention{}, time.Now())
+	removed, err := CleanupDshUploads(root, DshUploadRetention{}, time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, 0, removed)
 	assert.FileExists(t, old)

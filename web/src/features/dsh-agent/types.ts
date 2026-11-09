@@ -70,9 +70,17 @@ export type DshConversation = {
   title: string
   model: string
   preset: string
+  // 会话固定的组织：组织决定计费账本与具体的 dsh 容器。旧版本持久化的会话
+  // 可能没有这个字段，页面加载后会用当前解析结果补写。
+  organizationId?: number
   sessionId?: string
   turns: DshTurn[]
   updatedAt: number
+}
+
+export type DshOrganizationInfo = {
+  organizationId: number
+  organizationName: string
 }
 
 // dsh-api 的任务载荷：提交时是 { ok, data }，轮询时被网关原样写入 Task.Data。

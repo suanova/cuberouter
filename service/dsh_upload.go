@@ -44,7 +44,16 @@ const (
 	DshUploadMaxBytes = 25 << 20
 	// DshUploadMaxFiles 是一轮对话里附件的上限，前端与插件两侧都按它裁剪。
 	DshUploadMaxFiles = 10
+	// dshOrganizationUploadsDirName 与 docker-compose.dsh-org.yml 中
+	// DSH_UPLOAD_MOUNT=/data/uploads 对应：组织数据卷的 uploads 子目录。
+	dshOrganizationUploadsDirName = "uploads"
 )
+
+// dshOrganizationDirName 返回组织数据卷名，必须与
+// docker-compose.dsh-org.yml 的 ${DSH_DATA_ROOT}/org-${ORG_ID}:/data 一致。
+func dshOrganizationDirName(organizationId int) string {
+	return "org-" + strconv.Itoa(organizationId)
+}
 
 // dshUploadTypes 是允许上传的扩展名白名单。这里不信任客户端的 Content-Type，
 // 扩展名只决定「让不让存」，不决定怎么执行。
@@ -84,28 +93,47 @@ type DshAttachment struct {
 	Size     int64  `json:"size"`
 }
 
+// DshUploadConfig 描述上传文件的落盘位置。每个组织一个 DSH 容器，网关按
+// 组织分目录落盘：<Root>/org-<id>/uploads 正是该组织容器的 /data 卷里
+// 的 uploads 目录，容器内看到的仍是 <Mount>/<userId>/<file>。
 type DshUploadConfig struct {
-	// Dir 是网关进程可见的写入目录。
+	// Dir 是网关进程可见的写入目录（组织配置里已是 <Root>/org-<id>/uploads）。
 	Dir string
 	// Mount 是该目录在 dsh 容器中的挂载路径前缀。
 	Mount string
 }
 
-// LoadDshUploadConfig 读取共享卷配置。两个变量必须同时设置，避免返回一个
-// 智能体读不到的路径。
+// LoadDshUploadConfig 读取共享卷根目录配置。两个变量必须同时设置，避免返回
+// 一个智能体读不到的路径。
 func LoadDshUploadConfig() (DshUploadConfig, error) {
-	dir := strings.TrimSpace(os.Getenv("DSH_UPLOAD_DIR"))
+	root := strings.TrimSpace(os.Getenv("DSH_UPLOAD_ROOT"))
 	mount := strings.TrimSpace(os.Getenv("DSH_UPLOAD_MOUNT"))
-	if dir == "" || mount == "" {
+	if root == "" || mount == "" {
 		return DshUploadConfig{}, errors.New("DSH task uploads are not configured")
 	}
-	if !filepath.IsAbs(dir) {
-		return DshUploadConfig{}, errors.New("DSH_UPLOAD_DIR must be an absolute path")
+	if !filepath.IsAbs(root) {
+		return DshUploadConfig{}, errors.New("DSH_UPLOAD_ROOT must be an absolute path")
 	}
 	if !strings.HasPrefix(mount, "/") {
 		return DshUploadConfig{}, errors.New("DSH_UPLOAD_MOUNT must be an absolute path")
 	}
-	return DshUploadConfig{Dir: filepath.Clean(dir), Mount: path.Clean(mount)}, nil
+	return DshUploadConfig{Dir: filepath.Clean(root), Mount: path.Clean(mount)}, nil
+}
+
+// LoadDshOrganizationUploadConfig 返回某个组织的上传目录。目录布局与
+// docker-compose.dsh-org.yml 的卷挂载一致：<Root>/org-<id> 挂到容器的 /data。
+func LoadDshOrganizationUploadConfig(organizationId int) (DshUploadConfig, error) {
+	if organizationId <= 0 {
+		return DshUploadConfig{}, errors.New("invalid organization")
+	}
+	root, err := LoadDshUploadConfig()
+	if err != nil {
+		return DshUploadConfig{}, err
+	}
+	return DshUploadConfig{
+		Dir:   filepath.Join(root.Dir, dshOrganizationDirName(organizationId), dshOrganizationUploadsDirName),
+		Mount: root.Mount,
+	}, nil
 }
 
 func DshUploadAccept() []string {
@@ -117,9 +145,10 @@ func DshUploadAccept() []string {
 	return accept
 }
 
-// SaveDshAttachment 把上传文件写进共享卷的用户子目录，并返回 harness 侧路径。
-// 文件名只保留可打印字符，落盘名再挂一个随机前缀，避免同名覆盖与路径穿越。
-func SaveDshAttachment(userId int, header *multipart.FileHeader) (DshAttachment, error) {
+// SaveDshAttachment 把上传文件写进所属组织的上传子目录，并返回 harness 侧
+// 路径。文件名只保留可打印字符，落盘名再挂一个随机前缀，避免同名覆盖与
+// 路径穿越。
+func SaveDshAttachment(organizationId, userId int, header *multipart.FileHeader) (DshAttachment, error) {
 	if userId <= 0 {
 		return DshAttachment{}, errors.New("invalid user")
 	}
@@ -134,7 +163,7 @@ func SaveDshAttachment(userId int, header *multipart.FileHeader) (DshAttachment,
 	if !dshUploadTypes[extension] {
 		return DshAttachment{}, fmt.Errorf("unsupported file type: %s", extension)
 	}
-	cfg, err := LoadDshUploadConfig()
+	cfg, err := LoadDshOrganizationUploadConfig(organizationId)
 	if err != nil {
 		return DshAttachment{}, err
 	}
@@ -182,10 +211,10 @@ func SaveDshAttachment(userId int, header *multipart.FileHeader) (DshAttachment,
 	}, nil
 }
 
-// ValidateDshAttachments 校验随任务提交的附件清单。路径只能由网关的上传接口
-// 签发，因此这里只接受落在当前用户上传子目录里的文件：否则调用方可以塞进
-// /etc/passwd 这类 harness 能读到的任意文件，把宿主机内容带进模型上下文。
-func ValidateDshAttachments(userId int, attachments []relaycommon.TaskAttachment) error {
+// ValidateDshAttachments 校验随任务提交的附件清单。附件只能先经网关上传接口
+// 落进「本组织 + 本用户」的目录，因此这里只接受落在该目录里的文件：其它路径
+// （包括其它组织同用户目录与 /etc/passwd）在本地不存在，自然被拒。
+func ValidateDshAttachments(organizationId, userId int, attachments []relaycommon.TaskAttachment) error {
 	if len(attachments) == 0 {
 		return nil
 	}
@@ -195,7 +224,7 @@ func ValidateDshAttachments(userId int, attachments []relaycommon.TaskAttachment
 	if len(attachments) > DshUploadMaxFiles {
 		return fmt.Errorf("at most %d files can be attached", DshUploadMaxFiles)
 	}
-	cfg, err := LoadDshUploadConfig()
+	cfg, err := LoadDshOrganizationUploadConfig(organizationId)
 	if err != nil {
 		return err
 	}

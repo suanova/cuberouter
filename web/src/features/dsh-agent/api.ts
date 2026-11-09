@@ -24,12 +24,13 @@ import type {
 } from '@/features/usage-logs/types'
 import { api } from '@/lib/api'
 
-import { AGENT_MODEL_FILTER, API_ENDPOINTS } from './constants'
+import { AGENT_MODEL_FILTER, API_ENDPOINTS, DSH_ORGANIZATION_HEADER } from './constants'
 import type {
   AgentTaskFetchResponse,
   AgentTaskSubmitResponse,
   DshAttachment,
   DshModelOption,
+  DshOrganizationInfo,
   DshUploadSettings,
 } from './types'
 
@@ -38,8 +39,33 @@ export type SubmitAgentTaskBody = {
   prompt: string
   sessionId?: string
   preset?: string
+  organizationId?: number
   attachments?: DshAttachment[]
   signal?: AbortSignal
+}
+
+function organizationHeaders(
+  organizationId?: number
+): Record<string, string> {
+  if (!organizationId || !Number.isInteger(organizationId) || organizationId <= 0) {
+    return {}
+  }
+  return { [DSH_ORGANIZATION_HEADER]: String(organizationId) }
+}
+
+// 没有组织时不发这个头，让后端按账号上下文自动选择；老会话（旧版本持久化、
+// 尚未补写组织）也能正常工作。
+function requestConfig(
+  organizationId: number | undefined,
+  signal: AbortSignal | undefined,
+  extra: Record<string, unknown> = {}
+): Record<string, unknown> {
+  const headers = organizationHeaders(organizationId)
+  return {
+    signal,
+    ...extra,
+    ...(Object.keys(headers).length > 0 ? { headers } : {}),
+  }
 }
 
 /**
@@ -58,7 +84,9 @@ export async function submitAgentTask(
       ...(body.preset ? { preset: body.preset } : {}),
       ...(body.attachments?.length ? { attachments: body.attachments } : {}),
     },
-    { signal: body.signal, skipErrorHandler: true } as Record<string, unknown>
+    requestConfig(body.organizationId, body.signal, {
+      skipErrorHandler: true,
+    })
   )
   return res.data
 }
@@ -97,19 +125,50 @@ export async function fetchDshUploadSettings(): Promise<DshUploadSettings> {
 }
 
 /**
- * 单个文件一次请求：网关按用户目录落盘并返回 dsh 容器内的绝对路径，页面只负责
- * 在提交任务时把这份清单回传。
+ * 当前会话解析到的组织。前端与 API 同源部署、开发环境走跨域，所以用 JSON
+ * 而不是响应头（CORS 未暴露自定义响应头）。解析失败返回 null，页面仍可提交
+ * （后端会自动选择组织）。
+ */
+export async function fetchDshOrganization(): Promise<DshOrganizationInfo | null> {
+  const res = await api.get(API_ENDPOINTS.DSH_ORGANIZATION, {
+    skipBusinessError: true,
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+  const data = (res.data as { data?: unknown } | undefined)?.data as
+    | { organization_id?: unknown; organization_name?: unknown }
+    | undefined
+  const organizationId = Number(data?.organization_id)
+  if (!Number.isInteger(organizationId) || organizationId <= 0) {
+    return null
+  }
+  return {
+    organizationId,
+    organizationName:
+      typeof data?.organization_name === 'string' ? data.organization_name : '',
+  }
+}
+
+export type UploadDshAttachmentOptions = {
+  organizationId?: number
+  signal?: AbortSignal
+}
+
+/**
+ * 单个文件一次请求：网关按「组织 + 用户」目录落盘并返回 dsh 容器内的绝对
+ * 路径，页面只负责在提交任务时把这份清单回传。
  */
 export async function uploadDshAttachment(
   file: File,
-  signal?: AbortSignal
+  options: UploadDshAttachmentOptions = {}
 ): Promise<DshAttachment> {
   const form = new FormData()
   form.append('file', file)
   const res = await api.post<DshAttachmentResponse>(
     API_ENDPOINTS.DSH_UPLOADS,
     form,
-    { signal, skipErrorHandler: true } as Record<string, unknown>
+    requestConfig(options.organizationId, options.signal, {
+      skipErrorHandler: true,
+    })
   )
   const data = res.data ?? {}
   if (!data.path) {

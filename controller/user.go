@@ -760,6 +760,29 @@ func filterAgentModels(models []string, groups []string, pluginKey string) []str
 	return filtered
 }
 
+// appendUniqueGroups 把 extra 中尚未出现在 groups 里的分组追加到末尾，
+// 保持 groups 原有顺序。
+func appendUniqueGroups(groups []string, extra []string) []string {
+	if len(extra) == 0 {
+		return groups
+	}
+	seen := make(map[string]struct{}, len(groups)+len(extra))
+	for _, group := range groups {
+		seen[group] = struct{}{}
+	}
+	for _, group := range extra {
+		if group == "" {
+			continue
+		}
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+		groups = append(groups, group)
+	}
+	return groups
+}
+
 func GetUserModels(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -789,6 +812,13 @@ func GetUserModels(c *gin.Context) {
 	}
 	// 组织成员模型白名单：被查用户带白名单时只回白名单内的模型；nil（平台管理员、
 	// 无成员限制）原样直通，响应与过滤前逐字节一致。
+	//
+	// Agent 页面（DSH）的渠道挂在组织分组下，而成员的个人可用分组通常不含它；
+	// 先补上该用户可用的 DSH 组织分组，否则模型列表为空。结果仍经过下面的
+	// 成员白名单收窄，不会扩大可见范围。
+	if c.Query("endpoint") == "agent" && c.Query("plugin") == setting.DshTaskPluginKey {
+		groupsToQuery = appendUniqueGroups(groupsToQuery, service.DshOrganizationGroupsForUser(id))
+	}
 	models := service.GetGroupsEnabledModels(groupsToQuery)
 	models = model.FilterModelsByMemberAccess(model.GetUserModelAllowList(id), models)
 	// Playground 只该列出能真正聊天的模型：图片/视频生成模型与 responses-only

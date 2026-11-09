@@ -35,6 +35,16 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 )
 
+// setupDshUploadEnv points the shared volume at a temp root and returns it.
+// 每个组织的数据卷目录是 <root>/org-<id>，容器把它挂到 /data。
+func setupDshUploadEnv(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("DSH_UPLOAD_ROOT", root)
+	t.Setenv("DSH_UPLOAD_MOUNT", "/data/uploads")
+	return root
+}
+
 func dshUploadHeader(t *testing.T, filename, contentType string, content []byte) *multipart.FileHeader {
 	t.Helper()
 	var body bytes.Buffer
@@ -55,35 +65,43 @@ func dshUploadHeader(t *testing.T, filename, contentType string, content []byte)
 	return form.File["file"][0]
 }
 
-func TestSaveDshAttachmentWritesFilesUnderTheUserDirectory(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("DSH_UPLOAD_DIR", dir)
-	t.Setenv("DSH_UPLOAD_MOUNT", "/data/uploads/")
+func TestSaveDshAttachmentWritesInsideTheOrganizationVolume(t *testing.T) {
+	root := setupDshUploadEnv(t)
 
-	attachment, err := SaveDshAttachment(7, dshUploadHeader(t, "../../季度 报告.pdf", "application/pdf", []byte("%PDF-1.7")))
+	attachment, err := SaveDshAttachment(12, 7, dshUploadHeader(t, "../../季度 报告.pdf", "application/pdf", []byte("%PDF-1.7")))
 	require.NoError(t, err)
 
 	// 原始名字里的路径穿越被压成纯文件名，落盘名再挂随机前缀。
 	assert.Equal(t, "季度 报告.pdf", attachment.Name)
 	assert.Equal(t, int64(8), attachment.Size)
 	assert.Equal(t, "application/pdf", attachment.MimeType)
+	// 容器内路径不带组织：每个组织只挂自己的卷，/data/uploads 就是 org-12/uploads。
 	assert.True(t, strings.HasPrefix(attachment.Path, "/data/uploads/7/"))
 
 	storedName := strings.TrimPrefix(attachment.Path, "/data/uploads/7/")
 	assert.NotContains(t, storedName, "/")
 	assert.True(t, strings.HasSuffix(storedName, "-季度 报告.pdf"))
-	content, err := os.ReadFile(filepath.Join(dir, "7", storedName))
+	content, err := os.ReadFile(filepath.Join(root, "org-12", "uploads", "7", storedName))
 	require.NoError(t, err)
 	assert.Equal(t, "%PDF-1.7", string(content))
+
+	// 另一个组织的目录里不能出现这个文件。
+	_, err = os.Stat(filepath.Join(root, "org-13", "uploads", "7", storedName))
+	require.True(t, os.IsNotExist(err))
+}
+
+func TestSaveDshAttachmentRequiresAnOrganization(t *testing.T) {
+	setupDshUploadEnv(t)
+
+	_, err := SaveDshAttachment(0, 7, dshUploadHeader(t, "a.pdf", "application/pdf", []byte("pdf")))
+	require.ErrorContains(t, err, "invalid organization")
 }
 
 func TestSaveDshAttachmentTruncatesLongNamesOnRuneBoundaries(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("DSH_UPLOAD_DIR", dir)
-	t.Setenv("DSH_UPLOAD_MOUNT", "/data/uploads")
+	setupDshUploadEnv(t)
 
 	name := strings.Repeat("季度", 60) + ".pdf"
-	attachment, err := SaveDshAttachment(7, dshUploadHeader(t, name, "application/pdf", []byte("pdf")))
+	attachment, err := SaveDshAttachment(12, 7, dshUploadHeader(t, name, "application/pdf", []byte("pdf")))
 	require.NoError(t, err)
 
 	// 超长文件名按 rune 边界截断，保留扩展名且不产生非法 UTF-8。
@@ -94,47 +112,51 @@ func TestSaveDshAttachmentTruncatesLongNamesOnRuneBoundaries(t *testing.T) {
 }
 
 func TestValidateDshAttachmentsAcceptsOnlyTheUsersOwnUploads(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("DSH_UPLOAD_DIR", dir)
-	t.Setenv("DSH_UPLOAD_MOUNT", "/data/uploads")
+	root := setupDshUploadEnv(t)
 
-	attachment, err := SaveDshAttachment(7, dshUploadHeader(t, "report.pdf", "application/pdf", []byte("%PDF")))
+	attachment, err := SaveDshAttachment(12, 7, dshUploadHeader(t, "report.pdf", "application/pdf", []byte("%PDF")))
 	require.NoError(t, err)
 
 	t.Run("own upload", func(t *testing.T) {
-		require.NoError(t, ValidateDshAttachments(7, []relaycommon.TaskAttachment{{Name: "report.pdf", Path: attachment.Path}}))
+		require.NoError(t, ValidateDshAttachments(12, 7, []relaycommon.TaskAttachment{{Name: "report.pdf", Path: attachment.Path}}))
 	})
 
 	t.Run("no attachments", func(t *testing.T) {
-		require.NoError(t, ValidateDshAttachments(7, nil))
+		require.NoError(t, ValidateDshAttachments(12, 7, nil))
 	})
 
 	t.Run("another users upload", func(t *testing.T) {
-		err := ValidateDshAttachments(8, []relaycommon.TaskAttachment{{Path: attachment.Path}})
+		err := ValidateDshAttachments(12, 8, []relaycommon.TaskAttachment{{Path: attachment.Path}})
 		require.ErrorContains(t, err, "must come from this user's uploads")
 	})
 
+	// 附件按组织隔离：同一用户在另一个组织下没有这个文件。
+	t.Run("another organization", func(t *testing.T) {
+		err := ValidateDshAttachments(13, 7, []relaycommon.TaskAttachment{{Path: attachment.Path}})
+		require.ErrorContains(t, err, "missing")
+	})
+
 	t.Run("path traversal", func(t *testing.T) {
-		err := ValidateDshAttachments(7, []relaycommon.TaskAttachment{{Path: "/data/uploads/7/../../etc/passwd"}})
+		err := ValidateDshAttachments(12, 7, []relaycommon.TaskAttachment{{Path: "/data/uploads/7/../../etc/passwd"}})
 		require.ErrorContains(t, err, "must come from this user's uploads")
 	})
 
 	t.Run("empty path", func(t *testing.T) {
-		err := ValidateDshAttachments(7, []relaycommon.TaskAttachment{{Name: "report.pdf"}})
+		err := ValidateDshAttachments(12, 7, []relaycommon.TaskAttachment{{Name: "report.pdf"}})
 		require.ErrorContains(t, err, "needs a path")
 	})
 
 	t.Run("missing file", func(t *testing.T) {
-		err := ValidateDshAttachments(7, []relaycommon.TaskAttachment{{Path: "/data/uploads/7/deadbeef-nothing.pdf"}})
+		err := ValidateDshAttachments(12, 7, []relaycommon.TaskAttachment{{Path: "/data/uploads/7/deadbeef-nothing.pdf"}})
 		require.ErrorContains(t, err, "missing")
 	})
 
 	t.Run("symlink in the user directory", func(t *testing.T) {
 		target := filepath.Join(t.TempDir(), "outside.txt")
 		require.NoError(t, os.WriteFile(target, []byte("secret"), 0o600))
-		link := filepath.Join(dir, "7", "link.txt")
+		link := filepath.Join(root, "org-12", "uploads", "7", "link.txt")
 		require.NoError(t, os.Symlink(target, link))
-		err := ValidateDshAttachments(7, []relaycommon.TaskAttachment{{Path: "/data/uploads/7/link.txt"}})
+		err := ValidateDshAttachments(12, 7, []relaycommon.TaskAttachment{{Path: "/data/uploads/7/link.txt"}})
 		require.ErrorContains(t, err, "missing")
 	})
 
@@ -143,21 +165,19 @@ func TestValidateDshAttachmentsAcceptsOnlyTheUsersOwnUploads(t *testing.T) {
 		for index := range attachments {
 			attachments[index] = relaycommon.TaskAttachment{Path: attachment.Path}
 		}
-		err := ValidateDshAttachments(7, attachments)
+		err := ValidateDshAttachments(12, 7, attachments)
 		require.ErrorContains(t, err, "at most 10 files")
 	})
 
 	t.Run("uploads not configured", func(t *testing.T) {
-		t.Setenv("DSH_UPLOAD_DIR", "")
-		err := ValidateDshAttachments(7, []relaycommon.TaskAttachment{{Path: attachment.Path}})
+		t.Setenv("DSH_UPLOAD_ROOT", "")
+		err := ValidateDshAttachments(12, 7, []relaycommon.TaskAttachment{{Path: attachment.Path}})
 		require.ErrorContains(t, err, "not configured")
 	})
 }
 
 func TestSaveDshAttachmentRejectsUnsupportedInputs(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("DSH_UPLOAD_DIR", dir)
-	t.Setenv("DSH_UPLOAD_MOUNT", "/data/uploads")
+	setupDshUploadEnv(t)
 
 	cases := []struct {
 		name        string
@@ -181,7 +201,7 @@ func TestSaveDshAttachmentRejectsUnsupportedInputs(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			_, err := SaveDshAttachment(7, dshUploadHeader(t, testCase.filename, testCase.contentType, testCase.content))
+			_, err := SaveDshAttachment(12, 7, dshUploadHeader(t, testCase.filename, testCase.contentType, testCase.content))
 			require.ErrorContains(t, err, testCase.message)
 		})
 	}
@@ -189,13 +209,13 @@ func TestSaveDshAttachmentRejectsUnsupportedInputs(t *testing.T) {
 	t.Run("oversized file", func(t *testing.T) {
 		header := dshUploadHeader(t, "big.pdf", "application/pdf", []byte("x"))
 		header.Size = DshUploadMaxBytes + 1
-		_, err := SaveDshAttachment(7, header)
+		_, err := SaveDshAttachment(12, 7, header)
 		require.ErrorContains(t, err, "at most 25 MB")
 	})
 
 	t.Run("missing shared volume", func(t *testing.T) {
-		t.Setenv("DSH_UPLOAD_DIR", "")
-		_, err := SaveDshAttachment(7, dshUploadHeader(t, "a.png", "image/png", []byte("png")))
+		t.Setenv("DSH_UPLOAD_ROOT", "")
+		_, err := SaveDshAttachment(12, 7, dshUploadHeader(t, "a.png", "image/png", []byte("png")))
 		require.ErrorContains(t, err, "not configured")
 	})
 }

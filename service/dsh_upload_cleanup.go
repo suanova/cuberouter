@@ -24,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -93,9 +94,10 @@ func runDshUploadCleanup(dir string, retention DshUploadRetention, now time.Time
 	}
 }
 
-// CleanupDshUploads 只处理以用户 id 命名的子目录，其它内容原样留下。
-func CleanupDshUploads(dir string, retention DshUploadRetention, now time.Time) (int, error) {
-	entries, err := os.ReadDir(dir)
+// CleanupDshUploads 从共享卷根目录扫描 org-<id>/uploads/<userId>/，只处理
+// 以用户 id 命名的子目录，其它内容（含组织容器的其它数据）原样留下。
+func CleanupDshUploads(root string, retention DshUploadRetention, now time.Time) (int, error) {
+	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
@@ -108,13 +110,26 @@ func CleanupDshUploads(dir string, retention DshUploadRetention, now time.Time) 
 	}
 	removed := 0
 	for _, entry := range entries {
-		if !entry.IsDir() || !isDshUploadUserDir(entry.Name()) {
+		if !entry.IsDir() || !isDshOrganizationDir(entry.Name()) {
 			continue
 		}
-		count, err := cleanupDshUploadUserDir(filepath.Join(dir, entry.Name()), retention.MaxFiles, cutoff)
-		removed += count
+		uploadsDir := filepath.Join(root, entry.Name(), dshOrganizationUploadsDirName)
+		userDirs, err := os.ReadDir(uploadsDir)
 		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
 			return removed, err
+		}
+		for _, userDir := range userDirs {
+			if !userDir.IsDir() || !isDshUploadUserDir(userDir.Name()) {
+				continue
+			}
+			count, err := cleanupDshUploadUserDir(filepath.Join(uploadsDir, userDir.Name()), retention.MaxFiles, cutoff)
+			removed += count
+			if err != nil {
+				return removed, err
+			}
 		}
 	}
 	return removed, nil
@@ -182,4 +197,13 @@ func isDshUploadUserDir(name string) bool {
 		}
 	}
 	return true
+}
+
+// isDshOrganizationDir 只匹配 org-<正整数>，避免把共享卷里的其它目录当成
+// 上传根去扫描。
+func isDshOrganizationDir(name string) bool {
+	if !strings.HasPrefix(name, "org-") {
+		return false
+	}
+	return isDshUploadUserDir(strings.TrimPrefix(name, "org-"))
 }

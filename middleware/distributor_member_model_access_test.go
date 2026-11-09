@@ -33,9 +33,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	taskdto "github.com/QuantumNous/new-api/dto"
 	appI18n "github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
@@ -428,4 +430,91 @@ func TestDistributeMemberModelAccessSkipsEmptyModelRequests(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, recorder.Code)
 		assert.Contains(t, recorder.Body.String(), renderedMemberModelAccessMessage(appI18n.MsgDistributorMemberModelForbidden, map[string]any{"Model": "denied-model"}))
 	})
+}
+
+// TestDistributeOrganizationPinHonorsMemberModelAllowList 覆盖组织 pin 分支：
+// 组织 pin 是服务端替成员选的路由，不能因此绕过该成员的模型白名单；
+// 令牌 pin / 原任务 pin 的既有行为保持不变（它们只在管理员或历史任务路径上出现）。
+func TestDistributeOrganizationPinHonorsMemberModelAllowList(t *testing.T) {
+	require.NoError(t, appI18n.Init())
+	setupMemberModelAccessTestDB(t)
+	channel := insertMemberModelAccessTestChannel(t, "allowed-model")
+
+	restricted := createMemberModelAccessTestUser(t, "organization-pin-restricted")
+	createMemberModelAccessTestMembership(t, 1, restricted.Id, `["allowed-model"]`)
+	unrestricted := createMemberModelAccessTestUser(t, "organization-pin-unrestricted")
+
+	tests := []struct {
+		name           string
+		userId         int
+		model          string
+		pin            taskdto.ChannelPin
+		wantMessageKey string // 空串 = 期望放行
+	}{
+		{
+			name:   "an organization pin admits a whitelisted model",
+			userId: restricted.Id,
+			model:  "allowed-model",
+			pin: taskdto.ChannelPin{
+				ChannelId: channel.Id, Source: taskdto.PinSourceOrganization,
+				Rank: taskdto.PinRankOrganization, RetryMode: taskdto.PinRetrySingleAttempt,
+			},
+		},
+		{
+			name:   "an organization pin cannot smuggle a model outside the whitelist",
+			userId: restricted.Id,
+			model:  "denied-model",
+			pin: taskdto.ChannelPin{
+				ChannelId: channel.Id, Source: taskdto.PinSourceOrganization,
+				Rank: taskdto.PinRankOrganization, RetryMode: taskdto.PinRetrySingleAttempt,
+			},
+			wantMessageKey: appI18n.MsgDistributorMemberModelForbidden,
+		},
+		{
+			name:   "an unrestricted member keeps the organization pin",
+			userId: unrestricted.Id,
+			model:  "denied-model",
+			pin: taskdto.ChannelPin{
+				ChannelId: channel.Id, Source: taskdto.PinSourceOrganization,
+				Rank: taskdto.PinRankOrganization, RetryMode: taskdto.PinRetrySingleAttempt,
+			},
+		},
+		{
+			name:   "a token pin keeps its previous behavior",
+			userId: restricted.Id,
+			model:  "denied-model",
+			pin: taskdto.ChannelPin{
+				ChannelId: channel.Id, Source: taskdto.PinSourceToken,
+				Rank: taskdto.PinRankToken, RetryMode: taskdto.PinRetrySingleAttempt,
+			},
+		},
+		{
+			name:   "an origin task pin keeps its previous behavior",
+			userId: restricted.Id,
+			model:  "denied-model",
+			pin: taskdto.ChannelPin{
+				ChannelId: channel.Id, Source: taskdto.PinSourceOriginTask,
+				Rank: taskdto.PinRankOriginTask, RetryMode: taskdto.PinRetrySingleAttempt,
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder, c := memberModelAccessContext(t, tc.userId, tc.userId, tc.model)
+			service.GetChannelConstraints(c).AddPin(tc.pin)
+
+			Distribute()(c)
+
+			if tc.wantMessageKey == "" {
+				require.False(t, c.IsAborted(), recorder.Body.String())
+				assert.Equal(t, channel.Id, common.GetContextKeyInt(c, constant.ContextKeyChannelId))
+				return
+			}
+			require.True(t, c.IsAborted())
+			assert.Equal(t, http.StatusForbidden, recorder.Code)
+			message := renderedMemberModelAccessMessage(tc.wantMessageKey, map[string]any{"Model": tc.model})
+			assert.Contains(t, recorder.Body.String(), message)
+		})
+	}
 }

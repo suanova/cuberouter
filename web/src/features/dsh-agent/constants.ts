@@ -21,9 +21,14 @@ export const API_ENDPOINTS = {
   USER_MODELS: '/api/user/models',
   AGENT_TASKS: '/pg/agent/tasks',
   TASK_ARTIFACTS: '/api/task',
+  DSH_ORGANIZATION: '/api/dsh/organization',
   DSH_UPLOADS: '/api/dsh/uploads',
   DSH_UPLOAD_SETTINGS: '/api/dsh/uploads/config',
 } as const
+
+// 每个组织一个 dsh 容器：会话一旦建立就把组织固定下来，提交与上传都带这个头，
+// 同一会话始终落在同一个实例里。
+export const DSH_ORGANIZATION_HEADER = 'X-DSH-Organization-Id'
 
 // 模型下拉只列任务插件渠道托管的模型：渠道里的 dsh 只是插件入口，混在普通
 // 聊天模型里会被误选。plugin 对应渠道 setting 里的 task_plugin_key。

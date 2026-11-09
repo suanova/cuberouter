@@ -184,6 +184,7 @@ export function useDshTask(updateConversation: ConversationUpdater) {
           prompt,
           sessionId: conversation.sessionId,
           preset: conversation.preset || undefined,
+          organizationId: conversation.organizationId,
           ...(attachments.length ? { attachments } : {}),
           signal: controller.signal,
         })

@@ -345,6 +345,9 @@ distributor.invalid_request_parse_model: "Invalid request, unable to parse model
 
 # DSH Agent messages
 dsh.access_denied: "The DSH Agent is not enabled for your organization. Please contact the administrator."
+dsh.organization_required: "DSH tasks require an organization token; personal tokens cannot call DSH tasks."
+dsh.organization_unavailable: "No DSH-enabled organization is available for this account. Ask an administrator to enable DSH and bind a channel."
+dsh.organization_channel_unavailable: "The organization's DSH channel is unavailable. Please contact the administrator."
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "Custom OAuth provider not found"

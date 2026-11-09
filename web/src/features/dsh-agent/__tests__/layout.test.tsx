@@ -18,13 +18,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { DshAgent } from '..'
+import { fetchDshOrganization } from '../api'
+import { TASK_STORAGE_KEY } from '../constants'
 
 vi.mock('../api', () => ({
   getUserModels: vi.fn(async () => []),
+  fetchDshOrganization: vi.fn(async () => null),
   fetchDshUploadSettings: vi.fn(async () => ({
     enabled: false,
     maxBytes: 0,
@@ -50,6 +53,7 @@ function renderAgent() {
 describe('DshAgent layout', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    vi.mocked(fetchDshOrganization).mockResolvedValue(null)
   })
 
   test('the message log sits in a constrained flex column so it can scroll', () => {
@@ -79,5 +83,32 @@ describe('DshAgent layout', () => {
 
     expect(content).toHaveClass('mx-auto', 'w-full', 'px-4')
     expect(composer).toHaveClass('mx-auto', 'w-full', 'px-4')
+  })
+
+  test('pins a new conversation to the resolved organization', async () => {
+    vi.mocked(fetchDshOrganization).mockResolvedValue({
+      organizationId: 12,
+      organizationName: 'Zhongshan',
+    })
+    renderAgent()
+    await waitFor(() => {
+      expect(fetchDshOrganization).toHaveBeenCalled()
+    })
+
+    fireEvent.click(
+      within(screen.getByRole('banner')).getByRole('button', {
+        name: /new conversation/i,
+      })
+    )
+
+    await waitFor(() => {
+      const stored = JSON.parse(
+        window.localStorage.getItem(TASK_STORAGE_KEY) ?? '{}'
+      ) as { conversations?: { organizationId?: number }[] }
+      expect(stored.conversations?.length).toBeGreaterThanOrEqual(2)
+      expect(
+        stored.conversations?.every((item) => item.organizationId === 12)
+      ).toBe(true)
+    })
   })
 })

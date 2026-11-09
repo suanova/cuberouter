@@ -55,6 +55,8 @@ type DshComposerProps = {
   disabled: boolean
   isRunning: boolean
   uploads?: DshUploadSettings | null
+  // 当前会话固定的组织：附件必须落在该组织的共享卷里，容器才读得到。
+  organizationId?: number
   onCancel: () => void
   onSubmit: (prompt: string, attachments: DshAttachment[]) => void
 }
@@ -137,7 +139,7 @@ export function DshComposer(props: DshComposerProps) {
       ...items,
       { id, name: file.name, size: file.size, status: 'uploading' },
     ])
-    void uploadDshAttachment(file)
+    void uploadDshAttachment(file, { organizationId: props.organizationId })
       .then((attachment) => {
         updatePending(id, (item) => ({
           ...item,

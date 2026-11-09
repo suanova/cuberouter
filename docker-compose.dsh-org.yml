@@ -1,0 +1,54 @@
+# cuberouter — per-organization DSH (DeepSeek Harness) runtime
+#
+# One container per organization. The gateway reaches it by the unique service
+# alias `dsh-org-<ORG_ID>` on the shared cuberouter-net network — never by
+# `http://dsh:3080`, which is ambiguous when several projects run this file.
+#
+# Usage (see docs/dsh-deployment.md for the full runbook):
+#
+#   ORG_ID=12 \
+#   DSH_API_KEY=$(openssl rand -hex 24) \
+#   DEEPSEEK_API_KEY='<organization private key>' \
+#   docker compose -p dsh-org-12 -f docker-compose.dsh-org.yml up -d
+#
+# The gateway stack (docker-compose.yml) must already be running so that the
+# external `cuberouter-net` network exists.
+
+version: '3.4'
+
+services:
+  dsh:
+    build:
+      context: ./docker/dsh
+      args:
+        DSH_VERSION: ${DSH_VERSION:-0.2.2-rc.1}
+        DSH_SKILL_OFFICE_VERSION: ${DSH_SKILL_OFFICE_VERSION:-0.2.2-rc.1}
+    image: cuberouter-dsh:${DSH_IMAGE_TAG:-latest}
+    container_name: dsh-org-${ORG_ID:?ORG_ID is required}
+    restart: always
+    # Port 3080 is intentionally not published: only the gateway needs to reach
+    # this container, and it does so over the shared network.
+    volumes:
+      # Same host directory the gateway writes attachments to:
+      #   <DSH_DATA_ROOT>/org-<ORG_ID>/uploads  ↔  /data/uploads in this container
+      - ${DSH_DATA_ROOT:-/data/dsh}/org-${ORG_ID:?ORG_ID is required}:/data
+    environment:
+      - DSH_HOME=/data
+      - TZ=Asia/Shanghai
+      - DSH_API_KEY=${DSH_API_KEY:?DSH_API_KEY is required}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY is required}
+      - DSH_LLM_BASE_URL=${DSH_LLM_BASE_URL:-}
+      - DSH_IMAGE_INPUT=${DSH_IMAGE_INPUT:-on}
+      - DSH_IMAGE_REVIEW_LIMIT=${DSH_IMAGE_REVIEW_LIMIT:-0}
+      - DSH_TRUSTED_HOST=${DSH_TRUSTED_HOST:-}
+    networks:
+      - cuberouter-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null --header=\"X-API-Key: $$DSH_API_KEY\" \"http://$$(cat /tmp/dsh-bind-host):3080/api/v1/health\" || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  cuberouter-net:
+    external: true

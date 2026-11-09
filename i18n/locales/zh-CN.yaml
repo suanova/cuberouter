@@ -346,6 +346,9 @@ distributor.invalid_request_parse_model: "无效的请求，无法解析模型"
 
 # DSH Agent messages
 dsh.access_denied: "当前账号所在组织未开通 DSH 智能体，请联系管理员"
+dsh.organization_required: "DSH 任务必须使用组织令牌，个人令牌不能调用"
+dsh.organization_unavailable: "当前账号没有可用的 DSH 组织，请联系管理员开通并绑定 DSH 渠道"
+dsh.organization_channel_unavailable: "组织的 DSH 渠道不可用，请联系管理员"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "自定义 OAuth 提供商不存在"

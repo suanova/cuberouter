@@ -23,6 +23,8 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { MultiSelect } from '@/components/multi-select'
+import { listDshAdminChannels } from '@/features/dsh-agent/admin-api'
+import { DshOrganizationBindingRow } from '@/features/dsh-agent/components/dsh-organization-binding-row'
 import { listPlatformOrganizations } from '@/features/organization/api'
 import type { OrganizationManagementView } from '@/features/organization/types'
 
@@ -30,7 +32,10 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
-import { normalizeDshOrganizationIds } from './dsh-agent-access'
+import {
+  mergeDshOrganizationSelection,
+  normalizeDshOrganizationIds,
+} from './dsh-agent-access'
 
 /** The platform list endpoint caps page_size at 100. */
 const ORGANIZATIONS_PAGE_SIZE = 100
@@ -90,6 +95,14 @@ export function DshAgentAccessSection(props: DshAgentAccessSectionProps) {
     staleTime: 5 * 60 * 1000,
   })
 
+  // 渠道下拉的数据源：绑定行与白名单共用一次请求，绑定时 bound_organization_id
+  // 会变，因此保存后统一失效 ['system-settings','dsh-agent'] 前缀。
+  const channelsQuery = useQuery({
+    queryKey: ['system-settings', 'dsh-agent', 'channels'],
+    queryFn: listDshAdminChannels,
+    staleTime: 60 * 1000,
+  })
+
   // Organizations that were allowlisted but are no longer active still need a
   // chip so an administrator can see and remove them.
   const options = useMemo(() => {
@@ -103,6 +116,25 @@ export function DshAgentAccessSection(props: DshAgentAccessSectionProps) {
       .map((value) => ({ label: `#${value}`, value }))
     return [...activeOptions, ...missingOptions]
   }, [organizationsQuery.data, selected])
+
+  const organizationNames = useMemo(() => {
+    const names = new Map<number, string>()
+    for (const organization of organizationsQuery.data ?? []) {
+      names.set(organization.id, organization.name)
+    }
+    return names
+  }, [organizationsQuery.data])
+
+  const selectedIds = useMemo(
+    () => normalizeDshOrganizationIds(selected),
+    [selected]
+  )
+
+  // 绑定成功后服务端会自动把组织加入白名单；本地选中态跟着补上，避免下次
+  // 保存白名单时把它又删掉。
+  const handleBound = (organizationId: number) => {
+    setSelected((prev) => mergeDshOrganizationSelection(prev, organizationId))
+  }
 
   const handleSave = async () => {
     const ids = normalizeDshOrganizationIds(selected)
@@ -146,14 +178,35 @@ export function DshAgentAccessSection(props: DshAgentAccessSectionProps) {
           />
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Members of the selected organizations may use the DSH Agent. When no organization is selected, only platform administrators have access.'
+              'Members of an enabled organization may use the DSH Agent. An organization is enabled only when it is selected here and bound to a DSH channel. Personal tokens cannot call the DSH task API.'
             )}
           </p>
           <p className='text-muted-foreground text-sm'>
             {t(
-              'Only active organization memberships grant access. Platform administrators always have access.'
+              'DSH tasks are billed to the organization, not to the personal wallet. Everyone, including platform administrators, must be an active member of an enabled organization.'
             )}
           </p>
+          {selectedIds.length > 0 && (
+            <div className='flex flex-col gap-2'>
+              {selectedIds.map((organizationId) => (
+                <DshOrganizationBindingRow
+                  channels={channelsQuery.data ?? []}
+                  channelsLoading={channelsQuery.isLoading}
+                  key={organizationId}
+                  onBound={handleBound}
+                  organizationId={organizationId}
+                  organizationName={
+                    organizationNames.get(organizationId) ?? ''
+                  }
+                />
+              ))}
+            </div>
+          )}
+          {channelsQuery.isError && (
+            <p role='alert' className='text-destructive text-sm'>
+              {t('Failed to load DSH channels')}
+            </p>
+          )}
           {organizationsQuery.isError && (
             <p role='alert' className='text-destructive text-sm'>
               {t('Failed to load organizations')}

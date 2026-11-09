@@ -70,6 +70,8 @@ func InitOptionMap() {
 	common.OptionMap[setting.TaskPluginDisabledFactoryKeysKey] = "[]"
 	jsplugin.DefaultRegistry.SetDisabledFactoryKeys(nil)
 	common.OptionMap[setting.DshAllowedOrganizationIdsKey] = "[]"
+	common.OptionMap[setting.DshOrganizationChannelsKey] = "{}"
+	common.OptionMap[setting.DshOrganizationDeepseekSecretKey] = "{}"
 	common.OptionMap["DataExportEnabled"] = strconv.FormatBool(common.DataExportEnabled)
 	common.OptionMap["ChannelDisableThreshold"] = strconv.FormatFloat(common.ChannelDisableThreshold, 'f', -1, 64)
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
@@ -255,6 +257,12 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == setting.DshAllowedOrganizationIdsKey {
 		return setting.ValidateDshAllowedOrganizationIds(value)
+	}
+	if key == setting.DshOrganizationChannelsKey {
+		return setting.ValidateDshOrganizationChannels(value)
+	}
+	if key == setting.DshOrganizationDeepseekSecretKey {
+		return setting.ValidateDshOrganizationDeepseekKey(value)
 	}
 	return nil
 }

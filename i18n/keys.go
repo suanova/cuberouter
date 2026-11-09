@@ -400,7 +400,10 @@ const (
 
 // DSH Agent related messages
 const (
-	MsgDshAccessDenied = "dsh.access_denied"
+	MsgDshAccessDenied                   = "dsh.access_denied"
+	MsgDshOrganizationRequired           = "dsh.organization_required"
+	MsgDshOrganizationUnavailable        = "dsh.organization_unavailable"
+	MsgDshOrganizationChannelUnavailable = "dsh.organization_channel_unavailable"
 )
 
 // Custom OAuth provider related messages

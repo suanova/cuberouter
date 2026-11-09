@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
-import { fetchDshUploadSettings, getUserModels } from './api'
+import { fetchDshOrganization, fetchDshUploadSettings, getUserModels } from './api'
 import { ConversationList } from './components/conversation-list'
 import { DshComposer } from './components/dsh-composer'
 import { DshHeader } from './components/dsh-header'
@@ -44,6 +44,7 @@ export function DshAgent() {
     activeConversation,
     updateConversation,
     createNew,
+    assignOrganization,
     selectConversation,
     removeConversation,
   } = useDshConversations()
@@ -90,6 +91,22 @@ export function DshAgent() {
     staleTime: 5 * 60 * 1000,
   })
 
+  // 当前解析到的组织：会话一旦建立就固定下来，提交与上传都带它。解析失败返回
+  // null（未开通 DSH），此时不盖章，提交时由后端给出明确的 403 文案。
+  const { data: organization = null } = useQuery({
+    queryKey: ['dsh-agent', 'organization'],
+    queryFn: fetchDshOrganization,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const organizationId = organization?.organizationId
+
+  useEffect(() => {
+    if (organizationId) {
+      assignOrganization(organizationId)
+    }
+  }, [assignOrganization, organizationId])
+
   const activeId = activeConversation?.id ?? null
   const activeModel = activeConversation?.model ?? ''
 
@@ -135,8 +152,8 @@ export function DshAgent() {
   )
 
   const handleCreate = useCallback(() => {
-    createNew(activeModel || pickDefaultModel(models))
-  }, [activeModel, createNew, models])
+    createNew(activeModel || pickDefaultModel(models), organizationId)
+  }, [activeModel, createNew, models, organizationId])
 
   const handleCancel = useCallback(() => {
     if (activeId) {
@@ -199,6 +216,7 @@ export function DshAgent() {
           isRunning={isRunning(activeId)}
           onCancel={handleCancel}
           onSubmit={handleSubmit}
+          organizationId={organizationId}
           uploads={uploadSettings}
         />
       </div>

@@ -143,7 +143,7 @@ func (a *TaskAdaptor) validateAttachments(c *gin.Context, info *relaycommon.Rela
 	if err != nil || len(request.Attachments) == 0 {
 		return nil
 	}
-	return service.ValidateDshAttachments(info.UserId, request.Attachments)
+	return service.ValidateDshAttachments(info.OrganizationId, info.UserId, request.Attachments)
 }
 
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {

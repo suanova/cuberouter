@@ -22,6 +22,8 @@ package controller
 import (
 	"net/http"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 )
@@ -39,13 +41,19 @@ func DshUploadSettings(c *gin.Context) {
 	})
 }
 
-// DshUpload 接收单个附件并落进共享卷。每个请求只收一个文件：前端按文件逐个
-// 上传，失败时可以只重试那一个。
+// DshUpload 接收单个附件并落进所属组织的共享卷。每个请求只收一个文件：前端
+// 按文件逐个上传，失败时可以只重试那一个。组织由 DshUploadOrganization
+// 中间件解析后写进上下文。
 func DshUpload(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	userId := c.GetInt("id")
 	if userId <= 0 {
 		c.AbortWithStatus(http.StatusUnauthorized)
+		return
+	}
+	organizationId := common.GetContextKeyInt(c, constant.ContextKeyOrganizationId)
+	if organizationId <= 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"message": "DSH uploads require an organization"}})
 		return
 	}
 	// 多留 1 MB 给 multipart 边界与表单头；真正的文件大小在服务层再校验一次。
@@ -59,7 +67,7 @@ func DshUpload(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "Upload a single file in the file field."}})
 		return
 	}
-	attachment, err := service.SaveDshAttachment(userId, file)
+	attachment, err := service.SaveDshAttachment(organizationId, userId, file)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": err.Error()}})
 		return

@@ -44,6 +44,7 @@
 - **空模型跳过**：请求模型为空时跳过白名单检查——空模型只出现在状态/查询类路径（如 MJ 任务轮询，记录里没有模型来源）；提交类路径要么被紧随其后的「必须有模型」400 拦下，要么由下面的 remix 补判覆盖。
 - **remix 补判**：视频 remix（`POST /v1/videos/:video_id/remix`）是**空模型的提交类路径**，上面的空模型跳过覆盖不到，由 `relay/relay_task.go` 的 `ResolveOriginTask` 在**源任务模型**上单点补判（同样 403 `member_model_forbidden`）。
 - **pin 分支豁免（已知边界）**：渠道绑定的调用走 distributor 的 pin 分支（`constraints.ResolvedPin()` 命中，来源为渠道绑定令牌 `token` 或 task-plugin 续传/源任务 `origin_task`）——该分支直接锁定 pin 的渠道，**不进入模型检查块**，令牌「可用模型限制」与成员白名单都不查（既有行为：pin 分支本就不看令牌限制，成员检查与它同形）。受限成员若持有 pin 到固定渠道的 key，仍可调用该渠道上的任意模型；登记在案。
+- **组织 pin 例外（DSH）**：来源为 `organization` 的 pin（DSH 智能体按组织选路，见 `docs/dsh-deployment.md`）是服务端替成员选的路由，**不豁免**成员白名单——pin 分支里对组织 pin 单独复判 `GetUserModelAllowList`，命中白名单外的模型返回 403 `member_model_forbidden`。令牌限制仍不参与（与 pin 分支既有语义一致）。
 
 ## 4. 可见性与建 key 校验
 

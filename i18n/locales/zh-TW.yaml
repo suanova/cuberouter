@@ -346,6 +346,9 @@ distributor.invalid_request_parse_model: "無效的請求，無法解析模型"
 
 # DSH Agent messages
 dsh.access_denied: "目前帳號所屬組織未開通 DSH 智慧代理，請聯絡管理員"
+dsh.organization_required: "DSH 任務必須使用組織權杖，個人權杖不能呼叫"
+dsh.organization_unavailable: "目前帳號沒有可用的 DSH 組織，請聯絡管理員開通並綁定 DSH 頻道"
+dsh.organization_channel_unavailable: "組織的 DSH 頻道不可用，請聯絡管理員"
 
 # Custom OAuth provider messages
 custom_oauth.not_found: "自訂 OAuth 供應者不存在"

@@ -39,8 +39,20 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	imageJobs.POST("/:job/ack", controller.RequireStudioImageJobEpoch, controller.AckStudioImageResult)
 	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.GetStudioImageAudit)
 	dsh := apiRouter.Group("/dsh", middleware.UserAuth(), middleware.DshAccess())
+	dsh.GET("/organization", middleware.DshOrganization(), controller.DshOrganizationInfo)
 	dsh.GET("/uploads/config", controller.DshUploadSettings)
-	dsh.POST("/uploads", middleware.UserCriticalRateLimit("dsh-upload"), controller.DshUpload)
+	dsh.POST("/uploads", middleware.UserCriticalRateLimit("dsh-upload"), middleware.DshUploadOrganization(), controller.DshUpload)
+	// DSH 管理接口只给 root：组织绑定与组织 DeepSeek Key 属于平台级密钥配置，
+	// 与 /api/option 同等级别。放在 /admin 前缀下也让前端 http-client 不附带
+	// 账号上下文头。
+	dshAdmin := apiRouter.Group("/admin/dsh")
+	dshAdmin.Use(middleware.RootAuth())
+	{
+		dshAdmin.GET("/channels", controller.ListDshAdminChannels)
+		dshAdmin.GET("/organizations/:id", controller.GetDshOrganizationConfig)
+		dshAdmin.PUT("/organizations/:id", controller.UpdateDshOrganizationConfig)
+		dshAdmin.POST("/organizations/:id/secret", controller.RevealDshOrganizationSecret)
+	}
 	{
 		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据
 		// perf_metrics_setting.export_enabled/export_token 自鉴权。

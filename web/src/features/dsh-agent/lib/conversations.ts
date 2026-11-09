@@ -33,13 +33,17 @@ function newId(): string {
   return `dsh-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 }
 
-export function createConversation(model: string): DshConversation {
+export function createConversation(
+  model: string,
+  organizationId?: number
+): DshConversation {
   const now = Date.now()
   return {
     id: newId(),
     title: '',
     model,
     preset: DEFAULT_PRESET,
+    ...(organizationId && organizationId > 0 ? { organizationId } : {}),
     turns: [],
     updatedAt: now,
   }

@@ -29,28 +29,19 @@ import (
 
 // CanAccessDsh reports whether userId may use the DSH Agent.
 //
-// Platform administrators always pass. Everyone else needs at least one
-// active membership in an active organization from the administrator-managed
-// allowlist; an empty allowlist closes the feature.
+// Everyone — platform administrators and root included — needs at least one
+// active membership in an active organization that is both allowlisted and
+// bound to a DSH channel. No organization is enabled until an administrator
+// binds it, so the feature stays closed by default.
 func CanAccessDsh(userId int) bool {
 	if userId <= 0 {
 		return false
 	}
-	if isPlatformAdminUser(userId) {
-		return true
-	}
-	allowedOrganizationIds := setting.GetDshAllowedOrganizationIds()
-	if len(allowedOrganizationIds) == 0 {
+	enabledOrganizationIds := setting.DshEnabledOrganizationIds()
+	if len(enabledOrganizationIds) == 0 {
 		return false
 	}
-	return userHasActiveMembershipInAnyOrganization(userId, allowedOrganizationIds)
-}
-
-func isPlatformAdminUser(userId int) bool {
-	if cached, err := model.GetUserCache(userId); err == nil && cached != nil {
-		return cached.Role >= common.RoleAdminUser
-	}
-	return model.IsAdmin(userId)
+	return userHasActiveMembershipInAnyOrganization(userId, enabledOrganizationIds)
 }
 
 func userHasActiveMembershipInAnyOrganization(userId int, organizationIds []int) bool {
