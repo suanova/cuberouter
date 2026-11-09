@@ -94,7 +94,7 @@ func SetRelayRouter(router *gin.Engine) {
 	playgroundAgentRouter.Use(middleware.RelayCapacity())
 	playgroundAgentRouter.Use(middleware.SystemPerformanceCheck())
 	playgroundAgentRouter.Use(middleware.AllowTaskPluginChannel())
-	playgroundAgentRouter.Use(middleware.UserAuth(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
+	playgroundAgentRouter.Use(middleware.UserAuth(), middleware.DshAccess(), middleware.PlaygroundOrganizationFallback(), middleware.Distribute())
 	{
 		playgroundAgentRouter.POST("/tasks", controller.PlaygroundAgentTask)
 		playgroundAgentRouter.GET("/tasks/:task_id", controller.PlaygroundAgentTaskFetch)

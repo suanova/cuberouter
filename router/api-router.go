@@ -38,7 +38,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 	imageJobs.GET("/:job/result", controller.RequireStudioImageJobEpoch, controller.GetStudioImageResult)
 	imageJobs.POST("/:job/ack", controller.RequireStudioImageJobEpoch, controller.AckStudioImageResult)
 	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.GetStudioImageAudit)
-	dsh := apiRouter.Group("/dsh", middleware.UserAuth())
+	dsh := apiRouter.Group("/dsh", middleware.UserAuth(), middleware.DshAccess())
 	dsh.GET("/uploads/config", controller.DshUploadSettings)
 	dsh.POST("/uploads", middleware.UserCriticalRateLimit("dsh-upload"), controller.DshUpload)
 	{

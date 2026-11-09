@@ -20,7 +20,10 @@ import { useLocation } from '@tanstack/react-router'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { filterNavGroupsByRole } from '@/components/layout/lib/nav-role-filter'
+import {
+  filterNavGroupsByDshAccess,
+  filterNavGroupsByRole,
+} from '@/components/layout/lib/nav-role-filter'
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
 import type { NavGroup, ResolvedSidebarView } from '@/components/layout/types'
 import { useAuthStore } from '@/stores/auth-store'
@@ -48,12 +51,17 @@ export function useSidebarView(): ResolvedSidebarView {
   const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
   const userRole = useAuthStore((s) => s.auth.user?.role)
+  const hasDshAccess = useAuthStore((s) => s.auth.user?.dsh_access === true)
   const rootSidebarData = useSidebarData()
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(
-    () => filterNavGroupsByRole(configFilteredRoot, userRole),
-    [configFilteredRoot, userRole]
+    () =>
+      filterNavGroupsByRole(
+        filterNavGroupsByDshAccess(configFilteredRoot, hasDshAccess),
+        userRole
+      ),
+    [configFilteredRoot, userRole, hasDshAccess]
   )
 
   const view = resolveSidebarView(pathname)

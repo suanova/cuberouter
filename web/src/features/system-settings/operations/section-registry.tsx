@@ -25,6 +25,7 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { DshAgentAccessSection } from './dsh-agent-access-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -139,6 +140,17 @@ const OPERATIONS_SECTIONS = [
             settings['performance_setting.monitor_memory_threshold'] ?? 90,
           'performance_setting.monitor_disk_threshold':
             settings['performance_setting.monitor_disk_threshold'] ?? 95,
+        }}
+      />
+    ),
+  },
+  {
+    id: 'dsh-agent',
+    titleKey: 'DSH Agent Access',
+    build: (settings: OperationsSettings) => (
+      <DshAgentAccessSection
+        defaultValues={{
+          DshAllowedOrganizationIds: settings.DshAllowedOrganizationIds ?? [],
         }}
       />
     ),

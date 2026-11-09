@@ -53,6 +53,11 @@ export interface AuthUser {
   stripe_customer?: string
   sidebar_modules?: string
   permissions?: UserPermissions
+  /**
+   * Whether the logged-in account may use the DSH Agent. Computed by the
+   * backend from the organization allowlist; absent on older servers.
+   */
+  dsh_access?: boolean
 }
 
 export interface LoginSession {

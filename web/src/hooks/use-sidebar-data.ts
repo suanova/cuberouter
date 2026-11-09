@@ -71,6 +71,7 @@ export function useSidebarData(): SidebarData {
             title: t('DSH Agent'),
             url: '/dsh',
             icon: Bot,
+            requiresDshAccess: true,
           },
           {
             title: t('Chat'),

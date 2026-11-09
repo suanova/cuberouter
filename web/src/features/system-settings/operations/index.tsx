@@ -66,6 +66,7 @@ const defaultOperationsSettings: OperationsSettings = {
   'perf_metrics_setting.retention_days': 0,
   'perf_metrics_setting.export_enabled': false,
   'perf_metrics_setting.export_token': '',
+  DshAllowedOrganizationIds: [],
 }
 
 export function OperationsSettings() {

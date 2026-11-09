@@ -44,6 +44,7 @@ export const STATIC_I18N_KEYS = [
   'Models',
   'Routing Reliability',
   'Maintenance',
+  'DSH Agent Access',
 
   // System info
   'online',

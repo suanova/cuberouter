@@ -49,3 +49,22 @@ export function filterNavGroupsByRole(
       return items.length === group.items.length ? group : { ...group, items }
     })
 }
+
+/**
+ * Hide items that require DSH Agent access when the backend did not grant it.
+ * Groups left without items are dropped so an empty section is not rendered.
+ */
+export function filterNavGroupsByDshAccess(
+  navGroups: NavGroup[],
+  hasDshAccess: boolean
+): NavGroup[] {
+  if (hasDshAccess) {
+    return navGroups
+  }
+  return navGroups
+    .map((group) => {
+      const items = group.items.filter((item) => !item.requiresDshAccess)
+      return items.length === group.items.length ? group : { ...group, items }
+    })
+    .filter((group) => group.items.length > 0)
+}

@@ -376,6 +376,8 @@ export type OperationsSettings = {
   'perf_metrics_setting.retention_days': number
   'perf_metrics_setting.export_enabled': boolean
   'perf_metrics_setting.export_token': string
+  /** Organizations whose members may use the DSH Agent; empty = closed. */
+  DshAllowedOrganizationIds: number[]
 }
 
 export type SecuritySettings = {

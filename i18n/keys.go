@@ -398,6 +398,11 @@ const (
 	MsgDistributorInvalidParseModel       = "distributor.invalid_request_parse_model"
 )
 
+// DSH Agent related messages
+const (
+	MsgDshAccessDenied = "dsh.access_denied"
+)
+
 // Custom OAuth provider related messages
 const (
 	MsgCustomOAuthNotFound          = "custom_oauth.not_found"
