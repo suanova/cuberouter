@@ -21,6 +21,13 @@ if [ ! -f "$DSH_WORKSPACE/AGENTS.md" ]; then
     cp /opt/dsh/workspace-AGENTS.md "$DSH_WORKSPACE/AGENTS.md"
 fi
 
+# 按用户拆分的任务目录（$DSH_WORKSPACE/<userId>）不是共享根的子孙项目，
+# AGENTS.md 的项目根发现走不到共享根那份约定；DSH_HOME/AGENTS.md 是 user-global
+# 指令文件，任何 cwd 都会加载。共享根那份保留给旧任务。
+if [ ! -f "$DSH_HOME/AGENTS.md" ]; then
+    cp /opt/dsh/workspace-AGENTS.md "$DSH_HOME/AGENTS.md"
+fi
+
 # dsh 0.2.2 起拒绝 0.0.0.0 等通配地址，只接受具体网卡的 IP 字面量。容器内取
 # 第一个非回环 IPv4（即 eth0），并通过 DSH_BIND_HOST 交给 overlay.yml；同时把
 # 它写到文件里，供 compose healthcheck 探活。

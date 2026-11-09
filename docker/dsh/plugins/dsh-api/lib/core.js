@@ -10,7 +10,7 @@
  * Routes (default prefix /api/v1):
  *   GET    /api/v1/health          -> service health
  *   POST   /api/v1/tasks           -> submit a task ({ prompt, preset?, cwd?,
- *                                      model?, provider?, maxTokens?,
+ *                                      userId?, model?, provider?, maxTokens?,
  *                                      reasoningEffort?, system?, timeoutMs?,
  *                                      sessionId?, wait?, waitTimeoutMs? })
  *                                      `system` only takes effect on the FIRST
@@ -29,11 +29,20 @@
  *
  * Auth: `Authorization: Bearer <key>` or `X-API-Key: <key>`; disabled when
  * config.apiKey is empty. CORS preflight (OPTIONS) is answered before auth.
+ *
+ * Ownership: a task may carry a `userId` (submit body) and/or an
+ * `X-DSH-User-Id` header naming its submitter. Owned tasks run in
+ * `<defaultCwd>/<userId>` (created on demand), can only be continued or read
+ * by the same owner, and are omitted from lists requested by anyone else.
+ * Tasks without an owner keep the shared legacy behavior. This is namespace
+ * isolation, not a confidentiality boundary: the agent's shell can still read
+ * outside its workspace, and the id is trusted because the gateway stamped it
+ * on an already-authenticated request.
  */
 
 'use strict'
 
-const API_VERSION = '1.2.0'
+const API_VERSION = '1.3.0'
 
 // ---------------------------------------------------------------------------
 // Model-selection install — mirror of @deepseek-ai/dsh-agent's
@@ -112,6 +121,71 @@ function installModelSelectionLocal(agentCtx, selection) {
 }
 
 // ---------------------------------------------------------------------------
+// Question deadline — tasks run over HTTP, so nobody is guaranteed to be in
+// front of the Web UI when the model calls ask_user_question. The blocking
+// answerer would keep the turn (and the task record) running forever. This
+// guard hands every question to the existing answerers first and settles it as
+// a user skip once the deadline passes, so the model continues without that
+// input instead of hanging.
+// ---------------------------------------------------------------------------
+const QUESTION_DEADLINE = Symbol('dsh-api.question-deadline')
+
+function installQuestionTimeout(agentCtx, timeoutMs) {
+  if (!(timeoutMs > 0)) return () => {}
+  return agentCtx.on('user-questions/request', async (request, next) => {
+    let expire
+    const deadline = new Promise((resolve) => { expire = resolve })
+    const onExpire = () => expire(QUESTION_DEADLINE)
+    const timer = agentCtx.get('timer')
+    let stop
+    if (timer && typeof timer.timeout === 'function') stop = timer.timeout(onExpire, timeoutMs)
+    else if (typeof agentCtx.timeout === 'function') stop = agentCtx.timeout(onExpire, timeoutMs)
+    else {
+      const handle = setTimeout(onExpire, timeoutMs)
+      stop = () => clearTimeout(handle)
+    }
+    const answering = next()
+    // The race may settle on the deadline while an answerer still waits for a
+    // human; keep that late rejection from surfacing as unhandled.
+    answering.catch(() => { /* settled after the deadline */ })
+    try {
+      const answered = await Promise.race([answering, deadline])
+      if (answered !== QUESTION_DEADLINE) return answered
+      const questions = Array.isArray(request.questions) ? request.questions : []
+      return { answers: questions.map((question) => ({ id: question.id, selected: [] })) }
+    } finally {
+      stop()
+    }
+  }, { prepend: true })
+}
+
+// ---------------------------------------------------------------------------
+// Image-review budget — the model catalog can declare image input, and the
+// Office skill then renders every revision and inspects it with read_image.
+// Each round costs a LibreOffice render plus a vision pass, so a long deck
+// spends minutes on previews alone. The budget caps how many read_image calls
+// one task may dispatch; later calls are denied with a reason that steers the
+// model to the text-level checks instead. 0 or less keeps it unlimited.
+// ---------------------------------------------------------------------------
+const IMAGE_TOOL = 'read_image'
+
+function installImageReviewBudget(agentCtx, limit) {
+  if (!(limit > 0)) return () => {}
+  let used = 0
+  return agentCtx.on('tools/pre-execute', async (exec, next) => {
+    if (exec.name !== IMAGE_TOOL) return next()
+    if (used >= limit) {
+      return {
+        kind: 'deny',
+        reason: `${IMAGE_TOOL} is unavailable: this task already used its ${limit} image review(s). Do not inspect renders again; rely on the text-level checks (OOXML structure validation, extracted text) and finish the deliverable.`,
+      }
+    }
+    used += 1
+    return next()
+  })
+}
+
+// ---------------------------------------------------------------------------
 // Small plain-JS helpers (no Node-specific globals).
 // ---------------------------------------------------------------------------
 function mintId(prefix) {
@@ -174,6 +248,104 @@ function pathnameOf(url) {
 function isAbsolutePath(p) {
   if (typeof p !== 'string' || p.length === 0) return false
   return p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p) || p.startsWith('\\\\')
+}
+
+// ---------------------------------------------------------------------------
+// Per-user ownership.
+//
+// The gateway authenticates the caller and stamps the user id on every task
+// request; dsh-api never sees credentials for the end user, so the id is an
+// assertion the gateway makes about an already-authenticated request. Tasks
+// created without it (direct API clients, older gateways) keep the shared
+// legacy behavior: one workspace for the deployment, no owner checks.
+// ---------------------------------------------------------------------------
+const OWNER_PATTERN = /^[1-9][0-9]{0,19}$/
+
+// ownerFrom reads the owner off the header first, then the submit body. A
+// disagreement between the two is a caller bug, not something to guess at.
+function ownerFrom(req, body) {
+  let header = ''
+  const rawHeader = req && req.headers ? req.headers['x-dsh-user-id'] : undefined
+  if (typeof rawHeader === 'string') header = rawHeader.trim()
+  if (header && !OWNER_PATTERN.test(header)) return { error: 'user id header must be a positive integer' }
+
+  let bodyOwner = ''
+  if (body && body.userId !== undefined && body.userId !== null && body.userId !== '') {
+    if (typeof body.userId === 'string') bodyOwner = body.userId.trim()
+    else if (typeof body.userId === 'number' && Number.isSafeInteger(body.userId)) bodyOwner = String(body.userId)
+    else return { error: 'field "userId" must be a positive integer' }
+    if (bodyOwner && !OWNER_PATTERN.test(bodyOwner)) return { error: 'field "userId" must be a positive integer' }
+  }
+  if (header && bodyOwner && header !== bodyOwner) return { error: 'userId header and body disagree' }
+  return { owner: header || bodyOwner || undefined }
+}
+
+// normalizeAbsolutePath collapses `.` and empty segments and rejects `..`.
+// Callers only ever pass gateway-generated or explicitly requested cwds, so
+// refusing traversal outright is simpler and safer than resolving it.
+function normalizeAbsolutePath(value) {
+  if (typeof value !== 'string' || value.length === 0 || value.includes('\0')) return ''
+  if (!value.startsWith('/')) return ''
+  const segments = []
+  for (const segment of value.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') return ''
+    segments.push(segment)
+  }
+  return '/' + segments.join('/')
+}
+
+// resolveWorkspace owns the cwd rules:
+//   continuation     - reuses the previous task's cwd; a differing request is
+//                      an error because resume() reopens the stored header cwd.
+//   new + owner      - <root>/<owner>, and an explicit cwd must stay inside it.
+//   new, no owner    - legacy: the requested cwd or the shared default.
+function resolveWorkspace(root, owner, requestedCwd, previousCwd, continuation) {
+  if (continuation) {
+    if (!previousCwd) return { error: 'continuation is missing its working directory' }
+    if (requestedCwd !== undefined && requestedCwd !== '') {
+      const next = normalizeAbsolutePath(requestedCwd)
+      const current = normalizeAbsolutePath(previousCwd)
+      const differs = next && current ? next !== current : requestedCwd !== previousCwd
+      if (differs) return { error: 'field "cwd" cannot change on a continuation' }
+    }
+    return { cwd: previousCwd }
+  }
+
+  const base = normalizeAbsolutePath(typeof root === 'string' ? root : '')
+  if (!owner) {
+    return { cwd: typeof requestedCwd === 'string' && requestedCwd !== '' ? requestedCwd : root }
+  }
+  if (!base) return { error: 'default working directory must be an absolute path' }
+  const ownerRoot = base === '/' ? '/' + owner : base + '/' + owner
+  if (requestedCwd === undefined || requestedCwd === '') return { cwd: ownerRoot }
+  const normalized = normalizeAbsolutePath(requestedCwd)
+  if (!normalized) return { error: 'field "cwd" must be an absolute path without ".." segments' }
+  if (normalized !== ownerRoot && !normalized.startsWith(ownerRoot + '/')) {
+    return { error: 'field "cwd" must stay inside ' + ownerRoot }
+  }
+  return { cwd: normalized }
+}
+
+// ensureDirectory pre-creates the per-user workspace. dsh's working-directory
+// service throws when the session cwd does not exist, and the fs service has
+// no mkdir, so a hidden marker file is written (writeText creates parents
+// recursively) and removed. Existing directories are left untouched.
+async function ensureDirectory(fs, dir, markerId) {
+  if (!fs || typeof fs.resolve !== 'function' || typeof fs.writeText !== 'function') return false
+  const base = String(dir).replace(/\/+$/, '')
+  try {
+    const existing = await fs.stat(await fs.resolve(base))
+    if (existing && existing.type === 'directory') return true
+  } catch { /* missing or not statable: fall through to creation */ }
+  const marker = base + '/.dsh-api-bootstrap-' + String(markerId || 'task')
+  try {
+    await fs.writeText(await fs.resolve(marker), '')
+    if (typeof fs.deleteFile === 'function') await fs.deleteFile(await fs.resolve(marker))
+    return true
+  } catch {
+    return false
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +634,8 @@ async function runTask(ctx, state, task) {
     const selRef = { current: selection, assembled: undefined }
     const setup = async (agentCtx) => {
       installModelSelectionLocal(agentCtx, selRef)
+      installQuestionTimeout(agentCtx, cfg.questionTimeoutMs)
+      installImageReviewBudget(agentCtx, cfg.imageReviewLimit)
       if (agentPresets && resolvedPresetId) await agentPresets.mount(agentCtx, resolvedPresetId)
     }
 
@@ -602,7 +776,7 @@ async function runTask(ctx, state, task) {
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, X-DSH-User-Id',
   'Access-Control-Max-Age': '86400',
 }
 
@@ -728,14 +902,27 @@ function mountApi(ctx, cfg) {
       return sendJson(res, 413, apiError('prompt_too_long', 'prompt exceeds ' + cfg.maxPromptChars + ' characters'))
     }
 
+    const ownerResult = ownerFrom(req, body)
+    if (ownerResult.error) return sendJson(res, 400, apiError('invalid_user', ownerResult.error))
+    const owner = ownerResult.owner
+
     // Continuation: the session must be known to this API.
     let sessionId
     let continuation = false
+    let knownTask
     if (typeof body.sessionId === 'string' && body.sessionId !== '') {
       sessionId = body.sessionId
-      const knownTask = state.bySession.has(sessionId) ? state.tasks.get(state.bySession.get(sessionId)) : undefined
+      knownTask = state.bySession.has(sessionId) ? state.tasks.get(state.bySession.get(sessionId)) : undefined
       if (!knownTask) {
         return sendJson(res, 404, apiError('unknown_session', 'session ' + sessionId + ' was not created through this API'))
+      }
+      // Same wording as an unknown session: a different owner must not learn
+      // that this session exists.
+      if (knownTask.owner !== owner) {
+        return sendJson(res, 404, apiError('unknown_session', 'session ' + sessionId + ' was not created through this API'))
+      }
+      if (knownTask.status === 'running') {
+        return sendJson(res, 409, apiError('session_busy', 'session ' + sessionId + ' already has a running task'))
       }
       if (typeof body.preset === 'string' && knownTask.preset && body.preset !== knownTask.preset) {
         return sendJson(res, 409, apiError('preset_conflict', 'session runs preset "' + knownTask.preset + '"; cannot switch to "' + body.preset + '"'))
@@ -759,6 +946,14 @@ function mountApi(ctx, cfg) {
     if (body.cwd !== undefined && !isAbsolutePath(body.cwd)) {
       return sendJson(res, 400, apiError('bad_cwd', 'field "cwd" must be an absolute path'))
     }
+    const workspace = resolveWorkspace(
+      cfg.defaultCwd,
+      owner,
+      body.cwd,
+      continuation && knownTask ? knownTask.cwd : undefined,
+      continuation,
+    )
+    if (workspace.error) return sendJson(res, 400, apiError('bad_cwd', workspace.error))
     if (state.running >= cfg.maxConcurrent) {
       return sendJson(res, 429, apiError('busy', 'too many concurrent tasks (max ' + cfg.maxConcurrent + ')'))
     }
@@ -770,7 +965,8 @@ function mountApi(ctx, cfg) {
       prompt,
       system: typeof body.system === 'string' && body.system !== '' ? body.system : undefined,
       preset,
-      cwd: typeof body.cwd === 'string' && body.cwd !== '' ? body.cwd : cfg.defaultCwd,
+      cwd: workspace.cwd,
+      owner,
       provider: typeof body.provider === 'string' && body.provider !== '' ? body.provider : undefined,
       model: typeof body.model === 'string' && body.model !== '' ? body.model : undefined,
       maxTokens: Number.isFinite(body.maxTokens) ? body.maxTokens : undefined,
@@ -789,6 +985,15 @@ function mountApi(ctx, cfg) {
       error: undefined,
       _resolve: undefined,
       _cancelRequested: false,
+    }
+    // Owned tasks get a fresh workspace before the agent starts: the
+    // working-directory service refuses a missing cwd. Legacy ownerless tasks
+    // keep the old behavior (no directory creation).
+    if (owner) {
+      const ready = await ensureDirectory(ctx.get('fs'), task.cwd, task.taskId)
+      if (!ready) {
+        return sendJson(res, 503, apiError('workspace_unavailable', 'cannot prepare the task workspace'))
+      }
     }
     state.tasks.set(task.taskId, task)
     state.bySession.set(task.sessionId, task.taskId)
@@ -868,12 +1073,16 @@ function mountApi(ctx, cfg) {
     if (!authorized(req, cfg.apiKey)) {
       return sendJson(res, 401, apiError('unauthorized', 'missing or invalid API key (Authorization: Bearer <key> or X-API-Key: <key>)'))
     }
+    const ownerResult = ownerFrom(req)
+    if (ownerResult.error) return sendJson(res, 400, apiError('invalid_user', ownerResult.error))
+    const owner = ownerResult.owner
     const pathname = pathnameOf(req.url)
 
     if (pathname === tasksPath) {
       if (req.method === 'GET') {
         // 最近 50 条，最新在前（Map 迭代序 = 插入序，取尾部再反转）。
-        const all = [...state.tasks.values()]
+        // 先按归属过滤再切片：反过来的话别的用户的任务会把本用户任务挤出窗口。
+        const all = [...state.tasks.values()].filter((task) => task.owner === owner)
         const recent = all.slice(-50).reverse()
         return sendJson(res, 200, { ok: true, data: { tasks: recent.map(taskSummary) } })
       }
@@ -887,6 +1096,11 @@ function mountApi(ctx, cfg) {
       if (!taskId) return sendJson(res, 404, apiError('not_found', 'unknown task id'))
       const task = state.tasks.get(taskId)
       if (!task) return sendJson(res, 404, apiError('not_found', 'unknown task id ' + taskId))
+      // Fail closed: a task with an owner is invisible to anyone who does not
+      // present that owner, including callers with no identity at all.
+      if (task.owner !== owner) {
+        return sendJson(res, 404, apiError('not_found', 'unknown task id ' + taskId))
+      }
 
       if (parts.length > 1) {
         if (parts.length !== 3 || parts[1] !== 'files') {
@@ -934,4 +1148,14 @@ function mountApi(ctx, cfg) {
   return state
 }
 
-export { mountApi, summarize, userMessage, installModelSelectionLocal }
+export {
+  mountApi,
+  summarize,
+  userMessage,
+  installModelSelectionLocal,
+  installQuestionTimeout,
+  installImageReviewBudget,
+  ownerFrom,
+  resolveWorkspace,
+  ensureDirectory,
+}

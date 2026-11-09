@@ -29,6 +29,7 @@ services:
     volumes:
       - ./data:/data
       - ./logs:/app/logs
+      - /data/dsh/zhongshan/uploads:/data/uploads  # 宿主机附件目录，与 dsh 容器的 /data/uploads 是同一份数据 (Host attachment directory; same data as /data/uploads inside the dsh container)
     environment:
       - SQL_DSN=postgresql://root:123456@postgres:5432/cuberouter # ⚠️ IMPORTANT: Change the password in production!
 #      - SQL_DSN=root:123456@tcp(mysql:3306)/cuberouter  # Point to the mysql service, uncomment if using MySQL
@@ -40,7 +41,7 @@ services:
       - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
       - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
       - NODE_NAME=cuberouter-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
-      - DSH_UPLOAD_DIR=${DSH_UPLOAD_DIR:-/data/dsh/zhongshan/uploads}  # 网关侧写入附件的目录；与 dsh 容器的 /data/uploads 是同一卷 (Gateway-side directory for agent attachments; same volume as /data/uploads inside the dsh container)
+      - DSH_UPLOAD_DIR=${DSH_UPLOAD_DIR:-/data/uploads}  # 网关容器内的写入目录，由宿主机 /data/dsh/zhongshan/uploads 挂载而来 (Gateway-side write directory, bind-mounted from the host's /data/dsh/zhongshan/uploads)
       - DSH_UPLOAD_MOUNT=${DSH_UPLOAD_MOUNT:-/data/uploads}  # 附件在 dsh 容器内的可见路径，会拼进提示词的清单 (Path the dsh container sees for attachments; listed in the prompt manifest)
 #      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
 #      - RELAY_IDLE_CONN_TIMEOUT=90  # Relay HTTP 客户端空闲连接超时时间，单位秒，默认跟随 Go 标准库，设置为0表示不限制 (Relay HTTP client idle keep-alive timeout in seconds, defaults to Go standard library; set 0 to disable)
@@ -98,6 +99,8 @@ services:
       - DSH_API_KEY=${DSH_API_KEY:-}  # CubeRouter DSH 渠道使用的密钥（X-API-Key / Bearer）；留空则关闭鉴权
       - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}  # Agent 调用模型所需的密钥
       - DSH_LLM_BASE_URL=${DSH_LLM_BASE_URL:-}  # 可选：把模型请求指向其它 OpenAI 兼容端点（例如本网关的 http://cuberouter:3000/v1）；留空用官方端点
+      - DSH_IMAGE_INPUT=${DSH_IMAGE_INPUT:-on}  # on：模型声明图片输入，agent 会渲染后看图改版（更准但每次多约 100 秒）；off：只做文本检查，与本地 dsh 行为一致 (on: model declares image input and the agent visually checks every render; off: text-only checks)
+      - DSH_IMAGE_REVIEW_LIMIT=${DSH_IMAGE_REVIEW_LIMIT:-0}  # 单个任务最多看几次图（read_image 次数），0 为不限制；10 页 PPT 实测约 19 次、多花 100 秒，设为 2~3 可显著缩短 (Max read_image calls per task; 0 is unlimited. A 10-page deck used ~19 calls; 2-3 cuts most of the visual-check time)
       - DSH_TRUSTED_HOST=${DSH_TRUSTED_HOST:-}  # 可选：通过非 loopback 域名/IP 访问 3080 时填入该 authority（空格分隔，含端口写 host:port）
     networks:
       - cuberouter-network

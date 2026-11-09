@@ -663,6 +663,11 @@ func (a *TaskAdaptor) queryContext(task *model.Task, key, baseURL, proxy string)
 		if task.PrivateData.Key != "" {
 			key = task.PrivateData.Key
 		}
+		// Polling has no relay identity; the persisted row carries the submitter.
+		// Plugins use it to keep per-user state (for example a per-user workspace).
+		if task.UserId > 0 {
+			ctx["userId"] = task.UserId
+		}
 	}
 	auth, err := resolveAuth(a.plugin.Meta.Auth, key, proxy)
 	if err != nil {
@@ -1110,13 +1115,19 @@ func taskArtifactContext(task *model.Task) (map[string]any, error) {
 	if task.PrivateData.Execution != nil && task.PrivateData.Execution.TaskPlugin != nil {
 		producerVersion = task.PrivateData.Execution.TaskPlugin.Version
 	}
-	return map[string]any{
+	ctx := map[string]any{
 		"taskId":          task.TaskID,
 		"status":          string(task.Status),
 		"action":          task.Action,
 		"data":            data,
 		"producerVersion": producerVersion,
-	}, nil
+	}
+	// Artifact requests also have no relay identity; use the task owner so the
+	// plugin can scope the upstream request the same way as the submit.
+	if task.UserId > 0 {
+		ctx["userId"] = task.UserId
+	}
+	return ctx, nil
 }
 
 func validateTaskArtifacts(value any) ([]channel.TaskArtifact, error) {
@@ -1370,6 +1381,11 @@ func (a *TaskAdaptor) submitContext(c *gin.Context, info *relaycommon.RelayInfo)
 	ctx["upstreamModel"] = info.UpstreamModelName
 	ctx["baseUrl"] = info.ChannelBaseUrl
 	ctx["userSetting"] = info.UserSetting
+	// Same identity the upload directory uses; plugins derive per-user state
+	// (workspace, session ownership) from it. Anonymous paths stay unset.
+	if info.UserId > 0 {
+		ctx["userId"] = info.UserId
+	}
 	proxy := ""
 	proxy = info.ChannelSetting.Proxy
 	if auth, err := resolveAuth(a.plugin.Meta.Auth, info.ApiKey, proxy); err == nil {

@@ -507,3 +507,54 @@ func TestDSHBuildContentRequest(t *testing.T) {
 	})
 	require.ErrorContains(t, err, "missing identifiers")
 }
+
+// 网关把任务提交者的 userId 放进所有 dsh-api 请求，dsh-api 据此把任务固定到
+// workspace/<userId> 并拒绝跨用户续会话/查询；匿名调用不得凭空多出头。
+func TestDSHForwardsTaskOwner(t *testing.T) {
+	plugin := loadDSHPlugin(t)
+
+	t.Run("submit carries the owner in the body and headers", func(t *testing.T) {
+		ctx := dshSubmitContext(map[string]any{"model": "dsh", "prompt": "hi"})
+		ctx["userId"] = 7
+		value, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
+		require.NoError(t, err)
+		descriptor := decodePluginValue(t, value)
+
+		assert.Equal(t, "7", descriptor["body"].(map[string]any)["userId"])
+		assert.Equal(t, "7", descriptor["headers"].(map[string]any)["X-DSH-User-Id"])
+	})
+
+	t.Run("query and content requests carry the owner header", func(t *testing.T) {
+		value, err := plugin.Engine.Call(t.Context(), "buildQueryRequest", map[string]any{
+			"taskId":  "task-1",
+			"baseUrl": dshBaseURL,
+			"apiKey":  "dsh-api-demo-key",
+			"userId":  7,
+		})
+		require.NoError(t, err)
+		query := decodePluginValue(t, value)
+		assert.Equal(t, "7", query["headers"].(map[string]any)["X-DSH-User-Id"])
+
+		value, err = plugin.Engine.Call(t.Context(), "buildContentRequest", map[string]any{
+			"baseUrl":        dshBaseURL,
+			"apiKey":         "dsh-api-demo-key",
+			"upstreamTaskId": "task-1",
+			"artifactKey":    "deck.pptx",
+			"userId":         7,
+			"clientRequest":  map[string]any{"method": "GET"},
+		})
+		require.NoError(t, err)
+		content := decodePluginValue(t, value)
+		assert.Equal(t, "7", content["headers"].(map[string]any)["X-DSH-User-Id"])
+	})
+
+	t.Run("anonymous contexts keep the legacy payload", func(t *testing.T) {
+		ctx := dshSubmitContext(map[string]any{"model": "dsh", "prompt": "hi"})
+		ctx["userId"] = 0
+		value, err := plugin.Engine.Call(t.Context(), "buildSubmitRequest", ctx)
+		require.NoError(t, err)
+		descriptor := decodePluginValue(t, value)
+		assert.NotContains(t, descriptor["body"].(map[string]any), "userId")
+		assert.NotContains(t, descriptor["headers"].(map[string]any), "X-DSH-User-Id")
+	})
+}

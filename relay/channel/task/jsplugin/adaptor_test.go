@@ -1111,6 +1111,47 @@ func TestSubmitContextOmitsOriginTasksWhenEmpty(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// Plugins derive per-user state (the DSH per-user workspace) from the task
+// owner. Submit has a relay identity; polling and artifact requests only have
+// the persisted task row, so both paths must expose the same id.
+func TestTaskContextsCarryTheSubmitterIdentity(t *testing.T) {
+	plugin, err := pluginruntime.NewRegistry().Register(mockPlugin, pluginruntime.Options{})
+	require.NoError(t, err)
+	adaptor := New(plugin)
+	info := &relaycommon.RelayInfo{
+		UserId:        7,
+		ChannelMeta:   &relaycommon.ChannelMeta{ChannelBaseUrl: "https://provider.example", ApiKey: "secret"},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	adaptor.Init(info)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos", nil)
+
+	assert.Equal(t, 7, adaptor.submitContext(c, info)["userId"])
+
+	task := &model.Task{TaskID: "task_pub_1", UserId: 7}
+	task.Properties.OriginModelName = "mock-v1"
+	queryCtx, err := adaptor.queryContext(task, "secret", "https://provider.example", "")
+	require.NoError(t, err)
+	assert.Equal(t, 7, queryCtx["userId"])
+
+	artifactCtx, err := taskArtifactContext(task)
+	require.NoError(t, err)
+	assert.Equal(t, 7, artifactCtx["userId"])
+
+	anonymous := &model.Task{TaskID: "task_pub_2"}
+	anonymousCtx := adaptor.submitContext(c, &relaycommon.RelayInfo{
+		ChannelMeta:   &relaycommon.ChannelMeta{},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	})
+	_, present := anonymousCtx["userId"]
+	assert.False(t, present)
+	queryCtx, err = adaptor.queryContext(anonymous, "secret", "https://provider.example", "")
+	require.NoError(t, err)
+	_, present = queryCtx["userId"]
+	assert.False(t, present)
+}
+
 func TestSubmitContextOriginTasksNilDataOnInvalidJSON(t *testing.T) {
 	plugin, err := pluginruntime.NewRegistry().Register(mockPlugin, pluginruntime.Options{})
 	require.NoError(t, err)

@@ -103,7 +103,17 @@ function requestHeaders(ctx) {
   // 无鉴权部署允许空密钥；有密钥时 dsh-api 接受 X-API-Key 或 Bearer。
   const apiKey = String((ctx && ctx.apiKey) || "").trim();
   if (apiKey) headers["X-API-Key"] = apiKey;
+  const userId = userIdOf(ctx);
+  if (userId) headers["X-DSH-User-Id"] = userId;
   return headers;
+}
+
+// 网关按任务提交者写入的稳定身份。dsh-api 用它把任务固定到 workspace/<userId>
+// 并拒绝跨用户续会话；匿名或旧调用没有该字段，保持原有共享目录行为。
+function userIdOf(ctx) {
+  const value = ctx && ctx.userId;
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return "";
+  return String(value);
 }
 
 function requestBodyObject(ctx) {
@@ -167,6 +177,8 @@ export function buildSubmitRequest(ctx) {
   // dsh 只接受 server 端已存在且由本 API 创建的 sessionId；首轮不带。
   const sessionId = optionalString(body, "sessionId");
   if (sessionId) upstream.sessionId = sessionId;
+  const userId = userIdOf(ctx);
+  if (userId) upstream.userId = userId;
   for (const field of STRING_OPTIONS) {
     const value = optionalString(body, field);
     if (value !== undefined) upstream[field] = value;
@@ -296,11 +308,13 @@ export function buildContentRequest(ctx) {
   const artifactKey = String((ctx && ctx.artifactKey) || "").trim();
   if (!taskId || !artifactKey) throw new Error("dsh artifact request is missing identifiers");
 
-  // 媒体预览会用 HEAD/Range 探测，头由网关统一补齐；这里只保留密钥。
+  // 媒体预览会用 HEAD/Range 探测，头由网关统一补齐；这里只保留密钥与归属。
   const method = String((ctx && ctx.clientRequest && ctx.clientRequest.method) || "GET").toUpperCase();
   const headers = {};
   const apiKey = String((ctx && ctx.apiKey) || "").trim();
   if (apiKey) headers["X-API-Key"] = apiKey;
+  const userId = userIdOf(ctx);
+  if (userId) headers["X-DSH-User-Id"] = userId;
 
   return {
     url: requestBase(ctx) + API_PREFIX + "/" + encodeURIComponent(taskId) + "/files/" + encodeURIComponent(artifactKey),
