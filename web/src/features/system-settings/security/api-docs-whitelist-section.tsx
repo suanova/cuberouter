@@ -18,11 +18,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import * as z from 'zod'
 
 import {
   Form,
@@ -39,12 +38,13 @@ import { SettingsForm } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+import {
+  splitWhitelist,
+  whitelistSchema,
+  type WhitelistFormValues,
+} from './lib/ip-whitelist'
 
 const OPTION_KEY = 'security_setting.swagger_api_ip_whitelist'
-
-type WhitelistFormValues = {
-  whitelist: string
-}
 
 type ApiDocsWhitelistSectionProps = {
   defaultValues: {
@@ -52,57 +52,14 @@ type ApiDocsWhitelistSectionProps = {
   }
 }
 
-const splitLines = (value: string) =>
-  value
-    .split('\n')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-
-const IPV4_PATTERN =
-  /^(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/
-
-function isIPv4(value: string) {
-  const match = IPV4_PATTERN.exec(value)
-  if (!match) return false
-  return match.slice(1).every((octet) => Number(octet) <= 255)
-}
-
-function isIPv6(value: string) {
-  try {
-    new URL(`http://[${value}]`)
-    return true
-  } catch {
-    return false
-  }
-}
-
-function isIPOrCIDR(value: string) {
-  const [address, prefix, ...rest] = value.split('/')
-  if (rest.length > 0) return false
-  if (prefix !== undefined && !/^\d{1,3}$/.test(prefix)) return false
-  if (isIPv4(address)) return prefix === undefined || Number(prefix) <= 32
-  if (isIPv6(address)) return prefix === undefined || Number(prefix) <= 128
-  return false
-}
-
 export function ApiDocsWhitelistSection(props: ApiDocsWhitelistSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const baselineRef = useRef<string[]>(props.defaultValues.whitelist)
-
-  const whitelistSchema = z.object({
-    whitelist: z.string().superRefine((value, ctx) => {
-      if (splitLines(value).some((entry) => !isIPOrCIDR(entry))) {
-        ctx.addIssue({
-          code: 'custom',
-          message: t('Enter an IP address or CIDR range on each line'),
-        })
-      }
-    }),
-  })
+  const resolver = useMemo(() => zodResolver(whitelistSchema), [])
 
   const form = useForm<WhitelistFormValues, unknown, WhitelistFormValues>({
-    resolver: zodResolver(whitelistSchema),
+    resolver,
     defaultValues: {
       whitelist: props.defaultValues.whitelist.join('\n'),
     },
@@ -114,7 +71,7 @@ export function ApiDocsWhitelistSection(props: ApiDocsWhitelistSectionProps) {
   }, [props.defaultValues.whitelist, form])
 
   const onSubmit = async (data: WhitelistFormValues) => {
-    const whitelist = splitLines(data.whitelist)
+    const whitelist = splitWhitelist(data.whitelist)
     if (JSON.stringify(whitelist) === JSON.stringify(baselineRef.current)) {
       toast.info(t('No changes to save'))
       return

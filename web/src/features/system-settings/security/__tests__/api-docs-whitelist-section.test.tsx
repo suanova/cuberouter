@@ -151,6 +151,7 @@ describe('ApiDocsWhitelistSection', () => {
     })
     await user.click(saveButton)
     await waitFor(() => expect(updateSystemOption).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(saveButton).toBeEnabled())
     await user.click(saveButton)
 
     await waitFor(() => expect(updateSystemOption).toHaveBeenCalledTimes(2))
