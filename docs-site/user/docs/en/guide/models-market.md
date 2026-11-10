@@ -99,3 +99,14 @@ Possible reasons: insufficient permissions for your key's group, the model has b
 ### Q4: How do I see detailed prices for a model?
 
 Look at the model card: pay-as-you-go models show input / output prices, per-call models show the price per call, and you can toggle the `/1M` / `/1K` display unit.
+
+## Find a model's API usage
+
+Model Square shows model capabilities, available groups, and pricing. For endpoints, parameters, request examples, and model differences, see the [Model API Reference](/en/models/).
+
+After finding a model, copy its model ID and choose a calling method based on the protocols it supports:
+
+- Text models: [OpenAI Protocol](/en/models/llm/openai), [Anthropic Protocol](/en/models/llm/anthropic), [Gemini Protocol](/en/models/llm/gemini)
+- Image models: [Image Generation](/en/models/image)
+- Video models: [Video Generation](/en/models/video)
+- Audio models: [Audio Generation](/en/models/audio)

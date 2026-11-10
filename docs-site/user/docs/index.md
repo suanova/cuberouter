@@ -24,6 +24,10 @@ features:
     title: 使用指南
     details: 全面了解 CubeRouter 的各项功能：模型广场、API 密钥管理、钱包充值、订阅计划、游乐场、使用与任务日志。
     link: /guide/dashboard
+  - icon: 🧩
+    title: 模型 API 参考
+    details: 按协议和模态查阅模型支持、参数、调用示例与常见限制，快速接入大语言、图像、视频和音频模型。
+    link: /models/
   - icon: 🛟
     title: 支持
     details: 常见问题、故障排除与更新日志，遇到问题时随时查阅，也可随时联系我们。
