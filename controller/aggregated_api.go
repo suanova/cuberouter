@@ -58,7 +58,7 @@ func aggregatedFail(c *gin.Context, msg string) {
 }
 
 // ============================================================
-// API 1: Create New User — POST /api/v1/users
+// API 1: Create New User — POST /api/v2/users
 // ============================================================
 
 type AggregatedCreateUserRequest struct {
@@ -250,7 +250,7 @@ func AggregatedCreateUser(c *gin.Context) {
 }
 
 // ============================================================
-// API 2: Create New Plan — POST /api/v1/plans
+// API 2: Create New Plan — POST /api/v2/plans
 // ============================================================
 
 // Issue #63: 聚合 API 创建订阅计划的参数与逻辑必须和控制台一致。
@@ -414,7 +414,7 @@ func AggregatedCreatePlan(c *gin.Context) {
 }
 
 // ============================================================
-// API 3: Suspend Service — POST /api/v1/users/{user_id}/suspend
+// API 3: Suspend Service — POST /api/v2/users/{user_id}/suspend
 // ============================================================
 
 // AggregatedSuspendUser 禁用用户
@@ -462,7 +462,7 @@ func AggregatedSuspendUser(c *gin.Context) {
 }
 
 // ============================================================
-// API 4: Reactivate Service — POST /api/v1/users/{user_id}/reactivate
+// API 4: Reactivate Service — POST /api/v2/users/{user_id}/reactivate
 // ============================================================
 
 // AggregatedReactivateUser 启用用户
@@ -506,7 +506,7 @@ func AggregatedReactivateUser(c *gin.Context) {
 }
 
 // ============================================================
-// API 5: Reset Password — POST /api/v1/users/{user_id}/reset-password
+// API 5: Reset Password — POST /api/v2/users/{user_id}/reset-password
 // ============================================================
 
 // AggregatedResetUserPassword 发送重置密码邮件

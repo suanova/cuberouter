@@ -395,6 +395,7 @@ export type SecuritySettings = {
   'fetch_setting.ip_list': string[]
   'fetch_setting.allowed_ports': string[]
   'fetch_setting.apply_ip_filter_for_domain': boolean
+  'security_setting.swagger_api_ip_whitelist': string[]
   'token_setting.max_user_tokens': number
 }
 

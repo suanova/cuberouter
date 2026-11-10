@@ -15,9 +15,9 @@
 
 ```bash
 cd e2e
-npx playwright test                 # 全量 48 个
+npx playwright test                 # 全量用例
 npx playwright test api-onboarding  # 指定文件
-npx playwright test api-v1 api-v2   # 聚合 API v1+v2
+npx playwright test api-v2          # 聚合 API v2
 npx playwright test channel.spec.ts # MockLLM 渠道/relay 套件
 npx playwright test astraflow-channel.spec.ts # AstraFlow 渠道 UI
 npx playwright test astraflow-multimodal.spec.ts # AstraFlow 多模态 relay
@@ -53,11 +53,9 @@ PPTX 的 `/api/v2/*` onboarding 接口映射到产品真实接口（套餐/用�
 | 13 | slide 13 — user opens the playground and enters a question | slide 13 | 操练场入口可用（输入框/发送按钮） |
 | 14 | appendix — plan input types are validated | slide 14 | 参数类型校验：缺 title、负价格、超 9999 上限均被拒 |
 
-### 3. `specs/api-v1.spec.ts` — 聚合 API @ `/api/v1`（9 个）
+### 3. `specs/api-v2.spec.ts` — 聚合 API @ `/api/v2`（9 个）
 
-### 4. `specs/api-v2.spec.ts` — 聚合 API @ `/api/v2`（9 个）
-
-v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），用例一致、各自独立覆盖：
+聚合 API 只在 `/api/v2` 挂载：`/api` 与 `/api/v1` 不再保留同路径，避免绕开 `/api/v2` 的 IP 白名单：
 
 | # | 用例 | 覆盖点 |
 |---|---|---|
@@ -71,9 +69,9 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 | 8 | delete user (API#9) removes the account | `POST /users/:id/delete` → 用户无法登录、状态接口报"用户不存在" |
 | 9 | get user status reports plan status, validity and quota | `GET /users/:id/status` → 绑定订阅返回 `status=active`；`validity_start_at`/`validity_end_at` 构成 3 个月有效期窗口；`plan_raw_quota`/`plan_remaining_quota` = 套餐 total_amount（未消耗） |
 
-> 说明：`/api`、`/api/v1`、`/api/v2` 是同一套 dashboard API 的三个前缀（对外第三方稳定契约）；relay 的顶层 `/v1/*`（OpenAI 兼容）与 `/pg/*` 是另一棵路由树，不在此套件内。
+> 说明：`/api`、`/api/v1`、`/api/v2` 是同一套 dashboard API 的三个前缀；文档描述的对外接口（聚合用户/套餐、计费报表等）只挂在 `/api/v2`，并受 IP 白名单保护。relay 的顶层 `/v1/*`（OpenAI 兼容）与 `/pg/*` 是另一棵路由树，不在此套件内。
 
-### 5. `specs/channel.spec.ts` — MockLLM 渠道/API Key/relay/UI（14 个）
+### 4. `specs/channel.spec.ts` — MockLLM 渠道/API Key/relay/UI（14 个）
 
 | # | 用例 | 覆盖点 |
 |---|---|---|
@@ -92,13 +90,13 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 | 13 | UI — usage logs show the responding channel and model | 管理员日志页显示响应的**渠道名 + #id** 与**模型名** |
 | 14 | UI — add a model on the models page and verify it is listed | 模型管理页 Add Model → 表格显示该模型 |
 
-### 6. `specs/astraflow-channel.spec.ts` — AstraFlow 渠道 UI（1 个）
+### 5. `specs/astraflow-channel.spec.ts` — AstraFlow 渠道 UI（1 个）
 
 | # | 用例 | 覆盖点 |
 |---|---|---|
 | 1 | UI — create an AstraFlow channel and see its Seedance models | 建 AstraFlow 渠道：type 59、base_url 留空走内置默认 `https://api.modelverse.cn`；MultiSelect 录入 Seedance 模型；落库校验（type=59、base_url 空、models 含 doubao-seedance-1-5-pro / doubao-seedance-2-0-260128、status=1） |
 
-### 7. `specs/astraflow-multimodal.spec.ts` — AstraFlow 多模态 relay（4 个）
+### 6. `specs/astraflow-multimodal.spec.ts` — AstraFlow 多模态 relay（4 个）
 
 同一 type 59 渠道在视频任务之外，通过非任务适配器（OpenAI 直传）服务聊天模型，base_url 指向 MockLLM，端到端验证多模态链路。
 
@@ -109,7 +107,7 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 | 3 | relay — chat completion through the AstraFlow channel returns the mock response | 非任务链路端到端：`/v1/chat/completions` 经 type 59 渠道转发到 mockllm 返回确定性响应 `pong from MockLLM`；`used_quota` 增长 |
 | 4 | relay — streaming through the AstraFlow channel returns the same content | SSE 流式拼接 delta 后内容一致（含 `data: [DONE]`） |
 
-### 8. `specs/docs-link.spec.ts` — 文档链接设置与角色分流（6 个）
+### 7. `specs/docs-link.spec.ts` — 文档链接设置与角色分流（6 个）
 
 覆盖「Documentation Link」从计费 → 额度设置迁移到 Site & Branding → System Information，以及新增的 `general_setting.admin_docs_link` 设置与顶栏 Docs 链接按角色分流（管理员 → 管理文档，普通用户/访客 → 用户文档，管理文档为空时回落）。
 
@@ -128,13 +126,12 @@ v1 与 v2 挂载同一组 handler（`router/api-router.go` 三前缀共享），
 |---|---|
 | 部署旅程冒烟 | 2 |
 | 对接（套餐/用户/订阅/配额/挂起/恢复/改密 + UI 流程） | 14 |
-| 聚合 API v1 | 9 |
 | 聚合 API v2 | 9 |
 | MockLLM 渠道/API Key/relay/UI | 14 |
 | AstraFlow 渠道 UI | 1 |
 | AstraFlow 多模态 relay | 4 |
 | 文档链接设置与角色分流 | 6 |
-| **合计** | **59** |
+| **合计** | **50** |
 
 关键回归点（值得重点关注）：
 - **操作者 API_KEY 在 suspend/reactivate 全程有效**（不会被吊销）

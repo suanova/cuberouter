@@ -1,9 +1,7 @@
 /*
-Shared aggregated (onboarding) API suite, run once per API prefix by
-specs/api-v1.spec.ts and specs/api-v2.spec.ts. The aggregated surface
-(controller/aggregated_api.go) is registered identically under /api, /api/v1
-and /api/v2; keeping the two public prefixes as separate spec files keeps
-their contract coverage and reports distinct.
+Shared aggregated (onboarding) API suite, run by specs/api-v2.spec.ts. The
+aggregated surface (controller/aggregated_api.go) is registered only under
+/api/v2 so every documented endpoint is covered by the same IP whitelist.
 */
 import { expect, test, type APIRequestContext } from '@playwright/test'
 

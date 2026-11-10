@@ -219,8 +219,9 @@ Completes the ops tier the campaign port deferred.
 - `service/channel_csv_import.go` (main flow + 14 pure functions),
   `controller/channel_csv_import.go`, `dto/channel_csv_import.go`; new model
   helpers `GetModelByName` + `(Model) UpdateMetaFields` (`model/model_meta.go`).
-- Route `POST /api/channel/:id/import_models_csv` (permission-table driven,
-  `authz.ChannelWrite`), per-handler 10 MB cap.
+- Route `POST /api/v2/channel/:id/import_models_csv` (permission-table driven,
+  `authz.ChannelSensitiveWrite`), per-handler 10 MB cap. The documented
+  third-party routes are mounted only under `/api/v2`, behind the IP whitelist.
 - Constraints: fixed 8-column header (count checked, not names), full UTF-8
   validation, ≤50000 data rows, `unit == "Million"` participates in price
   conversion; sentinel errors mapped to 400 (`ErrBadHeader` / `ErrInvalidCsvRow`
