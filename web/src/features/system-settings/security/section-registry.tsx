@@ -22,6 +22,7 @@ import { SSRFSection } from '../request-limits/ssrf-section'
 import { TokenLimitSection } from '../request-limits/token-limit-section'
 import type { SecuritySettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
+import { ApiDocsWhitelistSection } from './api-docs-whitelist-section'
 
 const SECURITY_SECTIONS = [
   {
@@ -74,6 +75,17 @@ const SECURITY_SECTIONS = [
             settings['fetch_setting.allowed_ports'],
           'fetch_setting.apply_ip_filter_for_domain':
             settings['fetch_setting.apply_ip_filter_for_domain'],
+        }}
+      />
+    ),
+  },
+  {
+    id: 'api-whitelist',
+    titleKey: 'API Access Whitelist',
+    build: (settings: SecuritySettings) => (
+      <ApiDocsWhitelistSection
+        defaultValues={{
+          whitelist: settings['security_setting.swagger_api_ip_whitelist'],
         }}
       />
     ),

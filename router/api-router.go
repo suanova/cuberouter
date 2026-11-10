@@ -13,15 +13,19 @@ import (
 )
 
 func SetApiRouter(router *gin.Engine) {
-	registerApiRoutes(router.Group("/api"))
-	registerApiRoutes(router.Group("/api/v1"))
-	registerApiRoutes(router.Group("/api/v2"))
+	registerApiRoutes(router.Group("/api"), false)
+	registerApiRoutes(router.Group("/api/v1"), false)
+	// /api/v2 是对外第三方收敛接口的稳定契约前缀，Swagger 文档也只描述这里的
+	// 接口；整组挂 IP 白名单，名单为空时不做限制。
+	registerApiRoutes(router.Group("/api/v2", middleware.SwaggerAPIIPWhitelist()), true)
 }
 
 // registerApiRoutes 注册 /api 前缀下的全部内部路由。SetApiRouter 将其挂到
 // /api、/api/v1 与 /api/v2 三前缀（对外第三方收敛接口的稳定契约前缀，见
 // controller/aggregated_api.go）。三套前缀共享同一组 handler 与中间件。
-func registerApiRoutes(apiRouter *gin.RouterGroup) {
+// documented 为 true 时额外注册 Swagger 文档中描述的对外接口；这些接口只存在于
+// /api/v2，/api 与 /api/v1 上不保留同路径，否则调用方可以绕开 /api/v2 的 IP 白名单。
+func registerApiRoutes(apiRouter *gin.RouterGroup, documented bool) {
 	apiRouter.Use(middleware.RouteTag("api"))
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
@@ -382,12 +386,8 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 			opsUserRoute.POST("/export", middleware.CriticalRateLimit(), controller.ExportOpsInvitees)
 		}
 
-		// User billing report (ops — read-only, filtered by inviter_id = current user for ops role)
-		opsDataRoute := apiRouter.Group("/ops/data")
-		opsDataRoute.Use(middleware.OpsAuth())
-		{
-			opsDataRoute.GET("/billing", controller.GetOpsBillingReport)
-		}
+		// User billing report (ops) 属于 Swagger 文档描述的接口，只在 /api/v2
+		// 由 registerDocumentedAPIRoutes 注册。
 		logRoute := apiRouter.Group("/log")
 		// 只读日志：ops 及以上可查看全量日志（运营核查，只读）；/search 仍仅 admin
 		logRoute.GET("/", middleware.OpsAuth(), controller.GetAllLogs)
@@ -420,8 +420,8 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)
 		dataRoute.GET("/flow", middleware.AdminAuth(), controller.GetAllFlowQuotaDates)
 		dataRoute.GET("/flow/self", middleware.UserAuth(), controller.GetUserFlowQuotaDates)
-		dataRoute.GET("/billing", middleware.AdminAuth(), controller.GetUserBillingReport)
-		dataRoute.GET("/reconciliation", middleware.AdminAuth(), controller.GetReconciliationReport)
+		// /data/billing 与 /data/reconciliation 属于 Swagger 文档描述的接口，
+		// 只在 /api/v2 由 registerDocumentedAPIRoutes 注册。
 
 		logRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
@@ -520,27 +520,56 @@ func registerApiRoutes(apiRouter *gin.RouterGroup) {
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
 		}
 
-		// 聚合 API（对外第三方收敛接口，见 controller/aggregated_api.go）。
-		// 双路径注册（"" + "/"）防止 Gin 尾斜杠 307 重定向：POST 重定向
-		// 多数客户端不跟随，会丢 body。
-		aggregatedUserRoute := apiRouter.Group("/users")
-		aggregatedUserRoute.Use(middleware.AdminAuth())
-		{
-			aggregatedUserRoute.POST("", controller.AggregatedCreateUser)
-			aggregatedUserRoute.POST("/", controller.AggregatedCreateUser)
-			aggregatedUserRoute.POST("/:user_id/suspend", controller.AggregatedSuspendUser)
-			aggregatedUserRoute.POST("/:user_id/reactivate", controller.AggregatedReactivateUser)
-			aggregatedUserRoute.POST("/:user_id/reset-password", controller.AggregatedResetUserPassword)
-			aggregatedUserRoute.POST("/:user_id/adjust-quota", controller.AggregatedAdjustQuota)
-			aggregatedUserRoute.GET("/:user_id/status", controller.AggregatedGetUserStatus)
-			aggregatedUserRoute.POST("/:user_id/bind-subscription", controller.AggregatedBindSubscription)
-			aggregatedUserRoute.POST("/:user_id/delete", controller.AggregatedDeleteUser)
+		if documented {
+			registerDocumentedAPIRoutes(apiRouter)
 		}
-		aggregatedPlanRoute := apiRouter.Group("/plans")
-		aggregatedPlanRoute.Use(middleware.AdminAuth())
-		{
-			aggregatedPlanRoute.POST("", controller.AggregatedCreatePlan)
-			aggregatedPlanRoute.POST("/", controller.AggregatedCreatePlan)
-		}
+	}
+}
+
+// registerDocumentedAPIRoutes 注册对外 OpenAPI 文档（docs/swagger.json）中描述的
+// 全部接口。它们只在 /api/v2 挂载：/api 与 /api/v1 不再保留同路径，否则调用方
+// 可以绕开 /api/v2 上的 IP 白名单（middleware.SwaggerAPIIPWhitelist）。
+func registerDocumentedAPIRoutes(apiRouter *gin.RouterGroup) {
+	channelRoute := apiRouter.Group("/channel")
+	channelRoute.Use(middleware.AdminAuth())
+	channelRoute.POST("/:id/import_models_csv",
+		middleware.RequirePermission(authz.ChannelSensitiveWrite),
+		controller.ImportChannelModelsCsv,
+	)
+
+	opsDataRoute := apiRouter.Group("/ops/data")
+	opsDataRoute.Use(middleware.OpsAuth())
+	{
+		opsDataRoute.GET("/billing", controller.GetOpsBillingReport)
+	}
+
+	dataRoute := apiRouter.Group("/data")
+	dataRoute.Use(middleware.AdminAuth())
+	{
+		dataRoute.GET("/billing", controller.GetUserBillingReport)
+		dataRoute.GET("/reconciliation", controller.GetReconciliationReport)
+	}
+
+	// 聚合 API（对外第三方收敛接口，见 controller/aggregated_api.go）。
+	// 双路径注册（"" + "/"）防止 Gin 尾斜杠 307 重定向：POST 重定向
+	// 多数客户端不跟随，会丢 body。
+	aggregatedUserRoute := apiRouter.Group("/users")
+	aggregatedUserRoute.Use(middleware.AdminAuth())
+	{
+		aggregatedUserRoute.POST("", controller.AggregatedCreateUser)
+		aggregatedUserRoute.POST("/", controller.AggregatedCreateUser)
+		aggregatedUserRoute.POST("/:user_id/suspend", controller.AggregatedSuspendUser)
+		aggregatedUserRoute.POST("/:user_id/reactivate", controller.AggregatedReactivateUser)
+		aggregatedUserRoute.POST("/:user_id/reset-password", controller.AggregatedResetUserPassword)
+		aggregatedUserRoute.POST("/:user_id/adjust-quota", controller.AggregatedAdjustQuota)
+		aggregatedUserRoute.GET("/:user_id/status", controller.AggregatedGetUserStatus)
+		aggregatedUserRoute.POST("/:user_id/bind-subscription", controller.AggregatedBindSubscription)
+		aggregatedUserRoute.POST("/:user_id/delete", controller.AggregatedDeleteUser)
+	}
+	aggregatedPlanRoute := apiRouter.Group("/plans")
+	aggregatedPlanRoute.Use(middleware.AdminAuth())
+	{
+		aggregatedPlanRoute.POST("", controller.AggregatedCreatePlan)
+		aggregatedPlanRoute.POST("/", controller.AggregatedCreatePlan)
 	}
 }

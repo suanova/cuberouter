@@ -76,7 +76,8 @@ var channelPermissionRoutes = []permissionRoute{
 	{method: http.MethodPost, path: "/upstream_updates/apply_all", permission: authz.ChannelWrite, handler: controller.ApplyAllChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect", permission: authz.ChannelOperate, handler: controller.DetectChannelUpstreamModelUpdates},
 	{method: http.MethodPost, path: "/upstream_updates/detect_all", permission: authz.ChannelOperate, handler: controller.DetectAllChannelUpstreamModelUpdates},
-	// 导入会改写全局 ratio map 与 models 表(影响所有渠道计费,全站其他改价入口均为 RootAuth),
-	// 不能使用 ChannelWrite(渠道级角色即可改全局价格),需敏感写权限。
-	{method: http.MethodPost, path: "/:id/import_models_csv", permission: authz.ChannelSensitiveWrite, handler: controller.ImportChannelModelsCsv},
+	// 注意：/:id/import_models_csv 属于 Swagger 文档描述的对外接口，只在 /api/v2
+	// 注册（见 registerDocumentedAPIRoutes），且需要 ChannelSensitiveWrite：
+	// 导入会改写全局 ratio map 与 models 表(影响所有渠道计费,全站其他改价入口均为
+	// RootAuth),不能使用 ChannelWrite(渠道级角色即可改全局价格)。
 }

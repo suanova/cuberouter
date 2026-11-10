@@ -30,7 +30,8 @@ func SetRouter(router *gin.Engine, assets WebAssets) {
 	pluginDispatcher := SetPluginRouter(router)
 	// Swagger 默认挂载,不再由 DEBUG 开关控制。API 规格本身不含敏感数据,
 	// 接口访问仍由各自的鉴权中间件(AdminAuth/OpsAuth 等)保护。
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	// 管理员可在系统设置中配置 IP 白名单,同时限制文档与 /api/v2 对外接口。
+	router.GET("/swagger/*any", middleware.SwaggerAPIIPWhitelist(), ginSwagger.WrapHandler(swaggerFiles.Handler))
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

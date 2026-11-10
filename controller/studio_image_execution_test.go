@@ -62,6 +62,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
 	t.Cleanup(func() {
+		service.WaitForBackgroundWork()
 		model.WaitForQuotaCacheWorkers()
 		common.BatchUpdateEnabled = oldBatch
 		common.LogConsumeEnabled = oldLog
@@ -158,6 +159,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 		defer reservation.Release()
 
 		result := reservation.Run(context.Background(), make(chan struct{}))
+		service.WaitForBackgroundWork()
 		model.WaitForQuotaCacheWorkers()
 		require.Empty(t, result.Error)
 		assert.Equal(t, encoded.Bytes(), result.PNG)
@@ -178,6 +180,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 			}
 			result := reservation.Run(context.Background(), cancel)
 			reservation.Release()
+			service.WaitForBackgroundWork()
 			model.WaitForQuotaCacheWorkers()
 			var after model.User
 			require.NoError(t, model.DB.First(&after, 1).Error)
@@ -218,6 +221,7 @@ func TestStudioImageNativeRelayReviewAndBilling(t *testing.T) {
 		close(cancel)
 		result := reservation.Run(context.Background(), cancel)
 		reservation.Release()
+		service.WaitForBackgroundWork()
 		model.WaitForQuotaCacheWorkers()
 		require.NoError(t, model.DB.First(&after, 1).Error)
 		assert.Empty(t, result.PNG)
