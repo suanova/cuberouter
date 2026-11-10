@@ -22,8 +22,10 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/security_setting"
 
 	"github.com/gin-gonic/gin"
@@ -36,19 +38,22 @@ func TestSwaggerAPIIPWhitelist(t *testing.T) {
 
 	setting := security_setting.GetSecuritySetting()
 	original := setting.SwaggerAPIIPWhitelist
-	defer func() { setting.SwaggerAPIIPWhitelist = original }()
+	t.Cleanup(func() { setting.SwaggerAPIIPWhitelist = original })
 
 	tests := []struct {
-		name       string
-		whitelist  []string
-		remoteAddr string
-		wantStatus int
+		name           string
+		trustedProxies string
+		whitelist      []string
+		remoteAddr     string
+		forwardedFor   string
+		wantStatus     int
 	}{
 		{
-			name:       "empty whitelist allows any client",
-			whitelist:  []string{},
-			remoteAddr: "203.0.113.7:1234",
-			wantStatus: http.StatusOK,
+			name:         "empty whitelist allows any client",
+			whitelist:    []string{},
+			remoteAddr:   "203.0.113.7:1234",
+			forwardedFor: "198.51.100.9",
+			wantStatus:   http.StatusOK,
 		},
 		{
 			name:       "listed IP passes",
@@ -68,21 +73,56 @@ func TestSwaggerAPIIPWhitelist(t *testing.T) {
 			remoteAddr: "203.0.113.8:1234",
 			wantStatus: http.StatusForbidden,
 		},
+		{
+			name:       "direct private client still passes without forwarding",
+			whitelist:  []string{"10.1.2.3"},
+			remoteAddr: "10.1.2.3:1234",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:         "forwarded IP is rejected under compatibility defaults",
+			whitelist:    []string{"203.0.113.7"},
+			remoteAddr:   "10.1.2.3:1234",
+			forwardedFor: "203.0.113.7",
+			wantStatus:   http.StatusForbidden,
+		},
+		{
+			name:           "forwarded IP is honored with explicit trusted proxies",
+			trustedProxies: "10.0.0.0/8",
+			whitelist:      []string{"203.0.113.7"},
+			remoteAddr:     "10.1.2.3:1234",
+			forwardedFor:   "203.0.113.7",
+			wantStatus:     http.StatusOK,
+		},
+		{
+			name:           "TRUSTED_PROXIES=none ignores forwarded IPs",
+			trustedProxies: "none",
+			whitelist:      []string{"203.0.113.7"},
+			remoteAddr:     "10.1.2.3:1234",
+			forwardedFor:   "203.0.113.7",
+			wantStatus:     http.StatusForbidden,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("TRUSTED_PROXIES", tt.trustedProxies)
 			setting.SwaggerAPIIPWhitelist = tt.whitelist
 
+			trustedProxies, _, err := common.ResolveTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+			require.NoError(t, err)
 			engine := gin.New()
-			require.NoError(t, engine.SetTrustedProxies(nil))
+			require.NoError(t, engine.SetTrustedProxies(trustedProxies))
 			engine.GET("/probe", SwaggerAPIIPWhitelist(), func(c *gin.Context) {
 				c.Status(http.StatusOK)
 			})
 
-			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodGet, "/probe", nil)
 			request.RemoteAddr = tt.remoteAddr
+			if tt.forwardedFor != "" {
+				request.Header.Set("X-Forwarded-For", tt.forwardedFor)
+			}
+			recorder := httptest.NewRecorder()
 			engine.ServeHTTP(recorder, request)
 
 			assert.Equal(t, tt.wantStatus, recorder.Code)

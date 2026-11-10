@@ -22,6 +22,7 @@ package middleware
 import (
 	"net"
 	"net/http"
+	"os"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/security_setting"
@@ -32,13 +33,27 @@ import (
 // SwaggerAPIIPWhitelist 只允许白名单内的客户端 IP 访问 Swagger 文档与 /api/v2
 // 对外接口。名单为空表示不启用限制，保持未配置时的既有行为。
 func SwaggerAPIIPWhitelist() gin.HandlerFunc {
+	// TRUSTED_PROXIES 未配置时，Gin 会信任回环/RFC1918/ULA 对端写入的转发头，
+	// 私网内的直连客户端可以伪造 X-Forwarded-For 绕过白名单。此时只接受未经
+	// 转发的客户端 IP；需要经过代理访问时必须显式配置 TRUSTED_PROXIES。
+	_, trustsCompatibilityDefaults, err := common.ResolveTrustedProxies(os.Getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		trustsCompatibilityDefaults = true
+	}
 	return func(c *gin.Context) {
 		whitelist := security_setting.GetSecuritySetting().SwaggerAPIIPWhitelist
 		if len(whitelist) == 0 {
 			c.Next()
 			return
 		}
-		if ip := net.ParseIP(c.ClientIP()); ip != nil && common.IsIpInCIDRList(ip, whitelist) {
+		clientIP := c.ClientIP()
+		allowed := false
+		if !trustsCompatibilityDefaults || clientIP == c.RemoteIP() {
+			if ip := net.ParseIP(clientIP); ip != nil && common.IsIpInCIDRList(ip, whitelist) {
+				allowed = true
+			}
+		}
+		if allowed {
 			c.Next()
 			return
 		}

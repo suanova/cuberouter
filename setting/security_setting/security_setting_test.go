@@ -38,6 +38,7 @@ func TestValidateSwaggerAPIIPWhitelist(t *testing.T) {
 		{name: "invalid CIDR is rejected", value: `["10.0.0.0/99"]`, wantErr: true},
 		{name: "hostname is rejected", value: `["example.com"]`, wantErr: true},
 		{name: "empty entry is rejected", value: `[""]`, wantErr: true},
+		{name: "whitespace-padded entry is rejected", value: `[" 203.0.113.7"]`, wantErr: true},
 		{name: "non-string element is rejected", value: `[80]`, wantErr: true},
 		{name: "non-array value is rejected", value: `"1.2.3.4"`, wantErr: true},
 	}

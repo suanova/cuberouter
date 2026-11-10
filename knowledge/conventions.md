@@ -222,6 +222,10 @@ Completes the ops tier the campaign port deferred.
 - Route `POST /api/v2/channel/:id/import_models_csv` (permission-table driven,
   `authz.ChannelSensitiveWrite`), per-handler 10 MB cap. The documented
   third-party routes are mounted only under `/api/v2`, behind the IP whitelist.
+  With a non-empty whitelist and `TRUSTED_PROXIES` unset, forwarded client IPs
+  are rejected (Gin's compatibility defaults trust private peers, so
+  `X-Forwarded-For` would be spoofable); set `TRUSTED_PROXIES` when a proxy is
+  in front, or `none` for direct access.
 - Constraints: fixed 8-column header (count checked, not names), full UTF-8
   validation, ≤50000 data rows, `unit == "Million"` participates in price
   conversion; sentinel errors mapped to 400 (`ErrBadHeader` / `ErrInvalidCsvRow`

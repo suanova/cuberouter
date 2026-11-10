@@ -42,12 +42,9 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const OPTION_KEY = 'security_setting.swagger_api_ip_whitelist'
 
-const whitelistSchema = z.object({
-  whitelist: z.string(),
-})
-
-type WhitelistFormValues = z.output<typeof whitelistSchema>
-type WhitelistFormInput = z.input<typeof whitelistSchema>
+type WhitelistFormValues = {
+  whitelist: string
+}
 
 type ApiDocsWhitelistSectionProps = {
   defaultValues: {
@@ -61,12 +58,50 @@ const splitLines = (value: string) =>
     .map((entry) => entry.trim())
     .filter(Boolean)
 
+const IPV4_PATTERN =
+  /^(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/
+
+function isIPv4(value: string) {
+  const match = IPV4_PATTERN.exec(value)
+  if (!match) return false
+  return match.slice(1).every((octet) => Number(octet) <= 255)
+}
+
+function isIPv6(value: string) {
+  try {
+    new URL(`http://[${value}]`)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isIPOrCIDR(value: string) {
+  const [address, prefix, ...rest] = value.split('/')
+  if (rest.length > 0) return false
+  if (prefix !== undefined && !/^\d{1,3}$/.test(prefix)) return false
+  if (isIPv4(address)) return prefix === undefined || Number(prefix) <= 32
+  if (isIPv6(address)) return prefix === undefined || Number(prefix) <= 128
+  return false
+}
+
 export function ApiDocsWhitelistSection(props: ApiDocsWhitelistSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const baselineRef = useRef<string[]>(props.defaultValues.whitelist)
 
-  const form = useForm<WhitelistFormInput, unknown, WhitelistFormValues>({
+  const whitelistSchema = z.object({
+    whitelist: z.string().superRefine((value, ctx) => {
+      if (splitLines(value).some((entry) => !isIPOrCIDR(entry))) {
+        ctx.addIssue({
+          code: 'custom',
+          message: t('Enter an IP address or CIDR range on each line'),
+        })
+      }
+    }),
+  })
+
+  const form = useForm<WhitelistFormValues, unknown, WhitelistFormValues>({
     resolver: zodResolver(whitelistSchema),
     defaultValues: {
       whitelist: props.defaultValues.whitelist.join('\n'),
@@ -111,14 +146,14 @@ export function ApiDocsWhitelistSection(props: ApiDocsWhitelistSectionProps) {
                 <FormLabel>{t('Allowed IPs / CIDRs')}</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder={t('203.0.113.10&#10;10.0.0.0/8')}
+                    placeholder={`${t('203.0.113.10')}\n${t('10.0.0.0/8')}`}
                     rows={4}
                     {...field}
                   />
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Only these client IPs may access the Swagger documentation and the /api/v2 API. One IP or CIDR range per line; leave empty to allow all clients.'
+                    'Only these client IPs may access the Swagger documentation and the /api/v2 API. One IP or CIDR range per line; leave empty to allow all clients. Behind a proxy, set TRUSTED_PROXIES so forwarded client IPs are trusted.'
                   )}
                 </FormDescription>
                 <FormMessage />

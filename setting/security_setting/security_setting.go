@@ -34,9 +34,13 @@ func ValidateSwaggerAPIIPWhitelist(value string) error {
 		return fmt.Errorf("IP whitelist must be a JSON array of strings: %w", err)
 	}
 	for _, entry := range entries {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
+		if strings.TrimSpace(entry) == "" {
 			return fmt.Errorf("IP whitelist contains an empty entry")
+		}
+		// 存储的是原始字符串，匹配时不会 trim；带空白的条目会通过校验却永远
+		// 匹配不上，因此这里直接拒绝，而不是悄悄修正。
+		if entry != strings.TrimSpace(entry) {
+			return fmt.Errorf("IP whitelist entry has surrounding whitespace: %q", entry)
 		}
 		if net.ParseIP(entry) != nil {
 			continue

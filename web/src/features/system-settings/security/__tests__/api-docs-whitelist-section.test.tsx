@@ -101,4 +101,62 @@ describe('ApiDocsWhitelistSection', () => {
 
     expect(updateSystemOption).not.toHaveBeenCalled()
   })
+
+  test('saving an empty list removes the restriction', async () => {
+    const user = userEvent.setup()
+    renderSection(['203.0.113.7'])
+
+    await user.clear(screen.getByLabelText('Allowed IPs / CIDRs'))
+    await user.click(
+      screen.getByRole('button', { name: 'Save API access whitelist' })
+    )
+
+    await waitFor(() => {
+      expect(updateSystemOption).toHaveBeenCalledWith({
+        key: WHITELIST_OPTION_KEY,
+        value: '[]',
+      })
+    })
+  })
+
+  test('rejects invalid entries before calling the API', async () => {
+    const user = userEvent.setup()
+    renderSection([])
+
+    await user.type(screen.getByLabelText('Allowed IPs / CIDRs'), 'not-an-ip')
+    await user.click(
+      screen.getByRole('button', { name: 'Save API access whitelist' })
+    )
+
+    expect(
+      await screen.findByText('Enter an IP address or CIDR range on each line')
+    ).toBeInTheDocument()
+    expect(updateSystemOption).not.toHaveBeenCalled()
+  })
+
+  test('a rejected save keeps the baseline so a retry is sent again', async () => {
+    const user = userEvent.setup()
+    vi.mocked(updateSystemOption).mockResolvedValueOnce({
+      success: false,
+      message: 'invalid IP or CIDR in whitelist: not-an-ip',
+    })
+    renderSection(['203.0.113.7'])
+
+    const textarea = screen.getByLabelText('Allowed IPs / CIDRs')
+    await user.clear(textarea)
+    await user.type(textarea, '10.0.0.0/8')
+
+    const saveButton = screen.getByRole('button', {
+      name: 'Save API access whitelist',
+    })
+    await user.click(saveButton)
+    await waitFor(() => expect(updateSystemOption).toHaveBeenCalledTimes(1))
+    await user.click(saveButton)
+
+    await waitFor(() => expect(updateSystemOption).toHaveBeenCalledTimes(2))
+    expect(updateSystemOption).toHaveBeenLastCalledWith({
+      key: WHITELIST_OPTION_KEY,
+      value: '["10.0.0.0/8"]',
+    })
+  })
 })
