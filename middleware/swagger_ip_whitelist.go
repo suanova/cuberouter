@@ -46,13 +46,13 @@ func SwaggerAPIIPWhitelist() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		clientIP := c.ClientIP()
-		allowed := false
-		if !trustsCompatibilityDefaults || clientIP == c.RemoteIP() {
-			if ip := net.ParseIP(clientIP); ip != nil && common.IsIpInCIDRList(ip, whitelist) {
-				allowed = true
-			}
-		}
+		clientIP := net.ParseIP(c.ClientIP())
+		// ClientIP 与 RemoteIP 都只取地址，但文本形式可能不同（例如 IPv6 压缩
+		// 写法），用 ParseIP.Equal 归一化后再判断是否来自转发头。
+		forwarded := clientIP == nil || !clientIP.Equal(net.ParseIP(c.RemoteIP()))
+		allowed := clientIP != nil &&
+			(!trustsCompatibilityDefaults || !forwarded) &&
+			common.IsIpInCIDRList(clientIP, whitelist)
 		if allowed {
 			c.Next()
 			return
