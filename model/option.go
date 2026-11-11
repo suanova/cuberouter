@@ -75,6 +75,9 @@ func InitOptionMap() {
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
+	common.OptionMap["EmailDomainBlacklistEnabled"] = strconv.FormatBool(common.EmailDomainBlacklistEnabled)
+	common.OptionMap["EmailDomainBlacklist"] = strings.Join(common.EmailDomainBlacklist, ",")
+	common.OptionMap["EmailDisposableCheckEnabled"] = strconv.FormatBool(common.EmailDisposableCheckEnabled)
 	common.OptionMap["SMTPServer"] = ""
 	common.OptionMap["SMTPFrom"] = ""
 	common.OptionMap["SMTPPort"] = strconv.Itoa(common.SMTPPort)
@@ -256,13 +259,27 @@ func validateOptionValue(key string, value string) error {
 	if key == "security_setting.swagger_api_ip_whitelist" {
 		return security_setting.ValidateSwaggerAPIIPWhitelist(value)
 	}
+	if key == "EmailDomainBlacklist" {
+		return common.ValidateEmailDomainList(common.ParseEmailDomainList(value))
+	}
 	return nil
+}
+
+// normalizeOptionValue returns the persisted form of an option value. Most
+// options are stored verbatim; the email domain blacklist is normalized so the
+// database and runtime state agree.
+func normalizeOptionValue(key string, value string) string {
+	if key == "EmailDomainBlacklist" {
+		return strings.Join(common.ParseEmailDomainList(value), ",")
+	}
+	return value
 }
 
 func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
 	}
+	value = normalizeOptionValue(key, value)
 	// 汇率类配置:Price 与 USDExchangeRate 是同一汇率的两份持久化,
 	// 任一方变更时把两份都落库,避免重启时 loadOptionsFromDatabase 按行序
 	// 应用旧值覆盖新值(updateOptionMap 只同步内存)。
@@ -299,13 +316,15 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	normalized := make(map[string]string, len(values))
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
 		}
+		normalized[key] = normalizeOptionValue(key, value)
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		for k, v := range values {
+		for k, v := range normalized {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
 				return err
@@ -320,7 +339,7 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if err != nil {
 		return err
 	}
-	for k, v := range values {
+	for k, v := range normalized {
 		if err := updateOptionMap(k, v); err != nil {
 			return err
 		}
@@ -383,6 +402,10 @@ func updateOptionMap(key string, value string) (err error) {
 			common.EmailDomainRestrictionEnabled = boolValue
 		case "EmailAliasRestrictionEnabled":
 			common.EmailAliasRestrictionEnabled = boolValue
+		case "EmailDomainBlacklistEnabled":
+			common.EmailDomainBlacklistEnabled = boolValue
+		case "EmailDisposableCheckEnabled":
+			common.EmailDisposableCheckEnabled = boolValue
 		case "AutomaticDisableChannelEnabled":
 			common.AutomaticDisableChannelEnabled = boolValue
 		case "AutomaticEnableChannelEnabled":
@@ -459,6 +482,8 @@ func updateOptionMap(key string, value string) (err error) {
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
+	case "EmailDomainBlacklist":
+		common.EmailDomainBlacklist = common.ParseEmailDomainList(value)
 	case "SMTPServer":
 		common.SMTPServer = value
 	case "SMTPPort":
