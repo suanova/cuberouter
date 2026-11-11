@@ -51,6 +51,7 @@ func TestEmailDomainMatches(t *testing.T) {
 	require.True(t, EmailDomainMatches("mailinator.com", "mailinator.com"))
 	require.True(t, EmailDomainMatches("a.mailinator.com", "*.mailinator.com"))
 	require.True(t, EmailDomainMatches("a.b.mailinator.com", "*.mailinator.com"))
+	require.True(t, EmailDomainMatches("A.Mailinator.com", " *.MAILINATOR.COM "))
 	require.False(t, EmailDomainMatches("mailinator.com", "*.mailinator.com"))
 	require.False(t, EmailDomainMatches("badexample.com", "*.example.com"))
 	require.False(t, EmailDomainMatches("a.example.com", "example.com"))

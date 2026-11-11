@@ -42,6 +42,9 @@ var disposableEmailVerifier = emailverifier.NewVerifier()
 // address. Malformed addresses are left to the caller's syntax validation and
 // return nil here.
 func ValidateEmailRestrictions(email string) error {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+
 	email = model.NormalizeEmail(email)
 	at := strings.LastIndex(email, "@")
 	if at <= 0 || at == len(email)-1 || strings.Contains(email[:at], "@") {

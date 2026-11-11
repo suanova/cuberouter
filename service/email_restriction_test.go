@@ -20,7 +20,9 @@ For commercial licensing, please contact support@quantumnous.com
 package service
 
 import (
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/stretchr/testify/require"
@@ -73,6 +75,7 @@ func TestValidateEmailRestrictions(t *testing.T) {
 		{"blacklist exact", restrictionSettings{blacklistEnabled: true, blacklist: []string{"mailinator.com"}}, "x@mailinator.com", ErrEmailDomainBlacklisted},
 		{"blacklist wildcard subdomain", restrictionSettings{blacklistEnabled: true, blacklist: []string{"*.mailinator.com"}}, "x@a.mailinator.com", ErrEmailDomainBlacklisted},
 		{"blacklist wildcard does not match apex", restrictionSettings{blacklistEnabled: true, blacklist: []string{"*.mailinator.com"}}, "x@mailinator.com", nil},
+		{"blacklist entry is trimmed and lowercased", restrictionSettings{blacklistEnabled: true, blacklist: []string{" *.MAILINATOR.COM "}}, "x@a.mailinator.com", ErrEmailDomainBlacklisted},
 		{"blacklist enabled with empty list is a no-op", restrictionSettings{blacklistEnabled: true}, "x@example.com", nil},
 		{"whitelist rejects unknown", restrictionSettings{whitelistEnabled: true, whitelist: []string{"example.com"}}, "x@other.com", ErrEmailDomainNotWhitelisted},
 		{"whitelist overrides blacklist", restrictionSettings{whitelistEnabled: true, whitelist: []string{"example.com"}, blacklistEnabled: true, blacklist: []string{"example.com"}}, "x@example.com", nil},
@@ -80,6 +83,8 @@ func TestValidateEmailRestrictions(t *testing.T) {
 		{"disposable list", restrictionSettings{disposableEnabled: true}, "x@mailinator.com", ErrEmailDomainDisposable},
 		{"non-disposable passes", restrictionSettings{disposableEnabled: true}, "x@gmail.com", nil},
 		{"email without at is ignored", restrictionSettings{disposableEnabled: true}, "not-an-email", nil},
+		{"email with empty local part is ignored", restrictionSettings{disposableEnabled: true}, "@example.com", nil},
+		{"email with empty domain is ignored", restrictionSettings{disposableEnabled: true}, "a@", nil},
 		{"email with multiple at is ignored", restrictionSettings{disposableEnabled: true}, "a@b@c.com", nil},
 	}
 	for _, tc := range cases {
@@ -93,4 +98,35 @@ func TestValidateEmailRestrictions(t *testing.T) {
 			require.ErrorIs(t, err, tc.wantErr)
 		})
 	}
+}
+
+func TestValidateEmailRestrictionsConcurrentOptionUpdate(t *testing.T) {
+	applyRestrictionSettings(t, restrictionSettings{blacklistEnabled: true})
+
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
+	started := make(chan struct{})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		close(started)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				common.OptionMapRWMutex.Lock()
+				common.EmailDomainBlacklist = []string{"mailinator.com"}
+				common.OptionMapRWMutex.Unlock()
+				time.Sleep(time.Microsecond)
+			}
+		}
+	}()
+	<-started
+	deadline := time.Now().Add(50 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		_ = ValidateEmailRestrictions("x@example.com")
+	}
+	close(stop)
+	wg.Wait()
 }
