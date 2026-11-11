@@ -262,6 +262,12 @@ func Register(c *gin.Context) {
 		return
 	}
 	if common.EmailVerificationEnabled {
+		if err := service.ValidateEmailRestrictions(user.Email); err != nil {
+			common.ApiErrorI18n(c, emailRestrictionI18nKey(err))
+			return
+		}
+	}
+	if common.EmailVerificationEnabled {
 		if user.Email == "" || user.VerificationCode == "" {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
@@ -1633,6 +1639,10 @@ func EmailBind(c *gin.Context) {
 	// 按 Unicode 字符计数，与聚合 API 建号入口一致，避免非 ASCII 邮箱被字节数误拒。
 	if utf8.RuneCountInString(email) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgUserEmailTooLong)
+		return
+	}
+	if err := service.ValidateEmailRestrictions(email); err != nil {
+		common.ApiErrorI18n(c, emailRestrictionI18nKey(err))
 		return
 	}
 	code := req.Code
