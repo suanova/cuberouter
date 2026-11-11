@@ -83,6 +83,9 @@ var EmailDomainWhitelist = []string{
 	"yahoo.com",
 	"foxmail.com",
 }
+var EmailDomainBlacklistEnabled = false // 是否启用邮箱域名黑名单
+var EmailDomainBlacklist = []string{}   // 邮箱域名黑名单（精确域或 *.子域）
+var EmailDisposableCheckEnabled = false // 是否启用一次性邮箱检测
 var EmailLoginAuthServerList = []string{
 	"smtp.sendcloud.net",
 	"smtp.azurecomm.net",
