@@ -1,0 +1,581 @@
+{
+  "cases": [
+    {
+      "name": "create inspiration mode uses gpt_description_prompt",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-v6",
+          "requestBody": { "model": "suno-v6", "prompt": "一首关于乡愁的歌" }
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/submit",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        },
+        "body": {
+          "model": "suno-v6",
+          "input": { "gpt_description_prompt": "一首关于乡愁的歌" }
+        },
+        "action": "MUSIC"
+      }
+    },
+    {
+      "name": "create custom mode uses prompt as lyrics plus tags and title",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn/",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-v5",
+          "requestBody": {
+            "model": "suno-v5",
+            "prompt": "[Verse] 归乡",
+            "metadata": { "custom_mode": true, "tags": "pop, ballad", "title": "归乡" }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/submit",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        },
+        "body": {
+          "model": "suno-v5",
+          "input": { "prompt": "[Verse] 归乡" },
+          "parameters": { "tags": "pop, ballad", "title": "归乡" }
+        },
+        "action": "MUSIC"
+      }
+    },
+    {
+      "name": "create custom mode without tags is rejected",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-v6",
+          "requestBody": {
+            "model": "suno-v6",
+            "prompt": "lyrics",
+            "metadata": { "custom_mode": true, "title": "no tags" }
+          }
+        }
+      ],
+      "expectedError": "metadata.tags is required"
+    },
+    {
+      "name": "create inspiration mode forwards make_instrumental",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-v6-mini",
+          "requestBody": {
+            "model": "suno-v6-mini",
+            "prompt": "lofi rain",
+            "metadata": { "make_instrumental": true }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/submit",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        },
+        "body": {
+          "model": "suno-v6-mini",
+          "input": { "gpt_description_prompt": "lofi rain" },
+          "parameters": { "make_instrumental": true }
+        },
+        "action": "MUSIC"
+      }
+    },
+    {
+      "name": "cover forwards upload_url and TEXT generation",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-v4.5+",
+          "requestBody": {
+            "model": "suno-v4.5+",
+            "prompt": "[Verse] cover lyrics",
+            "metadata": {
+              "task": "cover",
+              "tags": "rock",
+              "title": "cover song",
+              "parameters": { "upload_url": "https://example.com/source.mp3" }
+            }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/submit",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        },
+        "body": {
+          "model": "suno-v4.5+",
+          "input": { "prompt": "[Verse] cover lyrics" },
+          "parameters": {
+            "upload_url": "https://example.com/source.mp3",
+            "task": "cover",
+            "tags": "rock",
+            "title": "cover song",
+            "generation_type": "TEXT"
+          }
+        },
+        "action": "MUSIC"
+      }
+    },
+    {
+      "name": "lyrics model submits prompt",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-generate-lyrics",
+          "requestBody": { "model": "suno-generate-lyrics", "prompt": "写一首关于海的歌词" }
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/submit",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        },
+        "body": {
+          "model": "suno-generate-lyrics",
+          "input": { "prompt": "写一首关于海的歌词" }
+        },
+        "action": "LYRICS"
+      }
+    },
+    {
+      "name": "vocal separation forwards audio_url",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-vocal-separation",
+          "requestBody": {
+            "model": "suno-vocal-separation",
+            "prompt": "separate",
+            "metadata": { "audio_url": "https://example.com/song.mp3" }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/submit",
+        "method": "POST",
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        },
+        "body": {
+          "model": "suno-vocal-separation",
+          "input": { "audio_url": "https://example.com/song.mp3" }
+        },
+        "action": "VOCAL_SEPARATION"
+      }
+    },
+    {
+      "name": "vocal separation requires audio_url",
+      "hook": "buildSubmitRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "upstreamModel": "suno-vocal-separation",
+          "requestBody": { "model": "suno-vocal-separation", "prompt": "separate" }
+        }
+      ],
+      "expectedError": "metadata.audio_url is required"
+    },
+    {
+      "name": "query request hits tasks status",
+      "hook": "buildQueryRequest",
+      "args": [
+        {
+          "baseUrl": "https://api.modelverse.cn",
+          "apiKey": "sk-test",
+          "taskId": "task-1"
+        }
+      ],
+      "expected": {
+        "url": "https://api.modelverse.cn/v1/tasks/status?task_id=task-1",
+        "method": "GET",
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Bearer sk-test"
+        }
+      }
+    },
+    {
+      "name": "submit response extracts task id",
+      "hook": "parseSubmitResponse",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test" },
+        { "body": { "output": { "task_id": "task-1" }, "request_id": "req-1" } }
+      ],
+      "expected": {
+        "taskId": "task-1",
+        "taskData": { "output": { "task_id": "task-1" }, "request_id": "req-1" }
+      }
+    },
+    {
+      "name": "submit response surfaces upstream error",
+      "hook": "parseSubmitResponse",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test" },
+        { "body": { "error": { "message": "bad request" } } }
+      ],
+      "expectedError": "bad request"
+    },
+    {
+      "name": "pending maps to QUEUED",
+      "hook": "parseTaskResult",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test", "taskId": "task-1" },
+        { "output": { "task_status": "Pending" } }
+      ],
+      "expected": { "status": "QUEUED" }
+    },
+    {
+      "name": "running maps to IN_PROGRESS",
+      "hook": "parseTaskResult",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test", "taskId": "task-1" },
+        { "output": { "task_status": "Running" } }
+      ],
+      "expected": { "status": "IN_PROGRESS" }
+    },
+    {
+      "name": "success exposes the first result url",
+      "hook": "parseTaskResult",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test", "taskId": "task-1" },
+        {
+          "output": {
+            "task_status": "Success",
+            "urls": ["https://example.com/song.mp3", "https://example.com/song-2.mp3"]
+          }
+        }
+      ],
+      "expected": { "status": "SUCCESS", "url": "https://example.com/song.mp3" }
+    },
+    {
+      "name": "success without urls stays a success",
+      "hook": "parseTaskResult",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test", "taskId": "task-1" },
+        { "output": { "task_status": "Success", "urls": [] } }
+      ],
+      "expected": { "status": "SUCCESS" }
+    },
+    {
+      "name": "failure carries the upstream reason",
+      "hook": "parseTaskResult",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test", "taskId": "task-1" },
+        { "output": { "task_status": "Failure", "error_message": "quota exceeded" } }
+      ],
+      "expected": { "status": "FAILURE", "reason": "quota exceeded" }
+    },
+    {
+      "name": "unknown status is not treated as in progress",
+      "hook": "parseTaskResult",
+      "args": [
+        { "baseUrl": "https://api.modelverse.cn", "apiKey": "sk-test", "taskId": "task-1" },
+        { "output": { "task_status": "Weird" } }
+      ],
+      "expected": { "status": "UNKNOWN", "reason": "unrecognized task status: Weird" }
+    },
+    {
+      "name": "native task view keeps the upstream data payload",
+      "hook": "native",
+      "member": "taskView",
+      "args": [
+        {},
+        {
+          "task_id": "task-1",
+          "platform": "cuberouter-suno",
+          "status": "SUCCESS",
+          "progress": "100%",
+          "created_at": 100,
+          "finished_at": 200,
+          "data": { "output": { "data": [{ "text": "lyrics" }] } }
+        }
+      ],
+      "expected": {
+        "task_id": "task-1",
+        "platform": "cuberouter-suno",
+        "status": "SUCCESS",
+        "progress": "100%",
+        "fail_reason": "",
+        "created_at": 100,
+        "finished_at": 200,
+        "data": { "output": { "data": [{ "text": "lyrics" }] } }
+      }
+    },
+    {
+      "name": "native music submit decodes inspiration mode",
+      "hook": "native",
+      "member": "decodeSubmit",
+      "args": [
+        {
+          "params": { "action": "music" },
+          "body": { "kind": "json", "value": { "prompt": "一首歌" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "suno-v6",
+        "action": "MUSIC",
+        "requestBody": { "model": "suno-v6", "prompt": "一首歌" }
+      }
+    },
+    {
+      "name": "native music submit decodes custom mode fields",
+      "hook": "native",
+      "member": "decodeSubmit",
+      "args": [
+        {
+          "params": { "action": "music" },
+          "body": {
+            "kind": "json",
+            "value": { "prompt": "歌词", "tags": "pop", "title": "归乡", "custom_mode": true }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "suno-v6",
+        "action": "MUSIC",
+        "requestBody": {
+          "model": "suno-v6",
+          "prompt": "歌词",
+          "metadata": { "tags": "pop", "title": "归乡", "custom_mode": true }
+        }
+      }
+    },
+    {
+      "name": "native music submit honors an explicit model",
+      "hook": "native",
+      "member": "decodeSubmit",
+      "args": [
+        {
+          "params": { "action": "music" },
+          "body": { "kind": "json", "value": { "model": "suno-v5", "prompt": "x" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "suno-v5",
+        "action": "MUSIC",
+        "requestBody": { "model": "suno-v5", "prompt": "x" }
+      }
+    },
+    {
+      "name": "native lyrics submit maps to the lyrics model",
+      "hook": "native",
+      "member": "decodeSubmit",
+      "args": [
+        {
+          "params": { "action": "lyrics" },
+          "body": { "kind": "json", "value": { "prompt": "写歌词" } }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "suno-generate-lyrics",
+        "action": "LYRICS",
+        "requestBody": { "model": "suno-generate-lyrics", "prompt": "写歌词" }
+      }
+    },
+    {
+      "name": "native separation submit maps to the separation model",
+      "hook": "native",
+      "member": "decodeSubmit",
+      "args": [
+        {
+          "params": { "action": "separation" },
+          "body": {
+            "kind": "json",
+            "value": { "audio_url": "https://example.com/song.mp3" }
+          }
+        }
+      ],
+      "expected": {
+        "kind": "submit",
+        "model": "suno-vocal-separation",
+        "action": "VOCAL_SEPARATION",
+        "requestBody": {
+          "model": "suno-vocal-separation",
+          "prompt": "",
+          "metadata": { "audio_url": "https://example.com/song.mp3" }
+        }
+      }
+    },
+    {
+      "name": "native submit rejects an unsupported action",
+      "hook": "native",
+      "member": "decodeSubmit",
+      "args": [
+        {
+          "params": { "action": "bogus" },
+          "body": { "kind": "json", "value": {} }
+        }
+      ],
+      "expectedError": "unsupported action"
+    },
+    {
+      "name": "native submit response returns the public task id",
+      "hook": "native",
+      "member": "renderSubmit",
+      "args": [
+        {},
+        { "task_id": "task-1" }
+      ],
+      "expected": { "code": "success", "message": "", "data": "task-1" }
+    },
+    {
+      "name": "native fetch response returns task data",
+      "hook": "native",
+      "member": "renderFetchTask",
+      "args": [
+        {},
+        {
+          "task_id": "task-1",
+          "platform": "cuberouter-suno",
+          "status": "SUCCESS",
+          "progress": "100%",
+          "fail_reason": "",
+          "created_at": 100,
+          "finished_at": 200,
+          "data": { "output": { "urls": ["https://example.com/song.mp3"] } }
+        }
+      ],
+      "expected": {
+        "code": "success",
+        "message": "",
+        "data": {
+          "task_id": "task-1",
+          "platform": "cuberouter-suno",
+          "status": "SUCCESS",
+          "progress": "100%",
+          "fail_reason": "",
+          "submit_time": 100,
+          "finish_time": 200,
+          "data": { "output": { "urls": ["https://example.com/song.mp3"] } }
+        }
+      }
+    },
+    {
+      "name": "native error renderer returns a Suno envelope",
+      "hook": "native",
+      "member": "error",
+      "args": [
+        {},
+        { "code": "model_not_found", "message": "no available channel" }
+      ],
+      "expected": { "code": "model_not_found", "message": "no available channel", "data": null }
+    },
+    {
+      "name": "successful audio urls become artifacts",
+      "hook": "listArtifacts",
+      "args": [
+        {
+          "status": "SUCCESS",
+          "data": {
+            "output": {
+              "urls": ["https://example.com/song.mp3", "https://example.com/vocals.wav"]
+            }
+          }
+        }
+      ],
+      "expected": [
+        {
+          "key": "audio-fb3a316658d1f0988f628758f458d0595281bccc7657970300fd98a3f805be14",
+          "type": "audio",
+          "mimeType": "audio/mpeg"
+        },
+        {
+          "key": "audio-8db6c6f0efae49a59a39826bc85a93cf5d784c20239993af974a7bbe2e7ccc44",
+          "type": "audio",
+          "mimeType": "audio/wav"
+        }
+      ]
+    },
+    {
+      "name": "artifact content resolves by key",
+      "hook": "buildContentRequest",
+      "args": [
+        {
+          "artifactKey": "audio-fb3a316658d1f0988f628758f458d0595281bccc7657970300fd98a3f805be14",
+          "clientRequest": { "method": "GET" },
+          "data": {
+            "output": { "urls": ["https://example.com/song.mp3"] }
+          }
+        }
+      ],
+      "expected": {
+        "url": "https://example.com/song.mp3",
+        "method": "GET",
+        "credentialless": true
+      }
+    },
+    {
+      "name": "billing ratios are not provided for per-call pricing",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "usagePurpose": "billing_ratios",
+          "upstreamModel": "suno-v6",
+          "requestBody": { "model": "suno-v6", "prompt": "x" }
+        }
+      ],
+      "expected": null
+    },
+    {
+      "name": "usage facts report one request and the task type",
+      "hook": "extractUsage",
+      "args": [
+        {
+          "usagePurpose": "facts",
+          "upstreamModel": "suno-v6",
+          "requestBody": {
+            "model": "suno-v6",
+            "prompt": "x",
+            "metadata": { "task": "cover", "parameters": { "upload_url": "https://example.com/a.mp3" } }
+          }
+        }
+      ],
+      "expected": { "request_count": 1, "task": "cover" }
+    }
+  ]
+}
