@@ -32,3 +32,12 @@ export function textToDomainList(value: string): string {
     .filter(Boolean)
     .join(',')
 }
+
+export function buildDomainListUpdate(
+  key: 'EmailDomainWhitelist' | 'EmailDomainBlacklist',
+  value: string,
+  original: string
+): { key: string; value: string } | null {
+  const domains = textToDomainList(value)
+  return domains === original ? null : { key, value: domains }
+}

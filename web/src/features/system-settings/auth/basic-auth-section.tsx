@@ -43,7 +43,7 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
-import { domainListToText, textToDomainList } from './domain-list'
+import { buildDomainListUpdate, domainListToText } from './domain-list'
 
 const basicAuthSchema = z.object({
   PasswordLoginEnabled: z.boolean(),
@@ -90,13 +90,13 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
     Object.entries(data).forEach(([key, value]) => {
       if (key === 'EmailDomainWhitelist' || key === 'EmailDomainBlacklist') {
         if (typeof value !== 'string') return
-        const domains = textToDomainList(value)
         const original =
           key === 'EmailDomainWhitelist'
             ? defaultValues.EmailDomainWhitelist
             : defaultValues.EmailDomainBlacklist
-        if (domains !== original) {
-          updates.push({ key, value: domains })
+        const update = buildDomainListUpdate(key, value, original)
+        if (update) {
+          updates.push(update)
         }
       } else if (value !== defaultValues[key as keyof typeof defaultValues]) {
         updates.push({ key, value })
@@ -250,7 +250,7 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                 <FormLabel>{t('Email Domain Whitelist')}</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder={t('example.com&#10;company.com')}
+                    placeholder={'example.com\ncompany.com'}
                     rows={4}
                     {...field}
                   />
@@ -294,7 +294,7 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
                 <FormLabel>{t('Email Domain Blacklist')}</FormLabel>
                 <FormControl>
                   <Textarea
-                    placeholder={t('mailinator.com&#10;*.tempmail.com')}
+                    placeholder={'mailinator.com\n*.tempmail.com'}
                     rows={4}
                     {...field}
                   />

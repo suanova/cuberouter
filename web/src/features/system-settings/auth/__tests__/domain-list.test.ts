@@ -19,7 +19,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, it } from 'vitest'
 
-import { domainListToText, textToDomainList } from '../domain-list'
+import {
+  buildDomainListUpdate,
+  domainListToText,
+  textToDomainList,
+} from '../domain-list'
 
 describe('domain list text helpers', () => {
   it('converts comma-separated domains to one per line', () => {
@@ -38,5 +42,33 @@ describe('domain list text helpers', () => {
     expect(textToDomainList(domainListToText('a.com,b.com'))).toBe(
       'a.com,b.com'
     )
+  })
+})
+
+describe('buildDomainListUpdate', () => {
+  it('returns null when the edited list equals the saved list', () => {
+    expect(
+      buildDomainListUpdate(
+        'EmailDomainBlacklist',
+        'a.com\nb.com',
+        'a.com,b.com'
+      )
+    ).toBeNull()
+  })
+
+  it('returns the normalized list when the edit changes it', () => {
+    expect(
+      buildDomainListUpdate(
+        'EmailDomainBlacklist',
+        'a.com\nc.com',
+        'a.com,b.com'
+      )
+    ).toEqual({ key: 'EmailDomainBlacklist', value: 'a.com,c.com' })
+  })
+
+  it('returns an empty value when the list is cleared', () => {
+    expect(
+      buildDomainListUpdate('EmailDomainBlacklist', '', 'a.com')
+    ).toEqual({ key: 'EmailDomainBlacklist', value: '' })
   })
 })
