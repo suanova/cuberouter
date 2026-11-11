@@ -24,6 +24,10 @@ features:
     title: User Guide
     details: "Explore all of CubeRouter: Model Square, API key management, wallet & top-up, subscription plans, Playground, and usage & task logs."
     link: /en/guide/dashboard
+  - icon: 🧩
+    title: Model API Reference
+    details: Browse model support, parameters, examples, and limitations by protocol and modality for text, image, video, and audio models.
+    link: /en/models/
   - icon: 🛟
     title: Support
     details: FAQs, troubleshooting, and release notes. Look them up any time you hit a snag, or just reach out to us directly.

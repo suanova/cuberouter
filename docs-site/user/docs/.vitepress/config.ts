@@ -18,6 +18,7 @@ export default defineConfig({
           { text: '首页', link: '/' },
           { text: '快速开始', link: '/getting-started/quick-start' },
           { text: '使用指南', link: '/guide/dashboard' },
+          { text: '模型 API 参考', link: '/models/' },
           { text: '支持', link: '/support/faq' }
         ],
         sidebar: {
@@ -61,6 +62,31 @@ export default defineConfig({
                 { text: '故障排除', link: '/support/troubleshooting' },
                 { text: '联系我们', link: '/support/contact' },
                 { text: '更新日志', link: '/support/release-notes' }
+              ]
+            }
+          ],
+          '/models/': [
+            {
+              text: '模型 API 参考',
+              items: [
+                { text: '概览', link: '/models/' },
+                { text: '通用参数', link: '/models/common-parameters' }
+              ]
+            },
+            {
+              text: '大语言模型',
+              items: [
+                { text: 'OpenAI 协议', link: '/models/llm/openai' },
+                { text: 'Anthropic 协议', link: '/models/llm/anthropic' },
+                { text: 'Gemini 协议', link: '/models/llm/gemini' }
+              ]
+            },
+            {
+              text: '多媒体模型',
+              items: [
+                { text: '图像生成', link: '/models/image' },
+                { text: '视频生成', link: '/models/video' },
+                { text: '音频生成', link: '/models/audio' }
               ]
             }
           ]
@@ -124,6 +150,7 @@ export default defineConfig({
           { text: 'Home', link: '/en/' },
           { text: 'Quick Start', link: '/en/getting-started/quick-start' },
           { text: 'User Guide', link: '/en/guide/dashboard' },
+          { text: 'Model API Reference', link: '/en/models/' },
           { text: 'Support', link: '/en/support/faq' }
         ],
         sidebar: {
@@ -167,6 +194,31 @@ export default defineConfig({
                 { text: 'Troubleshooting', link: '/en/support/troubleshooting' },
                 { text: 'Contact Us', link: '/en/support/contact' },
                 { text: 'Release Notes', link: '/en/support/release-notes' }
+              ]
+            }
+          ],
+          '/en/models/': [
+            {
+              text: 'Model API Reference',
+              items: [
+                { text: 'Overview', link: '/en/models/' },
+                { text: 'Common Parameters', link: '/en/models/common-parameters' }
+              ]
+            },
+            {
+              text: 'Large Language Models',
+              items: [
+                { text: 'OpenAI Protocol', link: '/en/models/llm/openai' },
+                { text: 'Anthropic Protocol', link: '/en/models/llm/anthropic' },
+                { text: 'Gemini Protocol', link: '/en/models/llm/gemini' }
+              ]
+            },
+            {
+              text: 'Media Models',
+              items: [
+                { text: 'Image Generation', link: '/en/models/image' },
+                { text: 'Video Generation', link: '/en/models/video' },
+                { text: 'Audio Generation', link: '/en/models/audio' }
               ]
             }
           ]
@@ -230,6 +282,7 @@ export default defineConfig({
           { text: '首頁', link: '/zh-Hant/' },
           { text: '快速開始', link: '/zh-Hant/getting-started/quick-start' },
           { text: '使用指南', link: '/zh-Hant/guide/dashboard' },
+          { text: '模型 API 參考', link: '/zh-Hant/models/' },
           { text: '支援', link: '/zh-Hant/support/faq' }
         ],
         sidebar: {
@@ -273,6 +326,31 @@ export default defineConfig({
                 { text: '故障排除', link: '/zh-Hant/support/troubleshooting' },
                 { text: '聯繫支援', link: '/zh-Hant/support/contact' },
                 { text: '版本日誌', link: '/zh-Hant/support/release-notes' }
+              ]
+            }
+          ],
+          '/zh-Hant/models/': [
+            {
+              text: '模型 API 參考',
+              items: [
+                { text: '概覽', link: '/zh-Hant/models/' },
+                { text: '通用參數', link: '/zh-Hant/models/common-parameters' }
+              ]
+            },
+            {
+              text: '大語言模型',
+              items: [
+                { text: 'OpenAI 協議', link: '/zh-Hant/models/llm/openai' },
+                { text: 'Anthropic 協議', link: '/zh-Hant/models/llm/anthropic' },
+                { text: 'Gemini 協議', link: '/zh-Hant/models/llm/gemini' }
+              ]
+            },
+            {
+              text: '多媒體模型',
+              items: [
+                { text: '圖像生成', link: '/zh-Hant/models/image' },
+                { text: '影片生成', link: '/zh-Hant/models/video' },
+                { text: '音頻生成', link: '/zh-Hant/models/audio' }
               ]
             }
           ]

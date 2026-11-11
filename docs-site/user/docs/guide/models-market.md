@@ -99,3 +99,14 @@
 ### Q4: 如何查看模型的详细价格？
 
 在模型卡片中查看：按量计费显示输入 / 输出价格，按次计费显示单次价格，可切换 `/1M` / `/1K` 显示单位。
+
+## 查看模型的 API 用法
+
+模型广场展示模型能力、可用分组和价格。具体端点、参数、请求示例和模型差异，见 [模型 API 参考](/models/)。
+
+找到目标模型后，复制模型 ID，再按模型支持的协议选择调用方式：
+
+- 文本模型：[OpenAI 协议](/models/llm/openai)、[Anthropic 协议](/models/llm/anthropic)、[Gemini 协议](/models/llm/gemini)
+- 图像模型：[图像生成](/models/image)
+- 视频模型：[视频生成](/models/video)
+- 音频模型：[音频生成](/models/audio)

@@ -24,6 +24,10 @@ features:
     title: 使用指南
     details: 全面瞭解 CubeRouter 的各項功能：模型廣場、API 金鑰管理、錢包充值、訂閱計劃、遊樂場、使用與任務日誌。
     link: /zh-Hant/guide/dashboard
+  - icon: 🧩
+    title: 模型 API 參考
+    details: 按協議和模態查閱模型支援、參數、調用示例與常見限制，快速接入大語言、圖像、影片和音頻模型。
+    link: /zh-Hant/models/
   - icon: 🛟
     title: 支援
     details: 常見問題、故障排除與更新日誌，遇到問題時隨時查閱，也可隨時聯繫我們。

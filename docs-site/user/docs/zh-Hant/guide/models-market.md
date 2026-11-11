@@ -99,3 +99,14 @@
 ### Q4: 如何查看模型的詳細價格？
 
 在模型卡片中查看：按量計費顯示輸入 / 輸出價格，按次計費顯示單次價格，可切換 `/1M` / `/1K` 顯示單位。
+
+## 查看模型的 API 用法
+
+模型廣場展示模型能力、可用分組和價格。具體端點、參數、請求示例和模型差異，見 [模型 API 參考](/zh-Hant/models/)。
+
+找到目標模型後，複製模型 ID，再按模型支援的協議選擇調用方式：
+
+- 文本模型：[OpenAI 協議](/zh-Hant/models/llm/openai)、[Anthropic 協議](/zh-Hant/models/llm/anthropic)、[Gemini 協議](/zh-Hant/models/llm/gemini)
+- 圖像模型：[圖像生成](/zh-Hant/models/image)
+- 影片模型：[影片生成](/zh-Hant/models/video)
+- 音頻模型：[音頻生成](/zh-Hant/models/audio)
