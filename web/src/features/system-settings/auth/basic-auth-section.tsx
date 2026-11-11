@@ -43,6 +43,7 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useResetForm } from '../hooks/use-reset-form'
 import { useUpdateOption } from '../hooks/use-update-option'
+import { domainListToText, textToDomainList } from './domain-list'
 
 const basicAuthSchema = z.object({
   PasswordLoginEnabled: z.boolean(),
@@ -52,6 +53,9 @@ const basicAuthSchema = z.object({
   EmailDomainRestrictionEnabled: z.boolean(),
   EmailAliasRestrictionEnabled: z.boolean(),
   EmailDomainWhitelist: z.string(),
+  EmailDomainBlacklistEnabled: z.boolean(),
+  EmailDomainBlacklist: z.string(),
+  EmailDisposableCheckEnabled: z.boolean(),
 })
 
 type BasicAuthFormValues = z.infer<typeof basicAuthSchema>
@@ -67,10 +71,8 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
   const formDefaults = useMemo<BasicAuthFormValues>(
     () => ({
       ...defaultValues,
-      EmailDomainWhitelist: defaultValues.EmailDomainWhitelist.split(',')
-        .map((domain) => domain.trim())
-        .filter(Boolean)
-        .join('\n'),
+      EmailDomainWhitelist: domainListToText(defaultValues.EmailDomainWhitelist),
+      EmailDomainBlacklist: domainListToText(defaultValues.EmailDomainBlacklist),
     }),
     [defaultValues]
   )
@@ -86,14 +88,14 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
     const updates: Array<{ key: string; value: string | boolean }> = []
 
     Object.entries(data).forEach(([key, value]) => {
-      if (key === 'EmailDomainWhitelist') {
+      if (key === 'EmailDomainWhitelist' || key === 'EmailDomainBlacklist') {
         if (typeof value !== 'string') return
-        const domains = value
-          .split('\n')
-          .map((domain) => domain.trim())
-          .filter(Boolean)
-          .join(',')
-        if (domains !== defaultValues.EmailDomainWhitelist) {
+        const domains = textToDomainList(value)
+        const original =
+          key === 'EmailDomainWhitelist'
+            ? defaultValues.EmailDomainWhitelist
+            : defaultValues.EmailDomainBlacklist
+        if (domains !== original) {
           updates.push({ key, value: domains })
         }
       } else if (value !== defaultValues[key as keyof typeof defaultValues]) {
@@ -262,6 +264,77 @@ export function BasicAuthSection({ defaultValues }: BasicAuthSectionProps) {
               </FormItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='EmailDomainBlacklistEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Email Domain Blacklist')}</FormLabel>
+                  <FormDescription>
+                    {t('Block specific email domains')}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='EmailDomainBlacklist'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Email Domain Blacklist')}</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder={t('mailinator.com&#10;*.tempmail.com')}
+                    rows={4}
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'One domain per line; use *.example.com to block all subdomains'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='EmailDisposableCheckEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Block Disposable Emails')}</FormLabel>
+                  <FormDescription>
+                    {t('Use a built-in list of disposable email domains')}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <p className='text-muted-foreground text-sm'>
+            {t(
+              'When the whitelist is enabled, only whitelisted domains are allowed; blacklist and disposable checks do not apply.'
+            )}
+          </p>
         </SettingsForm>
       </Form>
     </SettingsSection>
