@@ -10,7 +10,7 @@ The expression is the billing contract between the administrator and the system.
 
 1. **Expression is self-contained** — The expression string alone determines billing. No external ratio tables, no implicit completion multipliers, no hidden conversion factors. Given the same token counts and request context, the same expression always produces the same cost.
 
-2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c` and priced at their rate. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
+2. **Variables are opt-in** — `p` (prompt) and `c` (completion) are the base. Cache (`cr`, `cc`, `cc1h`, `cc12h`), image (`img`), and audio (`ai`, `ao`) variables are optional. If omitted, those tokens are included in `p`/`c` and priced at their rate. The system automatically detects which variables the expression uses (via AST introspection) and adjusts token normalization accordingly.
 
 3. **Prices are real prices** — Expression coefficients are actual $/1M tokens prices as published by providers. No ratio conversion, no `/2` convention. `p * 2.5` means $2.50 per 1M prompt tokens.
 
@@ -35,6 +35,7 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 | `cr` | 缓存命中（读取）token 数 |
 | `cc` | 缓存创建 token 数（Claude 5分钟 TTL / 通用） |
 | `cc1h` | 缓存创建 token 数 — 1小时 TTL（Claude 专用） |
+| `cc12h` | 缓存创建 token 数 — 12小时 TTL（OpenAI 专用） |
 | `img` | 图片输入 token 数 |
 | `ai` | 音频输入 token 数 |
 
@@ -45,6 +46,8 @@ Powered by [expr-lang/expr](https://github.com/expr-lang/expr). Expressions are 
 | `c` | 输出 token 数。**自动排除**表达式中单独计价的子类别（见下方说明） |
 | `img_o` | 图片输出 token 数 |
 | `ao` | 音频输出 token 数 |
+
+OpenAI 用量包含 TTL 明细时，表达式引用 `cc12h` 才会将 12 小时写入从 `cc` 中分出。未引用 `cc12h` 时，`cc` 保留原有的写入总量语义。上游未报告 TTL 明细时，`cc12h` 为零。
 
 #### `p` 和 `c` 的自动排除机制
 

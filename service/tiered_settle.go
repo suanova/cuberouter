@@ -26,12 +26,19 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	p := float64(usage.PromptTokens)
 	c := float64(usage.CompletionTokens)
 	cr := float64(usage.PromptTokensDetails.CachedTokens)
-	cc5m := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
+	cc := float64(usage.PromptTokensDetails.CacheCreationTokensTotal())
 	cc1h := float64(0)
+	cc12h := float64(0)
 
 	if usage.UsageSemantic == "anthropic" {
 		cc1h = float64(usage.ClaudeCacheCreation1hTokens)
-		cc5m = float64(usage.ClaudeCacheCreation5mTokens)
+		cc = float64(usage.ClaudeCacheCreation5mTokens)
+	} else if !isClaudeUsageSemantic && usedVars["cc12h"] {
+		// Keep existing aggregate cc pricing for expressions that do not opt
+		// into a separate 12-hour rate.
+		short, long := usage.PromptTokensDetails.OpenAICacheWriteTokensByTTL()
+		cc = float64(short)
+		cc12h = float64(long)
 	}
 
 	img := float64(usage.PromptTokensDetails.ImageTokens)
@@ -44,7 +51,7 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	// Claude: input_tokens is text-only, so add cache read + cache creation.
 	inputLen := p
 	if isClaudeUsageSemantic {
-		inputLen = p + cr + cc5m + cc1h
+		inputLen = p + cr + cc + cc1h
 	}
 
 	if !isClaudeUsageSemantic {
@@ -52,10 +59,13 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 			p -= cr
 		}
 		if usedVars["cc"] {
-			p -= cc5m
+			p -= cc
 		}
 		if usedVars["cc1h"] {
 			p -= cc1h
+		}
+		if usedVars["cc12h"] {
+			p -= cc12h
 		}
 		if usedVars["img"] {
 			p -= img
@@ -81,16 +91,17 @@ func BuildTieredTokenParams(usage *dto.Usage, isClaudeUsageSemantic bool, usedVa
 	}
 
 	return billingexpr.TokenParams{
-		P:    p,
-		C:    c,
-		Len:  inputLen,
-		CR:   cr,
-		CC:   cc5m,
-		CC1h: cc1h,
-		Img:  img,
-		ImgO: imgO,
-		AI:   ai,
-		AO:   ao,
+		P:     p,
+		C:     c,
+		Len:   inputLen,
+		CR:    cr,
+		CC:    cc,
+		CC1h:  cc1h,
+		CC12h: cc12h,
+		Img:   img,
+		ImgO:  imgO,
+		AI:    ai,
+		AO:    ao,
 	}
 }
 

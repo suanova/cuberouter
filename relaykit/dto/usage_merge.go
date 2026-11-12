@@ -48,6 +48,7 @@ func MergeUsageNonZero(current *Usage, incoming *Usage) *Usage {
 		if details.CachedTokens > 0 ||
 			details.CachedCreationTokens > 0 ||
 			details.CacheWriteTokens > 0 ||
+			details.CacheWriteTokensDetails != nil ||
 			details.TextTokens > 0 ||
 			details.AudioTokens > 0 ||
 			details.ImageTokens > 0 {
@@ -294,6 +295,12 @@ func mergeInputTokenDetails(current *InputTokenDetails, incoming InputTokenDetai
 	}
 	if incoming.CacheWriteTokens > 0 {
 		current.CacheWriteTokens = incoming.CacheWriteTokens
+	}
+	// An explicit zero is meaningful in a supplied breakdown. Replace both
+	// buckets together so counters from different snapshots are never mixed.
+	if incoming.CacheWriteTokensDetails != nil {
+		details := *incoming.CacheWriteTokensDetails
+		current.CacheWriteTokensDetails = &details
 	}
 	if incoming.TextTokens > 0 {
 		current.TextTokens = incoming.TextTokens

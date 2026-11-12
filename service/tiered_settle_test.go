@@ -5,10 +5,12 @@ import (
 	"math/rand"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -1023,4 +1025,54 @@ func BenchmarkRatioBilling_Parallel(b *testing.B) {
 			ratioQuota(usage, false, 1.5, 5.0, 0.1, 1.0, 1.5)
 		}
 	})
+}
+
+func TestGPT61Sol12hTieredPricing(t *testing.T) {
+	const pricing = `len <= 272000 ? tier("0_272k", p * 2 + cr * 0.1 + cc * 2.5 + cc12h * 5 + c * 10) : tier("272k_plus", p * 4 + cr * 0.2 + cc * 5 + cc12h * 10 + c * 15)`
+	const usageJSON = `{"input_tokens":12000,"output_tokens":100,"total_tokens":12100,"input_tokens_details":{"cached_tokens":4000,"cache_write_tokens":7000,"cache_write_tokens_details":{"ttl_30m_tokens":3000,"ttl_12h_tokens":4000}}}`
+
+	estimate, trace, err := billingexpr.RunExpr(pricing, billingexpr.TokenParams{P: 12000, C: 100, Len: 12000})
+	require.NoError(t, err)
+	assert.Equal(t, float64(25000), estimate)
+	assert.Equal(t, "0_272k", trace.MatchedTier)
+
+	var upstream dto.Usage
+	require.NoError(t, common.Unmarshal([]byte(usageJSON), &upstream))
+	usage := dto.MergeUsageNonZero(&dto.Usage{}, relayconvert.NormalizeResponsesUsage(&upstream))
+
+	legacy := `tier("legacy", p * 2 + cr * 0.1 + cc * 2.5 + c * 10)`
+	legacyParams := BuildTieredTokenParams(usage, false, billingexpr.UsedVars(legacy))
+	legacyCost, _, err := billingexpr.RunExpr(legacy, legacyParams)
+	require.NoError(t, err)
+	assert.Equal(t, float64(20900), legacyCost)
+
+	converted := relayconvert.UsageFromResponsesUsage(&upstream)
+	canonical, ok := converted.BillingUsage.CanonicalUsage()
+	require.True(t, ok)
+	convertedParams := BuildTieredTokenParams(canonical, false, billingexpr.UsedVars(pricing))
+	convertedCost, _, err := billingexpr.RunExpr(pricing, convertedParams)
+	require.NoError(t, err)
+	assert.Equal(t, float64(30900), convertedCost)
+
+	for _, tc := range []struct {
+		name  string
+		input int
+		tier  string
+		quota int
+	}{
+		{"standard", 12000, "0_272k", 15450},
+		{"last token in standard tier", 272000, "0_272k", 275450},
+		{"first token in long tier", 272001, "272k_plus", 550652},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			actual := *usage
+			actual.PromptTokens = tc.input
+			params := BuildTieredTokenParams(&actual, false, billingexpr.UsedVars(pricing))
+			ok, quota, result := TryTieredSettle(makeRelayInfo(pricing, 1, tc.input, 100), params)
+			require.True(t, ok)
+			require.NotNil(t, result)
+			assert.Equal(t, tc.tier, result.MatchedTier)
+			assert.Equal(t, tc.quota, quota)
+		})
+	}
 }

@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
@@ -271,10 +272,49 @@ type InputTokenDetails struct {
 	// prompt_tokens_details.cache_write_tokens (Chat Completions) or
 	// input_tokens_details.cache_write_tokens (Responses). It is billed at the
 	// cache-creation price.
-	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
-	TextTokens       int `json:"text_tokens"`
-	AudioTokens      int `json:"audio_tokens"`
-	ImageTokens      int `json:"image_tokens"`
+	CacheWriteTokens        int                     `json:"cache_write_tokens,omitempty"`
+	CacheWriteTokensDetails *CacheWriteTokenDetails `json:"cache_write_tokens_details,omitempty"`
+	TextTokens              int                     `json:"text_tokens"`
+	AudioTokens             int                     `json:"audio_tokens"`
+	ImageTokens             int                     `json:"image_tokens"`
+}
+
+// CacheWriteTokenDetails is the OpenAI Responses breakdown of cache writes by TTL.
+type CacheWriteTokenDetails struct {
+	TTL30mTokens int `json:"ttl_30m_tokens"`
+	TTL12hTokens int `json:"ttl_12h_tokens"`
+}
+
+func (d InputTokenDetails) hasCacheWriteTTLUsage() bool {
+	details := d.CacheWriteTokensDetails
+	return details != nil && (details.TTL30mTokens > 0 || details.TTL12hTokens > 0)
+}
+
+// Clone copies the token details and their optional TTL breakdown.
+func (d InputTokenDetails) Clone() InputTokenDetails {
+	if d.CacheWriteTokensDetails != nil {
+		details := *d.CacheWriteTokensDetails
+		d.CacheWriteTokensDetails = &details
+	}
+	return d
+}
+
+// OpenAICacheWriteTokensByTTL splits the write total without counting the same
+// tokens twice. Without a breakdown, the reported total uses the short TTL.
+func (d InputTokenDetails) OpenAICacheWriteTokensByTTL() (short, long int) {
+	total := d.CacheCreationTokensTotal()
+	details := d.CacheWriteTokensDetails
+	if details == nil {
+		return total, 0
+	}
+	long = max(0, details.TTL12hTokens)
+	if total == 0 {
+		// Some relays send the TTL buckets without a separate total.
+		short = min(max(0, details.TTL30mTokens), math.MaxInt-long)
+		return short, long
+	}
+	long = min(long, total)
+	return total - long, long
 }
 
 // CacheCreationTokensTotal returns the cache-write token count regardless of
