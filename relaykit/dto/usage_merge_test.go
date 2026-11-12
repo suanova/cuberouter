@@ -172,8 +172,8 @@ func TestMergeClaudeUsageNonZeroPreservesBillingUsage(t *testing.T) {
 	t.Parallel()
 
 	currentSidecar := NewGeminiChatBillingUsage(&GeminiUsageMetadata{
-		PromptTokenCount:    3868,
-		TotalTokenCount:     3868,
+		PromptTokenCount:        3868,
+		TotalTokenCount:         3868,
 		CachedContentTokenCount: 20,
 	})
 	incomingSidecar := NewGeminiChatBillingUsage(&GeminiUsageMetadata{
@@ -231,4 +231,40 @@ func TestMergeUsageNonZeroKeepsPositiveValuesAndTakesMaxTotal(t *testing.T) {
 	assert.Equal(t, 10, merged.PromptTokens)
 	assert.Equal(t, 5, merged.CompletionTokens)
 	assert.Equal(t, 20, merged.TotalTokens)
+}
+
+func TestMergeUsageReplacesOpenAICacheWriteTTLBucketsTogether(t *testing.T) {
+	current := &Usage{InputTokensDetails: &InputTokenDetails{
+		CacheWriteTokens:        7000,
+		CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL30mTokens: 3000, TTL12hTokens: 4000},
+	}}
+	incoming := &Usage{InputTokensDetails: &InputTokenDetails{
+		CacheWriteTokens:        7000,
+		CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL30mTokens: 7000},
+	}}
+	merged := MergeUsageNonZero(current, incoming)
+	incoming.InputTokensDetails.CacheWriteTokensDetails.TTL12hTokens = 500
+	short, long := merged.InputTokensDetails.OpenAICacheWriteTokensByTTL()
+	assert.Equal(t, 7000, short)
+	assert.Zero(t, long)
+}
+
+func TestOpenAICacheWriteTokensByTTL(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		details InputTokenDetails
+		short   int
+		long    int
+	}{
+		{"total only", InputTokenDetails{CacheWriteTokens: 7000}, 7000, 0},
+		{"breakdown only", InputTokenDetails{CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL30mTokens: 3000, TTL12hTokens: 4000}}, 3000, 4000},
+		{"12-hour count exceeds total", InputTokenDetails{CacheWriteTokens: 100, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: 200}}, 0, 100},
+		{"negative 12-hour count", InputTokenDetails{CacheWriteTokens: 100, CacheWriteTokensDetails: &CacheWriteTokenDetails{TTL12hTokens: -200}}, 100, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			short, long := tc.details.OpenAICacheWriteTokensByTTL()
+			assert.Equal(t, tc.short, short)
+			assert.Equal(t, tc.long, long)
+		})
+	}
 }
