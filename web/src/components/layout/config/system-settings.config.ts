@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { type TFunction } from 'i18next'
 import {
   Box,
+  Bot,
   CreditCard,
   Layout,
   Settings,
@@ -27,6 +28,7 @@ import {
   Wrench,
 } from 'lucide-react'
 
+import { getAssistantSectionNavItems } from '@/features/system-settings/assistant/section-registry.tsx'
 import { getAuthSectionNavItems } from '@/features/system-settings/auth/section-registry.tsx'
 import { getBillingSectionNavItems } from '@/features/system-settings/billing/section-registry.tsx'
 import { getContentSectionNavItems } from '@/features/system-settings/content/section-registry.tsx'
@@ -79,6 +81,11 @@ function getSystemSettingsNavGroups(t: TFunction): NavGroup[] {
           title: t('Console Content'),
           icon: Layout,
           items: getContentSectionNavItems(t),
+        },
+        {
+          title: t('Account Assistant'),
+          icon: Bot,
+          items: getAssistantSectionNavItems(t),
         },
         {
           title: t('Operations'),
