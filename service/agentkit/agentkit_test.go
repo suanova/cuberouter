@@ -23,6 +23,7 @@ package agentkit
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -211,6 +212,96 @@ func TestRunStopsExecutingToolsAtBudget(t *testing.T) {
 	assert.False(t, result.Refused, "one successful tool call is enough to leave the refusal path")
 	assert.Empty(t, result.Content, "a model that never answers leaves no final content")
 	assert.LessOrEqual(t, completeCalls, 3, "a forced final round must terminate the loop")
+}
+
+func multiToolCallResponse(callIDs []string, name, arguments string) *dto.OpenAITextResponse {
+	toolCalls := make([]dto.ToolCallRequest, 0, len(callIDs))
+	for _, id := range callIDs {
+		toolCalls = append(toolCalls, dto.ToolCallRequest{
+			ID:   id,
+			Type: "function",
+			Function: dto.FunctionRequest{
+				Name:      name,
+				Arguments: arguments,
+			},
+		})
+	}
+	message := dto.Message{Role: "assistant", Content: ""}
+	message.SetToolCalls(toolCalls)
+	return &dto.OpenAITextResponse{
+		Choices: []dto.OpenAITextResponseChoice{{Message: message}},
+	}
+}
+
+// Every configured round may call tools: with MaxRounds=1 the single round must
+// still send tools, run one, and answer instead of being forced to refuse.
+func TestRunAllowsToolRoundWhenMaxRoundsIsOne(t *testing.T) {
+	toolRuns := 0
+	completeCalls := 0
+	complete := func(ctx context.Context, req *dto.GeneralOpenAIRequest) (*dto.OpenAITextResponse, error) {
+		completeCalls++
+		if completeCalls == 1 {
+			// The first round may call tools, so a tool_call result is valid.
+			return toolCallResponse("call_1", "get_my_account", `{}`), nil
+		}
+		// The forced-final round carries no tools and must answer.
+		assert.Empty(t, req.Tools, "the forced final round must drop tools")
+		return textResponse("余额 10 美元"), nil
+	}
+	registry := testRegistry(func(context.Context, Principal, string) (string, error) {
+		toolRuns++
+		return `{"balance_usd":10}`, nil
+	})
+
+	result, err := Run(context.Background(), complete, registry, Principal{UserID: 7}, Options{
+		Model:        "test-model",
+		UserMessage:  "查余额",
+		MaxRounds:    1,
+		MaxToolCalls: 3,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, toolRuns, "the single configured round must still run its tool")
+	assert.Equal(t, 1, result.ToolCalls)
+	assert.False(t, result.Refused, "a successful tool call must not be refused")
+	assert.Equal(t, "余额 10 美元", strings.TrimSpace(result.Content))
+}
+
+// Parallel tool calls beyond the budget must each get a matching tool reply,
+// otherwise an OpenAI-compatible upstream rejects the next completion.
+func TestRunAddsToolRepliesForCallsSkippedByBudget(t *testing.T) {
+	toolRuns := 0
+	complete := func(ctx context.Context, req *dto.GeneralOpenAIRequest) (*dto.OpenAITextResponse, error) {
+		if toolRuns == 0 {
+			return multiToolCallResponse([]string{"call_1", "call_2", "call_3"}, "get_my_account", `{}`), nil
+		}
+		// The forced-final round sees every tool_calls id fully answered.
+		ids := map[string]bool{}
+		for _, message := range req.Messages {
+			if message.Role == "tool" {
+				ids[message.ToolCallId] = true
+			}
+		}
+		assert.True(t, ids["call_1"])
+		assert.True(t, ids["call_2"])
+		assert.True(t, ids["call_3"], "the skipped call still needs a placeholder tool reply")
+		return textResponse("已处理"), nil
+	}
+	registry := testRegistry(func(context.Context, Principal, string) (string, error) {
+		toolRuns++
+		return `{"ok":true}`, nil
+	})
+
+	result, err := Run(context.Background(), complete, registry, Principal{UserID: 7}, Options{
+		Model:        "test-model",
+		UserMessage:  "并行处理三个",
+		MaxRounds:    2,
+		MaxToolCalls: 1,
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, toolRuns, "the budget must cap executions to one")
+	assert.False(t, result.Refused, "one successful tool call leaves the refusal path")
 }
 
 func TestRunDropsToolHistoryMessages(t *testing.T) {

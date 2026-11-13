@@ -94,6 +94,17 @@ func (s *Service) Chat(
 		return agentkit.Result{}, err
 	}
 
+	// 预留本次问答可能消耗的最大 token 之后再启动模型补全，使并发提问的
+	// 预算检查是原子的；运行结束后再按实际用量冲正差额。预留失败则直接
+	// 拒绝，避免并发请求都读到同一个旧值而超额。
+	var estimate int64
+	if setting.DailyTokenBudget > 0 {
+		estimate = int64(setting.MaxTokens) * (int64(setting.MaxRounds) + 1)
+		if !reserveTokenUsage(principal.UserID, estimate, int64(setting.DailyTokenBudget)) {
+			return agentkit.Result{}, ErrTokenBudget
+		}
+	}
+
 	result, err := agentkit.Run(ctx, s.complete, buildRegistry(principal, setting), principal, agentkit.Options{
 		Model:        setting.Model,
 		SystemPrompt: systemPrompt,
@@ -104,8 +115,10 @@ func (s *Service) Chat(
 		MaxToolCalls: setting.MaxToolCalls,
 		OnEvent:      onEvent,
 	})
-	// 即使补全失败，已产生的 token 也要计入预算，避免失败重试绕过限额。
-	addTokenUsage(principal.UserID, result.PromptTokens+result.CompletionTokens)
+	// 即使补全失败，已产生的 token 也要计入预算，避免失败重试绕过限额；
+	// 同时对预留做冲正（actual - estimate，负数表示多退）。
+	actual := int64(result.PromptTokens + result.CompletionTokens)
+	adjustTokenUsage(principal.UserID, actual-estimate)
 	if err != nil {
 		common.SysLog(fmt.Sprintf("account assistant chat failed (user=%d): %s", principal.UserID, err.Error()))
 	}
@@ -158,9 +171,6 @@ func init() {
 }
 
 func consumeQuestionQuota(userID int, setting account_assistant_setting.AccountAssistantSetting) error {
-	if setting.DailyTokenBudget > 0 && tokenUsage(userID) >= int64(setting.DailyTokenBudget) {
-		return ErrTokenBudget
-	}
 	if !consumeRateSlot("hourly", userID, setting.HourlyLimit, time.Hour, &hourlyLimiter) {
 		return ErrRateLimited
 	}
@@ -212,15 +222,49 @@ func tokenUsage(userID int) int64 {
 	return tokenBudgetStore[key]
 }
 
-func addTokenUsage(userID, tokens int) {
-	if userID <= 0 || tokens <= 0 {
-		return
+// reserveTokenUsage atomically sets aside an estimated token amount for a
+// question before the model run starts. Each concurrent request checks the
+// increment against the daily budget, so parallel questions cannot all pass
+// against the same pre-run balance. A failed reservation rolls the increment
+// back and reports the budget as exhausted.
+func reserveTokenUsage(userID int, estimate int64, budget int64) bool {
+	if userID <= 0 || estimate <= 0 {
+		return true
 	}
 	key := tokenBudgetKey(userID)
 	if common.RedisEnabled && common.RDB != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), redisOperationLimit)
 		defer cancel()
-		if err := common.RDB.IncrBy(ctx, key, int64(tokens)).Err(); err == nil {
+		current, err := common.RDB.IncrBy(ctx, key, estimate).Result()
+		if err == nil {
+			if current > budget {
+				common.RDB.IncrBy(ctx, key, -estimate)
+				return false
+			}
+			common.RDB.Expire(ctx, key, 25*time.Hour)
+			return true
+		}
+		common.SysLog("account assistant redis token reserve failed: " + err.Error())
+	}
+	tokenBudgetMu.Lock()
+	defer tokenBudgetMu.Unlock()
+	projected := tokenBudgetStore[key] + estimate
+	if projected > budget {
+		return false
+	}
+	tokenBudgetStore[key] = projected
+	return true
+}
+
+// adjustTokenUsage adds a signed delta (positive usage, or a negative refund
+// of the part of a reservation that was not consumed) to the user's daily
+// token counter. It stores the Delta of 0 safely without resetting the key.
+func adjustTokenUsage(userID int, delta int64) {
+	key := tokenBudgetKey(userID)
+	if common.RedisEnabled && common.RDB != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), redisOperationLimit)
+		defer cancel()
+		if err := common.RDB.IncrBy(ctx, key, delta).Err(); err == nil {
 			common.RDB.Expire(ctx, key, 25*time.Hour)
 			return
 		} else {
@@ -228,6 +272,13 @@ func addTokenUsage(userID, tokens int) {
 		}
 	}
 	tokenBudgetMu.Lock()
-	tokenBudgetStore[key] += int64(tokens)
+	tokenBudgetStore[key] += delta
 	tokenBudgetMu.Unlock()
+}
+
+func addTokenUsage(userID, tokens int) {
+	if userID <= 0 || tokens <= 0 {
+		return
+	}
+	adjustTokenUsage(userID, int64(tokens))
 }

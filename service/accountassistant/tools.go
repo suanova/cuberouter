@@ -235,7 +235,7 @@ func newExplainMyChargeTool() agentkit.Tool {
 				"cache_tokens":      logEntry.CacheTokens,
 				"use_time_seconds":  logEntry.UseTime,
 				"content":           truncateRunes(logEntry.Content, 1000),
-				"billing_detail":    truncateRunes(logEntry.Other, maxChargeOtherLen),
+				"billing_detail":    truncateRunes(model.StripUserHiddenLogFields(logEntry.Other), maxChargeOtherLen),
 				"note":              "billing_detail 是计费时的明细快照；退款/罚金记录会以独立日志出现。",
 			}), nil
 		},

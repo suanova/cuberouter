@@ -42,6 +42,7 @@ import { AssistantMessage } from './assistant-message'
 
 type AssistantChatPanelProps = {
   supportUrl: string
+  open: boolean
   onClose: () => void
 }
 
@@ -59,6 +60,7 @@ function nextMessageId(): string {
 
 export function AssistantChatPanel(props: AssistantChatPanelProps) {
   const { t } = useTranslation()
+  const { open } = props
   const [messages, setMessages] = useState<AccountAssistantChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
@@ -67,9 +69,16 @@ export function AssistantChatPanel(props: AssistantChatPanelProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
+  // Focus the composer whenever the panel becomes visible. The panel stays
+  // mounted (so the transcript and in-flight stream survive close/reopen),
+  // so focus only on the open transition.
+  const wasOpenRef = useRef(open)
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    if (open && !wasOpenRef.current) {
+      inputRef.current?.focus()
+    }
+    wasOpenRef.current = open
+  }, [open])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -77,13 +86,6 @@ export function AssistantChatPanel(props: AssistantChatPanelProps) {
       container.scrollTop = container.scrollHeight
     }
   }, [messages, streaming, activeTool])
-
-  useEffect(
-    () => () => {
-      abortRef.current?.abort()
-    },
-    []
-  )
 
   const openSupport = () => {
     const configured = props.supportUrl.trim()
@@ -203,6 +205,8 @@ export function AssistantChatPanel(props: AssistantChatPanelProps) {
     <div
       role='dialog'
       aria-label={t('Account Assistant')}
+      aria-hidden={!open}
+      hidden={!open}
       onKeyDown={handlePanelKeyDown}
       className='bg-background fixed right-4 bottom-24 z-50 flex h-[min(560px,calc(100svh-8rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border shadow-2xl sm:right-6'
     >
@@ -224,6 +228,9 @@ export function AssistantChatPanel(props: AssistantChatPanelProps) {
 
       <div
         ref={scrollRef}
+        role='log'
+        aria-live='polite'
+        aria-label={t('Account Assistant conversation')}
         className='min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3'
       >
         {messages.length === 0 && <EmptyState />}

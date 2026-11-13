@@ -83,6 +83,7 @@ func AccountAssistantChat(c *gin.Context) {
 	}
 
 	var request accountAssistantChatRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 128<<10)
 	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
 		common.ApiErrorMsg(c, "请求格式不正确")
 		return
@@ -125,6 +126,8 @@ func AccountAssistantChat(c *gin.Context) {
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Status(http.StatusOK)
+	fmt.Fprint(c.Writer, ": start\n\n")
+	c.Writer.Flush()
 
 	writeEvent := func(event accountAssistantEvent) {
 		data, err := common.Marshal(event)

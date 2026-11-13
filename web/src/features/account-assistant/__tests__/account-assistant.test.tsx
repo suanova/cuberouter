@@ -22,17 +22,49 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { getAccountAssistantConfig, streamAccountAssistantChat } from '../api'
 import { AccountAssistant } from '../components/account-assistant'
 import { ASSISTANT_REFUSAL_TEXT } from '../constants'
+import { api as httpApi } from '@/lib/http-client'
 
-vi.mock('../api', () => ({
-  getAccountAssistantConfig: vi.fn(),
-  streamAccountAssistantChat: vi.fn(),
-}))
+// Mock only the network boundary (HTTP client config GET + global fetch for the
+// SSE stream) so getAccountAssistantConfig and streamAccountAssistantChat — and
+// their response/SSE parsing — stay real.
+vi.mock('@/lib/http-client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/http-client')>()
+  return { ...actual, api: { ...actual.api, get: vi.fn() } }
+})
+vi.mock('@/lib/auth-session', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/auth-session')>()
+  return { ...actual, getFreshAuthHeaders: vi.fn().mockResolvedValue({}) }
+})
 
-const configMock = vi.mocked(getAccountAssistantConfig)
-const streamMock = vi.mocked(streamAccountAssistantChat)
+const configGet = vi.mocked(httpApi.get)
+const fetchMock = vi.fn()
+vi.stubGlobal('fetch', fetchMock)
+
+function mockConfig(enabled: boolean, supportUrl = '') {
+  configGet.mockResolvedValue({
+    data: { data: { enabled, support_url: supportUrl } },
+  })
+}
+
+function mockSseStream(...events: Array<Record<string, unknown>>) {
+  const frames = events
+    .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+    .join('')
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new TextEncoder().encode(`${frames}data: [DONE]\n\n`))
+      controller.close()
+    },
+  })
+  fetchMock.mockResolvedValue({
+    ok: true,
+    status: 200,
+    headers: new Headers({ 'content-type': 'text/event-stream' }),
+    body: stream,
+  } as Response)
+}
 
 function renderAssistant() {
   const queryClient = new QueryClient({
@@ -46,10 +78,7 @@ function renderAssistant() {
 }
 
 async function openAssistant(enableSupportLink = false) {
-  configMock.mockResolvedValue({
-    enabled: true,
-    support_url: enableSupportLink ? 'https://support.example.com' : '',
-  })
+  mockConfig(true, enableSupportLink ? 'https://support.example.com' : '')
   renderAssistant()
   const button = await screen.findByRole('button', {
     name: 'Open account assistant',
@@ -59,20 +88,21 @@ async function openAssistant(enableSupportLink = false) {
 }
 
 beforeEach(() => {
-  configMock.mockReset()
-  streamMock.mockReset()
+  configGet.mockReset()
+  fetchMock.mockReset()
 })
 
 describe('AccountAssistant entry', () => {
   test('given the server reports disabled, no floating entry renders', async () => {
-    configMock.mockResolvedValue({ enabled: false, support_url: '' })
+    mockConfig(false)
 
     renderAssistant()
 
-    await waitFor(() => expect(configMock).toHaveBeenCalled())
-    expect(
-      screen.queryByRole('button', { name: 'Open account assistant' })
-    ).toBeNull()
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Open account assistant' })
+      ).toBeNull()
+    )
   })
 
   test('given the server reports enabled, the floating ball opens a focused chat panel', async () => {
@@ -89,26 +119,57 @@ describe('AccountAssistant entry', () => {
     )
   })
 
-  test('given the panel is open, Escape closes it', async () => {
-    const dialog = await openAssistant()
+  test('given the panel is open, Escape closes it and returns focus to the launcher', async () => {
+    await openAssistant()
+    const dialog = screen.getByRole('dialog', { name: 'Account Assistant' })
+    const launcher = screen.getByRole('button', {
+      expanded: true,
+      name: 'Close account assistant',
+    })
 
     fireEvent.keyDown(dialog, { key: 'Escape' })
 
-    expect(
-      screen.queryByRole('dialog', { name: 'Account Assistant' })
-    ).toBeNull()
+    expect(dialog).toHaveAttribute('hidden')
+    expect(launcher).toHaveAttribute('aria-label', 'Open account assistant')
+    await waitFor(() => expect(launcher).toHaveFocus())
+  })
+
+  test('given the panel closes and reopens, the transcript is preserved', async () => {
+    mockSseStream({ type: 'final', content: 'Your balance is **10 USD**.' })
+    await openAssistant()
+    const input = screen.getByRole('textbox', {
+      name: 'Ask about your account…',
+    })
+
+    await userEvent.type(input, 'What is my balance?')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+    expect(await screen.findByText('10 USD')).toBeInTheDocument()
+
+    // Close and reopen; the answer must still be there instead of resetting.
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open account assistant' })
+    )
+
+    expect(screen.getByText('What is my balance?')).toBeInTheDocument()
+    expect(screen.getByText('10 USD')).toBeInTheDocument()
+  })
+
+  test('the conversation is a labeled polite live region', async () => {
+    await openAssistant()
+
+    const log = screen.getByRole('log')
+    expect(log).toHaveAttribute('aria-live', 'polite')
+    expect(log).toHaveAccessibleName('Account Assistant conversation')
   })
 })
 
 describe('AccountAssistant conversation', () => {
   test('given a question, the final tool-backed answer renders and the request carries the raw question', async () => {
-    streamMock.mockImplementation(async (params) => {
-      params.onEvent({ type: 'tool', tool: 'get_my_account' })
-      params.onEvent({
-        type: 'final',
-        content: 'Your balance is **10 USD**.',
-      })
-    })
+    mockSseStream(
+      { type: 'tool', tool: 'get_my_account' },
+      { type: 'final', content: 'Your balance is **10 USD**.' }
+    )
     await openAssistant()
     const input = screen.getByRole('textbox', {
       name: 'Ask about your account…',
@@ -119,19 +180,16 @@ describe('AccountAssistant conversation', () => {
 
     expect(await screen.findByText('What is my balance?')).toBeInTheDocument()
     expect(await screen.findByText('10 USD')).toBeInTheDocument()
-    expect(streamMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: 'What is my balance?',
-        history: [],
-      })
-    )
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+    expect(body).toMatchObject({
+      message: 'What is my balance?',
+      history: [],
+    })
   })
 
   test('given a refusal event, the fixed refusal and human-support action render', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
-    streamMock.mockImplementation(async (params) => {
-      params.onEvent({ type: 'refusal', code: 'tool_required' })
-    })
+    mockSseStream({ type: 'refusal', code: 'tool_required' })
     await openAssistant(true)
 
     await userEvent.type(
@@ -154,9 +212,7 @@ describe('AccountAssistant conversation', () => {
   })
 
   test('given a limit error, the localized message and contact fallback render', async () => {
-    streamMock.mockImplementation(async (params) => {
-      params.onEvent({ type: 'error', code: 'daily_limit' })
-    })
+    mockSseStream({ type: 'error', code: 'daily_limit' })
     await openAssistant()
 
     await userEvent.type(
@@ -176,7 +232,8 @@ describe('AccountAssistant conversation', () => {
   })
 
   test('given a stream that ends without an answer, an unavailable error renders', async () => {
-    streamMock.mockResolvedValue(undefined)
+    // Stream returns immediately with only the [DONE] frame; no answer event.
+    mockSseStream()
     await openAssistant()
 
     await userEvent.type(

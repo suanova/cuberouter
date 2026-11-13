@@ -233,8 +233,9 @@ func Run(ctx context.Context, complete CompleteFunc, registry *Registry, princip
 
 	for round := 1; round <= opts.MaxRounds; round++ {
 		result.Rounds = round
-		lastRound := round == opts.MaxRounds
-		allowTools := !lastRound && !forceFinal && len(definitions) > 0 && toolCalls < opts.MaxToolCalls
+		// Every configured round may call tools (MaxRounds=1 still runs a tool
+		// round); the forced-final block below handles the round after the loop.
+		allowTools := !forceFinal && len(definitions) > 0 && toolCalls < opts.MaxToolCalls
 
 		response, err := completeRound(allowTools)
 		if err != nil {
@@ -277,7 +278,14 @@ func Run(ctx context.Context, complete CompleteFunc, registry *Registry, princip
 		for _, call := range calls {
 			if toolCalls >= opts.MaxToolCalls {
 				budgetExhausted = true
-				break
+				// Every assistant tool_calls entry needs a matching tool reply,
+				// otherwise OpenAI-compatible upstreams reject the next request.
+				messages = append(messages, dto.Message{
+					Role:       "tool",
+					ToolCallId: call.ID,
+					Content:    "工具调用次数已达上限，未执行。",
+				})
+				continue
 			}
 			toolCalls++
 			name := call.Function.Name

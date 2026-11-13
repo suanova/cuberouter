@@ -6362,6 +6362,8 @@
     "Save assistant settings": "保存助手设置",
     "Open account assistant": "打开账户助手",
     "Close account assistant": "关闭账户助手",
+    "Account Assistant conversation": "账户助手会话",
+    "How do I renew?": "如何续订？",
     "Ask about your account…": "询问你的账户问题…",
     "Ask about your balance, usage, keys, tasks, or help docs.": "可以询问余额、用量、密钥、任务或帮助文档。",
     "The assistant only answers from your own account data and help docs.": "助手只会根据你的账户数据和帮助文档作答。",

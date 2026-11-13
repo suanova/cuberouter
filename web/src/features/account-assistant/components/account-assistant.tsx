@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { Cancel01Icon, SparklesIcon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -31,6 +31,7 @@ import { AssistantChatPanel } from './assistant-chat-panel'
 export function AccountAssistant() {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const launcherRef = useRef<HTMLButtonElement | null>(null)
   const configQuery = useQuery({
     queryKey: ['account-assistant', 'config'],
     queryFn: getAccountAssistantConfig,
@@ -42,15 +43,24 @@ export function AccountAssistant() {
     return null
   }
 
+  const closeAndReturnFocus = () => {
+    setOpen(false)
+    // Move focus back to the launcher after closing so keyboard users do not
+    // lose their place (the panel may hold the focused textarea).
+    requestAnimationFrame(() => launcherRef.current?.focus())
+  }
+
   return (
     <>
-      {open && (
-        <AssistantChatPanel
-          supportUrl={configQuery.data.support_url}
-          onClose={() => setOpen(false)}
-        />
-      )}
+      {/* Kept mounted across close/reopen so the transcript survives and an
+          in-flight stream is not aborted when the panel is merely hidden. */}
+      <AssistantChatPanel
+        supportUrl={configQuery.data.support_url}
+        open={open}
+        onClose={closeAndReturnFocus}
+      />
       <Button
+        ref={launcherRef}
         type='button'
         size='icon-lg'
         aria-label={
