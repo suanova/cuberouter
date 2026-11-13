@@ -66,6 +66,8 @@ import { Route as AuthenticatedOpsCampaignIndexRouteImport } from './routes/_aut
 import { Route as AuthenticatedOpsInviteHistoryIndexRouteImport } from './routes/_authenticated/ops/invite-history/index'
 import { Route as AuthenticatedOrganizationInviteTokenRouteImport } from './routes/_authenticated/organization/invite/$token'
 import { Route as AuthenticatedOrganizationsOrganizationIdSectionRouteImport } from './routes/_authenticated/organizations/$organizationId/$section'
+import { Route as AuthenticatedSystemSettingsAssistantIndexRouteImport } from './routes/_authenticated/system-settings/assistant/index'
+import { Route as AuthenticatedSystemSettingsAssistantSectionRouteImport } from './routes/_authenticated/system-settings/assistant/$section'
 import { Route as AuthenticatedSystemSettingsAuthIndexRouteImport } from './routes/_authenticated/system-settings/auth/index'
 import { Route as AuthenticatedSystemSettingsAuthSectionRouteImport } from './routes/_authenticated/system-settings/auth/$section'
 import { Route as AuthenticatedSystemSettingsBillingIndexRouteImport } from './routes/_authenticated/system-settings/billing/index'
@@ -393,6 +395,18 @@ const AuthenticatedOrganizationsOrganizationIdSectionRoute =
     path: '/organizations/$organizationId/$section',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSystemSettingsAssistantIndexRoute =
+  AuthenticatedSystemSettingsAssistantIndexRouteImport.update({
+    id: '/assistant/',
+    path: '/assistant/',
+    getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
+  } as any)
+const AuthenticatedSystemSettingsAssistantSectionRoute =
+  AuthenticatedSystemSettingsAssistantSectionRouteImport.update({
+    id: '/assistant/$section',
+    path: '/assistant/$section',
+    getParentRoute: () => AuthenticatedSystemSettingsRouteRoute,
+  } as any)
 const AuthenticatedSystemSettingsAuthIndexRoute =
   AuthenticatedSystemSettingsAuthIndexRouteImport.update({
     id: '/auth/',
@@ -537,6 +551,7 @@ export interface FileRoutesByFullPath {
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/organization/invite/$token': typeof AuthenticatedOrganizationInviteTokenRoute
   '/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
+  '/system-settings/assistant/$section': typeof AuthenticatedSystemSettingsAssistantSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -547,6 +562,7 @@ export interface FileRoutesByFullPath {
   '/admin/organizations/': typeof AuthenticatedAdminOrganizationsIndexRoute
   '/ops/campaign/': typeof AuthenticatedOpsCampaignIndexRoute
   '/ops/invite-history/': typeof AuthenticatedOpsInviteHistoryIndexRoute
+  '/system-settings/assistant/': typeof AuthenticatedSystemSettingsAssistantIndexRoute
   '/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -608,6 +624,7 @@ export interface FileRoutesByTo {
   '/pricing/$modelId': typeof PricingModelIdIndexRoute
   '/organization/invite/$token': typeof AuthenticatedOrganizationInviteTokenRoute
   '/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
+  '/system-settings/assistant/$section': typeof AuthenticatedSystemSettingsAssistantSectionRoute
   '/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -618,6 +635,7 @@ export interface FileRoutesByTo {
   '/admin/organizations': typeof AuthenticatedAdminOrganizationsIndexRoute
   '/ops/campaign': typeof AuthenticatedOpsCampaignIndexRoute
   '/ops/invite-history': typeof AuthenticatedOpsInviteHistoryIndexRoute
+  '/system-settings/assistant': typeof AuthenticatedSystemSettingsAssistantIndexRoute
   '/system-settings/auth': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/system-settings/billing': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/system-settings/content': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -683,6 +701,7 @@ export interface FileRoutesById {
   '/pricing/$modelId/': typeof PricingModelIdIndexRoute
   '/_authenticated/organization/invite/$token': typeof AuthenticatedOrganizationInviteTokenRoute
   '/_authenticated/organizations/$organizationId/$section': typeof AuthenticatedOrganizationsOrganizationIdSectionRoute
+  '/_authenticated/system-settings/assistant/$section': typeof AuthenticatedSystemSettingsAssistantSectionRoute
   '/_authenticated/system-settings/auth/$section': typeof AuthenticatedSystemSettingsAuthSectionRoute
   '/_authenticated/system-settings/billing/$section': typeof AuthenticatedSystemSettingsBillingSectionRoute
   '/_authenticated/system-settings/content/$section': typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -693,6 +712,7 @@ export interface FileRoutesById {
   '/_authenticated/admin/organizations/': typeof AuthenticatedAdminOrganizationsIndexRoute
   '/_authenticated/ops/campaign/': typeof AuthenticatedOpsCampaignIndexRoute
   '/_authenticated/ops/invite-history/': typeof AuthenticatedOpsInviteHistoryIndexRoute
+  '/_authenticated/system-settings/assistant/': typeof AuthenticatedSystemSettingsAssistantIndexRoute
   '/_authenticated/system-settings/auth/': typeof AuthenticatedSystemSettingsAuthIndexRoute
   '/_authenticated/system-settings/billing/': typeof AuthenticatedSystemSettingsBillingIndexRoute
   '/_authenticated/system-settings/content/': typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -757,6 +777,7 @@ export interface FileRouteTypes {
     | '/pricing/$modelId/'
     | '/organization/invite/$token'
     | '/organizations/$organizationId/$section'
+    | '/system-settings/assistant/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
@@ -767,6 +788,7 @@ export interface FileRouteTypes {
     | '/admin/organizations/'
     | '/ops/campaign/'
     | '/ops/invite-history/'
+    | '/system-settings/assistant/'
     | '/system-settings/auth/'
     | '/system-settings/billing/'
     | '/system-settings/content/'
@@ -828,6 +850,7 @@ export interface FileRouteTypes {
     | '/pricing/$modelId'
     | '/organization/invite/$token'
     | '/organizations/$organizationId/$section'
+    | '/system-settings/assistant/$section'
     | '/system-settings/auth/$section'
     | '/system-settings/billing/$section'
     | '/system-settings/content/$section'
@@ -838,6 +861,7 @@ export interface FileRouteTypes {
     | '/admin/organizations'
     | '/ops/campaign'
     | '/ops/invite-history'
+    | '/system-settings/assistant'
     | '/system-settings/auth'
     | '/system-settings/billing'
     | '/system-settings/content'
@@ -902,6 +926,7 @@ export interface FileRouteTypes {
     | '/pricing/$modelId/'
     | '/_authenticated/organization/invite/$token'
     | '/_authenticated/organizations/$organizationId/$section'
+    | '/_authenticated/system-settings/assistant/$section'
     | '/_authenticated/system-settings/auth/$section'
     | '/_authenticated/system-settings/billing/$section'
     | '/_authenticated/system-settings/content/$section'
@@ -912,6 +937,7 @@ export interface FileRouteTypes {
     | '/_authenticated/admin/organizations/'
     | '/_authenticated/ops/campaign/'
     | '/_authenticated/ops/invite-history/'
+    | '/_authenticated/system-settings/assistant/'
     | '/_authenticated/system-settings/auth/'
     | '/_authenticated/system-settings/billing/'
     | '/_authenticated/system-settings/content/'
@@ -1342,6 +1368,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedOrganizationsOrganizationIdSectionRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/system-settings/assistant/': {
+      id: '/_authenticated/system-settings/assistant/'
+      path: '/assistant'
+      fullPath: '/system-settings/assistant/'
+      preLoaderRoute: typeof AuthenticatedSystemSettingsAssistantIndexRouteImport
+      parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
+    '/_authenticated/system-settings/assistant/$section': {
+      id: '/_authenticated/system-settings/assistant/$section'
+      path: '/assistant/$section'
+      fullPath: '/system-settings/assistant/$section'
+      preLoaderRoute: typeof AuthenticatedSystemSettingsAssistantSectionRouteImport
+      parentRoute: typeof AuthenticatedSystemSettingsRouteRoute
+    }
     '/_authenticated/system-settings/auth/': {
       id: '/_authenticated/system-settings/auth/'
       path: '/auth'
@@ -1478,6 +1518,7 @@ const authRouteRouteWithChildren = authRouteRoute._addFileChildren(
 
 interface AuthenticatedSystemSettingsRouteRouteChildren {
   AuthenticatedSystemSettingsIndexRoute: typeof AuthenticatedSystemSettingsIndexRoute
+  AuthenticatedSystemSettingsAssistantSectionRoute: typeof AuthenticatedSystemSettingsAssistantSectionRoute
   AuthenticatedSystemSettingsAuthSectionRoute: typeof AuthenticatedSystemSettingsAuthSectionRoute
   AuthenticatedSystemSettingsBillingSectionRoute: typeof AuthenticatedSystemSettingsBillingSectionRoute
   AuthenticatedSystemSettingsContentSectionRoute: typeof AuthenticatedSystemSettingsContentSectionRoute
@@ -1485,6 +1526,7 @@ interface AuthenticatedSystemSettingsRouteRouteChildren {
   AuthenticatedSystemSettingsOperationsSectionRoute: typeof AuthenticatedSystemSettingsOperationsSectionRoute
   AuthenticatedSystemSettingsSecuritySectionRoute: typeof AuthenticatedSystemSettingsSecuritySectionRoute
   AuthenticatedSystemSettingsSiteSectionRoute: typeof AuthenticatedSystemSettingsSiteSectionRoute
+  AuthenticatedSystemSettingsAssistantIndexRoute: typeof AuthenticatedSystemSettingsAssistantIndexRoute
   AuthenticatedSystemSettingsAuthIndexRoute: typeof AuthenticatedSystemSettingsAuthIndexRoute
   AuthenticatedSystemSettingsBillingIndexRoute: typeof AuthenticatedSystemSettingsBillingIndexRoute
   AuthenticatedSystemSettingsContentIndexRoute: typeof AuthenticatedSystemSettingsContentIndexRoute
@@ -1498,6 +1540,8 @@ const AuthenticatedSystemSettingsRouteRouteChildren: AuthenticatedSystemSettings
   {
     AuthenticatedSystemSettingsIndexRoute:
       AuthenticatedSystemSettingsIndexRoute,
+    AuthenticatedSystemSettingsAssistantSectionRoute:
+      AuthenticatedSystemSettingsAssistantSectionRoute,
     AuthenticatedSystemSettingsAuthSectionRoute:
       AuthenticatedSystemSettingsAuthSectionRoute,
     AuthenticatedSystemSettingsBillingSectionRoute:
@@ -1512,6 +1556,8 @@ const AuthenticatedSystemSettingsRouteRouteChildren: AuthenticatedSystemSettings
       AuthenticatedSystemSettingsSecuritySectionRoute,
     AuthenticatedSystemSettingsSiteSectionRoute:
       AuthenticatedSystemSettingsSiteSectionRoute,
+    AuthenticatedSystemSettingsAssistantIndexRoute:
+      AuthenticatedSystemSettingsAssistantIndexRoute,
     AuthenticatedSystemSettingsAuthIndexRoute:
       AuthenticatedSystemSettingsAuthIndexRoute,
     AuthenticatedSystemSettingsBillingIndexRoute:

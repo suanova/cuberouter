@@ -104,6 +104,9 @@
       {
         "allowConstantExport": true,
         "allowExportNames": [
+          "getAssistantSectionNavItems",
+          "getAssistantSectionContent",
+          "getAssistantSectionMeta",
           "getAuthSectionNavItems",
           "getAuthSectionContent",
           "getAuthSectionMeta",
