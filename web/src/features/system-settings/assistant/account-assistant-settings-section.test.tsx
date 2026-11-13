@@ -231,14 +231,19 @@ describe('AccountAssistantSettingsSection', () => {
     })
     // The rejected model write stops the loop: only the model key was sent,
     // and the enable flag (written last) was not attempted.
-    const sentKeys = updateSystemOption.mock.calls.map(([arg]) => arg.key)
+    const sentKeys = vi
+      .mocked(updateSystemOption)
+      .mock.calls.map(([arg]) => arg.key)
     expect(sentKeys).toEqual(['account_assistant.model'])
     expect(sentKeys).not.toContain('account_assistant.enabled')
 
     // The baseline is unchanged: a follow-up save with a different model value
     // still submits the change instead of treating it as already saved.
-    updateSystemOption.mockClear()
-    updateSystemOption.mockResolvedValue({ success: true, message: '' })
+    vi.mocked(updateSystemOption).mockClear()
+    vi.mocked(updateSystemOption).mockResolvedValue({
+      success: true,
+      message: '',
+    })
     fireEvent.change(screen.getByRole('textbox', { name: 'Assistant Model' }), {
       target: { value: 'gpt-5.2' },
     })
