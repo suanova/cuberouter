@@ -18,7 +18,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
@@ -70,16 +70,29 @@ function renderAssistant() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
-  return render(
+  render(
     <QueryClientProvider client={queryClient}>
       <AccountAssistant />
     </QueryClientProvider>
   )
+  return queryClient
+}
+
+// Waits until the config query has reached a settled success state, so an
+// assertion about what renders afterward cannot accidentally pass while the
+// component is still loading (when it also renders nothing).
+async function waitForConfig(queryClient: QueryClient) {
+  await waitFor(() => {
+    expect(
+      queryClient.getQueryState(['account-assistant', 'config'])?.status
+    ).toBe('success')
+  })
 }
 
 async function openAssistant(enableSupportLink = false) {
   mockConfig(true, enableSupportLink ? 'https://support.example.com' : '')
-  renderAssistant()
+  const queryClient = renderAssistant()
+  await waitForConfig(queryClient)
   const button = await screen.findByRole('button', {
     name: 'Open account assistant',
   })
@@ -96,8 +109,12 @@ describe('AccountAssistant entry', () => {
   test('given the server reports disabled, no floating entry renders', async () => {
     mockConfig(false)
 
-    renderAssistant()
+    const queryClient = renderAssistant()
 
+    // Wait for the config query to settle as success before asserting absence;
+    // until then the component renders nothing regardless of the enabled flag,
+    // which could make this assertion pass vacuously.
+    await waitForConfig(queryClient)
     await waitFor(() =>
       expect(
         screen.queryByRole('button', { name: 'Open account assistant' })
@@ -161,6 +178,52 @@ describe('AccountAssistant entry', () => {
     const log = screen.getByRole('log')
     expect(log).toHaveAttribute('aria-live', 'polite')
     expect(log).toHaveAccessibleName('Account Assistant conversation')
+  })
+
+  test('given the panel reopens during a stream, focus lands inside the panel', async () => {
+    // A stream that never sends an answer keeps streaming=true, so the composer
+    // stays disabled and cannot take focus on reopen.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers({ 'content-type': 'text/event-stream' }),
+      body: new ReadableStream<Uint8Array>({
+        start(sink) {
+          sink.enqueue(new TextEncoder().encode(': start\n\n'))
+        },
+      }),
+    } as Response)
+    mockConfig(true)
+    const queryClient = renderAssistant()
+    await waitForConfig(queryClient)
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open account assistant' })
+    )
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Ask about your account…' }),
+      'Where is my balance?'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    // Close while the stream is still open, then reopen.
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    const launcher = screen.getByRole('button', {
+      name: 'Open account assistant',
+    })
+    await waitFor(() => expect(launcher).toHaveFocus())
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open account assistant' })
+    )
+
+    // Focus must move to an enabled element inside the dialog (the close
+    // button), not stay on the launcher, so Escape still closes the panel.
+    const dialog = screen.getByRole('dialog', { name: 'Account Assistant' })
+    const closeButton = within(dialog).getByRole('button', {
+      name: 'Close account assistant',
+    })
+    expect(closeButton).toHaveFocus()
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    expect(dialog).toHaveAttribute('hidden')
   })
 })
 

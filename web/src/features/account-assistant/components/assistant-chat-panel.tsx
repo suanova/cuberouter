@@ -67,18 +67,23 @@ export function AssistantChatPanel(props: AssistantChatPanelProps) {
   const [activeTool, setActiveTool] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
+  const closeRef = useRef<HTMLButtonElement | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   // Focus the composer whenever the panel becomes visible. The panel stays
   // mounted (so the transcript and in-flight stream survive close/reopen),
-  // so focus only on the open transition.
+  // so focus only on the open transition. When a stream is still in flight the
+  // composer is disabled and cannot be focused, so we move focus to the close
+  // button instead — keeping keyboard focus inside the panel so Escape still
+  // closes it and screen-reader users are not left on the launcher outside it.
   const wasOpenRef = useRef(open)
   useEffect(() => {
     if (open && !wasOpenRef.current) {
-      inputRef.current?.focus()
+      const target = streaming ? closeRef.current : inputRef.current
+      target?.focus()
     }
     wasOpenRef.current = open
-  }, [open])
+  }, [open, streaming])
 
   useEffect(() => {
     const container = scrollRef.current
@@ -216,6 +221,7 @@ export function AssistantChatPanel(props: AssistantChatPanelProps) {
           {t('Account Assistant')}
         </div>
         <Button
+          ref={closeRef}
           type='button'
           variant='ghost'
           size='icon-sm'

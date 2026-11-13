@@ -282,6 +282,87 @@ func TestTokenBudgetFallbackTracksUsage(t *testing.T) {
 	assert.Equal(t, int64(150), tokenUsage(987655))
 }
 
+func TestReserveAndSettleOnMemoryBackend(t *testing.T) {
+	// Arrange: reservation lands in memory (no Redis) on today's key.
+	previousRedisEnabled := common.RedisEnabled
+	previousRDB := common.RDB
+	common.RedisEnabled = false
+	common.RDB = nil
+	userID := 987656
+	t.Cleanup(func() {
+		common.RedisEnabled = previousRedisEnabled
+		common.RDB = previousRDB
+		tokenBudgetMu.Lock()
+		delete(tokenBudgetStore, tokenBudgetKey(userID))
+		tokenBudgetMu.Unlock()
+	})
+
+	// Act: reserve 2000 against a 5000 budget, then settle +300 over the estimate.
+	reservation, ok := reserveTokenUsage(userID, 2000, 5000)
+	require.True(t, ok, "reservation under budget should be accepted")
+	assert.Equal(t, tokenBudgetBackendMemory, reservation.backend)
+	adjustTokenUsage(reservation, 300) // actual exceeded estimate by 300
+
+	// Assert: the memory counter is 2000 + 300 = 2300.
+	assert.Equal(t, int64(2300), tokenUsage(userID))
+}
+
+func TestRefundDoesNotLeakAcrossBackends(t *testing.T) {
+	// Arrange: reservation falls to memory because Redis is unavailable; Redis
+	// becomes available again before settlement.
+	previousRedisEnabled := common.RedisEnabled
+	previousRDB := common.RDB
+	common.RedisEnabled = false
+	common.RDB = nil
+	userID := 987657
+	t.Cleanup(func() {
+		common.RedisEnabled = previousRedisEnabled
+		common.RDB = previousRDB
+		tokenBudgetMu.Lock()
+		delete(tokenBudgetStore, tokenBudgetKey(userID))
+		tokenBudgetMu.Unlock()
+	})
+
+	reservation, ok := reserveTokenUsage(userID, 2000, 5000)
+	require.True(t, ok)
+	require.Equal(t, tokenBudgetBackendMemory, reservation.backend)
+
+	// Redis "recovers" before settlement; the delta must NOT be written to Redis,
+	// because Redis never received the reservation increment.
+	common.RedisEnabled = true
+	adjustTokenUsage(reservation, -1500)
+
+	// The memory reservation should now hold 500 (2000 reserved, 1500 refunded).
+	// tokenUsage reads Redis first; with the injection here Redis may fail, so
+	// read the memory bucket directly.
+	tokenBudgetMu.Lock()
+	actual := tokenBudgetStore[tokenBudgetKey(userID)]
+	tokenBudgetMu.Unlock()
+	assert.Equal(t, int64(500), actual)
+}
+
+func TestEstimateTokenReservationCoversInputAndOutput(t *testing.T) {
+	previousRedisEnabled := common.RedisEnabled
+	previousRDB := common.RDB
+	common.RedisEnabled = false
+	common.RDB = nil
+	t.Cleanup(func() {
+		common.RedisEnabled = previousRedisEnabled
+		common.RDB = previousRDB
+	})
+
+	setting := account_assistant_setting.AccountAssistantSetting{
+		MaxTokens: 800,
+		MaxRounds: 2,
+	}
+	history := []dto.Message{{Role: "user", Content: "字"}}
+	estimate := estimateTokenReservation(setting, "你好", history)
+
+	// Output: 800 * (2+1) = 2400. Input upper bound is strictly positive and
+	// covers base input + tool result allowance across the rounds.
+	assert.GreaterOrEqual(t, estimate, int64(2400))
+}
+
 func TestSanitizeHistoryDropsNonChatRolesAndTruncates(t *testing.T) {
 	// Arrange
 	long := strings.Repeat("字", maxHistoryRunes+50)

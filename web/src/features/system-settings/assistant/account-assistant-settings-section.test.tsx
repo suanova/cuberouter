@@ -205,6 +205,53 @@ describe('AccountAssistantSettingsSection', () => {
     expect(enabledIdx).toBeGreaterThan(modelIdx)
   })
 
+  test('stops saving when an option update returns success:false and keeps baseline intact', async () => {
+    const update = vi.mocked(updateSystemOption)
+    // First change (model) is rejected by the backend; the enabled flag — which
+    // is written last — must NOT be attempted, and the rejected value must not
+    // be absorbed into the baseline.
+    update.mockResolvedValueOnce({
+      success: false,
+      message: 'model rejected',
+    })
+    renderSection({ 'account_assistant.enabled': false })
+
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Enable Account Assistant' })
+    )
+    fireEvent.change(screen.getByRole('textbox', { name: 'Assistant Model' }), {
+      target: { value: 'gpt-5' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save assistant settings' })
+    )
+
+    await waitFor(() => {
+      expect(updateSystemOption).toHaveBeenCalled()
+    })
+    // The rejected model write stops the loop: only the model key was sent,
+    // and the enable flag (written last) was not attempted.
+    const sentKeys = updateSystemOption.mock.calls.map(([arg]) => arg.key)
+    expect(sentKeys).toEqual(['account_assistant.model'])
+    expect(sentKeys).not.toContain('account_assistant.enabled')
+
+    // The baseline is unchanged: a follow-up save with a different model value
+    // still submits the change instead of treating it as already saved.
+    updateSystemOption.mockClear()
+    updateSystemOption.mockResolvedValue({ success: true, message: '' })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Assistant Model' }), {
+      target: { value: 'gpt-5.2' },
+    })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Save assistant settings' })
+    )
+    await waitFor(() => {
+      expect(updateSystemOption).toHaveBeenCalledWith(
+        expect.objectContaining({ key: 'account_assistant.model' })
+      )
+    })
+  })
+
   test('rejects an invalid FAQ entry and shows the validation message', async () => {
     vi.mocked(updateSystemOption).mockResolvedValue({ success: true, message: '' })
     // The FAQ JSON is an object, not an array of { title, content } objects;

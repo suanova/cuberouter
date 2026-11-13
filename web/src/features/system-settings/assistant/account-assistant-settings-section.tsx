@@ -183,7 +183,10 @@ export function AccountAssistantSettingsSection(
 
     // Write `enabled` last so all model/billing settings are persisted
     // before the assistant is turned on; a mid-save failure therefore cannot
-    // leave the assistant enabled with a stale billing account.
+    // leave the assistant enabled with a stale billing account. If a call
+    // returns success:false (the mutation resolves but the backend rejected the
+    // value), stop immediately and leave the baseline/intact so the rejected
+    // values are not marked as saved and later saves will retry them.
     const enableKeys = changedKeys.filter(
       (key) => key === 'account_assistant.enabled'
     )
@@ -191,10 +194,13 @@ export function AccountAssistantSettingsSection(
       (key) => key !== 'account_assistant.enabled'
     )
     for (const key of [...otherKeys, ...enableKeys]) {
-      await updateOption.mutateAsync({
+      const response = await updateOption.mutateAsync({
         key,
         value: normalized[key],
       })
+      if (!response?.success) {
+        return
+      }
     }
 
     baselineRef.current = normalized
