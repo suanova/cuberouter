@@ -531,7 +531,10 @@ func invokeRelayRound(c *gin.Context, req *dto.GeneralOpenAIRequest, userId int,
 
 	w := httptest.NewRecorder()
 	subCtx, _ := gin.CreateTestContext(w)
-	subCtx.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", io.NopCloser(bytes.NewReader(body)))
+	// Reuse the outer request's context so a client disconnect (or a canceled
+	// chat request) cancels the in-flight model round instead of letting it
+	// keep running and charging the billing account.
+	subCtx.Request = httptest.NewRequest(http.MethodPost, "/pg/chat/completions", io.NopCloser(bytes.NewReader(body))).WithContext(c.Request.Context())
 	subCtx.Request.Header.Set("Content-Type", "application/json")
 	subCtx.Request.ContentLength = int64(len(body))
 

@@ -381,6 +381,21 @@ export type OperationsSettings = {
   'perf_metrics_setting.export_token': string
 }
 
+export type AccountAssistantSettings = {
+  'account_assistant.enabled': boolean
+  'account_assistant.model': string
+  'account_assistant.billing_user_id': number
+  'account_assistant.group': string
+  'account_assistant.max_tokens': number
+  'account_assistant.max_tool_calls': number
+  'account_assistant.max_rounds': number
+  'account_assistant.hourly_limit': number
+  'account_assistant.daily_limit': number
+  'account_assistant.daily_token_budget': number
+  'account_assistant.faq_json': string
+  'account_assistant.support_url': string
+}
+
 export type SecuritySettings = {
   ModelRequestRateLimitEnabled: boolean
   ModelRequestRateLimitCount: number
