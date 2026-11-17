@@ -128,7 +128,10 @@
           "getSiteSectionMeta",
           "getUsageLogsSectionNavItems",
           "isUsageLogsSectionId",
-          "useSuppressSettingsSectionHeader"
+          "useSuppressSettingsSectionHeader",
+          "savePaymentMethod",
+          "deletePaymentMethod",
+          "insertPaymentMethodTemplate"
         ]
       }
     ],

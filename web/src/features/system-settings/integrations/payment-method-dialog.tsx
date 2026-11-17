@@ -64,6 +64,8 @@ type PaymentMethodDialogProps = {
   onOpenChange: (open: boolean) => void
   onSave: (data: PaymentMethodData) => void
   editData?: PaymentMethodData | null
+  typeFilter?: (type: string) => boolean
+  allowCustomValue?: boolean
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -90,6 +92,8 @@ export function PaymentMethodDialog({
   onOpenChange,
   onSave,
   editData,
+  typeFilter,
+  allowCustomValue = true,
 }: PaymentMethodDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
@@ -180,6 +184,9 @@ export function PaymentMethodDialog({
       value: 'paymentasia_generic',
     },
   ]
+  const visiblePaymentTypeOptions = typeFilter
+    ? paymentTypeOptions.filter((option) => typeFilter(option.value))
+    : paymentTypeOptions
   const getPaymentTypeOption = (value: string) =>
     paymentTypeOptions.find((option) => option.value === value)
 
@@ -284,7 +291,7 @@ export function PaymentMethodDialog({
                 <FormLabel>{t('Payment type key')}</FormLabel>
                 <FormControl>
                   <Combobox
-                    options={paymentTypeOptions}
+                    options={visiblePaymentTypeOptions}
                     value={field.value}
                     onValueChange={(value) => {
                       if (value === null) return
@@ -314,7 +321,7 @@ export function PaymentMethodDialog({
                     }}
                     placeholder={t('Select or enter payment type key')}
                     searchPlaceholder={t('Search payment type keys...')}
-                    allowCustomValue
+                    allowCustomValue={allowCustomValue}
                   />
                 </FormControl>
                 <FormDescription className='leading-relaxed'>

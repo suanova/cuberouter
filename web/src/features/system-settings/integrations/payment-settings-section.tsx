@@ -1308,6 +1308,9 @@ export function PaymentSettingsSection({
                           <PaymentMethodsVisualEditor
                             value={field.value}
                             onChange={field.onChange}
+                            typeFilter={(type) =>
+                              !type.startsWith('paymentasia_')
+                            }
                           />
                         ) : (
                           <JsonCodeEditor
@@ -1329,6 +1332,9 @@ export function PaymentSettingsSection({
                       <FormDescription>
                         {t(
                           'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, paymentasia_* for PaymentAsia, and other values are sent to Epay as the type parameter.'
+                        )}{' '}
+                        {t(
+                          'PaymentAsia payment methods are managed on the PaymentAsia tab; JSON mode still shows the complete shared list.'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -1914,6 +1920,37 @@ export function PaymentSettingsSection({
                 values={paymentAsiaValues}
                 onValueChange={setPaymentAsiaValue}
               />
+              <div className='mt-8 space-y-4'>
+                <div>
+                  <h3 className='text-lg font-medium'>
+                    {t('PaymentAsia Payment Methods')}
+                  </h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Manage the channels shown in the wallet under PaymentAsia. Methods for other gateways are configured in their own tabs.'
+                    )}
+                  </p>
+                </div>
+                <FormField
+                  control={form.control}
+                  name='PayMethods'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <PaymentMethodsVisualEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                          typeFilter={(type) =>
+                            type.startsWith('paymentasia_')
+                          }
+                          allowCustomValue={false}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </SettingsForm>
