@@ -199,11 +199,11 @@ func PaymentAsiaGatewayURL(sandbox, generic bool, token string) string
 
 #### `POST /api/user/paymentasia/amount`
 
-请求：`{ "amount": <int 展示单位> }`
+请求：`{ "amount": <int 展示单位>, "payment_method?": "paymentasia_xxx" }`
 
-响应：`{ "message": "success", "data": "<实付金额字符串，2 位小数>" }`
+响应：`{ "message": "success", "data": "<实付金额字符串>" }`；带 `payment_method` 时按该通道精度格式化（Octopus 1 位，其它 2 位），缺省按 2 位。
 
-校验顺序与 Epay 一致：最低充值 → `rejectInvalidTopUpQuota` → 取用户分组 → `getPaymentAsiaPayMoney` → 实付 ≥ 0.01。
+校验顺序与 Epay 一致：最低充值 → TOKENS 整数倍校验 → `rejectInvalidTopUpQuota` → 取用户分组 → `getPaymentAsiaPayMoney` → 实付 ≥ 0.01。
 
 #### `POST /api/user/paymentasia/pay`
 
@@ -211,7 +211,7 @@ func PaymentAsiaGatewayURL(sandbox, generic bool, token string) string
 
 处理：
 
-1. 校验 `isPaymentAsiaTopUpEnabled()`、金额、额度上限、`service.IsPaymentAsiaMethod`，并且要求该 type 已在 `operation_setting.ContainsPayMethod` 中（与 `RequestEpay` 一致：没在管理端启用的通道不能被直接调用）。
+1. 校验 `isPaymentAsiaTopUpEnabled()`、金额、额度上限、`service.IsPaymentAsiaMethod`，并且要求该 type 已在 `operation_setting.ContainsPayMethod` 中（与 `RequestEpay` 一致：没在管理端启用的通道不能被直接调用）。TOKENS 展示模式下还要求金额是 `QuotaPerUnit` 的整数倍，避免报价/扣费按完整数量、入账按截断数量的偏差。
 2. 解析通道；校验币种/通道兼容（USD 仅 CreditCard）；Octopus 金额按 1 位小数。
 3. 计算 `payMoney`：
    ```
@@ -258,7 +258,7 @@ func PaymentAsiaGatewayURL(sandbox, generic bool, token string) string
    - `"0"` / `"4"`：仅记录日志，200。
 6. 内部错误（DB/额度）→ 500，让 PaymentAsia 有机会重试；具体重试策略未知，幂等保证重复回调安全。
 
-> 配置切换策略（有意为之）：验签只使用**当前环境**的 secret，币种只与**当前配置**比对。沙箱→生产切换后，旧沙箱 pending 订单的回调会被拒绝（测试单不应进生产额度）；生产中改币种同理。运维规则：存在待支付订单时不要切环境/改币种，遗留订单走管理员补单。
+> 配置切换策略（有意为之）：验签只使用**当前环境**的 secret，币种只与**当前配置**比对。沙箱→生产切换后，旧沙箱 pending 订单的回调会被拒绝（测试单不应进生产额度）；生产中改币种同理。为降低后者风险，`UpdateOption` / `UpdateOptionsBulk` 在存在 PaymentAsia pending 订单时会拒绝修改 `PaymentAsiaCurrency`（无需 schema 变更）。运维规则：存在待支付订单时不要切环境，遗留订单走管理员补单。
 
 ### 6.5 结算（`model/topup.go`）
 
