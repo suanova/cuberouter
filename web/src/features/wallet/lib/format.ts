@@ -36,6 +36,24 @@ export function formatCreemPrice(
 }
 
 /**
+ * Currency symbol for a gateway-specific payment currency. Only PaymentAsia
+ * methods carry `currency`; other payment methods return null so callers keep
+ * the site's local currency symbol.
+ */
+export function getPaymentMethodCurrencySymbol(
+  currency?: string
+): string | null {
+  switch (currency) {
+    case 'HKD':
+      return 'HK$'
+    case 'USD':
+      return '$'
+    default:
+      return null
+  }
+}
+
+/**
  * Format large quota numbers with K/M suffix
  */
 export function formatQuotaShort(quota: number): string {

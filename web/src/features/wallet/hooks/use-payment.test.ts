@@ -45,6 +45,10 @@ describe('payment amount routing', () => {
         calls.push('pancake')
         return { success: true, data: '4' }
       },
+      paymentAsia: async () => {
+        calls.push('paymentAsia')
+        return { success: true, data: '5' }
+      },
     })
 
     expect(amount).toBe(18.75)
@@ -77,10 +81,47 @@ describe('payment amount routing', () => {
           calls.push('pancake')
           return { success: true, data: '4' }
         },
+        paymentAsia: async () => {
+          calls.push('paymentAsia')
+          return { success: true, data: '5' }
+        },
       }
     )
 
     expect(amount).toBe(365)
     expect(calls).toEqual(['alipay:50'])
+  })
+
+  test('uses the dedicated PaymentAsia amount calculator', async () => {
+    const calls: string[] = []
+    const amount = await requestPaymentAmount(100, 'paymentasia_alipayhk', {
+      regular: async () => {
+        calls.push('regular')
+        return { success: true, data: '1' }
+      },
+      stripe: async () => {
+        calls.push('stripe')
+        return { success: true, data: '2' }
+      },
+      alipay: async () => {
+        calls.push('alipay')
+        return { success: true, data: '3' }
+      },
+      waffo: async () => {
+        calls.push('waffo')
+        return { success: true, data: '4' }
+      },
+      waffoPancake: async () => {
+        calls.push('pancake')
+        return { success: true, data: '4' }
+      },
+      paymentAsia: async (request) => {
+        calls.push(`paymentAsia:${request.amount}`)
+        return { success: true, data: '108.00' }
+      },
+    })
+
+    expect(amount).toBe(108)
+    expect(calls).toEqual(['paymentAsia:100'])
   })
 })

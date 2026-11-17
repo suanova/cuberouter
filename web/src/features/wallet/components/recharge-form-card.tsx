@@ -43,6 +43,7 @@ import {
   getDiscountLabel,
   getLocalCurrencySymbol,
   getPaymentIcon,
+  getPaymentMethodCurrencySymbol,
   getMinTopupAmount,
   calculatePresetPricing,
 } from '../lib'
@@ -66,6 +67,7 @@ interface RechargeFormCardProps {
   calculating: boolean
   onPaymentMethodSelect: (method: PaymentMethod) => void
   paymentLoading: string | null
+  paymentCurrency?: string
   redemptionCode: string
   onRedemptionCodeChange: (code: string) => void
   onRedeem: () => void
@@ -96,6 +98,7 @@ export function RechargeFormCard({
   calculating,
   onPaymentMethodSelect,
   paymentLoading,
+  paymentCurrency,
   redemptionCode,
   onRedemptionCodeChange,
   onRedeem,
@@ -116,7 +119,8 @@ export function RechargeFormCard({
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const currencySymbol = getCurrencySymbol()
-  const payCurrencySymbol = getLocalCurrencySymbol()
+  const payCurrencySymbol =
+    getPaymentMethodCurrencySymbol(paymentCurrency) ?? getLocalCurrencySymbol()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
   useEffect(() => {
@@ -138,6 +142,7 @@ export function RechargeFormCard({
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
     topupInfo?.enable_alipay_topup ||
+    topupInfo?.enable_paymentasia_topup ||
     enableWaffoTopup ||
     enableWaffoPancakeTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
@@ -308,7 +313,9 @@ export function RechargeFormCard({
                       value={localAmount}
                       onChange={(e) => handleAmountChange(e.target.value)}
                       min={minTopup}
-                      placeholder={t('Minimum topup amount: {{amount}}', { amount: minTopup })}
+                      placeholder={t('Minimum topup amount: {{amount}}', {
+                        amount: minTopup,
+                      })}
                       className={cn(
                         'h-9 text-base sm:h-10 sm:text-lg',
                         currencySymbol && 'pl-7'

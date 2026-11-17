@@ -23,16 +23,19 @@ import { toast } from 'sonner'
 import {
   calculateAmount,
   calculateAlipayAmount,
+  calculatePaymentAsiaAmount,
   calculateStripeAmount,
   calculateWaffoAmount,
   calculateWaffoPancakeAmount,
   requestPayment,
   requestAlipayPayment,
+  requestPaymentAsiaPayment,
   requestStripePayment,
   isApiSuccess,
 } from '../api'
 import {
   isAlipayPayment,
+  isPaymentAsiaPayment,
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
@@ -58,6 +61,7 @@ export interface PaymentAmountCalculators {
   alipay: AmountCalculator
   waffo: AmountCalculator
   waffoPancake: AmountCalculator
+  paymentAsia: AmountCalculator
 }
 
 const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
@@ -66,6 +70,7 @@ const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
   alipay: calculateAlipayAmount,
   waffo: calculateWaffoAmount,
   waffoPancake: calculateWaffoPancakeAmount,
+  paymentAsia: calculatePaymentAsiaAmount,
 }
 
 export async function requestPaymentAmount(
@@ -82,6 +87,8 @@ export async function requestPaymentAmount(
     calculator = calculators.waffo
   } else if (isWaffoPancakePayment(paymentType)) {
     calculator = calculators.waffoPancake
+  } else if (isPaymentAsiaPayment(paymentType)) {
+    calculator = calculators.paymentAsia
   }
 
   const response = await calculator({ amount: topupAmount })
@@ -126,9 +133,13 @@ export function usePayment() {
 
         const isStripe = isStripePayment(paymentType)
         const isAlipay = isAlipayPayment(paymentType)
+        const isPaymentAsia = isPaymentAsiaPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
-        let response: PaymentResponse | StripePaymentResponse | AlipayPaymentResponse
+        let response:
+          | PaymentResponse
+          | StripePaymentResponse
+          | AlipayPaymentResponse
         if (isStripe) {
           response = await requestStripePayment({
             amount,
@@ -136,6 +147,11 @@ export function usePayment() {
           })
         } else if (isAlipay) {
           response = await requestAlipayPayment({
+            amount,
+            payment_method: paymentType,
+          })
+        } else if (isPaymentAsia) {
+          response = await requestPaymentAsiaPayment({
             amount,
             payment_method: paymentType,
           })

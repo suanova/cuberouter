@@ -104,6 +104,16 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.WAFFO_PANCAKE
 }
 
+/**
+ * Check if payment method belongs to the PaymentAsia gateway
+ *
+ * PaymentAsia exposes one PayMethods entry per channel, all sharing the
+ * reserved `paymentasia_` type namespace.
+ */
+export function isPaymentAsiaPayment(paymentType: string): boolean {
+  return paymentType.startsWith('paymentasia_')
+}
+
 export interface PaymentProcessors {
   regular: (topupAmount: number, paymentType: string) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
@@ -184,6 +194,10 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
 
   if (topupInfo.enable_waffo_pancake_topup) {
     return topupInfo.waffo_pancake_min_topup || DEFAULT_MIN_TOPUP
+  }
+
+  if (topupInfo.enable_paymentasia_topup) {
+    return topupInfo.paymentasia_min_topup || DEFAULT_MIN_TOPUP
   }
 
   return DEFAULT_MIN_TOPUP

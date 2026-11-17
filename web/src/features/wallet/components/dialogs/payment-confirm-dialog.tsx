@@ -33,7 +33,11 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatCurrency, getPaymentIcon } from '../../lib'
+import {
+  formatCurrency,
+  getPaymentIcon,
+  getPaymentMethodCurrencySymbol,
+} from '../../lib'
 import type { PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
@@ -63,6 +67,9 @@ export function PaymentConfirmDialog({
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const payCurrencySymbol = getPaymentMethodCurrencySymbol(
+    paymentMethod?.currency
+  )
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -101,6 +108,7 @@ export function PaymentConfirmDialog({
             ) : (
               <div className='flex items-baseline gap-2'>
                 <span className='text-2xl font-semibold'>
+                  {payCurrencySymbol}
                   {formatCurrency(paymentAmount)}
                 </span>
                 {hasDiscount && (

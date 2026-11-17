@@ -18,13 +18,29 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, test } from 'vitest'
 
-import { PAYMENT_TYPES } from '../constants'
+import { DEFAULT_MIN_TOPUP, PAYMENT_TYPES } from '../constants'
+import type { TopupInfo } from '../types'
 import {
   dispatchSelectedPayment,
+  getMinTopupAmount,
+  isPaymentAsiaPayment,
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
 } from './payment'
+
+function topupInfo(overrides: Partial<TopupInfo> = {}): TopupInfo {
+  return {
+    enable_online_topup: false,
+    enable_stripe_topup: false,
+    pay_methods: [],
+    min_topup: 1,
+    stripe_min_topup: 1,
+    amount_options: [],
+    discount: {},
+    ...overrides,
+  }
+}
 
 describe('payment type classification', () => {
   test('keeps Waffo and Waffo Pancake on their dedicated flows', () => {
@@ -33,6 +49,30 @@ describe('payment type classification', () => {
     expect(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO_PANCAKE)).toBe(true)
     expect(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO)).toBe(false)
     expect(isStripePayment(PAYMENT_TYPES.STRIPE)).toBe(true)
+  })
+})
+
+describe('PaymentAsia payment classification', () => {
+  test('classifies PaymentAsia channel types by prefix', () => {
+    expect(isPaymentAsiaPayment('paymentasia_alipayhk')).toBe(true)
+    expect(isPaymentAsiaPayment('alipay')).toBe(false)
+  })
+})
+
+describe('minimum topup amount', () => {
+  test('uses PaymentAsia minimum when it is the only enabled gateway', () => {
+    const info = topupInfo({
+      enable_paymentasia_topup: true,
+      paymentasia_min_topup: 50,
+    })
+
+    expect(getMinTopupAmount(info)).toBe(50)
+  })
+
+  test('falls back to the default minimum when PaymentAsia minimum is unset', () => {
+    const info = topupInfo({ enable_paymentasia_topup: true })
+
+    expect(getMinTopupAmount(info)).toBe(DEFAULT_MIN_TOPUP)
   })
 })
 

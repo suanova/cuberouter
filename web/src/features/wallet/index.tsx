@@ -181,8 +181,12 @@ export function Wallet(props: WalletProps) {
     setPaymentLoading(method.type)
 
     try {
-      // Validate minimum topup
-      const minTopup = getMinTopupAmount(topupInfo)
+      // Validate minimum topup: a method's own minimum may exceed the global
+      // one (PaymentAsia's configured minimum applies to every channel).
+      const minTopup = Math.max(
+        getMinTopupAmount(topupInfo),
+        method.min_topup || 0
+      )
       if (topupAmount < minTopup) {
         return
       }
@@ -315,6 +319,7 @@ export function Wallet(props: WalletProps) {
                   calculating={calculating}
                   onPaymentMethodSelect={handlePaymentMethodSelect}
                   paymentLoading={paymentLoading}
+                  paymentCurrency={selectedPaymentMethod?.currency}
                   redemptionCode={redemptionCode}
                   onRedemptionCodeChange={setRedemptionCode}
                   onRedeem={handleRedeem}

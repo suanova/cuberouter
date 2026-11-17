@@ -99,6 +99,8 @@ export interface PaymentMethod {
   color?: string
   /** Minimum topup amount for this payment method */
   min_topup?: number
+  /** Settlement currency for gateway-specific methods (PaymentAsia: HKD/USD) */
+  currency?: string
   /** Optional react-icons component name or safe icon URL */
   icon?: string
 }
@@ -129,6 +131,10 @@ export interface TopupInfo {
   enable_alipay_topup?: boolean
   /** Minimum topup amount for official Alipay */
   alipay_min_topup?: number
+  /** Whether PaymentAsia topup is enabled */
+  enable_paymentasia_topup?: boolean
+  /** Minimum topup amount for PaymentAsia */
+  paymentasia_min_topup?: number
   /** Available payment methods */
   pay_methods: PaymentMethod[]
   /** Minimum topup amount for online topup */
