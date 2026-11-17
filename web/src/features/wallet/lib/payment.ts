@@ -206,23 +206,25 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
 /**
  * Effective minimum topup for a single payment method
  *
- * getMinTopupAmount reports the first enabled gateway's minimum, so it misses
- * the PaymentAsia minimum when another gateway is enabled alongside it. A
- * PaymentAsia method's floor is the highest of its own minimum, the site
- * minimum, and the configured PaymentAsia minimum.
+ * getMinTopupAmount reports the first enabled gateway's minimum, which may
+ * belong to a different gateway (e.g. Stripe's) than the selected method. A
+ * PaymentAsia method's floor is therefore the highest of its own minimum, the
+ * site minimum, and the configured PaymentAsia minimum; other methods still
+ * take their gateway's minimum from getMinTopupAmount.
  */
 export function getPaymentMethodMinTopup(
   topupInfo: TopupInfo | null,
   method: PaymentMethod
 ): number {
-  const gatewayMin = isPaymentAsiaPayment(method.type)
-    ? topupInfo?.paymentasia_min_topup || 0
-    : 0
-  return Math.max(
-    method.min_topup || 0,
-    getMinTopupAmount(topupInfo),
-    gatewayMin
-  )
+  if (isPaymentAsiaPayment(method.type)) {
+    return Math.max(
+      method.min_topup || 0,
+      topupInfo?.min_topup || 0,
+      topupInfo?.paymentasia_min_topup || 0
+    )
+  }
+
+  return Math.max(method.min_topup || 0, getMinTopupAmount(topupInfo))
 }
 
 /**

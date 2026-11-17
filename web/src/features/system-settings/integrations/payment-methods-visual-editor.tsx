@@ -214,7 +214,7 @@ export function PaymentMethodsVisualEditor({
       name: t('PaymentAsia Credit Card'),
       template: {
         icon: getDefaultIconName('paymentasia_creditcard'),
-        name: 'Credit Card',
+        name: t('Credit Card'),
         type: 'paymentasia_creditcard',
       },
     },

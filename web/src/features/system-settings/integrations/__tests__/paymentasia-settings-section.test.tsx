@@ -47,17 +47,49 @@ const baseValues: PaymentAsiaSettingsValues = {
   PaymentAsiaReturnUrl: '',
 }
 
-describe('PaymentAsiaSettingsSection', () => {
-  test('emits the edited merchant token through onValueChange', () => {
-    const onValueChange = vi.fn()
-    render(
-      <PaymentAsiaSettingsSection
-        values={baseValues}
-        onValueChange={onValueChange}
-      />
-    )
+function renderSection() {
+  const onValueChange = vi.fn()
+  render(
+    <PaymentAsiaSettingsSection
+      values={baseValues}
+      onValueChange={onValueChange}
+    />
+  )
+  return onValueChange
+}
 
-    fireEvent.change(screen.getByDisplayValue('live-token'), {
+describe('PaymentAsiaSettingsSection', () => {
+  test('associates every settings label with its control', () => {
+    renderSection()
+
+    for (const label of [
+      'Sandbox mode',
+      'Merchant Token',
+      'Merchant Secret',
+      'Sandbox Merchant Token',
+      'Sandbox Merchant Secret',
+      'Currency',
+      'Unit price',
+      'Minimum top-up quantity',
+      'Callback notification URL',
+      'Payment return URL',
+    ]) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument()
+    }
+  })
+
+  test('toggles the sandbox switch through onValueChange', () => {
+    const onValueChange = renderSection()
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Sandbox mode' }))
+
+    expect(onValueChange).toHaveBeenCalledWith('PaymentAsiaSandbox', true)
+  })
+
+  test('emits the edited merchant token through onValueChange', () => {
+    const onValueChange = renderSection()
+
+    fireEvent.change(screen.getByLabelText('Merchant Token'), {
       target: { value: 'new-token' },
     })
 
@@ -67,14 +99,35 @@ describe('PaymentAsiaSettingsSection', () => {
     )
   })
 
-  test('renders sandbox, merchant secret, currency, and minimum top-up controls', () => {
-    render(
-      <PaymentAsiaSettingsSection values={baseValues} onValueChange={vi.fn()} />
-    )
+  test('emits the minimum top-up quantity as a number', () => {
+    const onValueChange = renderSection()
 
-    expect(screen.getByText('Sandbox mode')).toBeInTheDocument()
-    expect(screen.getByText('Merchant Secret')).toBeInTheDocument()
-    expect(screen.getByText('Currency')).toBeInTheDocument()
-    expect(screen.getByText('Minimum top-up quantity')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Minimum top-up quantity'), {
+      target: { value: '5' },
+    })
+
+    expect(onValueChange).toHaveBeenCalledWith('PaymentAsiaMinTopUp', 5)
+  })
+
+  test('emits the unit price as a number', () => {
+    const onValueChange = renderSection()
+
+    fireEvent.change(screen.getByLabelText('Unit price'), {
+      target: { value: '0.13' },
+    })
+
+    expect(onValueChange).toHaveBeenCalledWith('PaymentAsiaUnitPrice', 0.13)
+  })
+
+  test('emits the selected currency when another currency is picked', async () => {
+    const onValueChange = renderSection()
+
+    fireEvent.click(screen.getByRole('combobox', { name: 'Currency' }))
+    const usdOption = await screen.findByRole('option', { name: 'USD' })
+    // Base UI commits an option only when the press started on it.
+    fireEvent.pointerDown(usdOption)
+    fireEvent.click(usdOption)
+
+    expect(onValueChange).toHaveBeenCalledWith('PaymentAsiaCurrency', 'USD')
   })
 })

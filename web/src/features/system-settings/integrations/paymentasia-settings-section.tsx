@@ -91,6 +91,7 @@ export function PaymentAsiaSettingsSection(
             props.onValueChange('PaymentAsiaSandbox', value)
           }
           label={t('Sandbox mode')}
+          switchAriaLabel={t('Sandbox mode')}
           description={t(
             'Use the PaymentAsia sandbox gateway and sandbox credentials for testing.'
           )}
@@ -101,8 +102,11 @@ export function PaymentAsiaSettingsSection(
       <div className='grid grid-cols-2 gap-4'>
         <div className='grid gap-3'>
           <div className='grid gap-1.5'>
-            <Label>{t('Merchant Token')}</Label>
+            <Label htmlFor='paymentasia-merchant-token'>
+              {t('Merchant Token')}
+            </Label>
             <Input
+              id='paymentasia-merchant-token'
               type='password'
               autoComplete='new-password'
               value={props.values.PaymentAsiaMerchantToken}
@@ -115,8 +119,11 @@ export function PaymentAsiaSettingsSection(
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label>{t('Merchant Secret')}</Label>
+            <Label htmlFor='paymentasia-merchant-secret'>
+              {t('Merchant Secret')}
+            </Label>
             <Input
+              id='paymentasia-merchant-secret'
               type='password'
               autoComplete='new-password'
               value={props.values.PaymentAsiaSecret}
@@ -128,8 +135,11 @@ export function PaymentAsiaSettingsSection(
         </div>
         <div className='grid gap-3'>
           <div className='grid gap-1.5'>
-            <Label>{t('Sandbox Merchant Token')}</Label>
+            <Label htmlFor='paymentasia-sandbox-merchant-token'>
+              {t('Sandbox Merchant Token')}
+            </Label>
             <Input
+              id='paymentasia-sandbox-merchant-token'
               type='password'
               autoComplete='new-password'
               value={props.values.PaymentAsiaSandboxMerchantToken}
@@ -142,8 +152,11 @@ export function PaymentAsiaSettingsSection(
             />
           </div>
           <div className='grid gap-1.5'>
-            <Label>{t('Sandbox Merchant Secret')}</Label>
+            <Label htmlFor='paymentasia-sandbox-merchant-secret'>
+              {t('Sandbox Merchant Secret')}
+            </Label>
             <Input
+              id='paymentasia-sandbox-merchant-secret'
               type='password'
               autoComplete='new-password'
               value={props.values.PaymentAsiaSandboxSecret}
@@ -160,7 +173,7 @@ export function PaymentAsiaSettingsSection(
 
       <div className='grid grid-cols-3 gap-4'>
         <div className='grid gap-1.5'>
-          <Label>{t('Currency')}</Label>
+          <Label htmlFor='paymentasia-currency'>{t('Currency')}</Label>
           <Select
             items={[
               { value: 'HKD', label: t('HKD') },
@@ -171,7 +184,7 @@ export function PaymentAsiaSettingsSection(
               if (value) props.onValueChange('PaymentAsiaCurrency', value)
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id='paymentasia-currency' aria-label={t('Currency')}>
               <SelectValue placeholder={t('Select currency')} />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
@@ -183,8 +196,9 @@ export function PaymentAsiaSettingsSection(
           </Select>
         </div>
         <div className='grid gap-1.5'>
-          <Label>{t('Unit price')}</Label>
+          <Label htmlFor='paymentasia-unit-price'>{t('Unit price')}</Label>
           <Input
+            id='paymentasia-unit-price'
             type='number'
             step={0.01}
             min={0}
@@ -203,8 +217,11 @@ export function PaymentAsiaSettingsSection(
           </p>
         </div>
         <div className='grid gap-1.5'>
-          <Label>{t('Minimum top-up quantity')}</Label>
+          <Label htmlFor='paymentasia-min-top-up'>
+            {t('Minimum top-up quantity')}
+          </Label>
           <Input
+            id='paymentasia-min-top-up'
             type='number'
             min={1}
             value={props.values.PaymentAsiaMinTopUp}
@@ -223,8 +240,11 @@ export function PaymentAsiaSettingsSection(
 
       <div className='grid grid-cols-2 gap-4'>
         <div className='grid gap-1.5'>
-          <Label>{t('Callback notification URL')}</Label>
+          <Label htmlFor='paymentasia-notify-url'>
+            {t('Callback notification URL')}
+          </Label>
           <Input
+            id='paymentasia-notify-url'
             placeholder='https://example.com/api/paymentasia/notify'
             value={props.values.PaymentAsiaNotifyUrl}
             onChange={(event) =>
@@ -236,8 +256,11 @@ export function PaymentAsiaSettingsSection(
           </p>
         </div>
         <div className='grid gap-1.5'>
-          <Label>{t('Payment return URL')}</Label>
+          <Label htmlFor='paymentasia-return-url'>
+            {t('Payment return URL')}
+          </Label>
           <Input
+            id='paymentasia-return-url'
             placeholder='https://example.com/wallet'
             value={props.values.PaymentAsiaReturnUrl}
             onChange={(event) =>

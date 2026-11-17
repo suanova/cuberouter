@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import i18next from 'i18next'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 
 import {
@@ -91,7 +91,14 @@ export async function requestPaymentAmount(
     calculator = calculators.paymentAsia
   }
 
-  const response = await calculator({ amount: topupAmount })
+  // The channel travels with the quote so the gateway can format per channel
+  // (e.g. Octopus is quoted with one decimal).
+  const request: AmountRequest = { amount: topupAmount }
+  if (isPaymentAsiaPayment(paymentType)) {
+    request.payment_method = paymentType
+  }
+
+  const response = await calculator(request)
   if (!isApiSuccess(response) || !response.data) {
     return 0
   }
@@ -103,23 +110,35 @@ export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  // Quotes resolve out of order when the user switches amount or gateway
+  // quickly; only the newest request may publish its result.
+  const amountRequestSeqRef = useRef(0)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
     async (topupAmount: number, paymentType: string) => {
+      const requestSeq = ++amountRequestSeqRef.current
       try {
         setCalculating(true)
         const calculatedAmount = await requestPaymentAmount(
           topupAmount,
           paymentType
         )
+        if (requestSeq !== amountRequestSeqRef.current) {
+          return null
+        }
         setAmount(calculatedAmount)
         return calculatedAmount
       } catch {
+        if (requestSeq !== amountRequestSeqRef.current) {
+          return null
+        }
         setAmount(0)
         return 0
       } finally {
-        setCalculating(false)
+        if (requestSeq === amountRequestSeqRef.current) {
+          setCalculating(false)
+        }
       }
     },
     []

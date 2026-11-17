@@ -89,6 +89,16 @@ export function Wallet(props: WalletProps) {
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
+  // Currency of the gateway the live quote belongs to: the selected method,
+  // or the default one before the user picks.
+  const defaultPaymentMethod = useMemo(() => {
+    const defaultPaymentType = getDefaultPaymentType(topupInfo)
+    return topupInfo?.pay_methods?.find(
+      (method) => method.type === defaultPaymentType
+    )
+  }, [topupInfo])
+  const effectivePaymentMethod = selectedPaymentMethod ?? defaultPaymentMethod
+
   // Calculate effective exchange rate - when display type is USD, use rate of 1
   const effectiveUsdExchangeRate = useMemo(() => {
     return currency?.quotaDisplayType === 'USD'
@@ -191,7 +201,13 @@ export function Wallet(props: WalletProps) {
       }
 
       // Calculate payment amount and show confirmation dialog
-      await calculatePaymentAmount(topupAmount, method.type)
+      const calculatedAmount = await calculatePaymentAmount(
+        topupAmount,
+        method.type
+      )
+      if (calculatedAmount === null) {
+        return
+      }
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -318,7 +334,7 @@ export function Wallet(props: WalletProps) {
                   calculating={calculating}
                   onPaymentMethodSelect={handlePaymentMethodSelect}
                   paymentLoading={paymentLoading}
-                  paymentCurrency={selectedPaymentMethod?.currency}
+                  paymentCurrency={effectivePaymentMethod?.currency}
                   redemptionCode={redemptionCode}
                   onRedemptionCodeChange={setRedemptionCode}
                   onRedeem={handleRedeem}

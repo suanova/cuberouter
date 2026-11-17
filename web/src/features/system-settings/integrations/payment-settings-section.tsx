@@ -196,8 +196,8 @@ const paymentSchema = z.object({
   PaymentAsiaSandboxMerchantToken: z.string(),
   PaymentAsiaSandboxSecret: z.string(),
   PaymentAsiaCurrency: z.string(),
-  PaymentAsiaUnitPrice: z.coerce.number().min(0),
-  PaymentAsiaMinTopUp: z.coerce.number().min(1),
+  PaymentAsiaUnitPrice: z.coerce.number().positive(),
+  PaymentAsiaMinTopUp: z.coerce.number().int().min(1),
   PaymentAsiaNotifyUrl: z.string(),
   PaymentAsiaReturnUrl: z.string(),
 })

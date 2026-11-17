@@ -215,6 +215,8 @@ export interface WaffoPancakePaymentRequest {
 export interface AmountRequest {
   /** Topup amount to calculate */
   amount: number
+  /** PaymentAsia channel type, so the gateway can quote per channel */
+  payment_method?: string
 }
 
 /**

@@ -116,6 +116,32 @@ describe('per-method minimum topup', () => {
       })
     ).toBe(1)
   })
+
+  // Stripe alone is enabled on the site while PaymentAsia runs alongside it:
+  // getMinTopupAmount would report Stripe's 100 for every method, which must
+  // not leak into PaymentAsia channels (their floor is min_topup /
+  // paymentasia_min_topup only).
+  test('keeps other gateways on their own minimum when PaymentAsia is also enabled', () => {
+    const info = topupInfo({
+      enable_online_topup: false,
+      enable_stripe_topup: true,
+      stripe_min_topup: 100,
+      enable_paymentasia_topup: true,
+      paymentasia_min_topup: 50,
+      min_topup: 1,
+    })
+
+    expect(
+      getPaymentMethodMinTopup(info, {
+        name: 'AlipayHK',
+        type: 'paymentasia_alipayhk',
+        min_topup: 10,
+      })
+    ).toBe(50)
+    expect(
+      getPaymentMethodMinTopup(info, { name: 'Stripe', type: 'stripe' })
+    ).toBe(100)
+  })
 })
 
 describe('payment dispatch', () => {

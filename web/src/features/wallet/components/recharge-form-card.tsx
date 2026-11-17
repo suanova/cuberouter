@@ -120,8 +120,11 @@ export function RechargeFormCard({
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const currencySymbol = getCurrencySymbol()
-  const payCurrencySymbol =
-    getPaymentMethodCurrencySymbol(paymentCurrency) ?? getLocalCurrencySymbol()
+  // Preset "Pay"/"Save" estimates follow local-currency pricing (Price/Epay);
+  // only the live quote below is charged in the selected gateway's currency.
+  const localCurrencySymbol = getLocalCurrencySymbol()
+  const gatewayCurrencySymbol =
+    getPaymentMethodCurrencySymbol(paymentCurrency) ?? localCurrencySymbol
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
   useEffect(() => {
@@ -277,12 +280,12 @@ export function RechargeFormCard({
                             )}
                           </div>
                           <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            {t('Pay')} {payCurrencySymbol}
+                            {t('Pay')} {localCurrencySymbol}
                             {formatCurrency(actualPrice)}
                             {hasDiscount && savedAmount > 0 && (
                               <span className='text-green-600'>
                                 {' '}
-                                • {t('Save')} {payCurrencySymbol}
+                                • {t('Save')} {localCurrencySymbol}
                                 {formatCurrency(savedAmount)}
                               </span>
                             )}
@@ -331,7 +334,7 @@ export function RechargeFormCard({
                       <Skeleton className='h-5 w-16' />
                     ) : (
                       <span className='text-sm font-semibold'>
-                        {payCurrencySymbol}
+                        {gatewayCurrencySymbol}
                         {formatCurrency(paymentAmount)}
                       </span>
                     )}
