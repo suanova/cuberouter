@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 package controller
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"net/http"
@@ -602,6 +603,47 @@ func TestPaymentAsiaNotifyRejectsBadSign(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	assert.NotContains(t, recorder.Body.String(), "OK")
+}
+
+func TestPaymentAsiaNotifyLogFieldsCannotBeForged(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	gin.SetMode(gin.TestMode)
+
+	// 回调值来自未认证的 POST 表单，必须被转义后才能进入日志：否则换行可伪造
+	// 一条完整的"充值成功"日志行。
+	var logs bytes.Buffer
+	common.LogWriterMu.Lock()
+	previousWriter := gin.DefaultWriter
+	previousErrorWriter := gin.DefaultErrorWriter
+	gin.DefaultWriter = &logs
+	gin.DefaultErrorWriter = &logs
+	common.LogWriterMu.Unlock()
+	t.Cleanup(func() {
+		common.LogWriterMu.Lock()
+		gin.DefaultWriter = previousWriter
+		gin.DefaultErrorWriter = previousErrorWriter
+		common.LogWriterMu.Unlock()
+	})
+
+	forgedLine := "[INFO] 2026/11/17 - 00:00:00 | SYSTEM | paymentasia 回调充值成功 user_id=7"
+	recorder := postPaymentAsiaDatafeed(t, map[string]string{
+		"amount":             "15.60",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF\rFORGED",
+		"merchant_reference": "PA-NOTIFY\n" + forgedLine,
+		"status":             "1",
+		"sign":               "bad",
+	})
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	output := logs.String()
+	require.Contains(t, output, "sign_ok=false")
+	// %q 把换行/回车转义成字面量，整条日志仍只有末尾一个换行，注入的内容留在引号内。
+	assert.Equal(t, 1, strings.Count(output, "\n"), "callback log must stay on a single line: %s", output)
+	assert.Zero(t, strings.Count(output, "\r"), "callback log must not contain raw carriage returns: %s", output)
+	assert.Contains(t, output, `trade_no="PA-NOTIFY\n`+forgedLine+`"`)
+	assert.Contains(t, output, `request_reference="PA-REF\rFORGED"`)
+	assert.NotContains(t, output, "\n"+forgedLine)
 }
 
 func TestPaymentAsiaNotifyRejectsWhenDisabled(t *testing.T) {

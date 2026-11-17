@@ -316,7 +316,7 @@ func PaymentAsiaNotify(c *gin.Context) {
 	// 凭据按配置原样返回，验签前去掉可能的首尾空白（与启用判断口径一致）。
 	_, secret, _ := setting.GetPaymentAsiaCredentials()
 	signOK := service.VerifyPaymentAsiaCallbackSign(params, strings.TrimSpace(secret))
-	logFields := fmt.Sprintf("trade_no=%s request_reference=%s status=%s amount=%s currency=%s client_ip=%s sign_ok=%t",
+	logFields := fmt.Sprintf("trade_no=%q request_reference=%q status=%q amount=%q currency=%q client_ip=%s sign_ok=%t",
 		params["merchant_reference"], params["request_reference"], params["status"], params["amount"], params["currency"], c.ClientIP(), signOK)
 	if !signOK {
 		logger.LogWarn(c.Request.Context(), "paymentasia 回调验签失败 "+logFields)
