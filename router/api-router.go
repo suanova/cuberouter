@@ -314,6 +314,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup, documented bool) {
 			accountContextRoute.PUT("/current", controller.SetCurrentAccountContext)
 		}
 		setOrganizationApiRoutes(apiRouter)
+		setCubyAppApiRoutes(apiRouter)
 		tokenRoute := apiRouter.Group("/token")
 		tokenRoute.Use(middleware.UserAuth())
 		{

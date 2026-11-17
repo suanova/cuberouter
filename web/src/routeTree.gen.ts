@@ -34,6 +34,7 @@ import { Route as PricingIndexRouteImport } from './routes/pricing/index'
 import { Route as RankingsIndexRouteImport } from './routes/rankings/index'
 import { Route as SetupIndexRouteImport } from './routes/setup/index'
 import { Route as authUserResetRouteImport } from './routes/(auth)/user/reset'
+import { Route as AuthenticatedAdminCubyAppsRouteImport } from './routes/_authenticated/admin/cuby-apps'
 import { Route as AuthenticatedAdminImageOutputAuditRouteImport } from './routes/_authenticated/admin/image-output-audit'
 import { Route as AuthenticatedAdminOrganizationAuditLogsRouteImport } from './routes/_authenticated/admin/organization-audit-logs'
 import { Route as AuthenticatedCampaignsIndexRouteImport } from './routes/_authenticated/campaigns/index'
@@ -208,6 +209,12 @@ const authUserResetRoute = authUserResetRouteImport.update({
   path: '/user/reset',
   getParentRoute: () => authRouteRoute,
 } as any)
+const AuthenticatedAdminCubyAppsRoute =
+  AuthenticatedAdminCubyAppsRouteImport.update({
+    id: '/admin/cuby-apps',
+    path: '/admin/cuby-apps',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedAdminImageOutputAuditRoute =
   AuthenticatedAdminImageOutputAuditRouteImport.update({
     id: '/admin/image-output-audit',
@@ -522,6 +529,7 @@ export interface FileRoutesByFullPath {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/admin/cuby-apps': typeof AuthenticatedAdminCubyAppsRoute
   '/admin/image-output-audit': typeof AuthenticatedAdminImageOutputAuditRoute
   '/admin/organization-audit-logs': typeof AuthenticatedAdminOrganizationAuditLogsRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
@@ -595,6 +603,7 @@ export interface FileRoutesByTo {
   '/rankings': typeof RankingsIndexRoute
   '/setup': typeof SetupIndexRoute
   '/user/reset': typeof authUserResetRoute
+  '/admin/cuby-apps': typeof AuthenticatedAdminCubyAppsRoute
   '/admin/image-output-audit': typeof AuthenticatedAdminImageOutputAuditRoute
   '/admin/organization-audit-logs': typeof AuthenticatedAdminOrganizationAuditLogsRoute
   '/chat/$chatId': typeof AuthenticatedChatChatIdRoute
@@ -672,6 +681,7 @@ export interface FileRoutesById {
   '/rankings/': typeof RankingsIndexRoute
   '/setup/': typeof SetupIndexRoute
   '/(auth)/user/reset': typeof authUserResetRoute
+  '/_authenticated/admin/cuby-apps': typeof AuthenticatedAdminCubyAppsRoute
   '/_authenticated/admin/image-output-audit': typeof AuthenticatedAdminImageOutputAuditRoute
   '/_authenticated/admin/organization-audit-logs': typeof AuthenticatedAdminOrganizationAuditLogsRoute
   '/_authenticated/chat/$chatId': typeof AuthenticatedChatChatIdRoute
@@ -748,6 +758,7 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/user/reset'
+    | '/admin/cuby-apps'
     | '/admin/image-output-audit'
     | '/admin/organization-audit-logs'
     | '/chat/$chatId'
@@ -821,6 +832,7 @@ export interface FileRouteTypes {
     | '/rankings'
     | '/setup'
     | '/user/reset'
+    | '/admin/cuby-apps'
     | '/admin/image-output-audit'
     | '/admin/organization-audit-logs'
     | '/chat/$chatId'
@@ -897,6 +909,7 @@ export interface FileRouteTypes {
     | '/rankings/'
     | '/setup/'
     | '/(auth)/user/reset'
+    | '/_authenticated/admin/cuby-apps'
     | '/_authenticated/admin/image-output-audit'
     | '/_authenticated/admin/organization-audit-logs'
     | '/_authenticated/chat/$chatId'
@@ -1143,6 +1156,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/user/reset'
       preLoaderRoute: typeof authUserResetRouteImport
       parentRoute: typeof authRouteRoute
+    }
+    '/_authenticated/admin/cuby-apps': {
+      id: '/_authenticated/admin/cuby-apps'
+      path: '/admin/cuby-apps'
+      fullPath: '/admin/cuby-apps'
+      preLoaderRoute: typeof AuthenticatedAdminCubyAppsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/admin/image-output-audit': {
       id: '/_authenticated/admin/image-output-audit'
@@ -1582,6 +1602,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
+  AuthenticatedAdminCubyAppsRoute: typeof AuthenticatedAdminCubyAppsRoute
   AuthenticatedAdminImageOutputAuditRoute: typeof AuthenticatedAdminImageOutputAuditRoute
   AuthenticatedAdminOrganizationAuditLogsRoute: typeof AuthenticatedAdminOrganizationAuditLogsRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
@@ -1619,6 +1640,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
+  AuthenticatedAdminCubyAppsRoute: AuthenticatedAdminCubyAppsRoute,
   AuthenticatedAdminImageOutputAuditRoute:
     AuthenticatedAdminImageOutputAuditRoute,
   AuthenticatedAdminOrganizationAuditLogsRoute:
