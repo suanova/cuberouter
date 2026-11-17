@@ -23,9 +23,6 @@ on:
       - 'helm/cuberouter-chart/**'
       # Included so a fix to this workflow re-runs it on the merge that carries it.
       - '.github/workflows/vendor-chart.yml'
-  # Not path-filtered, so a dispatch is always answered. The job gate below
-  # still refuses any ref but main.
-  workflow_dispatch:
 
 permissions: {}
 
@@ -48,13 +45,14 @@ env:
 jobs:
   vendor:
     runs-on: ubuntu-latest
-    # Push triggers are already filtered; only a dispatch needs the ref gate, so
-    # a manual run cannot package a feature branch or tag over the rolling chart.
+    # Push triggers are already filtered to the refs this line vendors. No
+    # workflow_dispatch: a manual run loads the copy on the ref it is dispatched
+    # from, which is release-2.0's own copy, and that copy requires main -- the
+    # two would each require the other, so the path cannot run.
     if: >-
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/release-2.0' ||
-        startsWith(github.ref, 'refs/tags/v2.0.'))) ||
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/release-2.0')
+        startsWith(github.ref, 'refs/tags/v2.0.')))
     # Read-only for the GITHUB_TOKEN: it fetches this repo and nothing else.
     # Every write below — branch, pull request — goes through the App token.
     permissions:

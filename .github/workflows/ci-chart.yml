@@ -1,8 +1,8 @@
 name: CI Chart
 
 # Push-only so the chart publish job never appears in pull request checks —
-# same as the image workflow. A merge to main publishes the rolling
-# <version>-latest chart; a v* tag publishes the release version it names.
+# same as the image workflow. A merge publishes the <version>-sha<7> chart, and
+# main also the rolling <version>-latest; a v* tag publishes the release version.
 on:
   push:
     # A release branch keeps shipping point releases, so a merge there still has
@@ -191,10 +191,20 @@ jobs:
           CHART_JSON: ${{ needs.build-push-chart.outputs.chart_json }}
         run: |
           set -euo pipefail
+          # The line this tree belongs to. Without it the release receiver
+          # falls back to its `CUBESTACK_CURRENT_LINE`, so a release branch merge
+          # would pin whatever line is current then.
+          line="$(tr -d '[:space:]' < VERSION_LINE)"
+          [[ "${line}" =~ ^[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::invalid VERSION_LINE: '${line}'"; exit 1; }
+          if [[ "${GITHUB_REF_NAME}" == release-* && "${GITHUB_REF_NAME}" != "release-${line}" ]]; then
+            echo "::error::VERSION_LINE=${line} does not match ${GITHUB_REF_NAME}"
+            exit 1
+          fi
           payload="$(jq -nc \
             --arg repo "suanova/cuberouter" \
             --arg commit "${GITHUB_SHA}" \
-            --arg line "2.1" \
+            --arg line "${line}" \
             --arg component "cuberouter" \
             --argjson chart "${CHART_JSON}" \
             '{event_type:"component-built",client_payload:{repo:$repo,commit:$commit,line:$line,component:$component,chart:$chart}}')"
