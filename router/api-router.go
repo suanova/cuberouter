@@ -90,6 +90,7 @@ func registerApiRoutes(apiRouter *gin.RouterGroup, documented bool) {
 		// in Pancake's matching webhook slot; handler enforces env match.
 		apiRouter.POST("/waffo-pancake/webhook/:env", anonymousRequestBodyLimit, controller.WaffoPancakeWebhook)
 		apiRouter.POST("/alipay/notify", anonymousRequestBodyLimit, controller.AlipayNotify)
+		apiRouter.POST("/paymentasia/notify", anonymousRequestBodyLimit, controller.PaymentAsiaNotify)
 
 		// Universal secure verification routes
 		apiRouter.POST("/verify", middleware.UserAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), controller.UniversalVerify)

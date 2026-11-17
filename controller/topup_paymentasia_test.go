@@ -24,6 +24,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -480,4 +481,234 @@ func TestRequestPaymentAsiaPayRejectsUSDAmountOnNonCardNetwork(t *testing.T) {
 	var orderCount int64
 	require.NoError(t, model.DB.Model(&model.TopUp{}).Count(&orderCount).Error)
 	assert.Zero(t, orderCount)
+}
+
+// newPaymentAsiaNotifyDB 为 datafeed 用例换上独立的 SQLite 库（User/TopUp/Log）。
+// RechargePaymentAsia 在事务外会写充值日志，因此 LOG_DB 必须指向同一套库；
+// Redis 与内存缓存关闭，避免测试依赖外部缓存。
+func newPaymentAsiaNotifyDB(t *testing.T) {
+	t.Helper()
+	previousDB := model.DB
+	previousLogDB := model.LOG_DB
+	previousDatabaseType := common.MainDatabaseType()
+	previousRedis := common.RedisEnabled
+	previousMemoryCache := common.MemoryCacheEnabled
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}, &model.Log{}))
+	model.DB = db
+	model.LOG_DB = db
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	common.RedisEnabled = false
+	common.MemoryCacheEnabled = false
+	t.Cleanup(func() {
+		model.DB = previousDB
+		model.LOG_DB = previousLogDB
+		common.SetMainDatabaseType(previousDatabaseType)
+		common.RedisEnabled = previousRedis
+		common.MemoryCacheEnabled = previousMemoryCache
+		sqlDB, closeErr := db.DB()
+		if closeErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+}
+
+// insertPaymentAsiaNotifyOrder 插入唯一用户与一条待支付的 PaymentAsia 订单。
+func insertPaymentAsiaNotifyOrder(t *testing.T, tradeNo string, money float64) (*model.User, *model.TopUp) {
+	t.Helper()
+	user := &model.User{
+		Id:       7,
+		Username: "paymentasia_notify_user",
+		Group:    "default",
+		Status:   common.UserStatusEnabled,
+	}
+	require.NoError(t, model.DB.Create(user).Error)
+	topUp := &model.TopUp{
+		UserId:          user.Id,
+		Amount:          2,
+		Money:           money,
+		TradeNo:         tradeNo,
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: model.PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, topUp.Insert())
+	return user, topUp
+}
+
+// postPaymentAsiaDatafeed 以表单 POST 调用 datafeed handler，返回响应记录器。
+func postPaymentAsiaDatafeed(t *testing.T, fields map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	form := url.Values{}
+	for key, value := range fields {
+		form.Set(key, value)
+	}
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	request := httptest.NewRequest(http.MethodPost, "/api/paymentasia/notify", strings.NewReader(form.Encode()))
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ctx.Request = request
+
+	PaymentAsiaNotify(ctx)
+
+	return recorder
+}
+
+func paymentAsiaNotifyUserQuota(t *testing.T, userId int) int {
+	t.Helper()
+	var user model.User
+	require.NoError(t, model.DB.Select("quota").Where("id = ?", userId).First(&user).Error)
+	return user.Quota
+}
+
+func TestPaymentAsiaCallbackAmountMatches(t *testing.T) {
+	testCases := []struct {
+		name           string
+		orderMoney     float64
+		network        string
+		callbackAmount string
+		want           bool
+	}{
+		{name: "two decimal channel matches", orderMoney: 15.6, network: "Alipay", callbackAmount: "15.60", want: true},
+		{name: "two decimal channel mismatch", orderMoney: 15.6, network: "Alipay", callbackAmount: "15.61", want: false},
+		{name: "octopus compares one decimal", orderMoney: 12.3, network: "Octopus", callbackAmount: "12.30", want: true},
+		{name: "octopus rejects a different amount", orderMoney: 12.3, network: "Octopus", callbackAmount: "12.31", want: false},
+		{name: "non numeric callback amount", orderMoney: 15.6, network: "Alipay", callbackAmount: "not-a-number", want: false},
+		{name: "non finite order money", orderMoney: math.NaN(), network: "Alipay", callbackAmount: "15.60", want: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.want, paymentAsiaCallbackAmountMatches(testCase.orderMoney, testCase.network, testCase.callbackAmount))
+		})
+	}
+}
+
+func TestPaymentAsiaNotifyRejectsBadSign(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	gin.SetMode(gin.TestMode)
+
+	recorder := postPaymentAsiaDatafeed(t, map[string]string{
+		"amount":             "15.60",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF-BADSIGN",
+		"merchant_reference": "PA-NOTIFY-BADSIGN",
+		"status":             "1",
+		"sign":               "bad",
+	})
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "OK")
+}
+
+func TestPaymentAsiaNotifyRejectsWhenDisabled(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	setting.PaymentAsiaMerchantToken = ""
+	setting.PaymentAsiaSecret = ""
+	setting.PaymentAsiaSandboxMerchantToken = ""
+	setting.PaymentAsiaSandboxSecret = ""
+	gin.SetMode(gin.TestMode)
+
+	recorder := postPaymentAsiaDatafeed(t, map[string]string{
+		"amount":             "15.60",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF-DISABLED",
+		"merchant_reference": "PA-NOTIFY-DISABLED",
+		"status":             "1",
+		"sign":               "bad",
+	})
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "OK")
+}
+
+func TestPaymentAsiaNotifyCreditsOnSuccessOnce(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user, topUp := insertPaymentAsiaNotifyOrder(t, "PANOTIFYSUCCESS", 15.6)
+
+	fields := map[string]string{
+		"amount":             "15.60",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF-SUCCESS",
+		"merchant_reference": topUp.TradeNo,
+		"status":             "1",
+	}
+	// fixture 的凭据带首尾空格：验签必须使用 TrimSpace 后的 secret
+	fields["sign"] = service.BuildPaymentAsiaSign(fields, "live_secret")
+
+	recorder := postPaymentAsiaDatafeed(t, fields)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "OK", recorder.Body.String())
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusSuccess, reloaded.Status)
+	assert.NotZero(t, reloaded.CompleteTime)
+	assert.Equal(t, 1_000_000, paymentAsiaNotifyUserQuota(t, user.Id))
+
+	// 重复回调：订单已 success，只回 200 不再入账
+	recorder = postPaymentAsiaDatafeed(t, fields)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, "OK", recorder.Body.String())
+	assert.Equal(t, 1_000_000, paymentAsiaNotifyUserQuota(t, user.Id))
+}
+
+func TestPaymentAsiaNotifyRejectsCurrencyMismatch(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user, topUp := insertPaymentAsiaNotifyOrder(t, "PANOTIFYCURRENCY", 15.6)
+
+	fields := map[string]string{
+		"amount":             "15.60",
+		"currency":           "USD",
+		"request_reference":  "PA-REF-CURRENCY",
+		"merchant_reference": topUp.TradeNo,
+		"status":             "1",
+	}
+	fields["sign"] = service.BuildPaymentAsiaSign(fields, "live_secret")
+
+	recorder := postPaymentAsiaDatafeed(t, fields)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "OK")
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
+	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
+}
+
+func TestPaymentAsiaNotifyRejectsAmountMismatch(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user, topUp := insertPaymentAsiaNotifyOrder(t, "PANOTIFYAMOUNT", 15.6)
+
+	fields := map[string]string{
+		"amount":             "15.61",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF-AMOUNT",
+		"merchant_reference": topUp.TradeNo,
+		"status":             "1",
+	}
+	fields["sign"] = service.BuildPaymentAsiaSign(fields, "live_secret")
+
+	recorder := postPaymentAsiaDatafeed(t, fields)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "OK")
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
+	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
 }
