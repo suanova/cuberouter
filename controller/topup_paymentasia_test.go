@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
 
@@ -362,6 +363,40 @@ func TestGetTopUpInfoRequiresEnabledCredentialsForPaymentAsiaTopUp(t *testing.T)
 	// 凭据缺失时 PaymentAsia 方法整体隐藏，不会退化展示为 Epay 方法
 	assert.False(t, response.Data.EnablePaymentAsiaTopUp)
 	assert.Empty(t, response.Data.PayMethods)
+}
+
+// initPaymentAsiaControllerColumnNames 触发 model 的保留字列初始化：controller
+// 测试没有走 model.InitDB，group 列未初始化会让 GetUserGroup 生成非法 SQL。
+// 这里借一次不落盘的 SQLite InitDB 完成初始化，随后恢复被改写的全局状态。
+func initPaymentAsiaControllerColumnNames(t *testing.T) {
+	t.Helper()
+	previousDB := model.DB
+	originalIsMasterNode := common.IsMasterNode
+	originalSQLitePath := common.SQLitePath
+	originalMainDatabaseType := common.MainDatabaseType()
+	originalLogDatabaseType := common.LogDatabaseType()
+	originalSQLDSN, hadSQLDSN := os.LookupEnv("SQL_DSN")
+	t.Cleanup(func() {
+		model.DB = previousDB
+		common.IsMasterNode = originalIsMasterNode
+		common.SQLitePath = originalSQLitePath
+		common.SetDatabaseTypes(originalMainDatabaseType, originalLogDatabaseType)
+		if hadSQLDSN {
+			require.NoError(t, os.Setenv("SQL_DSN", originalSQLDSN))
+		} else {
+			require.NoError(t, os.Unsetenv("SQL_DSN"))
+		}
+	})
+
+	common.IsMasterNode = false
+	common.SQLitePath = fmt.Sprintf("file:%s_cols?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	require.NoError(t, os.Setenv("SQL_DSN", "local"))
+	require.NoError(t, model.InitDB())
+	sqlDB, err := model.DB.DB()
+	require.NoError(t, err)
+	require.NoError(t, sqlDB.Close())
+	model.DB = previousDB
 }
 
 // newPaymentAsiaCheckoutDB 为下单用例换上一套独立的 SQLite 库（User/TopUp），
@@ -726,6 +761,189 @@ func TestPaymentAsiaNotifyRejectsCurrencyMismatch(t *testing.T) {
 	require.NotNil(t, reloaded)
 	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
 	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
+}
+
+// postPaymentAsiaAmount 以 JSON POST 调用报价 handler，用户固定为 fixture 的 42。
+func postPaymentAsiaAmount(t *testing.T, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/amount",
+		strings.NewReader(body),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+	RequestPaymentAsiaAmount(ctx)
+	return recorder
+}
+
+func TestRequestPaymentAsiaAmountTokenAmountMultiple(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	initPaymentAsiaControllerColumnNames(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	operation_setting.SetQuotaDisplayTypeForTest(operation_setting.QuotaDisplayTypeTokens)
+
+	// 750000 不是 QuotaPerUnit(500000) 的整数倍：报价必须拒绝，否则同一笔
+	// 充值会按截断后的 1 美元报价、再按 2 美元落库/扣费。
+	recorder := postPaymentAsiaAmount(t, `{"amount":750000}`)
+	assert.JSONEq(t, `{"message":"error","data":"充值数量必须为 500000 的整数倍"}`, recorder.Body.String())
+
+	// 整数倍按 token 数 ÷ QuotaPerUnit 换算成 2 美元 → 15.60
+	recorder = postPaymentAsiaAmount(t, `{"amount":1000000}`)
+	assert.JSONEq(t, `{"message":"success","data":"15.60"}`, recorder.Body.String())
+}
+
+func TestRequestPaymentAsiaPayTokenAmountMultiple(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	operation_setting.SetQuotaDisplayTypeForTest(operation_setting.QuotaDisplayTypeTokens)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/pay",
+		strings.NewReader(`{"amount":750000,"payment_method":"paymentasia_alipayhk"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestPaymentAsiaPay(ctx)
+
+	assert.JSONEq(t, `{"message":"error","data":"充值数量必须为 500000 的整数倍"}`, recorder.Body.String())
+	var orderCount int64
+	require.NoError(t, model.DB.Model(&model.TopUp{}).Count(&orderCount).Error)
+	assert.Zero(t, orderCount)
+
+	recorder = httptest.NewRecorder()
+	ctx, _ = gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/pay",
+		strings.NewReader(`{"amount":1000000,"payment_method":"paymentasia_alipayhk"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestPaymentAsiaPay(ctx)
+
+	var response struct {
+		Message string            `json:"message"`
+		Data    map[string]string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "success", response.Message)
+	assert.Equal(t, "15.60", response.Data["amount"])
+
+	topUp := model.GetTopUpByTradeNo(response.Data["merchant_reference"])
+	require.NotNil(t, topUp)
+	assert.Equal(t, int64(2), topUp.Amount)
+	assert.Equal(t, 15.6, topUp.Money)
+}
+
+func TestGetTopUpInfoHidesNonCardPaymentAsiaMethodsForUSD(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	setting.PaymentAsiaCurrency = "USD"
+	operation_setting.PayMethods = []map[string]string{
+		{"name": "Alipay HK", "type": "paymentasia_alipayhk", "color": "#1677ff", "min_topup": "1"},
+		{"name": "Credit Card", "type": "paymentasia_creditcard", "color": "#333333", "min_topup": "1"},
+	}
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup/info", nil)
+
+	GetTopUpInfo(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Data struct {
+			EnablePaymentAsiaTopUp bool                `json:"enable_paymentasia_topup"`
+			PayMethods             []map[string]string `json:"pay_methods"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+
+	require.Len(t, response.Data.PayMethods, 1)
+	assert.Equal(t, "paymentasia_creditcard", response.Data.PayMethods[0]["type"])
+	assert.Equal(t, "USD", response.Data.PayMethods[0]["currency"])
+	assert.True(t, response.Data.EnablePaymentAsiaTopUp)
+}
+
+func TestRequestPaymentAsiaAmountHonorsPaymentMethod(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	initPaymentAsiaControllerColumnNames(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	setting.PaymentAsiaUnitPrice = 1.04
+
+	cases := []struct {
+		name   string
+		method string
+		want   string
+	}{
+		{name: "alipay keeps two decimals", method: "paymentasia_alipay", want: "1.04"},
+		{name: "octopus keeps one decimal", method: "paymentasia_octopus", want: "1.0"},
+		{name: "no method keeps two decimals", method: "", want: "1.04"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			recorder := postPaymentAsiaAmount(t, fmt.Sprintf(`{"amount":1,"payment_method":%q}`, testCase.method))
+			assert.JSONEq(t, fmt.Sprintf(`{"message":"success","data":%q}`, testCase.want), recorder.Body.String())
+		})
+	}
+
+	recorder := postPaymentAsiaAmount(t, `{"amount":1,"payment_method":"paymentasia_typo"}`)
+	assert.JSONEq(t, `{"message":"error","data":"支付方式不存在"}`, recorder.Body.String())
+
+	setting.PaymentAsiaCurrency = "USD"
+	recorder = postPaymentAsiaAmount(t, `{"amount":1,"payment_method":"paymentasia_alipay"}`)
+	assert.JSONEq(t, `{"message":"error","data":"该支付通道不支持 USD 支付"}`, recorder.Body.String())
+}
+
+func TestPaymentAsiaNotifyLookupFailures(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	signedFields := func(tradeNo string) map[string]string {
+		fields := map[string]string{
+			"amount":             "15.60",
+			"currency":           "HKD",
+			"request_reference":  "PA-REF-LOOKUP",
+			"merchant_reference": tradeNo,
+			"status":             "1",
+		}
+		fields["sign"] = service.BuildPaymentAsiaSign(fields, "live_secret")
+		return fields
+	}
+
+	// 订单不存在是网关重试也无法解决的数据问题：回 200 停止重试。
+	t.Run("unknown_order_is_acknowledged", func(t *testing.T) {
+		pinPaymentAsiaControllerFixture(t)
+		newPaymentAsiaNotifyDB(t)
+
+		recorder := postPaymentAsiaDatafeed(t, signedFields("PA-NOTIFY-MISSING"))
+
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Equal(t, "OK", recorder.Body.String())
+	})
+
+	// 数据库查询失败是暂时性错误：必须回 500 让网关重试，不能像订单不存在一样吞掉。
+	t.Run("lookup_database_error_returns_500", func(t *testing.T) {
+		pinPaymentAsiaControllerFixture(t)
+		newPaymentAsiaNotifyDB(t)
+		require.NoError(t, model.DB.Migrator().DropTable(&model.TopUp{}))
+
+		recorder := postPaymentAsiaDatafeed(t, signedFields("PA-NOTIFY-DBERROR"))
+
+		require.Equal(t, http.StatusInternalServerError, recorder.Code)
+	})
 }
 
 func TestPaymentAsiaNotifyRejectsAmountMismatch(t *testing.T) {

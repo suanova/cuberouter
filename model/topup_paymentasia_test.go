@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -214,5 +215,78 @@ func TestRechargePaymentAsiaOnExternalDatabases(t *testing.T) {
 			require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", userID, LogTypeTopup).Count(&logCount).Error)
 			assert.Equal(t, int64(1), logCount, "重复回调不得重复写审计日志")
 		})
+	}
+}
+
+func TestGetTopUpByTradeNoWithError(t *testing.T) {
+	truncateTables(t)
+
+	topUp, err := GetTopUpByTradeNoWithError("PA-MISSING-ORDER")
+	require.Nil(t, topUp)
+	require.ErrorIs(t, err, ErrTopUpNotFound)
+
+	order := createPaymentAsiaTestTopUp(t, 611, "PA-LOOKUP-EXISTING")
+	found, err := GetTopUpByTradeNoWithError(order.TradeNo)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, order.TradeNo, found.TradeNo)
+}
+
+func TestValidatePaymentAsiaCurrencyChange(t *testing.T) {
+	truncateTables(t)
+	origCurrency := setting.PaymentAsiaCurrency
+	t.Cleanup(func() { setting.PaymentAsiaCurrency = origCurrency })
+	setting.PaymentAsiaCurrency = "HKD"
+
+	// 没有待支付订单：允许修改
+	require.NoError(t, validatePaymentAsiaCurrencyChange("USD"))
+
+	order := createPaymentAsiaTestTopUp(t, 612, "PA-CURRENCY-PENDING")
+	// 同值（忽略大小写与首尾空白）不触发拦截
+	require.NoError(t, validatePaymentAsiaCurrencyChange(" hkd "))
+	require.Error(t, validatePaymentAsiaCurrencyChange("USD"))
+
+	// 非 PaymentAsia 的待支付订单不参与拦截
+	insertTopUpForPaymentGuardTest(t, "EPAY-CURRENCY-PENDING", 612, PaymentProviderEpay)
+	require.Error(t, validatePaymentAsiaCurrencyChange("USD"))
+
+	// 待支付订单结束后允许修改；此时只剩 Epay 待支付订单
+	require.NoError(t, DB.Model(order).Update("status", common.TopUpStatusSuccess).Error)
+	require.NoError(t, validatePaymentAsiaCurrencyChange("USD"))
+	require.NoError(t, DB.Model(order).Update("status", common.TopUpStatusFailed).Error)
+	require.NoError(t, validatePaymentAsiaCurrencyChange("USD"))
+}
+
+func TestUpdateOptionsRejectsPaymentAsiaCurrencyChangeWithPendingOrder(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	origCurrency := setting.PaymentAsiaCurrency
+	origOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		setting.PaymentAsiaCurrency = origCurrency
+		common.OptionMap = origOptionMap
+		DB.Where("key = ?", "PaymentAsiaCurrency").Delete(&Option{})
+	})
+	setting.PaymentAsiaCurrency = "HKD"
+
+	createPaymentAsiaTestTopUp(t, 613, "PA-CURRENCY-OPTION-PENDING")
+
+	require.Error(t, UpdateOption("PaymentAsiaCurrency", "USD"))
+	require.Error(t, UpdateOptionsBulk(map[string]string{"PaymentAsiaCurrency": "USD"}))
+	assert.Equal(t, "HKD", setting.PaymentAsiaCurrency)
+
+	require.NoError(t, DB.Model(&TopUp{}).Where("trade_no = ?", "PA-CURRENCY-OPTION-PENDING").
+		Update("status", common.TopUpStatusSuccess).Error)
+	require.NoError(t, UpdateOption("PaymentAsiaCurrency", "USD"))
+	assert.Equal(t, "USD", setting.PaymentAsiaCurrency)
+}
+
+func TestValidatePaymentAsiaUnitPriceOption(t *testing.T) {
+	for _, value := range []string{"0", "-1", "abc", "NaN", "+Inf", "-Inf"} {
+		require.Error(t, validateOptionValue("PaymentAsiaUnitPrice", value), "value %q must be rejected", value)
+	}
+	for _, value := range []string{"1", "1.08"} {
+		require.NoError(t, validateOptionValue("PaymentAsiaUnitPrice", value), "value %q must be accepted", value)
 	}
 }

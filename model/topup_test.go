@@ -78,6 +78,9 @@ func TestTopUpCreditedQuotaByProvider(t *testing.T) {
 		{"waffo pancake amount is usd", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderWaffoPancake, Amount: 2}, 1000000},
 		{"paymentasia cny", operation_setting.QuotaDisplayTypeCNY, TopUp{PaymentProvider: PaymentProviderPaymentAsia, PaymentMethod: "paymentasia_alipayhk", Amount: 10, Money: 10.8, Rate: 7.3}, 684932},
 		{"paymentasia usd", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderPaymentAsia, PaymentMethod: "paymentasia_alipayhk", Amount: 2, Money: 15.6}, 1000000},
+		// 大额 USD 订单会超过单请求 int32 饱和边界（2,147,483,647），但钱包容许到
+		// MaxWalletQuota；报表口径必须返回完整额度而不是被截断的饱和值。
+		{"paymentasia large usd", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderPaymentAsia, PaymentMethod: "paymentasia_alipayhk", Amount: 100000, Money: 780000}, 50000000000},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

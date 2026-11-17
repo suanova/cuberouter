@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -272,6 +274,34 @@ func validateOptionValue(key string, value string) error {
 	if key == "EmailDomainBlacklist" {
 		return common.ValidateEmailDomainList(common.ParseEmailDomainList(value))
 	}
+	if key == "PaymentAsiaUnitPrice" {
+		// 单价是网关金额的乘数：必须能解析为有限正数，否则报价/扣费会静默
+		// 回退到 1 或 0，与管理员配置不一致。
+		unitPrice, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(unitPrice) || math.IsInf(unitPrice, 0) || unitPrice <= 0 {
+			return errors.New("PaymentAsia 单价必须为大于 0 的数字")
+		}
+	}
+	return nil
+}
+
+// validatePaymentAsiaCurrencyChange rejects switching the PaymentAsia currency
+// while orders are still pending. The datafeed callback compares the gateway
+// currency with the configured one, so a change would strand those orders.
+// Values equal to the current currency are always accepted.
+func validatePaymentAsiaCurrencyChange(value string) error {
+	if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(setting.PaymentAsiaCurrency)) {
+		return nil
+	}
+	var pending int64
+	if err := DB.Model(&TopUp{}).
+		Where("payment_provider = ? AND status = ?", PaymentProviderPaymentAsia, common.TopUpStatusPending).
+		Count(&pending).Error; err != nil {
+		return err
+	}
+	if pending > 0 {
+		return errors.New("存在待支付的 PaymentAsia 订单，暂不能修改支付币种")
+	}
 	return nil
 }
 
@@ -288,6 +318,11 @@ func normalizeOptionValue(key string, value string) string {
 func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
+	}
+	if key == "PaymentAsiaCurrency" {
+		if err := validatePaymentAsiaCurrencyChange(value); err != nil {
+			return err
+		}
 	}
 	value = normalizeOptionValue(key, value)
 	// 汇率类配置:Price 与 USDExchangeRate 是同一汇率的两份持久化,
@@ -330,6 +365,11 @@ func UpdateOptionsBulk(values map[string]string) error {
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
+		}
+		if key == "PaymentAsiaCurrency" {
+			if err := validatePaymentAsiaCurrencyChange(value); err != nil {
+				return err
+			}
 		}
 		normalized[key] = normalizeOptionValue(key, value)
 	}

@@ -156,6 +156,21 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
+// GetTopUpByTradeNoWithError returns the order of a trade number and keeps the
+// database failure separate from a missing order: ErrTopUpNotFound means the
+// order does not exist, any other error means the lookup itself failed and the
+// caller may safely retry.
+func GetTopUpByTradeNoWithError(tradeNo string) (*TopUp, error) {
+	var topUp TopUp
+	if err := DB.Where("trade_no = ?", tradeNo).First(&topUp).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTopUpNotFound
+		}
+		return nil, err
+	}
+	return &topUp, nil
+}
+
 func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
@@ -414,7 +429,12 @@ func topUpCreditedQuota(topUp *TopUp) int {
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
 	case PaymentProviderPaymentAsia:
-		return common.QuotaFromDecimal(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
+		quota, err := common.WalletQuotaFromDecimalStrict(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
+		if err != nil {
+			common.SysError(fmt.Sprintf("paymentasia top-up credited quota conversion failed trade_no=%s error=%q", topUp.TradeNo, err.Error()))
+			return 0
+		}
+		return quota
 	}
 	if topUp.Money > 0 {
 		if rate := topUpRate(topUp); rate > 0 {

@@ -112,8 +112,33 @@ func formatPaymentAsiaAmount(value float64, network string) (string, float64, er
 	return rounded.StringFixed(places), rounded.InexactFloat64(), nil
 }
 
+// validatePaymentAsiaAmountMultiple requires TOKENS-mode amounts to be whole
+// multiples of QuotaPerUnit: the pay path stores amount/QuotaPerUnit as an
+// integer, so a partial multiple would quote one amount and then store and
+// charge a truncated one.
+func validatePaymentAsiaAmountMultiple(amount int64) error {
+	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
+		return nil
+	}
+	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		return errors.New("充值额度配置错误")
+	}
+	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
+	if !decimal.NewFromInt(amount).Mod(quotaPerUnit).IsZero() {
+		return fmt.Errorf("充值数量必须为 %s 的整数倍", quotaPerUnit.String())
+	}
+	return nil
+}
+
+// PaymentAsiaAmountRequest is the quote request. payment_method is optional:
+// when set, the quote uses that channel's amount precision.
+type PaymentAsiaAmountRequest struct {
+	Amount        int64  `json:"amount"`
+	PaymentMethod string `json:"payment_method"`
+}
+
 func RequestPaymentAsiaAmount(c *gin.Context) {
-	var req AmountRequest
+	var req PaymentAsiaAmountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "参数错误"})
 		return
@@ -121,6 +146,23 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 	if minimum := paymentAsiaMinimumTopUp(); req.Amount < minimum {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minimum)})
 		return
+	}
+	if err := validatePaymentAsiaAmountMultiple(req.Amount); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+		return
+	}
+	network := ""
+	if req.PaymentMethod != "" {
+		channel, ok := service.PaymentAsiaChannelByMethodType(req.PaymentMethod)
+		if !ok {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
+			return
+		}
+		if paymentAsiaCurrency() == "USD" && channel.Network != "CreditCard" {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "该支付通道不支持 USD 支付"})
+			return
+		}
+		network = channel.Network
 	}
 	id := c.GetInt("id")
 	if rejectInvalidTopUpQuota(c, id, req.Amount) {
@@ -131,8 +173,8 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "获取用户分组失败"})
 		return
 	}
-	// 报价阶段还不知道用户会选哪个通道，按非 Octopus 的 2 位小数格式化。
-	amountStr, _, err := formatPaymentAsiaAmount(getPaymentAsiaPayMoney(req.Amount, group), "")
+	// 未指定通道时按非 Octopus 的 2 位小数格式化。
+	amountStr, _, err := formatPaymentAsiaAmount(getPaymentAsiaPayMoney(req.Amount, group), network)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
@@ -153,6 +195,10 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 	}
 	if minimum := paymentAsiaMinimumTopUp(); req.Amount < minimum {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": fmt.Sprintf("充值数量不能小于 %d", minimum)})
+		return
+	}
+	if err := validatePaymentAsiaAmountMultiple(req.Amount); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
 	id := c.GetInt("id")
@@ -329,10 +375,15 @@ func PaymentAsiaNotify(c *gin.Context) {
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
 
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil {
-		logger.LogWarn(c.Request.Context(), "paymentasia 回调订单不存在 "+logFields)
-		c.String(http.StatusOK, "OK")
+	topUp, err := model.GetTopUpByTradeNoWithError(tradeNo)
+	if err != nil {
+		if errors.Is(err, model.ErrTopUpNotFound) {
+			logger.LogWarn(c.Request.Context(), "paymentasia 回调订单不存在 "+logFields)
+			c.String(http.StatusOK, "OK")
+			return
+		}
+		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 回调查询订单失败 %s error=%q", logFields, err.Error()))
+		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 	if topUp.PaymentProvider != model.PaymentProviderPaymentAsia {
