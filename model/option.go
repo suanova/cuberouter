@@ -154,6 +154,16 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
 	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
 	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
+	common.OptionMap["PaymentAsiaSandbox"] = strconv.FormatBool(setting.PaymentAsiaSandbox)
+	common.OptionMap["PaymentAsiaMerchantToken"] = setting.PaymentAsiaMerchantToken
+	common.OptionMap["PaymentAsiaSecret"] = setting.PaymentAsiaSecret
+	common.OptionMap["PaymentAsiaSandboxMerchantToken"] = setting.PaymentAsiaSandboxMerchantToken
+	common.OptionMap["PaymentAsiaSandboxSecret"] = setting.PaymentAsiaSandboxSecret
+	common.OptionMap["PaymentAsiaCurrency"] = setting.PaymentAsiaCurrency
+	common.OptionMap["PaymentAsiaUnitPrice"] = strconv.FormatFloat(setting.PaymentAsiaUnitPrice, 'f', -1, 64)
+	common.OptionMap["PaymentAsiaMinTopUp"] = strconv.Itoa(setting.PaymentAsiaMinTopUp)
+	common.OptionMap["PaymentAsiaNotifyUrl"] = setting.PaymentAsiaNotifyUrl
+	common.OptionMap["PaymentAsiaReturnUrl"] = setting.PaymentAsiaReturnUrl
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -623,6 +633,26 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "PaymentAsiaSandbox":
+		setting.PaymentAsiaSandbox = value == "true"
+	case "PaymentAsiaMerchantToken":
+		setting.PaymentAsiaMerchantToken = value
+	case "PaymentAsiaSecret":
+		setting.PaymentAsiaSecret = value
+	case "PaymentAsiaSandboxMerchantToken":
+		setting.PaymentAsiaSandboxMerchantToken = value
+	case "PaymentAsiaSandboxSecret":
+		setting.PaymentAsiaSandboxSecret = value
+	case "PaymentAsiaCurrency":
+		setting.PaymentAsiaCurrency = value
+	case "PaymentAsiaUnitPrice":
+		setting.PaymentAsiaUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "PaymentAsiaMinTopUp":
+		setting.PaymentAsiaMinTopUp, _ = strconv.Atoi(value)
+	case "PaymentAsiaNotifyUrl":
+		setting.PaymentAsiaNotifyUrl = value
+	case "PaymentAsiaReturnUrl":
+		setting.PaymentAsiaReturnUrl = value
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":

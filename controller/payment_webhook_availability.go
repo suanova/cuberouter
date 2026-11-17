@@ -101,3 +101,13 @@ func isEpayWebhookConfigured() bool {
 func isEpayWebhookEnabled() bool {
 	return isEpayTopUpEnabled()
 }
+
+func isPaymentAsiaTopUpEnabled() bool {
+	merchantToken, secret, _ := setting.GetPaymentAsiaCredentials()
+	return strings.TrimSpace(merchantToken) != "" &&
+		strings.TrimSpace(secret) != ""
+}
+
+func isPaymentAsiaWebhookEnabled() bool {
+	return isPaymentAsiaTopUpEnabled()
+}

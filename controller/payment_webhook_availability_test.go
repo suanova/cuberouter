@@ -150,6 +150,86 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.False(t, isEpayWebhookEnabled())
 }
 
+func TestPaymentAsiaWebhookEnabledRequiresActiveEnvironmentCredentials(t *testing.T) {
+	originalSandbox := setting.PaymentAsiaSandbox
+	originalMerchantToken := setting.PaymentAsiaMerchantToken
+	originalSecret := setting.PaymentAsiaSecret
+	originalSandboxMerchantToken := setting.PaymentAsiaSandboxMerchantToken
+	originalSandboxSecret := setting.PaymentAsiaSandboxSecret
+	t.Cleanup(func() {
+		setting.PaymentAsiaSandbox = originalSandbox
+		setting.PaymentAsiaMerchantToken = originalMerchantToken
+		setting.PaymentAsiaSecret = originalSecret
+		setting.PaymentAsiaSandboxMerchantToken = originalSandboxMerchantToken
+		setting.PaymentAsiaSandboxSecret = originalSandboxSecret
+	})
+
+	setting.PaymentAsiaSandbox = false
+	setting.PaymentAsiaMerchantToken = ""
+	setting.PaymentAsiaSecret = ""
+	setting.PaymentAsiaSandboxMerchantToken = ""
+	setting.PaymentAsiaSandboxSecret = ""
+	require.False(t, isPaymentAsiaTopUpEnabled())
+	require.False(t, isPaymentAsiaWebhookEnabled())
+
+	setting.PaymentAsiaMerchantToken = "live_token"
+	require.False(t, isPaymentAsiaTopUpEnabled())
+	require.False(t, isPaymentAsiaWebhookEnabled())
+
+	setting.PaymentAsiaSecret = "live_secret"
+	require.True(t, isPaymentAsiaTopUpEnabled())
+	require.True(t, isPaymentAsiaWebhookEnabled())
+
+	// 切到沙箱后只看沙箱凭据，生产凭据不兜底
+	setting.PaymentAsiaSandbox = true
+	require.False(t, isPaymentAsiaTopUpEnabled())
+	require.False(t, isPaymentAsiaWebhookEnabled())
+
+	setting.PaymentAsiaSandboxMerchantToken = "sandbox_token"
+	setting.PaymentAsiaSandboxSecret = "sandbox_secret"
+	require.True(t, isPaymentAsiaTopUpEnabled())
+	require.True(t, isPaymentAsiaWebhookEnabled())
+
+	setting.PaymentAsiaSandboxSecret = "   "
+	require.False(t, isPaymentAsiaTopUpEnabled())
+	require.False(t, isPaymentAsiaWebhookEnabled())
+}
+
+func TestGetPaymentAsiaCredentialsReturnsActiveEnvironmentPairVerbatim(t *testing.T) {
+	originalSandbox := setting.PaymentAsiaSandbox
+	originalMerchantToken := setting.PaymentAsiaMerchantToken
+	originalSecret := setting.PaymentAsiaSecret
+	originalSandboxMerchantToken := setting.PaymentAsiaSandboxMerchantToken
+	originalSandboxSecret := setting.PaymentAsiaSandboxSecret
+	t.Cleanup(func() {
+		setting.PaymentAsiaSandbox = originalSandbox
+		setting.PaymentAsiaMerchantToken = originalMerchantToken
+		setting.PaymentAsiaSecret = originalSecret
+		setting.PaymentAsiaSandboxMerchantToken = originalSandboxMerchantToken
+		setting.PaymentAsiaSandboxSecret = originalSandboxSecret
+	})
+
+	setting.PaymentAsiaSandbox = false
+	setting.PaymentAsiaMerchantToken = " live_token "
+	setting.PaymentAsiaSecret = "live_secret"
+	setting.PaymentAsiaSandboxMerchantToken = "sandbox_token"
+	setting.PaymentAsiaSandboxSecret = "sandbox_secret"
+
+	merchantToken, secret, sandbox := setting.GetPaymentAsiaCredentials()
+	require.False(t, sandbox)
+	require.Equal(t, " live_token ", merchantToken)
+	require.Equal(t, "live_secret", secret)
+
+	// 沙箱凭据为空时原样返回空值，不回退到生产凭据
+	setting.PaymentAsiaSandbox = true
+	setting.PaymentAsiaSandboxMerchantToken = ""
+	setting.PaymentAsiaSandboxSecret = ""
+	merchantToken, secret, sandbox = setting.GetPaymentAsiaCredentials()
+	require.True(t, sandbox)
+	require.Empty(t, merchantToken)
+	require.Empty(t, secret)
+}
+
 func TestAlipayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	originalAppID := setting.AlipayAppId
 	originalPrivateKey := setting.AlipayPrivateKey
