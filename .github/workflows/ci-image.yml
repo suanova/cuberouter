@@ -81,7 +81,9 @@ jobs:
         run: |
           set -euo pipefail
           IMAGE=harbor.isuanova.com/suanova/cuberouter
-          SHA_TAG="${GITHUB_SHA::7}"
+          # sha-<7>, the same shape suanova/cubepilot and cubestack-operator
+          # publish, so one rule names a main build everywhere.
+          SHA_TAG="sha-${GITHUB_SHA::7}"
 
           # The maintenance page reports this value. The checkout is shallow,
           # so take the channel label from VERSION (tags may not be fetched)
