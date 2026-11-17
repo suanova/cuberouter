@@ -334,6 +334,16 @@ export type BillingSettings = {
   // section (saved via /api/option/waffo-pancake/save).
   WaffoPancakeStoreID: string
   WaffoPancakeProductID: string
+  PaymentAsiaSandbox: boolean
+  PaymentAsiaMerchantToken: string
+  PaymentAsiaSecret: string
+  PaymentAsiaSandboxMerchantToken: string
+  PaymentAsiaSandboxSecret: string
+  PaymentAsiaCurrency: string
+  PaymentAsiaUnitPrice: number
+  PaymentAsiaMinTopUp: number
+  PaymentAsiaNotifyUrl: string
+  PaymentAsiaReturnUrl: string
   'checkin_setting.enabled': boolean
   'checkin_setting.min_quota': number
   'checkin_setting.max_quota': number

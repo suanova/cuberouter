@@ -593,6 +593,22 @@ export function DetailsDialog(props: DetailsDialogProps) {
             label: t('System Version'),
             value: adminInfo.version,
           },
+          adminInfo.trade_no && {
+            label: t('Order Trade No'),
+            value: adminInfo.trade_no,
+          },
+          adminInfo.currency && {
+            label: t('Currency'),
+            value: adminInfo.currency,
+          },
+          adminInfo.request_reference && {
+            label: t('Upstream Reference'),
+            value: adminInfo.request_reference,
+          },
+          adminInfo.channel && {
+            label: t('Payment Channel'),
+            value: adminInfo.channel,
+          },
         ].filter(Boolean) as Array<{ label: string; value: string }>)
       : []
   const showLegacyTopupWarning = isTopup && props.isAdmin && !adminInfo

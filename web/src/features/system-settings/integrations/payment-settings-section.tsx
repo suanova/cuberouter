@@ -58,6 +58,10 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import {
+  PaymentAsiaSettingsSection,
+  type PaymentAsiaSettingsValues,
+} from './paymentasia-settings-section'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -186,13 +190,25 @@ const paymentSchema = z.object({
   WaffoPancakeMerchantID: z.string(),
   WaffoPancakePrivateKey: z.string(),
   WaffoPancakeReturnURL: z.string(),
+  PaymentAsiaSandbox: z.boolean(),
+  PaymentAsiaMerchantToken: z.string(),
+  PaymentAsiaSecret: z.string(),
+  PaymentAsiaSandboxMerchantToken: z.string(),
+  PaymentAsiaSandboxSecret: z.string(),
+  PaymentAsiaCurrency: z.string(),
+  PaymentAsiaUnitPrice: z.coerce.number().min(0),
+  PaymentAsiaMinTopUp: z.coerce.number().min(1),
+  PaymentAsiaNotifyUrl: z.string(),
+  PaymentAsiaReturnUrl: z.string(),
 })
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
 type WaffoFormFieldValues = Omit<WaffoSettingsValues, 'WaffoPayMethods'>
 type PaymentBaseFormValues = Omit<
   PaymentFormValues,
-  keyof WaffoFormFieldValues | keyof WaffoPancakeSettingsValues
+  | keyof WaffoFormFieldValues
+  | keyof WaffoPancakeSettingsValues
+  | keyof PaymentAsiaSettingsValues
 >
 
 const paymentTabContentClassName = 'mt-6 min-w-0'
@@ -201,6 +217,7 @@ type PaymentSettingsSectionProps = {
   defaultValues: PaymentBaseFormValues
   waffoDefaultValues: WaffoSettingsValues
   waffoPancakeDefaultValues: WaffoPancakeSettingsValues
+  paymentAsiaDefaultValues: PaymentAsiaSettingsValues
   waffoPancakeProvisionedStoreID?: string
   waffoPancakeProvisionedProductID?: string
 }
@@ -218,6 +235,7 @@ export function PaymentSettingsSection({
   defaultValues,
   waffoDefaultValues,
   waffoPancakeDefaultValues,
+  paymentAsiaDefaultValues,
   waffoPancakeProvisionedStoreID,
   waffoPancakeProvisionedProductID,
 }: PaymentSettingsSectionProps) {
@@ -229,8 +247,14 @@ export function PaymentSettingsSection({
       ...defaultValues,
       ...waffoDefaultValues,
       ...waffoPancakeDefaultValues,
+      ...paymentAsiaDefaultValues,
     }),
-    [defaultValues, waffoDefaultValues, waffoPancakeDefaultValues]
+    [
+      defaultValues,
+      waffoDefaultValues,
+      waffoPancakeDefaultValues,
+      paymentAsiaDefaultValues,
+    ]
   )
   const initialRef = React.useRef(initialFormValues)
   const defaultsSignature = React.useMemo(
@@ -329,6 +353,19 @@ export function PaymentSettingsSection({
     [setPaymentValue]
   )
 
+  const setPaymentAsiaValue = React.useCallback(
+    <K extends keyof PaymentAsiaSettingsValues>(
+      key: K,
+      value: PaymentAsiaSettingsValues[K]
+    ) => {
+      setPaymentValue(
+        key as keyof PaymentFormValues,
+        value as PaymentFormValues[keyof PaymentFormValues]
+      )
+    },
+    [setPaymentValue]
+  )
+
   React.useEffect(() => {
     const parsedDefaults = JSON.parse(defaultsSignature) as PaymentFormValues
     initialRef.current = parsedDefaults
@@ -390,6 +427,17 @@ export function PaymentSettingsSection({
       WaffoPancakeReturnURL: removeTrailingSlash(
         values.WaffoPancakeReturnURL.trim()
       ),
+      PaymentAsiaSandbox: values.PaymentAsiaSandbox,
+      PaymentAsiaMerchantToken: values.PaymentAsiaMerchantToken.trim(),
+      PaymentAsiaSecret: values.PaymentAsiaSecret.trim(),
+      PaymentAsiaSandboxMerchantToken:
+        values.PaymentAsiaSandboxMerchantToken.trim(),
+      PaymentAsiaSandboxSecret: values.PaymentAsiaSandboxSecret.trim(),
+      PaymentAsiaCurrency: values.PaymentAsiaCurrency.trim() || 'HKD',
+      PaymentAsiaUnitPrice: values.PaymentAsiaUnitPrice,
+      PaymentAsiaMinTopUp: values.PaymentAsiaMinTopUp,
+      PaymentAsiaNotifyUrl: removeTrailingSlash(values.PaymentAsiaNotifyUrl),
+      PaymentAsiaReturnUrl: removeTrailingSlash(values.PaymentAsiaReturnUrl),
     }
 
     const initial = {
@@ -446,6 +494,24 @@ export function PaymentSettingsSection({
       WaffoPancakePrivateKey: initialRef.current.WaffoPancakePrivateKey.trim(),
       WaffoPancakeReturnURL: removeTrailingSlash(
         initialRef.current.WaffoPancakeReturnURL.trim()
+      ),
+      PaymentAsiaSandbox: initialRef.current.PaymentAsiaSandbox,
+      PaymentAsiaMerchantToken:
+        initialRef.current.PaymentAsiaMerchantToken.trim(),
+      PaymentAsiaSecret: initialRef.current.PaymentAsiaSecret.trim(),
+      PaymentAsiaSandboxMerchantToken:
+        initialRef.current.PaymentAsiaSandboxMerchantToken.trim(),
+      PaymentAsiaSandboxSecret:
+        initialRef.current.PaymentAsiaSandboxSecret.trim(),
+      PaymentAsiaCurrency:
+        initialRef.current.PaymentAsiaCurrency.trim() || 'HKD',
+      PaymentAsiaUnitPrice: initialRef.current.PaymentAsiaUnitPrice,
+      PaymentAsiaMinTopUp: initialRef.current.PaymentAsiaMinTopUp,
+      PaymentAsiaNotifyUrl: removeTrailingSlash(
+        initialRef.current.PaymentAsiaNotifyUrl
+      ),
+      PaymentAsiaReturnUrl: removeTrailingSlash(
+        initialRef.current.PaymentAsiaReturnUrl
       ),
     }
 
@@ -691,6 +757,83 @@ export function PaymentSettingsSection({
       updates.push({ key: 'WaffoPayMethods', value: sanitized.WaffoPayMethods })
     }
 
+    if (sanitized.PaymentAsiaSandbox !== initial.PaymentAsiaSandbox) {
+      updates.push({
+        key: 'PaymentAsiaSandbox',
+        value: sanitized.PaymentAsiaSandbox,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaMerchantToken !== initial.PaymentAsiaMerchantToken
+    ) {
+      updates.push({
+        key: 'PaymentAsiaMerchantToken',
+        value: sanitized.PaymentAsiaMerchantToken,
+      })
+    }
+
+    if (sanitized.PaymentAsiaSecret !== initial.PaymentAsiaSecret) {
+      updates.push({
+        key: 'PaymentAsiaSecret',
+        value: sanitized.PaymentAsiaSecret,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaSandboxMerchantToken !==
+      initial.PaymentAsiaSandboxMerchantToken
+    ) {
+      updates.push({
+        key: 'PaymentAsiaSandboxMerchantToken',
+        value: sanitized.PaymentAsiaSandboxMerchantToken,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaSandboxSecret !== initial.PaymentAsiaSandboxSecret
+    ) {
+      updates.push({
+        key: 'PaymentAsiaSandboxSecret',
+        value: sanitized.PaymentAsiaSandboxSecret,
+      })
+    }
+
+    if (sanitized.PaymentAsiaCurrency !== initial.PaymentAsiaCurrency) {
+      updates.push({
+        key: 'PaymentAsiaCurrency',
+        value: sanitized.PaymentAsiaCurrency,
+      })
+    }
+
+    if (sanitized.PaymentAsiaUnitPrice !== initial.PaymentAsiaUnitPrice) {
+      updates.push({
+        key: 'PaymentAsiaUnitPrice',
+        value: sanitized.PaymentAsiaUnitPrice,
+      })
+    }
+
+    if (sanitized.PaymentAsiaMinTopUp !== initial.PaymentAsiaMinTopUp) {
+      updates.push({
+        key: 'PaymentAsiaMinTopUp',
+        value: sanitized.PaymentAsiaMinTopUp,
+      })
+    }
+
+    if (sanitized.PaymentAsiaNotifyUrl !== initial.PaymentAsiaNotifyUrl) {
+      updates.push({
+        key: 'PaymentAsiaNotifyUrl',
+        value: sanitized.PaymentAsiaNotifyUrl,
+      })
+    }
+
+    if (sanitized.PaymentAsiaReturnUrl !== initial.PaymentAsiaReturnUrl) {
+      updates.push({
+        key: 'PaymentAsiaReturnUrl',
+        value: sanitized.PaymentAsiaReturnUrl,
+      })
+    }
+
     const hasWaffoPancakeChanges =
       sanitized.WaffoPancakeMerchantID !== initial.WaffoPancakeMerchantID ||
       sanitized.WaffoPancakePrivateKey.length > 0 ||
@@ -785,6 +928,19 @@ export function PaymentSettingsSection({
     WaffoPancakePrivateKey: currentFormValues.WaffoPancakePrivateKey,
     WaffoPancakeReturnURL: currentFormValues.WaffoPancakeReturnURL,
   }
+  const paymentAsiaValues: PaymentAsiaSettingsValues = {
+    PaymentAsiaSandbox: currentFormValues.PaymentAsiaSandbox,
+    PaymentAsiaMerchantToken: currentFormValues.PaymentAsiaMerchantToken,
+    PaymentAsiaSecret: currentFormValues.PaymentAsiaSecret,
+    PaymentAsiaSandboxMerchantToken:
+      currentFormValues.PaymentAsiaSandboxMerchantToken,
+    PaymentAsiaSandboxSecret: currentFormValues.PaymentAsiaSandboxSecret,
+    PaymentAsiaCurrency: currentFormValues.PaymentAsiaCurrency,
+    PaymentAsiaUnitPrice: currentFormValues.PaymentAsiaUnitPrice,
+    PaymentAsiaMinTopUp: currentFormValues.PaymentAsiaMinTopUp,
+    PaymentAsiaNotifyUrl: currentFormValues.PaymentAsiaNotifyUrl,
+    PaymentAsiaReturnUrl: currentFormValues.PaymentAsiaReturnUrl,
+  }
 
   return (
     <SettingsSection title={t('Payment Gateway')}>
@@ -801,7 +957,7 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[48rem] grid-cols-7'>
+              <TabsList className='grid min-w-[48rem] grid-cols-8'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='alipay'>Alipay</TabsTrigger>
@@ -809,6 +965,9 @@ export function PaymentSettingsSection({
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
+                <TabsTrigger value='paymentasia'>
+                  {t('PaymentAsia')}
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -1169,7 +1328,7 @@ export function PaymentSettingsSection({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
+                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, paymentasia_* for PaymentAsia, and other values are sent to Epay as the type parameter.'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -1744,6 +1903,16 @@ export function PaymentSettingsSection({
                 onValueChange={setWaffoValue}
                 payMethods={waffoPayMethods}
                 onPayMethodsChange={setWaffoPayMethods}
+              />
+            </TabsContent>
+
+            <TabsContent
+              value='paymentasia'
+              className={paymentTabContentClassName}
+            >
+              <PaymentAsiaSettingsSection
+                values={paymentAsiaValues}
+                onValueChange={setPaymentAsiaValue}
               />
             </TabsContent>
           </Tabs>

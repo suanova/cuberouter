@@ -48,6 +48,16 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
+  paymentasia_alipay: 'SiAlipay',
+  paymentasia_alipaycn: 'SiAlipay',
+  paymentasia_alipayhk: 'SiAlipay',
+  paymentasia_wechat: 'SiWechat',
+  paymentasia_cup: 'LuCreditCard',
+  paymentasia_creditcard: 'LuCreditCard',
+  paymentasia_fps: 'LuLandmark',
+  paymentasia_octopus: 'LuCreditCard',
+  paymentasia_payme: 'LuCreditCard',
+  paymentasia_generic: 'LuCreditCard',
 }
 
 function getDefaultIconName(type: string) {
@@ -95,6 +105,46 @@ export function PaymentMethodsVisualEditor({
         icon: getDefaultIconName('waffo_pancake'),
         name: 'Waffo Pancake',
         type: 'waffo_pancake',
+      },
+    },
+    {
+      name: t('PaymentAsia AlipayHK'),
+      template: {
+        icon: getDefaultIconName('paymentasia_alipayhk'),
+        name: 'AlipayHK',
+        type: 'paymentasia_alipayhk',
+      },
+    },
+    {
+      name: t('PaymentAsia WeChat Pay'),
+      template: {
+        icon: getDefaultIconName('paymentasia_wechat'),
+        name: 'WeChat Pay',
+        type: 'paymentasia_wechat',
+      },
+    },
+    {
+      name: t('PaymentAsia Credit Card'),
+      template: {
+        icon: getDefaultIconName('paymentasia_creditcard'),
+        name: 'Credit Card',
+        type: 'paymentasia_creditcard',
+      },
+    },
+    {
+      name: t('PaymentAsia FPS'),
+      template: {
+        icon: getDefaultIconName('paymentasia_fps'),
+        name: 'FPS',
+        type: 'paymentasia_fps',
+      },
+    },
+    {
+      name: t('PaymentAsia Generic'),
+      template: {
+        icon: getDefaultIconName('paymentasia_generic'),
+        name: 'PaymentAsia',
+        type: 'paymentasia_generic',
       },
     },
     {
