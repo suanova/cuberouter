@@ -51,6 +51,7 @@ const (
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderAlipay       = "alipay"
 	PaymentProviderBalance      = "balance"
+	PaymentProviderPaymentAsia  = "paymentasia"
 )
 
 var (
@@ -245,6 +246,78 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	return false, nil
 }
 
+// PaymentAsiaRechargeMeta 携带 datafeed 回调中仅用于审计的网关侧信息。
+// 它不参与结算计算，只写入充值日志的 admin_info 供四层交易对齐。
+type PaymentAsiaRechargeMeta struct {
+	RequestReference string
+	Currency         string
+	Channel          string
+}
+
+// RechargePaymentAsia 原子完成 PaymentAsia 订单，事务骨架与 RechargeEpay 一致：
+// 订单行锁、provider 校验、状态幂等与额度增加在同一事务内完成。额度按订单
+// Amount 的展示单位语义换算（与 Epay 相同，CNY 模式使用下单时汇率快照）。
+func RechargePaymentAsia(tradeNo string, meta PaymentAsiaRechargeMeta, callerIp string) (alreadyDone bool, err error) {
+	if tradeNo == "" {
+		return false, errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	var quotaToAdd int
+	topUp := &TopUp{}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			return ErrTopUpNotFound
+		}
+		if topUp.PaymentProvider != PaymentProviderPaymentAsia {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			alreadyDone = true
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		var quotaErr error
+		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
+			topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)),
+		)
+		if quotaErr != nil || quotaToAdd <= 0 {
+			return ErrInvalidTopUpQuota
+		}
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+	})
+	if err != nil {
+		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
+			common.SysError("paymentasia topup failed: " + err.Error())
+		}
+		return false, err
+	}
+	if alreadyDone {
+		return true, nil
+	}
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "paymentasia topup")
+
+	common.SysLog(fmt.Sprintf("paymentasia 充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f request_reference=%s", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money, meta.RequestReference))
+	RecordTopupLogWithMeta(topUp.UserId, fmt.Sprintf("PaymentAsia充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentProviderPaymentAsia, map[string]interface{}{
+		"trade_no":          topUp.TradeNo,
+		"currency":          meta.Currency,
+		"request_reference": meta.RequestReference,
+		"channel":           meta.Channel,
+	})
+	return false, nil
+}
+
 func Recharge(referenceId string, customerId string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
@@ -340,6 +413,8 @@ func topUpCreditedQuota(topUp *TopUp) int {
 		return common.QuotaFromDecimal(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
+	case PaymentProviderPaymentAsia:
+		return common.QuotaFromDecimal(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
 	}
 	if topUp.Money > 0 {
 		if rate := topUpRate(topUp); rate > 0 {

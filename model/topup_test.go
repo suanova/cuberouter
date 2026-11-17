@@ -76,6 +76,8 @@ func TestTopUpCreditedQuotaByProvider(t *testing.T) {
 		{"creem amount is quota", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderCreem, Amount: 12345}, 12345},
 		{"waffo amount is usd", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderWaffo, Amount: 2}, 1000000},
 		{"waffo pancake amount is usd", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderWaffoPancake, Amount: 2}, 1000000},
+		{"paymentasia cny", operation_setting.QuotaDisplayTypeCNY, TopUp{PaymentProvider: PaymentProviderPaymentAsia, PaymentMethod: "paymentasia_alipayhk", Amount: 10, Money: 10.8, Rate: 7.3}, 684932},
+		{"paymentasia usd", operation_setting.QuotaDisplayTypeUSD, TopUp{PaymentProvider: PaymentProviderPaymentAsia, PaymentMethod: "paymentasia_alipayhk", Amount: 2, Money: 15.6}, 1000000},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
