@@ -5,7 +5,9 @@ name: CI Chart
 # <version>-latest chart; a v* tag publishes the release version it names.
 on:
   push:
-    branches: [main]
+    # A release branch keeps shipping point releases, so a merge there still has
+    # to produce the commit-addressed chart offline packaging pins.
+    branches: [main, 'release-*']
     tags: ['v*']
 
 permissions: {}
@@ -89,14 +91,30 @@ jobs:
             fi
             echo "dev=false" >> "$GITHUB_OUTPUT"
           else
-            VERSION="$(helm show chart . | awk '/^version:/{print $2}')"
-            # appVersion is the default image tag, so it must name a tag that
-            # exists: a main build publishes sha-<7>, not v<version>.
-            APP_VERSION="sha-${GITHUB_SHA::7}"
+            # One chart per commit, and the commit is in the version: the
+            # release lock records this version, the installer pushes the chart
+            # into the cluster registry under it, and the CR names it back, so
+            # it has to be unique per commit and never `latest`.
+            BASE="$(helm show chart . | awk '/^version:/{print $2}')"
+            VERSION="${BASE}-sha${GITHUB_SHA::7}"
+            # appVersion is the default image tag. `latest` rather than the
+            # commit: this repo builds its image only when its own paths change,
+            # so a commit-addressed tag may not exist, and `latest` always does.
+            # Commercial installs never read appVersion.
+            APP_VERSION="latest"
+            # Main also publishes the rolling name an open-source install uses.
+            if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+              EXTRA_VERSION="${BASE}-latest"
+            fi
             echo "dev=true" >> "$GITHUB_OUTPUT"
           fi
 
           helm package . --version "$VERSION" --app-version "$APP_VERSION"
+          if [ -n "${EXTRA_VERSION:-}" ]; then
+            helm package . --version "${EXTRA_VERSION}" --app-version "$APP_VERSION"
+            echo "extra-version=${EXTRA_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "extra-tgz=cuberouter-chart-${EXTRA_VERSION}.tgz" >> "$GITHUB_OUTPUT"
+          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tgz=cuberouter-chart-${VERSION}.tgz" >> "$GITHUB_OUTPUT"
       - name: Push release chart (OCI)
@@ -113,19 +131,36 @@ jobs:
         env:
           CHART_VERSION: ${{ steps.package.outputs.version }}
           CHART_TGZ: ${{ steps.package.outputs.tgz }}
+          EXTRA_TGZ: ${{ steps.package.outputs.extra-tgz }}
         run: |
           set -euo pipefail
           chart_repo="harbor.isuanova.com/suanova/cuberouter-chart"
-          chart_channel="sha-${GITHUB_SHA::7}"
+          EXTRA_VERSION="${{ steps.package.outputs.extra-version }}"
           python3 -m pip install --quiet pyyaml
-          python3 - <<'PY'
-          import json, os, yaml
-          meta = yaml.safe_load(open("Chart.yaml"))
-          json.dump(meta, open(os.path.join(os.environ["RUNNER_TEMP"], "helm-config.json"), "w"), separators=(",", ":"))
+          # The OCI config is the chart's metadata, so it comes out of the
+          # package being pushed: the source Chart.yaml still carries the file's
+          # own version and appVersion, which `helm package` overrode without
+          # rewriting it. Built per package, so each tag's config names its own
+          # version.
+          push_chart() {
+            local tag="$1" pkg="$2"
+            python3 - "$pkg" "${RUNNER_TEMP}/helm-config.json" <<'PY'
+          import json, sys, tarfile, yaml
+          with tarfile.open(sys.argv[1]) as tf:
+              top = tf.getnames()[0].split("/")[0]
+              meta = yaml.safe_load(tf.extractfile(f"{top}/Chart.yaml"))
+          json.dump(meta, open(sys.argv[2], "w"), separators=(",", ":"))
           PY
-          out="$(oras push "${chart_repo}:${chart_channel}" \
-            "${CHART_TGZ}:application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
-            --config "${RUNNER_TEMP}/helm-config.json:application/vnd.cncf.helm.config.v1+json")"
+            oras push "${chart_repo}:${tag}" \
+              "${pkg}:application/vnd.cncf.helm.chart.content.v1.tar+gzip" \
+              --config "${RUNNER_TEMP}/helm-config.json:application/vnd.cncf.helm.config.v1+json"
+          }
+          # The commit-addressed tag the release lock records, plus the rolling
+          # name an open-source install uses (main only).
+          out="$(push_chart "${CHART_VERSION}" "${CHART_TGZ}")"
+          if [ -n "${EXTRA_VERSION}" ]; then
+            push_chart "${EXTRA_VERSION}" "${EXTRA_TGZ}" >/dev/null
+          fi
           manifest_digest="$(printf '%s' "$out" | sed -n 's/^Digest: //p' | tail -1)"
           [ -n "$manifest_digest" ] || { echo "::error::cannot resolve chart manifest digest"; exit 1; }
           tgz_digest="sha256:$(sha256sum "$CHART_TGZ" | awk '{print $1}')"

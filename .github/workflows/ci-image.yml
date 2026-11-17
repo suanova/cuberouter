@@ -5,7 +5,9 @@ name: CI Image
 # build here also validates the full app compiles before anything is pushed.
 on:
   push:
-    branches: [main]
+    # A release branch keeps shipping point releases, so a merge there still
+    # has to produce the commit-addressed image offline packaging pins.
+    branches: [main, 'release-*']
 
 permissions: {}
 
@@ -95,6 +97,14 @@ jobs:
           # ever landed on main, even if a newer commit now exists.
           docker build -t "${IMAGE}:${SHA_TAG}" .
           docker push "${IMAGE}:${SHA_TAG}"
+
+          # The rolling tag, main only. The chart's appVersion default is
+          # `latest`, so it has to exist; a release branch re-pointing it would
+          # hand an open-source install the branch instead of main.
+          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
+            docker tag "${IMAGE}:${SHA_TAG}" "${IMAGE}:latest"
+            docker push "${IMAGE}:latest"
+          fi
 
           digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE}:${SHA_TAG}" \
             | awk -F@ -v r="${IMAGE}" '$1==r {print $2; exit}')"
