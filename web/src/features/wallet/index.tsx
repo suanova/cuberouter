@@ -47,6 +47,7 @@ import {
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
+  getPaymentMethodMinTopup,
   dispatchSelectedPayment,
 } from './lib'
 import type {
@@ -181,12 +182,10 @@ export function Wallet(props: WalletProps) {
     setPaymentLoading(method.type)
 
     try {
-      // Validate minimum topup: a method's own minimum may exceed the global
-      // one (PaymentAsia's configured minimum applies to every channel).
-      const minTopup = Math.max(
-        getMinTopupAmount(topupInfo),
-        method.min_topup || 0
-      )
+      // Validate minimum topup: a method's own minimum or its gateway minimum
+      // may exceed the site-wide one (PaymentAsia's minimum applies to every
+      // PaymentAsia channel).
+      const minTopup = getPaymentMethodMinTopup(topupInfo, method)
       if (topupAmount < minTopup) {
         return
       }

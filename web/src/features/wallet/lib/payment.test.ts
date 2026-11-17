@@ -23,6 +23,7 @@ import type { TopupInfo } from '../types'
 import {
   dispatchSelectedPayment,
   getMinTopupAmount,
+  getPaymentMethodMinTopup,
   isPaymentAsiaPayment,
   isStripePayment,
   isWaffoPayment,
@@ -73,6 +74,47 @@ describe('minimum topup amount', () => {
     const info = topupInfo({ enable_paymentasia_topup: true })
 
     expect(getMinTopupAmount(info)).toBe(DEFAULT_MIN_TOPUP)
+  })
+})
+
+describe('per-method minimum topup', () => {
+  // Epay and PaymentAsia both enabled: getMinTopupAmount reports the Epay site
+  // minimum, so the PaymentAsia gateway minimum must be applied per method.
+  const mixedGatewayInfo = () =>
+    topupInfo({
+      enable_online_topup: true,
+      min_topup: 1,
+      enable_paymentasia_topup: true,
+      paymentasia_min_topup: 50,
+    })
+
+  test('lifts a PaymentAsia method to the gateway minimum on mixed-gateway sites', () => {
+    expect(
+      getPaymentMethodMinTopup(mixedGatewayInfo(), {
+        name: 'AlipayHK',
+        type: 'paymentasia_alipayhk',
+        min_topup: 10,
+      })
+    ).toBe(50)
+  })
+
+  test('keeps a PaymentAsia method minimum above the gateway minimum', () => {
+    expect(
+      getPaymentMethodMinTopup(mixedGatewayInfo(), {
+        name: 'AlipayHK',
+        type: 'paymentasia_alipayhk',
+        min_topup: 100,
+      })
+    ).toBe(100)
+  })
+
+  test('does not apply the PaymentAsia minimum to other gateways', () => {
+    expect(
+      getPaymentMethodMinTopup(mixedGatewayInfo(), {
+        name: 'Stripe',
+        type: 'stripe',
+      })
+    ).toBe(1)
   })
 })
 

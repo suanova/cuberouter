@@ -44,6 +44,7 @@ import {
   getLocalCurrencySymbol,
   getPaymentIcon,
   getPaymentMethodCurrencySymbol,
+  getPaymentMethodMinTopup,
   getMinTopupAmount,
   calculatePresetPricing,
 } from '../lib'
@@ -345,9 +346,9 @@ export function RechargeFormCard({
                 {hasStandardPaymentMethods ? (
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                     {topupInfo?.pay_methods?.map((method) => {
-                      const minTopup = Math.max(
-                        method.min_topup || 0,
-                        getMinTopupAmount(topupInfo)
+                      const minTopup = getPaymentMethodMinTopup(
+                        topupInfo,
+                        method
                       )
                       const disabled = minTopup > topupAmount
                       const disabledReason = disabled
