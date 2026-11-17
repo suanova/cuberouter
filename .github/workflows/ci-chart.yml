@@ -89,6 +89,13 @@ jobs:
               echo "::error::tag '${GITHUB_REF_NAME}' is not a release version; expected vX.Y.Z or vX.Y.Z-<prerelease>"
               exit 1
             fi
+            # `<version>-latest` and `<version>-sha<7>` are the chart tags main
+            # publishes. A release tag shaped like either is valid semver but
+            # would push the chart over that channel.
+            case "$VERSION" in
+              *-latest|*-sha[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f])
+                echo "::error::'$VERSION' collides with a main chart tag"; exit 1 ;;
+            esac
             echo "dev=false" >> "$GITHUB_OUTPUT"
           else
             # One chart per commit, and the commit is in the version: the
