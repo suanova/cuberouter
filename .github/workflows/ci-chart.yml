@@ -72,7 +72,7 @@ jobs:
           fi
           echo "line=${line}" >> "${GITHUB_OUTPUT}"
       - name: Install oras
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@ca28077386065e263c03428f4ae0c09024817c93 # v1.2.0
         with:
           version: 1.2.0
       # helm is preinstalled on ubuntu-24.04 runners — no install step needed.
@@ -130,14 +130,19 @@ jobs:
             echo "dev=true" >> "$GITHUB_OUTPUT"
           fi
 
-          helm package . --version "$VERSION" --app-version "$APP_VERSION"
+          # Package into RUNNER_TEMP, not the chart directory: this chart has no
+          # .helmignore, so a second `helm package .` would sweep the first
+          # archive into the second one.
+          out="${RUNNER_TEMP}/charts"
+          mkdir -p "${out}"
+          helm package . --destination "${out}" --version "$VERSION" --app-version "$APP_VERSION"
           if [ -n "${EXTRA_VERSION:-}" ]; then
-            helm package . --version "${EXTRA_VERSION}" --app-version "$APP_VERSION"
+            helm package . --destination "${out}" --version "${EXTRA_VERSION}" --app-version "$APP_VERSION"
             echo "extra-version=${EXTRA_VERSION}" >> "$GITHUB_OUTPUT"
-            echo "extra-tgz=cuberouter-chart-${EXTRA_VERSION}.tgz" >> "$GITHUB_OUTPUT"
+            echo "extra-tgz=${out}/cuberouter-chart-${EXTRA_VERSION}.tgz" >> "$GITHUB_OUTPUT"
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "tgz=cuberouter-chart-${VERSION}.tgz" >> "$GITHUB_OUTPUT"
+          echo "tgz=${out}/cuberouter-chart-${VERSION}.tgz" >> "$GITHUB_OUTPUT"
       - name: Push release chart (OCI)
         if: steps.package.outputs.dev != 'true'
         working-directory: helm/cuberouter-chart

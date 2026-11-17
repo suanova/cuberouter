@@ -3,7 +3,10 @@ name: cuberouter-chart
 description: CubeRouter (AI API gateway) with high-availability PostgreSQL (CloudNativePG) and Redis (OpsTree redis-operator)
 type: application
 version: 2.1.0
-appVersion: "v2.1.0"
+# The tag a bare `helm install ./helm/cuberouter-chart` resolves to. `latest`
+# is what main publishes and always exists; the CI overrides this at package
+# time (a release uses the Git tag), so this only affects local installs.
+appVersion: "latest"
 home: https://github.com/suanova/cuberouter
 keywords:
   - cuberouter
