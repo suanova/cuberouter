@@ -6380,6 +6380,9 @@
     "My available quota": "我的可用额度",
     "The range cannot exceed 31 days.": "时间跨度不能超过 31 天。",
     "History is still being prepared.": "历史数据仍在整理中。",
-    "Vector": "向量"
+    "Vector": "向量",
+    "Alipay CN": "支付宝（大陆）",
+    "Failed to save \"{{key}}\": {{message}}. Earlier changes may already be saved and were not rolled back.": "保存「{{key}}」失败：{{message}}。之前的改动可能已保存，且不会回滚。",
+    "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.": "保存「{{key}}」失败。之前的改动可能已保存，且不会回滚。"
   }
 }

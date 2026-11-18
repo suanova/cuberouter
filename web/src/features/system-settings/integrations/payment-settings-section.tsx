@@ -26,11 +26,7 @@ import { toast } from 'sonner'
 import * as z from 'zod'
 
 import { JsonCodeEditor } from '@/components/json-code-editor'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -58,16 +54,18 @@ import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   PaymentAsiaSettingsSection,
   type PaymentAsiaSettingsValues,
 } from './paymentasia-settings-section'
-import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
+  applyOptionUpdates,
   formatJsonForEditor,
   getJsonError,
   normalizeJsonForComparison,
   removeTrailingSlash,
+  type OptionUpdate,
 } from './utils'
 import { saveWaffoPancakeConfig } from './waffo-pancake-api'
 import {
@@ -515,7 +513,7 @@ export function PaymentSettingsSection({
       ),
     }
 
-    const updates: Array<{ key: string; value: string | number | boolean }> = []
+    const updates: OptionUpdate[] = []
 
     if (sanitized.PayAddress !== initial.PayAddress) {
       updates.push({ key: 'PayAddress', value: sanitized.PayAddress })
@@ -846,8 +844,23 @@ export function PaymentSettingsSection({
       return
     }
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
+    const failedUpdate = await applyOptionUpdates(updates, (update) =>
+      updateOption.mutateAsync(update)
+    )
+
+    if (failedUpdate) {
+      toast.error(
+        failedUpdate.message
+          ? t(
+              'Failed to save "{{key}}": {{message}}. Earlier changes may already be saved and were not rolled back.',
+              { key: failedUpdate.key, message: failedUpdate.message }
+            )
+          : t(
+              'Failed to save "{{key}}". Earlier changes may already be saved and were not rolled back.',
+              { key: failedUpdate.key }
+            )
+      )
+      return
     }
 
     if (!hasWaffoPancakeChanges) {
@@ -983,8 +996,6 @@ export function PaymentSettingsSection({
                 </div>
 
                 <div className='grid gap-6 md:grid-cols-2'>
-
-
                   <FormField
                     control={form.control}
                     name='AmountOptions'
@@ -1231,7 +1242,9 @@ export function PaymentSettingsSection({
                     name='EpayRate'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Epay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormLabel>
+                          {t('Epay exchange rate (USD to local currency)')}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1274,73 +1287,73 @@ export function PaymentSettingsSection({
                       </FormItem>
                     )}
                   />
-                <FormField
-                  control={form.control}
-                  name='PayMethods'
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                        <FormLabel>{t('Payment methods')}</FormLabel>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          size='sm'
-                          onClick={() =>
-                            setPayMethodsVisualMode(!payMethodsVisualMode)
-                          }
-                          className='w-full sm:w-auto'
-                        >
-                          {payMethodsVisualMode ? (
-                            <>
-                              <Code2 className='mr-2 h-3 w-3' />
-                              {t('JSON Editor')}
-                            </>
-                          ) : (
-                            <>
-                              <Eye className='mr-2 h-3 w-3' />
-                              {t('Visual Editor')}
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                      <FormControl>
-                        {payMethodsVisualMode ? (
-                          <PaymentMethodsVisualEditor
-                            value={field.value}
-                            onChange={field.onChange}
-                            typeFilter={(type) =>
-                              !type.startsWith('paymentasia_')
+                  <FormField
+                    control={form.control}
+                    name='PayMethods'
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                          <FormLabel>{t('Payment methods')}</FormLabel>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            onClick={() =>
+                              setPayMethodsVisualMode(!payMethodsVisualMode)
                             }
-                          />
-                        ) : (
-                          <JsonCodeEditor
-                            value={field.value}
-                            onChange={field.onChange}
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            textareaRef={field.ref}
-                            placeholder={t(
-                              '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
+                            className='w-full sm:w-auto'
+                          >
+                            {payMethodsVisualMode ? (
+                              <>
+                                <Code2 className='mr-2 h-3 w-3' />
+                                {t('JSON Editor')}
+                              </>
+                            ) : (
+                              <>
+                                <Eye className='mr-2 h-3 w-3' />
+                                {t('Visual Editor')}
+                              </>
                             )}
-                            heightClassName='h-40 min-h-40 max-h-40'
-                            aria-invalid={Boolean(
-                              form.formState.errors.PayMethods
-                            )}
-                          />
-                        )}
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, paymentasia_* for PaymentAsia, and other values are sent to Epay as the type parameter.'
-                        )}{' '}
-                        {t(
-                          'PaymentAsia payment methods are managed on the PaymentAsia tab; JSON mode still shows the complete shared list.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          </Button>
+                        </div>
+                        <FormControl>
+                          {payMethodsVisualMode ? (
+                            <PaymentMethodsVisualEditor
+                              value={field.value}
+                              onChange={field.onChange}
+                              typeFilter={(type) =>
+                                !type.startsWith('paymentasia_')
+                              }
+                            />
+                          ) : (
+                            <JsonCodeEditor
+                              value={field.value}
+                              onChange={field.onChange}
+                              name={field.name}
+                              onBlur={field.onBlur}
+                              textareaRef={field.ref}
+                              placeholder={t(
+                                '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
+                              )}
+                              heightClassName='h-40 min-h-40 max-h-40'
+                              aria-invalid={Boolean(
+                                form.formState.errors.PayMethods
+                              )}
+                            />
+                          )}
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, paymentasia_* for PaymentAsia, and other values are sent to Epay as the type parameter.'
+                          )}{' '}
+                          {t(
+                            'PaymentAsia payment methods are managed on the PaymentAsia tab; JSON mode still shows the complete shared list.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -1375,7 +1388,9 @@ export function PaymentSettingsSection({
                         <FormLabel>{t('App ID (AppID)')}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder={t('Application AppId from Alipay Open Platform')}
+                            placeholder={t(
+                              'Application AppId from Alipay Open Platform'
+                            )}
                             autoComplete='off'
                             {...field}
                             onChange={(event) =>
@@ -1393,7 +1408,9 @@ export function PaymentSettingsSection({
                     name='AlipayRate'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Alipay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormLabel>
+                          {t('Alipay exchange rate (USD to local currency)')}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1940,9 +1957,7 @@ export function PaymentSettingsSection({
                         <PaymentMethodsVisualEditor
                           value={field.value}
                           onChange={field.onChange}
-                          typeFilter={(type) =>
-                            type.startsWith('paymentasia_')
-                          }
+                          typeFilter={(type) => type.startsWith('paymentasia_')}
                           allowCustomValue={false}
                         />
                       </FormControl>

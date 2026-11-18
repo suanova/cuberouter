@@ -56,7 +56,7 @@ function extractErrorPosition(
     const lines = jsonString.substring(0, position).split('\n')
     return {
       line: lines.length,
-      column: lines[lines.length - 1].length + 1,
+      column: (lines.at(-1) ?? '').length + 1,
     }
   }
 
@@ -125,4 +125,29 @@ export function getJsonError(
   } catch (error) {
     return formatJsonError(error, trimmed)
   }
+}
+
+export type OptionUpdate = { key: string; value: string | number | boolean }
+
+export type OptionUpdateResult = { success?: boolean; message?: string }
+
+/**
+ * Apply option updates in order and stop at the first failure.
+ *
+ * Saved updates are not rolled back, so the caller must report the failed key
+ * and treat earlier writes as persisted.
+ *
+ * @returns the first failed update, or null when every update succeeded.
+ */
+export async function applyOptionUpdates(
+  updates: OptionUpdate[],
+  apply: (update: OptionUpdate) => Promise<OptionUpdateResult>
+): Promise<{ key: string; message?: string } | null> {
+  for (const update of updates) {
+    const result = await apply(update)
+    if (result?.success !== true) {
+      return { key: update.key, message: result?.message }
+    }
+  }
+  return null
 }

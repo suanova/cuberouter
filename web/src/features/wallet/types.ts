@@ -298,6 +298,10 @@ export interface TopupRecord {
   complete_time?: number
   /** Payment status */
   status: TopupStatus
+  /** Order currency snapshot (PaymentAsia orders only) */
+  currency?: string
+  /** Gateway environment snapshot (PaymentAsia orders only) */
+  payment_environment?: string
 }
 
 /**

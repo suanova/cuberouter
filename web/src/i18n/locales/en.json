@@ -6380,6 +6380,9 @@
     "My available quota": "My available quota",
     "The range cannot exceed 31 days.": "The range cannot exceed 31 days.",
     "History is still being prepared.": "History is still being prepared.",
-    "Vector": "Vector"
+    "Vector": "Vector",
+    "Alipay CN": "Alipay CN",
+    "Failed to save \"{{key}}\": {{message}}. Earlier changes may already be saved and were not rolled back.": "Failed to save \"{{key}}\": {{message}}. Earlier changes may already be saved and were not rolled back.",
+    "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.": "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back."
   }
 }
