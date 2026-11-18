@@ -150,7 +150,7 @@ func TestEpayWebhookEnabledRequiresTopUpAndWebhookConfig(t *testing.T) {
 	require.False(t, isEpayWebhookEnabled())
 }
 
-func TestPaymentAsiaWebhookEnabledRequiresActiveEnvironmentCredentials(t *testing.T) {
+func TestPaymentAsiaWebhookEnabledAcceptsEitherEnvironmentSecret(t *testing.T) {
 	originalSandbox := setting.PaymentAsiaSandbox
 	originalMerchantToken := setting.PaymentAsiaMerchantToken
 	originalSecret := setting.PaymentAsiaSecret
@@ -180,19 +180,64 @@ func TestPaymentAsiaWebhookEnabledRequiresActiveEnvironmentCredentials(t *testin
 	require.True(t, isPaymentAsiaTopUpEnabled())
 	require.True(t, isPaymentAsiaWebhookEnabled())
 
-	// 切到沙箱后只看沙箱凭据，生产凭据不兜底
+	// 切到沙箱后新订单只看沙箱凭据；但生产 secret 仍要能验旧订单的回调，
+	// 不能因为切换环境整体 403。
 	setting.PaymentAsiaSandbox = true
 	require.False(t, isPaymentAsiaTopUpEnabled())
-	require.False(t, isPaymentAsiaWebhookEnabled())
+	require.True(t, isPaymentAsiaWebhookEnabled())
 
 	setting.PaymentAsiaSandboxMerchantToken = "sandbox_token"
 	setting.PaymentAsiaSandboxSecret = "sandbox_secret"
 	require.True(t, isPaymentAsiaTopUpEnabled())
 	require.True(t, isPaymentAsiaWebhookEnabled())
 
+	// 沙箱 secret 只剩空白：新订单不可用，生产 secret 仍让旧订单回调可达。
 	setting.PaymentAsiaSandboxSecret = "   "
 	require.False(t, isPaymentAsiaTopUpEnabled())
+	require.True(t, isPaymentAsiaWebhookEnabled())
+
+	// 两个环境都没有 secret：回调整体关闭。
+	setting.PaymentAsiaSecret = "   "
+	require.False(t, isPaymentAsiaTopUpEnabled())
 	require.False(t, isPaymentAsiaWebhookEnabled())
+}
+
+func TestGetPaymentAsiaSecretForEnvironment(t *testing.T) {
+	originalSandbox := setting.PaymentAsiaSandbox
+	originalSecret := setting.PaymentAsiaSecret
+	originalSandboxSecret := setting.PaymentAsiaSandboxSecret
+	t.Cleanup(func() {
+		setting.PaymentAsiaSandbox = originalSandbox
+		setting.PaymentAsiaSecret = originalSecret
+		setting.PaymentAsiaSandboxSecret = originalSandboxSecret
+	})
+
+	setting.PaymentAsiaSandbox = true
+	setting.PaymentAsiaSecret = " live_secret "
+	setting.PaymentAsiaSandboxSecret = " sandbox_secret "
+
+	secret, ok := setting.GetPaymentAsiaSecretForEnvironment(setting.PaymentAsiaEnvironmentLive)
+	require.True(t, ok)
+	require.Equal(t, "live_secret", secret)
+
+	secret, ok = setting.GetPaymentAsiaSecretForEnvironment(setting.PaymentAsiaEnvironmentSandbox)
+	require.True(t, ok)
+	require.Equal(t, "sandbox_secret", secret)
+
+	// 空/未知环境回退当前激活环境（此处为沙箱）。
+	secret, ok = setting.GetPaymentAsiaSecretForEnvironment("")
+	require.True(t, ok)
+	require.Equal(t, "sandbox_secret", secret)
+
+	secret, ok = setting.GetPaymentAsiaSecretForEnvironment("staging")
+	require.True(t, ok)
+	require.Equal(t, "sandbox_secret", secret)
+
+	setting.PaymentAsiaSandboxSecret = "   "
+	_, ok = setting.GetPaymentAsiaSecretForEnvironment(setting.PaymentAsiaEnvironmentSandbox)
+	require.False(t, ok)
+	_, ok = setting.GetPaymentAsiaSecretForEnvironment("")
+	require.False(t, ok)
 }
 
 func TestGetPaymentAsiaCredentialsReturnsActiveEnvironmentPairVerbatim(t *testing.T) {

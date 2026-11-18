@@ -49,6 +49,16 @@ func paymentAsiaCurrency() string {
 	return currency
 }
 
+// paymentAsiaEnvironmentForSandbox names the credential environment of an
+// order. It is snapshotted on creation and also serves as the legacy-order
+// fallback when the snapshot column is empty.
+func paymentAsiaEnvironmentForSandbox(sandbox bool) string {
+	if sandbox {
+		return setting.PaymentAsiaEnvironmentSandbox
+	}
+	return setting.PaymentAsiaEnvironmentLive
+}
+
 // paymentAsiaMinimumTopUp returns the effective minimum recharge amount: the
 // configured PaymentAsia minimum, never below the site-wide minimum. A
 // non-positive configuration falls back to the site minimum.
@@ -251,26 +261,29 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
 		topUpRate = operation_setting.Price
 	}
+	// 凭据在插入订单前读取：环境快照与本次签名所用 secret 必须来自同一次配置。
+	merchantToken, secret, sandbox := setting.GetPaymentAsiaCredentials()
+	merchantToken = strings.TrimSpace(merchantToken)
+	secret = strings.TrimSpace(secret)
+
 	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          amount,
-		Money:           roundedMoney,
-		Rate:            topUpRate,
-		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderPaymentAsia,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:             id,
+		Amount:             amount,
+		Money:              roundedMoney,
+		Rate:               topUpRate,
+		TradeNo:            tradeNo,
+		PaymentMethod:      req.PaymentMethod,
+		PaymentProvider:    model.PaymentProviderPaymentAsia,
+		CreateTime:         time.Now().Unix(),
+		Status:             common.TopUpStatusPending,
+		Currency:           currency,
+		PaymentEnvironment: paymentAsiaEnvironmentForSandbox(sandbox),
 	}
 	if err := topUp.Insert(); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 创建充值订单失败 user_id=%d trade_no=%s payment_method=%s amount=%d error=%q", id, tradeNo, req.PaymentMethod, req.Amount, err.Error()))
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "创建订单失败"})
 		return
 	}
-
-	merchantToken, secret, sandbox := setting.GetPaymentAsiaCredentials()
-	merchantToken = strings.TrimSpace(merchantToken)
-	secret = strings.TrimSpace(secret)
 
 	customerIP := c.ClientIP()
 	if parsedIP := net.ParseIP(customerIP); parsedIP == nil || parsedIP.To4() == nil {
@@ -334,9 +347,11 @@ func paymentAsiaCallbackAmountMatches(orderMoney float64, network, callbackAmoun
 	return decimal.NewFromFloat(orderMoney).Round(places).Equal(callbackValue)
 }
 
-// PaymentAsiaNotify 处理 PaymentAsia datafeed 回调：当前环境凭据验签，核对订单、
-// 币种与金额后按状态结算。未知订单/网关不匹配/脏数据回 200 避免无限重试，
-// 验签或核对失败回 400，结算内部错误回 500 让网关重试（入账本身幂等）。
+// PaymentAsiaNotify 处理 PaymentAsia datafeed 回调：先按 merchant_reference 查
+// 订单，再用订单快照的环境选 secret 验签、按快照币种核对，最后按状态结算。
+// 未知订单/网关不匹配/脏数据回 200 避免无限重试，验签或核对失败回 400，结算
+// 与凭据缺失等内部错误回 500 让网关重试（入账本身幂等）。任何状态变更前都
+// 必须验签成功。
 func PaymentAsiaNotify(c *gin.Context) {
 	if !isPaymentAsiaWebhookEnabled() {
 		logger.LogWarn(c.Request.Context(), fmt.Sprintf("paymentasia 回调被拒绝 reason=webhook_disabled path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
@@ -359,40 +374,71 @@ func PaymentAsiaNotify(c *gin.Context) {
 		return
 	}
 
-	// 凭据按配置原样返回，验签前去掉可能的首尾空白（与启用判断口径一致）。
-	_, secret, _ := setting.GetPaymentAsiaCredentials()
-	signOK := service.VerifyPaymentAsiaCallbackSign(params, strings.TrimSpace(secret))
-	logFields := fmt.Sprintf("trade_no=%q request_reference=%q status=%q amount=%q currency=%q client_ip=%s sign_ok=%t",
-		params["merchant_reference"], params["request_reference"], params["status"], params["amount"], params["currency"], c.ClientIP(), signOK)
-	if !signOK {
-		logger.LogWarn(c.Request.Context(), "paymentasia 回调验签失败 "+logFields)
+	tradeNo := params["merchant_reference"]
+	baseLogFields := fmt.Sprintf("trade_no=%q request_reference=%q status=%q amount=%q currency=%q client_ip=%s",
+		tradeNo, params["request_reference"], params["status"], params["amount"], params["currency"], c.ClientIP())
+	if strings.TrimSpace(tradeNo) == "" {
+		logger.LogWarn(c.Request.Context(), "paymentasia 回调缺少订单号 "+baseLogFields)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
-	logger.LogInfo(c.Request.Context(), "paymentasia 回调收到 "+logFields)
 
-	tradeNo := params["merchant_reference"]
 	LockOrder(tradeNo)
 	defer UnlockOrder(tradeNo)
 
 	topUp, err := model.GetTopUpByTradeNoWithError(tradeNo)
 	if err != nil {
 		if errors.Is(err, model.ErrTopUpNotFound) {
-			logger.LogWarn(c.Request.Context(), "paymentasia 回调订单不存在 "+logFields)
+			logger.LogWarn(c.Request.Context(), "paymentasia 回调订单不存在 "+baseLogFields)
 			c.String(http.StatusOK, "OK")
 			return
 		}
-		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 回调查询订单失败 %s error=%q", logFields, err.Error()))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 回调查询订单失败 %s error=%q", baseLogFields, err.Error()))
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
 	if topUp.PaymentProvider != model.PaymentProviderPaymentAsia {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("paymentasia 回调订单支付网关不匹配 %s order_provider=%s", logFields, topUp.PaymentProvider))
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("paymentasia 回调订单支付网关不匹配 %s order_provider=%s", baseLogFields, topUp.PaymentProvider))
 		c.String(http.StatusOK, "OK")
 		return
 	}
-	if !strings.EqualFold(strings.TrimSpace(params["currency"]), paymentAsiaCurrency()) {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("paymentasia 回调币种不一致 %s configured_currency=%s", logFields, paymentAsiaCurrency()))
+
+	// 环境与币种都以订单快照为准；旧订单（两列为空，无数据回填）回退当前配置。
+	orderEnvironment := strings.TrimSpace(topUp.PaymentEnvironment)
+	environmentSnapshotMissing := orderEnvironment == ""
+	if environmentSnapshotMissing {
+		_, _, sandbox := setting.GetPaymentAsiaCredentials()
+		orderEnvironment = paymentAsiaEnvironmentForSandbox(sandbox)
+	}
+	secret, ok := setting.GetPaymentAsiaSecretForEnvironment(orderEnvironment)
+	if !ok {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 回调订单环境缺少 secret %s order_environment=%s", baseLogFields, orderEnvironment))
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	signOK := service.VerifyPaymentAsiaCallbackSign(params, secret)
+
+	orderCurrency := strings.TrimSpace(topUp.Currency)
+	currencySnapshotMissing := orderCurrency == ""
+	if currencySnapshotMissing {
+		orderCurrency = paymentAsiaCurrency()
+	}
+	logFields := fmt.Sprintf("%s sign_ok=%t order_currency=%q order_environment=%s", baseLogFields, signOK, orderCurrency, orderEnvironment)
+	if !signOK {
+		logger.LogWarn(c.Request.Context(), "paymentasia 回调验签失败 "+logFields)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+	if environmentSnapshotMissing {
+		logger.LogWarn(c.Request.Context(), "paymentasia 回调订单缺少环境快照，回退当前环境 "+logFields)
+	}
+	if currencySnapshotMissing {
+		logger.LogWarn(c.Request.Context(), "paymentasia 回调订单缺少币种快照，回退当前配置 "+logFields)
+	}
+	logger.LogInfo(c.Request.Context(), "paymentasia 回调收到 "+logFields)
+
+	if !strings.EqualFold(strings.TrimSpace(params["currency"]), orderCurrency) {
+		logger.LogWarn(c.Request.Context(), fmt.Sprintf("paymentasia 回调币种不一致 %s", logFields))
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}

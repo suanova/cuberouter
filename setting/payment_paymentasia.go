@@ -19,6 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 package setting
 
+import "strings"
+
+const (
+	PaymentAsiaEnvironmentLive    = "live"
+	PaymentAsiaEnvironmentSandbox = "sandbox"
+)
+
 var (
 	PaymentAsiaSandbox              bool
 	PaymentAsiaMerchantToken        string
@@ -40,4 +47,20 @@ func GetPaymentAsiaCredentials() (merchantToken, secret string, sandbox bool) {
 		return PaymentAsiaSandboxMerchantToken, PaymentAsiaSandboxSecret, true
 	}
 	return PaymentAsiaMerchantToken, PaymentAsiaSecret, false
+}
+
+// GetPaymentAsiaSecretForEnvironment returns the trimmed merchant secret of the
+// named environment. An empty or unknown environment falls back to the
+// currently active credential pair. ok is false when that secret is blank.
+func GetPaymentAsiaSecretForEnvironment(environment string) (secret string, ok bool) {
+	switch strings.ToLower(strings.TrimSpace(environment)) {
+	case PaymentAsiaEnvironmentSandbox:
+		secret = PaymentAsiaSandboxSecret
+	case PaymentAsiaEnvironmentLive:
+		secret = PaymentAsiaSecret
+	default:
+		_, secret, _ = GetPaymentAsiaCredentials()
+	}
+	secret = strings.TrimSpace(secret)
+	return secret, secret != ""
 }

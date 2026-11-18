@@ -282,25 +282,14 @@ func validateOptionValue(key string, value string) error {
 			return errors.New("PaymentAsia 单价必须为大于 0 的数字")
 		}
 	}
-	return nil
-}
-
-// validatePaymentAsiaCurrencyChange rejects switching the PaymentAsia currency
-// while orders are still pending. The datafeed callback compares the gateway
-// currency with the configured one, so a change would strand those orders.
-// Values equal to the current currency are always accepted.
-func validatePaymentAsiaCurrencyChange(value string) error {
-	if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(setting.PaymentAsiaCurrency)) {
-		return nil
-	}
-	var pending int64
-	if err := DB.Model(&TopUp{}).
-		Where("payment_provider = ? AND status = ?", PaymentProviderPaymentAsia, common.TopUpStatusPending).
-		Count(&pending).Error; err != nil {
-		return err
-	}
-	if pending > 0 {
-		return errors.New("存在待支付的 PaymentAsia 订单，暂不能修改支付币种")
+	if key == "PaymentAsiaCurrency" {
+		// 结算币种决定可用通道（USD 仅 CreditCard），非法值会让通道过滤、
+		// 报价与回调核对落到未知分支，直接拒绝。
+		switch strings.ToUpper(strings.TrimSpace(value)) {
+		case "HKD", "USD":
+		default:
+			return errors.New("PaymentAsia 支付币种只支持 HKD 或 USD")
+		}
 	}
 	return nil
 }
@@ -318,11 +307,6 @@ func normalizeOptionValue(key string, value string) string {
 func UpdateOption(key string, value string) error {
 	if err := validateOptionValue(key, value); err != nil {
 		return err
-	}
-	if key == "PaymentAsiaCurrency" {
-		if err := validatePaymentAsiaCurrencyChange(value); err != nil {
-			return err
-		}
 	}
 	value = normalizeOptionValue(key, value)
 	// 汇率类配置:Price 与 USDExchangeRate 是同一汇率的两份持久化,
@@ -365,11 +349,6 @@ func UpdateOptionsBulk(values map[string]string) error {
 	for key, value := range values {
 		if err := validateOptionValue(key, value); err != nil {
 			return err
-		}
-		if key == "PaymentAsiaCurrency" {
-			if err := validatePaymentAsiaCurrencyChange(value); err != nil {
-				return err
-			}
 		}
 		normalized[key] = normalizeOptionValue(key, value)
 	}

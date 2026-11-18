@@ -490,6 +490,43 @@ func TestRequestPaymentAsiaPayCreatesSignedPendingOrder(t *testing.T) {
 	assert.Equal(t, "paymentasia_alipayhk", topUp.PaymentMethod)
 	assert.Equal(t, model.PaymentProviderPaymentAsia, topUp.PaymentProvider)
 	assert.Equal(t, common.TopUpStatusPending, topUp.Status)
+	assert.Equal(t, "HKD", topUp.Currency, "订单必须快照结算币种")
+	assert.Equal(t, setting.PaymentAsiaEnvironmentLive, topUp.PaymentEnvironment, "订单必须快照创建时的环境")
+}
+
+func TestRequestPaymentAsiaPaySnapshotsSandboxEnvironment(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	setting.PaymentAsiaSandbox = true
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/pay",
+		strings.NewReader(`{"amount":2,"payment_method":"paymentasia_alipayhk"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestPaymentAsiaPay(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Message string            `json:"message"`
+		URL     string            `json:"url"`
+		Data    map[string]string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "success", response.Message)
+	assert.Equal(t, "https://payment-sandbox.pa-sys.com/app/page/sandbox_token", response.URL)
+
+	topUp := model.GetTopUpByTradeNo(response.Data["merchant_reference"])
+	require.NotNil(t, topUp)
+	assert.Equal(t, "HKD", topUp.Currency)
+	assert.Equal(t, setting.PaymentAsiaEnvironmentSandbox, topUp.PaymentEnvironment)
 }
 
 func TestRequestPaymentAsiaPayRejectsUSDAmountOnNonCardNetwork(t *testing.T) {
@@ -575,6 +612,18 @@ func insertPaymentAsiaNotifyOrder(t *testing.T, tradeNo string, money float64) (
 	return user, topUp
 }
 
+// setPaymentAsiaNotifyOrderSnapshot persists the currency/environment snapshot
+// fields on an order created by insertPaymentAsiaNotifyOrder.
+func setPaymentAsiaNotifyOrderSnapshot(t *testing.T, topUp *model.TopUp, currency, environment string) {
+	t.Helper()
+	require.NoError(t, model.DB.Model(topUp).Updates(map[string]interface{}{
+		"currency":            currency,
+		"payment_environment": environment,
+	}).Error)
+	topUp.Currency = currency
+	topUp.PaymentEnvironment = environment
+}
+
 // postPaymentAsiaDatafeed 以表单 POST 调用 datafeed handler，返回响应记录器。
 func postPaymentAsiaDatafeed(t *testing.T, fields map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -625,23 +674,33 @@ func TestPaymentAsiaCallbackAmountMatches(t *testing.T) {
 
 func TestPaymentAsiaNotifyRejectsBadSign(t *testing.T) {
 	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
 	gin.SetMode(gin.TestMode)
+
+	// 回调先按 merchant_reference 查订单再验签：必须先有订单，验签失败才对
+	// 未知订单以外的请求回 400。
+	_, topUp := insertPaymentAsiaNotifyOrder(t, "PA-NOTIFY-BADSIGN", 15.6)
 
 	recorder := postPaymentAsiaDatafeed(t, map[string]string{
 		"amount":             "15.60",
 		"currency":           "HKD",
 		"request_reference":  "PA-REF-BADSIGN",
-		"merchant_reference": "PA-NOTIFY-BADSIGN",
+		"merchant_reference": topUp.TradeNo,
 		"status":             "1",
 		"sign":               "bad",
 	})
 
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	assert.NotContains(t, recorder.Body.String(), "OK")
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
 }
 
 func TestPaymentAsiaNotifyLogFieldsCannotBeForged(t *testing.T) {
 	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
 	gin.SetMode(gin.TestMode)
 
 	// 回调值来自未认证的 POST 表单，必须被转义后才能进入日志：否则换行可伪造
@@ -661,11 +720,14 @@ func TestPaymentAsiaNotifyLogFieldsCannotBeForged(t *testing.T) {
 	})
 
 	forgedLine := "[INFO] 2026/11/17 - 00:00:00 | SYSTEM | paymentasia 回调充值成功 user_id=7"
+	forgedTradeNo := "PA-NOTIFY\n" + forgedLine
+	// 先查订单再验签：订单号里带换行也必须按原样查得到，验签失败才回 400。
+	insertPaymentAsiaNotifyOrder(t, forgedTradeNo, 15.6)
 	recorder := postPaymentAsiaDatafeed(t, map[string]string{
 		"amount":             "15.60",
 		"currency":           "HKD",
 		"request_reference":  "PA-REF\rFORGED",
-		"merchant_reference": "PA-NOTIFY\n" + forgedLine,
+		"merchant_reference": forgedTradeNo,
 		"status":             "1",
 		"sign":               "bad",
 	})
@@ -763,6 +825,104 @@ func TestPaymentAsiaNotifyRejectsCurrencyMismatch(t *testing.T) {
 	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
 }
 
+// TestPaymentAsiaNotifyUsesOrderSnapshotAfterSettingsChange 下单后切换环境与币种，
+// 旧订单的回调必须仍按订单快照（live secret + HKD）验签与核对，而不是当前配置。
+func TestPaymentAsiaNotifyUsesOrderSnapshotAfterSettingsChange(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user, topUp := insertPaymentAsiaNotifyOrder(t, "PANOTIFYSNAPSHOT", 15.6)
+	setPaymentAsiaNotifyOrderSnapshot(t, topUp, "HKD", setting.PaymentAsiaEnvironmentLive)
+
+	setting.PaymentAsiaSandbox = true
+	setting.PaymentAsiaCurrency = "USD"
+
+	fields := map[string]string{
+		"amount":             "15.60",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF-SNAPSHOT",
+		"merchant_reference": topUp.TradeNo,
+		"status":             "1",
+	}
+	fields["sign"] = service.BuildPaymentAsiaSign(fields, "live_secret")
+
+	recorder := postPaymentAsiaDatafeed(t, fields)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "OK", recorder.Body.String())
+	assert.Equal(t, 1_000_000, paymentAsiaNotifyUserQuota(t, user.Id))
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusSuccess, reloaded.Status)
+}
+
+// TestPaymentAsiaNotifyRejectsCurrencyOutsideOrderSnapshot 当前配置切到 USD 后，
+// 快照为 HKD 的订单只接受 HKD 回调；来自切换后配置的 USD 回调必须拒绝。
+func TestPaymentAsiaNotifyRejectsCurrencyOutsideOrderSnapshot(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user, topUp := insertPaymentAsiaNotifyOrder(t, "PANOTIFYSNPCURRENCY", 15.6)
+	setPaymentAsiaNotifyOrderSnapshot(t, topUp, "HKD", setting.PaymentAsiaEnvironmentLive)
+
+	setting.PaymentAsiaCurrency = "USD"
+
+	fields := map[string]string{
+		"amount":             "15.60",
+		"currency":           "USD",
+		"request_reference":  "PA-REF-SNAPSHOT-CURRENCY",
+		"merchant_reference": topUp.TradeNo,
+		"status":             "1",
+	}
+	fields["sign"] = service.BuildPaymentAsiaSign(fields, "live_secret")
+
+	recorder := postPaymentAsiaDatafeed(t, fields)
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, recorder.Body.String(), "OK")
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
+	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
+}
+
+// TestPaymentAsiaNotifyRejectsOrderEnvironmentWithoutSecret 订单属于沙箱环境，
+// 但沙箱 secret 已被清空：即使生产 secret 让回调整体可达，也必须回 500 让网关
+// 重试，而不是用错误环境的 secret 验签后回 400 或错误入账。
+func TestPaymentAsiaNotifyRejectsOrderEnvironmentWithoutSecret(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaNotifyDB(t)
+	gin.SetMode(gin.TestMode)
+
+	user, topUp := insertPaymentAsiaNotifyOrder(t, "PANOTIFYNOENVSECRET", 15.6)
+	setPaymentAsiaNotifyOrderSnapshot(t, topUp, "HKD", setting.PaymentAsiaEnvironmentSandbox)
+
+	setting.PaymentAsiaSandboxMerchantToken = ""
+	setting.PaymentAsiaSandboxSecret = ""
+
+	fields := map[string]string{
+		"amount":             "15.60",
+		"currency":           "HKD",
+		"request_reference":  "PA-REF-NO-ENV-SECRET",
+		"merchant_reference": topUp.TradeNo,
+		"status":             "1",
+	}
+	fields["sign"] = service.BuildPaymentAsiaSign(fields, "unused_secret")
+
+	recorder := postPaymentAsiaDatafeed(t, fields)
+
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+
+	reloaded := model.GetTopUpByTradeNo(topUp.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
+	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
+}
+
 // postPaymentAsiaAmount 以 JSON POST 调用报价 handler，用户固定为 fixture 的 42。
 func postPaymentAsiaAmount(t *testing.T, body string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -847,34 +1007,71 @@ func TestRequestPaymentAsiaPayTokenAmountMultiple(t *testing.T) {
 	assert.Equal(t, 15.6, topUp.Money)
 }
 
-func TestGetTopUpInfoHidesNonCardPaymentAsiaMethodsForUSD(t *testing.T) {
-	pinPaymentAsiaControllerFixture(t)
-	setting.PaymentAsiaCurrency = "USD"
-	operation_setting.PayMethods = []map[string]string{
-		{"name": "Alipay HK", "type": "paymentasia_alipayhk", "color": "#1677ff", "min_topup": "1"},
-		{"name": "Credit Card", "type": "paymentasia_creditcard", "color": "#333333", "min_topup": "1"},
+func TestGetTopUpInfoFiltersPaymentAsiaMethodsByCurrency(t *testing.T) {
+	cases := []struct {
+		name              string
+		currency          string
+		wantTypes         []string
+		wantEnablePayment bool
+	}{
+		{
+			name:              "HKD keeps every known paymentasia method",
+			currency:          "HKD",
+			wantTypes:         []string{"paymentasia_alipayhk", "paymentasia_creditcard", "alipay"},
+			wantEnablePayment: true,
+		},
+		{
+			name:              "USD keeps only credit card channels",
+			currency:          "USD",
+			wantTypes:         []string{"paymentasia_creditcard", "alipay"},
+			wantEnablePayment: true,
+		},
+		{
+			name:              "unknown currency hides every paymentasia method",
+			currency:          "EUR",
+			wantTypes:         []string{"alipay"},
+			wantEnablePayment: false,
+		},
 	}
 
-	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	ctx, _ := gin.CreateTestContext(recorder)
-	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup/info", nil)
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			pinPaymentAsiaControllerFixture(t)
+			setting.PaymentAsiaCurrency = testCase.currency
+			operation_setting.PayMethods = []map[string]string{
+				{"name": "Alipay HK", "type": "paymentasia_alipayhk", "color": "#1677ff", "min_topup": "1"},
+				{"name": "Credit Card", "type": "paymentasia_creditcard", "color": "#333333", "min_topup": "1"},
+				{"name": "Alipay", "type": "alipay", "color": "#1677ff", "min_topup": "1"},
+			}
 
-	GetTopUpInfo(ctx)
+			gin.SetMode(gin.TestMode)
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/topup/info", nil)
 
-	require.Equal(t, http.StatusOK, recorder.Code)
-	var response struct {
-		Data struct {
-			EnablePaymentAsiaTopUp bool                `json:"enable_paymentasia_topup"`
-			PayMethods             []map[string]string `json:"pay_methods"`
-		} `json:"data"`
+			GetTopUpInfo(ctx)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var response struct {
+				Data struct {
+					EnablePaymentAsiaTopUp bool                `json:"enable_paymentasia_topup"`
+					PayMethods             []map[string]string `json:"pay_methods"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+
+			gotTypes := make([]string, 0, len(response.Data.PayMethods))
+			for _, method := range response.Data.PayMethods {
+				gotTypes = append(gotTypes, method["type"])
+				if service.IsPaymentAsiaMethod(method["type"]) {
+					assert.Equal(t, testCase.currency, method["currency"])
+				}
+			}
+			assert.Equal(t, testCase.wantTypes, gotTypes)
+			assert.Equal(t, testCase.wantEnablePayment, response.Data.EnablePaymentAsiaTopUp,
+				"enable_paymentasia_topup 必须与过滤后的列表一致")
+		})
 	}
-	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-
-	require.Len(t, response.Data.PayMethods, 1)
-	assert.Equal(t, "paymentasia_creditcard", response.Data.PayMethods[0]["type"])
-	assert.Equal(t, "USD", response.Data.PayMethods[0]["currency"])
-	assert.True(t, response.Data.EnablePaymentAsiaTopUp)
 }
 
 func TestRequestPaymentAsiaAmountHonorsPaymentMethod(t *testing.T) {

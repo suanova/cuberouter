@@ -108,6 +108,11 @@ func isPaymentAsiaTopUpEnabled() bool {
 		strings.TrimSpace(secret) != ""
 }
 
+// isPaymentAsiaWebhookEnabled accepts a datafeed signed by either environment:
+// an order created before a live/sandbox switch carries the old environment
+// snapshot and must stay verifiable. New orders still require the active
+// environment's token and secret via isPaymentAsiaTopUpEnabled.
 func isPaymentAsiaWebhookEnabled() bool {
-	return isPaymentAsiaTopUpEnabled()
+	return strings.TrimSpace(setting.PaymentAsiaSecret) != "" ||
+		strings.TrimSpace(setting.PaymentAsiaSandboxSecret) != ""
 }

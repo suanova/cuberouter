@@ -232,32 +232,10 @@ func TestGetTopUpByTradeNoWithError(t *testing.T) {
 	assert.Equal(t, order.TradeNo, found.TradeNo)
 }
 
-func TestValidatePaymentAsiaCurrencyChange(t *testing.T) {
-	truncateTables(t)
-	origCurrency := setting.PaymentAsiaCurrency
-	t.Cleanup(func() { setting.PaymentAsiaCurrency = origCurrency })
-	setting.PaymentAsiaCurrency = "HKD"
-
-	// 没有待支付订单：允许修改
-	require.NoError(t, validatePaymentAsiaCurrencyChange("USD"))
-
-	order := createPaymentAsiaTestTopUp(t, 612, "PA-CURRENCY-PENDING")
-	// 同值（忽略大小写与首尾空白）不触发拦截
-	require.NoError(t, validatePaymentAsiaCurrencyChange(" hkd "))
-	require.Error(t, validatePaymentAsiaCurrencyChange("USD"))
-
-	// 非 PaymentAsia 的待支付订单不参与拦截
-	insertTopUpForPaymentGuardTest(t, "EPAY-CURRENCY-PENDING", 612, PaymentProviderEpay)
-	require.Error(t, validatePaymentAsiaCurrencyChange("USD"))
-
-	// 待支付订单结束后允许修改；此时只剩 Epay 待支付订单
-	require.NoError(t, DB.Model(order).Update("status", common.TopUpStatusSuccess).Error)
-	require.NoError(t, validatePaymentAsiaCurrencyChange("USD"))
-	require.NoError(t, DB.Model(order).Update("status", common.TopUpStatusFailed).Error)
-	require.NoError(t, validatePaymentAsiaCurrencyChange("USD"))
-}
-
-func TestUpdateOptionsRejectsPaymentAsiaCurrencyChangeWithPendingOrder(t *testing.T) {
+// TestUpdatePaymentAsiaCurrencyWithoutPendingOrderGuard 证明订单快照方案移除了
+// 「存在待支付订单时禁止改币种」的 guard：配置可以随时切换，旧订单回调按订单
+// 快照里的币种核对，不再依赖阻塞配置变更来保安全。
+func TestUpdatePaymentAsiaCurrencyWithoutPendingOrderGuard(t *testing.T) {
 	truncateTables(t)
 	require.NoError(t, DB.AutoMigrate(&Option{}))
 	origCurrency := setting.PaymentAsiaCurrency
@@ -270,16 +248,26 @@ func TestUpdateOptionsRejectsPaymentAsiaCurrencyChangeWithPendingOrder(t *testin
 	})
 	setting.PaymentAsiaCurrency = "HKD"
 
-	createPaymentAsiaTestTopUp(t, 613, "PA-CURRENCY-OPTION-PENDING")
+	createPaymentAsiaTestTopUp(t, 613, "PA-CURRENCY-SNAPSHOT-PENDING")
 
-	require.Error(t, UpdateOption("PaymentAsiaCurrency", "USD"))
-	require.Error(t, UpdateOptionsBulk(map[string]string{"PaymentAsiaCurrency": "USD"}))
-	assert.Equal(t, "HKD", setting.PaymentAsiaCurrency)
-
-	require.NoError(t, DB.Model(&TopUp{}).Where("trade_no = ?", "PA-CURRENCY-OPTION-PENDING").
-		Update("status", common.TopUpStatusSuccess).Error)
 	require.NoError(t, UpdateOption("PaymentAsiaCurrency", "USD"))
 	assert.Equal(t, "USD", setting.PaymentAsiaCurrency)
+	require.NoError(t, UpdateOptionsBulk(map[string]string{"PaymentAsiaCurrency": "HKD"}))
+	assert.Equal(t, "HKD", setting.PaymentAsiaCurrency)
+}
+
+// TestValidatePaymentAsiaCurrencyOption 币种配置只接受 HKD / USD（比较时忽略
+// 大小写与首尾空白）。其它值会让通道过滤、报价与回调核对落到未知分支，直接拒绝。
+func TestValidatePaymentAsiaCurrencyOption(t *testing.T) {
+	for _, value := range []string{"", "   ", "EUR", "HK", "HKDX", "US"} {
+		require.Error(t, validateOptionValue("PaymentAsiaCurrency", value), "value %q must be rejected", value)
+	}
+	for _, value := range []string{"HKD", "hkd", " usd ", "Usd"} {
+		require.NoError(t, validateOptionValue("PaymentAsiaCurrency", value), "value %q must be accepted", value)
+	}
+
+	require.Error(t, UpdateOption("PaymentAsiaCurrency", "EUR"))
+	require.Error(t, UpdateOptionsBulk(map[string]string{"PaymentAsiaCurrency": "EUR"}))
 }
 
 func TestValidatePaymentAsiaUnitPriceOption(t *testing.T) {

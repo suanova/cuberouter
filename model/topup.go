@@ -29,6 +29,12 @@ type TopUp struct {
 	// 防止管理员在订单待支付期间改汇率导致同一实付金额入账不同额度。
 	// 0 表示未快照(USD/TOKENS 模式或旧订单),结算时回退当前 Price。
 	Rate float64 `json:"rate" gorm:"column:rate"`
+	// Currency / PaymentEnvironment 是 PaymentAsia 下单时的网关结算币种与环境
+	// 快照。回调按订单快照核对币种、选择验签 secret，因此待支付期间切换币种或
+	// 环境不会让旧订单回调失效。非 PaymentAsia 订单保持空串；空值表示旧订单
+	//（无数据回填），回调时回退当前配置。
+	Currency           string `json:"currency" gorm:"type:varchar(10);default:''"`
+	PaymentEnvironment string `json:"payment_environment" gorm:"type:varchar(16);default:''"`
 }
 
 const (

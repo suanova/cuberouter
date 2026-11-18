@@ -27,7 +27,7 @@ PaymentAsia 是香港收单网关，提供：
 1. 退款（Refund API）、对账（Reconciliation API）、主动查询（Payment Query API）。退款产品本身不支持；查询留到 phase 2，作为管理员补单/掉单排查的辅助。
 2. 订阅支付（subscription plans）走 PaymentAsia。
 3. 自动汇率/自动同步 PaymentAsia 结算价；`PaymentAsiaUnitPrice` 由管理员手工配置。
-4. 新增数据库表或列；不修改 `TopUp` schema。
+4. 新增数据库表；只允许在 `top_ups` 增加两列订单快照（`currency` / `payment_environment`），不做数据回填。
 5. 在仓库保存任何 PaymentAsia 凭据；`paymentasia/` 目录保持不入库。
 6. 默认启用 Octopus/PayMe/CUP；映射保留，是否启用由运营决定。
 7. 收集用户地址/电话等风控字段；只发送用户邮箱（可选）与 IP。
@@ -42,7 +42,9 @@ PaymentAsia 是香港收单网关，提供：
 | 币种 | 管理端单选 HKD / USD；默认 HKD | 文档：CreditCard 支持 HKD+USD，其它通道仅 HKD |
 | 金额换算 | `展示数量 × PaymentAsiaUnitPrice × 分组倍率 × 折扣` | 与 Waffo/Stripe 的 unit-price 模式一致；不引入自动汇率 |
 | 结算口径 | 与 Epay 相同：`Amount` 存展示单位、`Money` 存网关实付、CNY 模式快照 `Price` | 复用 `topupAmountToQuotaDecimal` / 现有补单逻辑 |
-| 回调安全 | SHA-512 验签 + 金额/币种核对 + 订单行锁幂等 | 文档要求；复用 `RechargeEpay` 的事务模式 |
+| 回调安全 | SHA-512 验签 + 订单快照（币种/环境）核对 + 订单行锁幂等 | 文档要求；复用 `RechargeEpay` 的事务模式 |
+| 订单快照 | `top_ups` 增加 `Currency` / `PaymentEnvironment`（可空，无回填） | 待支付期间改币种/切环境不再让旧订单回调失效，也无需阻塞配置变更 |
+| 币种取值 | 管理端只接受 `HKD` / `USD`（trim + 大写比较） | 通道可用性（USD 仅 CreditCard）与回调核对都以币种为准，非法值无意义 |
 | 配置存储 | OptionMap（`model/option.go` 注册 + 管理端 UI） | 与 Stripe/Creem/Waffo 一致 |
 | 沙箱 | 独立 sandbox token/secret + 开关 | 生产与沙箱凭据不同，不能混用 |
 
@@ -130,7 +132,7 @@ $sign = hash('SHA512', http_build_query($fields) . $secret);
 | `PaymentAsiaSecret` | string | "" | 生产 Merchant Secret |
 | `PaymentAsiaSandboxMerchantToken` | string | "" | 沙箱 Merchant Token |
 | `PaymentAsiaSandboxSecret` | string | "" | 沙箱 Merchant Secret |
-| `PaymentAsiaCurrency` | string | `HKD` | 收款币种，HKD/USD |
+| `PaymentAsiaCurrency` | string | `HKD` | 收款币种，只接受 HKD/USD（写入时校验） |
 | `PaymentAsiaUnitPrice` | float64 | 1.0 | 1 个展示单位折合的支付币种金额（CNY 站点+HKD 约 1.08；USD 站点+HKD 约 7.8） |
 | `PaymentAsiaMinTopUp` | int | 1 | 全局最低充值数量（展示单位） |
 | `PaymentAsiaNotifyUrl` | string | "" | 覆盖默认回调地址 |
@@ -140,8 +142,12 @@ $sign = hash('SHA512', http_build_query($fields) . $secret);
 
 ```go
 func isPaymentAsiaTopUpEnabled() bool   // 当前环境（沙箱/生产）的 token+secret 均非空
-func isPaymentAsiaWebhookEnabled() bool // 同 isPaymentAsiaTopUpEnabled
+func isPaymentAsiaWebhookEnabled() bool // live secret 或 sandbox secret 任一非空
 ```
+
+回调不能只认当前环境：切换环境后旧订单仍带着下单时的环境快照，必须能用对应环境的 secret 验签。
+
+`setting.GetPaymentAsiaSecretForEnvironment(environment)` 按名称取 secret：`live` → 生产 secret，`sandbox` → 沙箱 secret，空/未知 → 当前激活环境；均先 trim，空值返回 `ok=false`。
 
 ### 6.2 常量与通道映射
 
@@ -223,6 +229,8 @@ func PaymentAsiaGatewayURL(sandbox, generic bool, token string) string
    - `Amount`：与 Epay 相同（TOKENS 模式先 ÷QuotaPerUnit 取整）
    - `Money`：四舍五入后的实付金额（网关币种）
    - `Rate`：CNY 展示模式下快照 `operation_setting.Price`，否则 0
+   - `Currency`：下单时的 `paymentAsiaCurrency()` 快照
+   - `PaymentEnvironment`：下单时的 `live` / `sandbox` 快照
    - `PaymentMethod`：`paymentasia_xxx`
    - `PaymentProvider`：`paymentasia`
    - `Status`：`pending`
@@ -246,19 +254,23 @@ func PaymentAsiaGatewayURL(sandbox, generic bool, token string) string
 
 处理：
 
-1. `isPaymentAsiaWebhookEnabled()` 拒绝未配置。
-2. `ParseForm`；取 POST 字段；验签失败 → 400 + 日志。
-3. `LockOrder(merchant_reference)` + `defer UnlockOrder`；查 `TopUp`：
+1. `isPaymentAsiaWebhookEnabled()` 拒绝未配置；任一环境 secret 存在即可达。
+2. `ParseForm`；取 POST 字段；为空 → 400。
+3. `trade_no = merchant_reference`；空 → 400。`LockOrder(trade_no)` + `defer UnlockOrder`；查 `TopUp`：
    - 不存在 → 日志 + 200（不重试未知订单）
+   - 查询本身失败 → 500（让网关重试）
    - `PaymentProvider != paymentasia` → 日志 + 200（不让其它渠道的订单被误结算）
-4. 核对 `currency`（与当前配置一致，大小写不敏感）与 `amount`（decimal 精确等于 `Money` 四舍五入值）；不一致 → 400 + 日志。
-5. 按 `status`：
+4. 环境：取订单快照 `PaymentEnvironment`；空（旧订单）→ 回退当前激活环境并 `LogWarn`。`setting.GetPaymentAsiaSecretForEnvironment(env)` 取不到 secret → `LogError` + 500（网关可重试）。
+5. 用该环境的 secret 验签；失败 → 400 + 日志。**任何状态变更前必须验签成功**。
+6. 币种：取订单快照 `Currency`；空（旧订单）→ 回退当前 `paymentAsiaCurrency()` 并 `LogWarn`。回调 `currency` 与订单快照大小写不敏感比较；不一致 → 400 + 日志。
+7. 核对 `amount`（decimal 精确等于 `Money` 四舍五入值）；不一致 → 400 + 日志。
+8. 按 `status`：
    - `"1"`：若 pending → `model.RechargePaymentAsia(tradeNo, c.ClientIP())`；成功/幂等 → 200。
    - `"2"`：`model.UpdatePendingTopUpStatus(tradeNo, model.PaymentProviderPaymentAsia, common.TopUpStatusFailed)`；200。
    - `"0"` / `"4"`：仅记录日志，200。
-6. 内部错误（DB/额度）→ 500，让 PaymentAsia 有机会重试；具体重试策略未知，幂等保证重复回调安全。
+9. 内部错误（DB/额度）→ 500，让 PaymentAsia 有机会重试；具体重试策略未知，幂等保证重复回调安全。
 
-> 配置切换策略（有意为之）：验签只使用**当前环境**的 secret，币种只与**当前配置**比对。沙箱→生产切换后，旧沙箱 pending 订单的回调会被拒绝（测试单不应进生产额度）；生产中改币种同理。为降低后者风险，`UpdateOption` / `UpdateOptionsBulk` 在存在 PaymentAsia pending 订单时会拒绝修改 `PaymentAsiaCurrency`（无需 schema 变更）。运维规则：存在待支付订单时不要切环境，遗留订单走管理员补单。
+> 订单快照（新增两列，无数据回填）：`top_ups.Currency` 与 `top_ups.PaymentEnvironment` 在下单时写入，回调按快照选 secret、核对币种。切换环境或币种不会再让已创建订单失效，因此**无需**在配置层阻止修改（快照后无需阻塞配置变更）。旧订单两列为空，回调回退当前配置并记录告警；非 PaymentAsia 订单两列保持空、不读取。由于先查订单再验签，未认证请求会触发一次只读 DB 查询，这是可接受的。
 
 ### 6.5 结算（`model/topup.go`）
 
@@ -278,16 +290,21 @@ case PaymentProviderPaymentAsia:
 
 `ManualCompleteTopUp` 对非 Stripe 渠道已按 `Amount` 语义结算，无需改动，管理员补单天然可用。
 
+订单快照两列（`Currency` / `PaymentEnvironment`）只用于回调验签与核对，不参与额度换算；结算的事务骨架、行锁与幂等逻辑保持不变。
+
 ### 6.6 GetTopUpInfo（`controller/topup.go`）
 
 - 支付方式过滤：`strings.HasPrefix(method["type"], "paymentasia_")` → `isPaymentAsiaTopUpEnabled()`；其它未知 type 仍走 Epay 判定。
-- 返回给前端的 paymentasia 方法对象附加 `"currency": setting.PaymentAsiaCurrency`（用于前端正确显示 HK$/US$）。
-- 新增 data 字段：`enable_paymentasia_topup`（启用且至少有一个 paymentasia 方法）、`paymentasia_min_topup`。
+- 结算币种过滤：`paymentAsiaCurrency()` 为 `HKD` 保留全部已知 PaymentAsia 方法；`USD` 只保留 `Network == "CreditCard"`；其它值（选项校验会先拒绝，这里兜底）移除全部 PaymentAsia 方法；非 PaymentAsia 方法不受影响。
+- 返回给前端的 paymentasia 方法对象附加 `"currency": paymentAsiaCurrency()`（用于前端正确显示 HK$/US$）。
+- 新增 data 字段：`enable_paymentasia_topup`（启用且过滤后至少有一个 paymentasia 方法）、`paymentasia_min_topup`。
 
 ### 6.7 Option 注册（`model/option.go`）
 
 - `InitOptionMap` 写入 10 个 key 的默认值；
-- `UpdateOption` switch 增加对应赋值（bool/float/int 按现有模式解析）。
+- `UpdateOption` switch 增加对应赋值（bool/float/int 按现有模式解析）；
+- `validateOptionValue` 校验 `PaymentAsiaCurrency` 只接受 `HKD` / `USD`（trim + 大写比较），`PaymentAsiaUnitPrice` 必须为有限正数；
+- 订单快照让币种/环境可以在任意时刻切换，不再有「存在待支付订单时禁止改币种」的 guard。
 
 ### 6.8 路由（`router/api-router.go`）
 
@@ -322,7 +339,7 @@ case PaymentProviderPaymentAsia:
 - 订单 pending 且无回调 → 按 `trade_no` 查应用日志（创建是否有、回调是否收到/被拒）；网关侧状态用 Payment Query API 手工 curl（phase 2 做成管理端「同步状态」按钮）。
 - 确认已付款但回调丢失 → 管理员补单 `AdminCompleteTopUp`，现有审计日志会记录操作人与 caller IP。
 
-**已知限制：** `TopUp` 表没有 `request_reference` 列（v1 不改 schema），所以不能按网关侧单号在管理端充值列表直接搜索；需要时在应用日志/`admin_info` 中检索。若后续运营强依赖该检索，再评估加列。
+**已知限制：** `TopUp` 表没有 `request_reference` 列（v1 不加该列），所以不能按网关侧单号在管理端充值列表直接搜索；需要时在应用日志/`admin_info` 中检索。若后续运营强依赖该检索，再评估加列。
 
 ## 7. 前端设计
 
@@ -398,7 +415,7 @@ case PaymentProviderPaymentAsia:
 
 ### 9.3 数据库
 
-无 schema 变更；结算复用现有 `lockForUpdate`/`creditTopUpQuota`。按规程运行真实 SQLite/MySQL/PostgreSQL 的 model 测试与启动迁移两遍确认（避免回归 GORM 行为）。
+`top_ups` 新增 `Currency` / `PaymentEnvironment` 两列（varchar，默认空串，无数据回填）；结算复用现有 `lockForUpdate`/`creditTopUpQuota`。迁移测试覆盖：SQLite（临时文件库：旧表升级、连续两次迁移、旧数据保留、`trade_no` 唯一索引仍生效）与真实 MySQL/PostgreSQL（`TEST_MYSQL_DSN` / `TEST_POSTGRES_DSN` + `PAYMENTASIA_TEST_ALLOW_DESTRUCTIVE=1`，一次性库）。
 
 ## 10. 上线步骤
 
@@ -413,7 +430,7 @@ case PaymentProviderPaymentAsia:
 | 风险/未决 | 影响 | 处理 |
 |---|---|---|
 | 文档 `iPhoneX` / `IphoneX` 大小写笔误 | 照抄错误值做测试会误判 | 已验证 pre-sign string 与 hash 自洽；单测固定用 `IphoneX` 向量，沙箱首笔再抓真实签名核对 |
-| 待支付期间切换环境/币种 | 旧订单回调被拒绝 | 文档化运维规则；管理员补单兜底（`ManualCompleteTopUp`） |
+| 待支付期间切换环境/币种 | 旧订单可能无法回调 | 订单快照 `Currency`/`PaymentEnvironment` 让旧订单按创建时配置验签/核对；空快照旧订单回退当前配置并告警 |
 | `API Key` 用途未知 | 可能需要额外鉴权字段 | 申请沙箱邮件一并询问；v1 不存该字段 |
 | datafeed 重试策略/期望响应体未知 | 失败时可能丢单或反复重试 | 幂等 + 500 触发重试 + 日志；phase 2 加查询 API 兜底 |
 | 币种/通道兼容配置错误 | 网关拒单 | 支付前校验（USD 仅 CreditCard）+ 管理端提示 |

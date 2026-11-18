@@ -144,17 +144,24 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 		return cloned
 	})
-	// USD 结算只支持信用卡通道：其它 PaymentAsia 方法即使已配置也会被 pay
-	// 接口拒绝，不下发避免前端展示必然失败的按钮。
-	if paymentAsiaCurrency() == "USD" {
-		payMethods = lo.Filter(payMethods, func(method map[string]string, _ int) bool {
-			if !service.IsPaymentAsiaMethod(method["type"]) {
-				return true
-			}
+	// 结算币种决定可用通道：HKD 保留全部已知 PaymentAsia 方法；USD 只有信用卡
+	// 通道；其它（配置已由选项校验拦截，这里兜底）整体隐藏 PaymentAsia 方法。
+	// 非 PaymentAsia 方法不受影响。
+	paymentAsiaSettlementCurrency := paymentAsiaCurrency()
+	payMethods = lo.Filter(payMethods, func(method map[string]string, _ int) bool {
+		if !service.IsPaymentAsiaMethod(method["type"]) {
+			return true
+		}
+		switch paymentAsiaSettlementCurrency {
+		case "HKD":
+			return true
+		case "USD":
 			channel, ok := service.PaymentAsiaChannelByMethodType(method["type"])
 			return ok && channel.Network == "CreditCard"
-		})
-	}
+		default:
+			return false
+		}
+	})
 	enablePaymentAsia := isPaymentAsiaTopUpEnabled() && lo.ContainsBy(payMethods, func(method map[string]string) bool {
 		return service.IsPaymentAsiaMethod(method["type"])
 	})
