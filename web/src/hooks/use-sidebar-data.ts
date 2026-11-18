@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQuery } from '@tanstack/react-query'
 import {
   Activity,
+  AppWindow,
   Box,
   Building2,
   ChartColumn,
@@ -200,6 +201,12 @@ export function useSidebarData(): SidebarData {
             title: t('Organization Audit Log'),
             url: '/admin/organization-audit-logs',
             icon: ScrollText,
+          },
+          {
+            // Which apps of the Cuby desktop client an account may use.
+            title: t('Cuby Apps'),
+            url: '/admin/cuby-apps',
+            icon: AppWindow,
           },
           {
             title: t('Redemption Codes'),
