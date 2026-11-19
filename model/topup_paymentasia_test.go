@@ -411,3 +411,43 @@ func TestPaymentAsiaServiceChargeEnabledOption(t *testing.T) {
 	require.NoError(t, UpdateOption("PaymentAsiaServiceChargeEnabled", "false"))
 	assert.False(t, setting.PaymentAsiaServiceChargeEnabled)
 }
+
+// TestFillUserTopUpBreakdownUsesPaymentAsiaNetQuota 回归：管理端累计充值拆分
+// 通过 FillUserTopUpBreakdown 只 Select 部分列加载订单，必须包含 net_quota，
+// 否则手续费订单会按全额 Amount 上报现金，推高现金并压低赠金。
+func TestFillUserTopUpBreakdownUsesPaymentAsiaNetQuota(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := &User{
+		Id:       608,
+		Username: "paymentasia_breakdown_user",
+		AffCode:  "PABK",
+		Status:   common.UserStatusEnabled,
+		Quota:    60_000_000,
+	}
+	require.NoError(t, DB.Create(user).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PABREAKDOWNNET",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusSuccess,
+		Fee:             1.6,
+		FeeRate:         0.016,
+		NetAmount:       98.4,
+		NetQuota:        49_200_000,
+	}).Error)
+
+	FillUserTopUpBreakdown(user)
+
+	require.NotNil(t, user.CashTopUpTotal)
+	require.NotNil(t, user.GiftTopUpTotal)
+	assert.Equal(t, 49_200_000, *user.CashTopUpTotal,
+		"现金口径必须使用 NetQuota，而不是按 Amount 全额")
+	assert.Equal(t, 10_800_000, *user.GiftTopUpTotal,
+		"赠金 = 余额 + 已消费 - 现金，应随现金口径一起计算")
+}
