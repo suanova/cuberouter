@@ -87,4 +87,23 @@ describe('RechargeFormCard currency symbols', () => {
     const amountToPay = screen.getByText('Amount to pay:').parentElement
     expect(amountToPay).toHaveTextContent('¥10.8')
   })
+
+  test('gives multi-character custom currency symbols enough input padding', () => {
+    useSystemConfigStore.setState((state) => ({
+      config: {
+        ...state.config,
+        currency: {
+          ...DEFAULT_CURRENCY_CONFIG,
+          quotaDisplayType: 'CUSTOM',
+          customCurrencySymbol: 'HKD',
+        },
+      },
+    }))
+
+    renderCard()
+
+    const input = screen.getByLabelText('Custom Amount')
+    expect(input.className).toContain('pl-12')
+    expect(input.className).not.toContain('pl-7')
+  })
 })

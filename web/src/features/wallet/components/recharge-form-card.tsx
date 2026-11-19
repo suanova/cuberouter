@@ -120,6 +120,14 @@ export function RechargeFormCard({
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const currencySymbol = getCurrencySymbol()
+  // The prefix is absolutely positioned; give multi-character custom symbols
+  // (e.g. "HKD") enough left padding so the value never runs into the prefix.
+  let amountInputPaddingClass = ''
+  if (currencySymbol) {
+    amountInputPaddingClass = 'pl-7'
+    if (currencySymbol.length > 1) amountInputPaddingClass = 'pl-12'
+    if (currencySymbol.length > 3) amountInputPaddingClass = 'pl-16'
+  }
   // Preset "Pay"/"Save" estimates follow local-currency pricing (Price/Epay);
   // only the live quote below is charged in the selected gateway's currency.
   const localCurrencySymbol = getLocalCurrencySymbol()
@@ -307,7 +315,7 @@ export function RechargeFormCard({
                 <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
                   <div className='relative'>
                     {currencySymbol && (
-                      <span className='text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm'>
+                      <span className='text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm whitespace-nowrap'>
                         {currencySymbol}
                       </span>
                     )}
@@ -322,7 +330,7 @@ export function RechargeFormCard({
                       })}
                       className={cn(
                         'h-9 text-base sm:h-10 sm:text-lg',
-                        currencySymbol && 'pl-7'
+                        amountInputPaddingClass
                       )}
                     />
                   </div>
