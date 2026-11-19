@@ -6,8 +6,8 @@ subcharts are vendored under `charts/`, so it can be installed offline without `
 
 | | |
 |---|---|
-| Chart | `cuberouter-chart` **2.0.0** |
-| App version | `v2.0.0` |
+| Chart | `cuberouter-chart` **2.1.0** |
+| App version | `latest` — CI overrides it at package time; a main build publishes `<version>-sha<7>` and `<version>-latest`, a release names its tag |
 | Components | CubeRouter app (user + admin docs bundled), PostgreSQL (CloudNativePG), Redis (OpsTree redis-operator) |
 
 ## Contents

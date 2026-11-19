@@ -42,6 +42,11 @@ func registerApiRoutes(apiRouter *gin.RouterGroup, documented bool) {
 	imageJobs.GET("/:job/result", controller.RequireStudioImageJobEpoch, controller.GetStudioImageResult)
 	imageJobs.POST("/:job/ack", controller.RequireStudioImageJobEpoch, controller.AckStudioImageResult)
 	apiRouter.GET("/image-studio-audit", middleware.RootAuth(), controller.GetStudioImageAudit)
+	// 账户助手：只读自助问答。模型调用由运营方配置的计费账号承担，
+	// 服务端工具门禁保证没有工具结果时不会透出模型自由文本。
+	accountAssistant := apiRouter.Group("/account/assistant", middleware.UserAuth())
+	accountAssistant.GET("/config", middleware.DisableCache(), controller.AccountAssistantConfig)
+	accountAssistant.POST("/chat", middleware.UserCriticalRateLimit("account-assistant"), controller.AccountAssistantChat)
 	{
 		// Prometheus 薄导出（spec §6）：匿名路由，handler 依据
 		// perf_metrics_setting.export_enabled/export_token 自鉴权。

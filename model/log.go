@@ -219,22 +219,25 @@ func assignDisplayLogIds(logs []*Log, startIdx int) {
 	}
 }
 
+// StripUserHiddenLogFields removes admin-only keys from a log's Other JSON so
+// that billing fields stay visible while operator/root/audit debug data does
+// not leak to ordinary users. It returns the input unchanged when the JSON
+// cannot be parsed, so callers never hand the model a malformed payload.
+func StripUserHiddenLogFields(other string) string {
+	otherMap, _ := common.StrToMap(other)
+	if otherMap == nil {
+		return other
+	}
+	delete(otherMap, "admin_info")
+	delete(otherMap, "root_info")
+	delete(otherMap, "audit_info")
+	return common.MapToJsonStr(otherMap)
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
 		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			// Remove diagnostics reserved for root.
-			delete(otherMap, "root_info")
-			// Remove operation-audit details (operator/route info), admin-only.
-			delete(otherMap, "audit_info")
-			// delete(otherMap, "reject_reason")
-			// delete(otherMap, "stream_status")
-		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		logs[i].Other = StripUserHiddenLogFields(logs[i].Other)
 	}
 	assignDisplayLogIds(logs, startIdx)
 }
