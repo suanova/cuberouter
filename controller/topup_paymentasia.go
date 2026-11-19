@@ -49,6 +49,39 @@ func paymentAsiaCurrency() string {
 	return currency
 }
 
+// paymentAsiaUnitPrice returns the configured gateway price of one display
+// unit, falling back to 1 when the option is missing or invalid.
+func paymentAsiaUnitPrice() float64 {
+	unitPrice := setting.PaymentAsiaUnitPrice
+	if math.IsNaN(unitPrice) || math.IsInf(unitPrice, 0) || unitPrice <= 0 {
+		return 1
+	}
+	return unitPrice
+}
+
+// paymentAsiaOrderRateSnapshot returns the CNY exchange rate to snapshot on an
+// order; zero means "not CNY or no snapshot" and settlement falls back to the
+// current Price.
+func paymentAsiaOrderRateSnapshot() float64 {
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+		return operation_setting.Price
+	}
+	return 0
+}
+
+// paymentAsiaStoredAmount converts a user-entered amount to the unit stored on
+// TopUp.Amount: TOKENS mode stores amount/QuotaPerUnit, other modes store the
+// entered amount. Callers must validate the TOKENS multiple first.
+func paymentAsiaStoredAmount(amount int64) int64 {
+	if operation_setting.GetQuotaDisplayType() != operation_setting.QuotaDisplayTypeTokens {
+		return amount
+	}
+	if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+		return amount
+	}
+	return decimal.NewFromInt(amount).Div(decimal.NewFromFloat(common.QuotaPerUnit)).IntPart()
+}
+
 // paymentAsiaEnvironmentForSandbox names the credential environment of an
 // order. It is snapshotted on creation and also serves as the legacy-order
 // fallback when the snapshot column is empty.
@@ -82,10 +115,7 @@ func getPaymentAsiaPayMoney(amount int64, group string) float64 {
 		dAmount = dAmount.Div(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
 
-	unitPrice := setting.PaymentAsiaUnitPrice
-	if math.IsNaN(unitPrice) || math.IsInf(unitPrice, 0) || unitPrice <= 0 {
-		unitPrice = 1
-	}
+	unitPrice := paymentAsiaUnitPrice()
 	topupGroupRatio := common.GetTopupGroupRatio(group)
 	if topupGroupRatio == 0 {
 		topupGroupRatio = 1
@@ -140,6 +170,87 @@ func validatePaymentAsiaAmountMultiple(amount int64) error {
 	return nil
 }
 
+// paymentAsiaServiceChargeRate 是 PaymentAsia 一个通道的手续费率。FixedHKD 以
+// 港币计价，USD 结算时按固定汇率换算。
+type paymentAsiaServiceChargeRate struct {
+	Percent  float64
+	FixedHKD float64
+}
+
+// paymentAsiaFixedFeeHKDToUSD 是换算信用卡固定 HK$2 手续费用的固定汇率。
+const paymentAsiaFixedFeeHKDToUSD = 7.8
+
+// paymentAsiaServiceChargeRateForMethod 返回通道费率：信用卡最高档
+// (3.7% + HK$2)，银联 2.3%，其余钱包/FPS/Octopus/PayMe/通用收银台及未知
+// 通道按 1.6% 计费。
+func paymentAsiaServiceChargeRateForMethod(methodType string) paymentAsiaServiceChargeRate {
+	switch methodType {
+	case "paymentasia_creditcard":
+		return paymentAsiaServiceChargeRate{Percent: 0.037, FixedHKD: 2}
+	case "paymentasia_cup":
+		return paymentAsiaServiceChargeRate{Percent: 0.023}
+	default:
+		return paymentAsiaServiceChargeRate{Percent: 0.016}
+	}
+}
+
+var errPaymentAsiaServiceFeeExceedsAmount = errors.New("充值金额过低，无法覆盖手续费")
+
+// paymentAsiaFeeBreakdown 是一笔订单的手续费快照。Fee/FeeFixed 为网关币种，
+// FeeDisplay/NetDisplay 为展示单位，NetQuota 为实际入账额度。
+type paymentAsiaFeeBreakdown struct {
+	Fee        float64
+	FeeRate    float64
+	FeeFixed   float64
+	FeeDisplay decimal.Decimal
+	NetDisplay decimal.Decimal
+	NetQuota   int
+}
+
+// calculatePaymentAsiaServiceFee 按用户实际支付的网关金额计算手续费，再把
+// 手续费折回展示单位，从到账额度中扣除。requestAmount 是用户输入数量（用于
+// 计算实付），storedAmount 是落库的 Amount（TOKENS 模式已 ÷QuotaPerUnit）。
+// 报价与下单都调用本函数，保证展示与实际到账一致。
+func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string) (paymentAsiaFeeBreakdown, error) {
+	charge := paymentAsiaServiceChargeRateForMethod(methodType)
+	_, baseGateway, err := formatPaymentAsiaAmount(getPaymentAsiaPayMoney(requestAmount, group), network)
+	if err != nil {
+		return paymentAsiaFeeBreakdown{}, err
+	}
+
+	fixedGateway := decimal.NewFromFloat(charge.FixedHKD)
+	if paymentAsiaCurrency() == "USD" {
+		fixedGateway = fixedGateway.Div(decimal.NewFromFloat(paymentAsiaFixedFeeHKDToUSD))
+	}
+	feeGateway := decimal.NewFromFloat(baseGateway).
+		Mul(decimal.NewFromFloat(charge.Percent)).
+		Add(fixedGateway)
+	// 展示口径统一到 4 位小数：报价展示、订单快照和 NetQuota 都由该值推导，
+	// 避免"看到的"与"到账的"出现极小偏差。
+	feeDisplay := feeGateway.Div(decimal.NewFromFloat(paymentAsiaUnitPrice())).Round(4)
+	netDisplay := decimal.NewFromInt(storedAmount).Sub(feeDisplay)
+	if !netDisplay.IsPositive() || feeDisplay.GreaterThanOrEqual(decimal.NewFromInt(storedAmount)) {
+		return paymentAsiaFeeBreakdown{}, errPaymentAsiaServiceFeeExceedsAmount
+	}
+
+	rate := paymentAsiaOrderRateSnapshot()
+	grossQuota := model.TopupAmountToQuotaDecimal(decimal.NewFromInt(storedAmount), rate)
+	feeQuota := model.TopupAmountToQuotaDecimal(feeDisplay, rate)
+	netQuota, quotaErr := common.WalletQuotaFromDecimalStrict(grossQuota.Sub(feeQuota))
+	if quotaErr != nil || netQuota <= 0 {
+		return paymentAsiaFeeBreakdown{}, errPaymentAsiaServiceFeeExceedsAmount
+	}
+
+	return paymentAsiaFeeBreakdown{
+		Fee:        feeGateway.InexactFloat64(),
+		FeeRate:    charge.Percent,
+		FeeFixed:   fixedGateway.InexactFloat64(),
+		FeeDisplay: feeDisplay,
+		NetDisplay: netDisplay,
+		NetQuota:   netQuota,
+	}, nil
+}
+
 // PaymentAsiaAmountRequest is the quote request. payment_method is optional:
 // when set, the quote uses that channel's amount precision.
 type PaymentAsiaAmountRequest struct {
@@ -189,7 +300,26 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "success", "data": amountStr})
+	response := gin.H{"message": "success", "data": amountStr}
+	if setting.PaymentAsiaServiceChargeEnabled {
+		breakdown, feeErr := calculatePaymentAsiaServiceFee(
+			req.Amount,
+			paymentAsiaStoredAmount(req.Amount),
+			group,
+			req.PaymentMethod,
+			network,
+		)
+		if feeErr != nil {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": feeErr.Error()})
+			return
+		}
+		response["fee"] = breakdown.FeeDisplay.StringFixed(4)
+		response["fee_rate"] = breakdown.FeeRate
+		response["fee_fixed"] = breakdown.FeeFixed
+		response["net_amount"] = breakdown.NetDisplay.StringFixed(4)
+		response["net_quota"] = breakdown.NetQuota
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func RequestPaymentAsiaPay(c *gin.Context) {
@@ -245,21 +375,22 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 		return
 	}
 
+	amount := paymentAsiaStoredAmount(req.Amount)
+	// CNY 模式下快照当前汇率到订单,结算按快照换算,防止待支付期间改汇率
+	topUpRate := paymentAsiaOrderRateSnapshot()
+	var feeBreakdown paymentAsiaFeeBreakdown
+	if setting.PaymentAsiaServiceChargeEnabled {
+		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network)
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
+			return
+		}
+	}
+
 	tradeNo := fmt.Sprintf("PA%dNO%s%d", id, common.GetRandomString(6), time.Now().Unix())
 	if len(tradeNo) > 36 {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "订单号生成失败"})
 		return
-	}
-	amount := req.Amount
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
-		dAmount := decimal.NewFromInt(req.Amount)
-		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		amount = dAmount.Div(dQuotaPerUnit).IntPart()
-	}
-	// CNY 模式下快照当前汇率到订单,结算按快照换算,防止待支付期间改汇率
-	topUpRate := 0.0
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
-		topUpRate = operation_setting.Price
 	}
 	// 凭据在插入订单前读取：环境快照与本次签名所用 secret 必须来自同一次配置。
 	merchantToken, secret, sandbox := setting.GetPaymentAsiaCredentials()
@@ -278,6 +409,11 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 		Status:             common.TopUpStatusPending,
 		Currency:           currency,
 		PaymentEnvironment: paymentAsiaEnvironmentForSandbox(sandbox),
+		Fee:                feeBreakdown.Fee,
+		FeeRate:            feeBreakdown.FeeRate,
+		FeeFixed:           feeBreakdown.FeeFixed,
+		NetAmount:          feeBreakdown.NetDisplay.InexactFloat64(),
+		NetQuota:           feeBreakdown.NetQuota,
 	}
 	if err := topUp.Insert(); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 创建充值订单失败 user_id=%d trade_no=%s payment_method=%s amount=%d error=%q", id, tradeNo, req.PaymentMethod, req.Amount, err.Error()))
@@ -321,7 +457,9 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 	}
 	fields["sign"] = service.BuildPaymentAsiaSign(fields, secret)
 
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("paymentasia 订单创建 trade_no=%s user_id=%d amount=%d money=%.2f currency=%s method=%s network=%s", tradeNo, id, req.Amount, roundedMoney, currency, req.PaymentMethod, channel.Network))
+	logger.LogInfo(c.Request.Context(), fmt.Sprintf("paymentasia 订单创建 trade_no=%s user_id=%d amount=%d money=%.2f currency=%s method=%s network=%s fee_rate=%.4f fee=%.4f fee_fixed=%.4f net_amount=%.4f net_quota=%d",
+		tradeNo, id, req.Amount, roundedMoney, currency, req.PaymentMethod, channel.Network,
+		feeBreakdown.FeeRate, feeBreakdown.Fee, feeBreakdown.FeeFixed, feeBreakdown.NetDisplay.InexactFloat64(), feeBreakdown.NetQuota))
 	c.JSON(http.StatusOK, gin.H{
 		"message": "success",
 		"data":    fields,
@@ -423,7 +561,8 @@ func PaymentAsiaNotify(c *gin.Context) {
 	if currencySnapshotMissing {
 		orderCurrency = paymentAsiaCurrency()
 	}
-	logFields := fmt.Sprintf("%s sign_ok=%t order_currency=%q order_environment=%s", baseLogFields, signOK, orderCurrency, orderEnvironment)
+	logFields := fmt.Sprintf("%s sign_ok=%t order_currency=%q order_environment=%s order_fee=%.4f order_net_quota=%d",
+		baseLogFields, signOK, orderCurrency, orderEnvironment, topUp.Fee, topUp.NetQuota)
 	if !signOK {
 		logger.LogWarn(c.Request.Context(), "paymentasia 回调验签失败 "+logFields)
 		c.AbortWithStatus(http.StatusBadRequest)

@@ -54,6 +54,7 @@ type paymentAsiaControllerSettings struct {
 	currency             string
 	unitPrice            float64
 	minTopUp             int
+	serviceChargeEnabled bool
 	payMethods           []map[string]string
 	payAddress           string
 	epayID               string
@@ -85,6 +86,7 @@ func pinPaymentAsiaControllerFixture(t *testing.T) {
 		currency:             setting.PaymentAsiaCurrency,
 		unitPrice:            setting.PaymentAsiaUnitPrice,
 		minTopUp:             setting.PaymentAsiaMinTopUp,
+		serviceChargeEnabled: setting.PaymentAsiaServiceChargeEnabled,
 		payMethods:           operation_setting.PayMethods,
 		payAddress:           operation_setting.PayAddress,
 		epayID:               operation_setting.EpayId,
@@ -107,6 +109,7 @@ func pinPaymentAsiaControllerFixture(t *testing.T) {
 		setting.PaymentAsiaCurrency = saved.currency
 		setting.PaymentAsiaUnitPrice = saved.unitPrice
 		setting.PaymentAsiaMinTopUp = saved.minTopUp
+		setting.PaymentAsiaServiceChargeEnabled = saved.serviceChargeEnabled
 		operation_setting.PayMethods = saved.payMethods
 		operation_setting.PayAddress = saved.payAddress
 		operation_setting.EpayId = saved.epayID
@@ -129,6 +132,7 @@ func pinPaymentAsiaControllerFixture(t *testing.T) {
 	setting.PaymentAsiaCurrency = "HKD"
 	setting.PaymentAsiaUnitPrice = 7.8
 	setting.PaymentAsiaMinTopUp = 1
+	setting.PaymentAsiaServiceChargeEnabled = false
 	operation_setting.PayMethods = []map[string]string{
 		{"name": "Alipay HK", "type": "paymentasia_alipayhk", "color": "#1677ff", "min_topup": "1"},
 		{"name": "Alipay HK (typo)", "type": "paymentasia_typo", "color": "#000000", "min_topup": "1"},
@@ -1168,4 +1172,302 @@ func TestPaymentAsiaNotifyRejectsAmountMismatch(t *testing.T) {
 	require.NotNil(t, reloaded)
 	assert.Equal(t, common.TopUpStatusPending, reloaded.Status)
 	assert.Zero(t, paymentAsiaNotifyUserQuota(t, user.Id))
+}
+
+// TestPaymentAsiaServiceChargeRateForMethod 固定手续费费率表：信用卡最高档
+// (3.7% + HK$2)，银联 2.3%，其余钱包/FPS/Octopus/PayMe/未知通道 1.6%。
+func TestPaymentAsiaServiceChargeRateForMethod(t *testing.T) {
+	testCases := []struct {
+		method    string
+		wantRate  float64
+		wantFixed float64
+	}{
+		{method: "paymentasia_alipay", wantRate: 0.016},
+		{method: "paymentasia_alipaycn", wantRate: 0.016},
+		{method: "paymentasia_alipayhk", wantRate: 0.016},
+		{method: "paymentasia_wechat", wantRate: 0.016},
+		{method: "paymentasia_fps", wantRate: 0.016},
+		{method: "paymentasia_octopus", wantRate: 0.016},
+		{method: "paymentasia_payme", wantRate: 0.016},
+		{method: "paymentasia_generic", wantRate: 0.016},
+		{method: "paymentasia_cup", wantRate: 0.023},
+		{method: "paymentasia_creditcard", wantRate: 0.037, wantFixed: 2},
+		{method: "", wantRate: 0.016},
+		{method: "paymentasia_unknown", wantRate: 0.016},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.method, func(t *testing.T) {
+			charge := paymentAsiaServiceChargeRateForMethod(testCase.method)
+			assert.Equal(t, testCase.wantRate, charge.Percent)
+			assert.Equal(t, testCase.wantFixed, charge.FixedHKD)
+		})
+	}
+}
+
+// TestCalculatePaymentAsiaServiceFee 覆盖网关手续费与到账额度的换算：
+// 实付 base 不变，手续费按网关币种计算后折回展示单位，净额再按订单额度语义入账。
+func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	origPrice := operation_setting.Price
+	t.Cleanup(func() { operation_setting.Price = origPrice })
+	operation_setting.Price = 7.3
+
+	testCases := []struct {
+		name           string
+		currency       string
+		unitPrice      float64
+		displayType    string
+		requestAmount  int64
+		storedAmount   int64
+		method         string
+		network        string
+		wantFee        float64
+		wantFeeFixed   float64
+		wantFeeRate    float64
+		wantFeeDisplay string
+		wantNetDisplay string
+		wantNetQuota   int
+	}{
+		{
+			name:           "hkd display alipay charges 1.6 percent",
+			currency:       "HKD",
+			unitPrice:      1,
+			displayType:    operation_setting.QuotaDisplayTypeUSD,
+			requestAmount:  100,
+			storedAmount:   100,
+			method:         "paymentasia_alipayhk",
+			network:        "Alipay",
+			wantFee:        1.6,
+			wantFeeRate:    0.016,
+			wantFeeDisplay: "1.6000",
+			wantNetDisplay: "98.4000",
+			wantNetQuota:   49_200_000,
+		},
+		{
+			name:           "hkd display credit card charges 3.7 percent plus fixed 2",
+			currency:       "HKD",
+			unitPrice:      1,
+			displayType:    operation_setting.QuotaDisplayTypeUSD,
+			requestAmount:  100,
+			storedAmount:   100,
+			method:         "paymentasia_creditcard",
+			network:        "CreditCard",
+			wantFee:        5.7,
+			wantFeeFixed:   2,
+			wantFeeRate:    0.037,
+			wantFeeDisplay: "5.7000",
+			wantNetDisplay: "94.3000",
+			wantNetQuota:   47_150_000,
+		},
+		{
+			name:           "cny display converts the gateway fee back to yuan",
+			currency:       "HKD",
+			unitPrice:      1.08,
+			displayType:    operation_setting.QuotaDisplayTypeCNY,
+			requestAmount:  100,
+			storedAmount:   100,
+			method:         "paymentasia_alipayhk",
+			network:        "Alipay",
+			wantFee:        1.728,
+			wantFeeRate:    0.016,
+			wantFeeDisplay: "1.6000",
+			wantNetDisplay: "98.4000",
+			wantNetQuota:   6_739_726,
+		},
+		{
+			name:           "usd display converts the fixed hkd fee at 7.8",
+			currency:       "USD",
+			unitPrice:      1,
+			displayType:    operation_setting.QuotaDisplayTypeUSD,
+			requestAmount:  100,
+			storedAmount:   100,
+			method:         "paymentasia_creditcard",
+			network:        "CreditCard",
+			wantFee:        3.9564102564102565,
+			wantFeeFixed:   0.2564102564102564,
+			wantFeeRate:    0.037,
+			wantFeeDisplay: "3.9564",
+			wantNetDisplay: "96.0436",
+			wantNetQuota:   48_021_800,
+		},
+		{
+			name:           "tokens display keeps the order amount unit",
+			currency:       "HKD",
+			unitPrice:      1,
+			displayType:    operation_setting.QuotaDisplayTypeTokens,
+			requestAmount:  1_000_000,
+			storedAmount:   2,
+			method:         "paymentasia_alipayhk",
+			network:        "Alipay",
+			wantFee:        0.032,
+			wantFeeRate:    0.016,
+			wantFeeDisplay: "0.0320",
+			wantNetDisplay: "1.9680",
+			wantNetQuota:   984_000,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			setting.PaymentAsiaCurrency = testCase.currency
+			setting.PaymentAsiaUnitPrice = testCase.unitPrice
+			operation_setting.SetQuotaDisplayTypeForTest(testCase.displayType)
+			operation_setting.GetPaymentSetting().AmountDiscount = nil
+
+			breakdown, err := calculatePaymentAsiaServiceFee(
+				testCase.requestAmount,
+				testCase.storedAmount,
+				"default",
+				testCase.method,
+				testCase.network,
+			)
+			require.NoError(t, err)
+			assert.InDelta(t, testCase.wantFee, breakdown.Fee, 1e-9)
+			assert.InDelta(t, testCase.wantFeeFixed, breakdown.FeeFixed, 1e-9)
+			assert.Equal(t, testCase.wantFeeRate, breakdown.FeeRate)
+			assert.Equal(t, testCase.wantFeeDisplay, breakdown.FeeDisplay.StringFixed(4))
+			assert.Equal(t, testCase.wantNetDisplay, breakdown.NetDisplay.StringFixed(4))
+			assert.Equal(t, testCase.wantNetQuota, breakdown.NetQuota)
+		})
+	}
+}
+
+// TestCalculatePaymentAsiaServiceFeeRejectsFeeAtOrAboveAmount 手续费大于等于
+// 实付金额时不得下单：否则会给出零或负额度。
+func TestCalculatePaymentAsiaServiceFeeRejectsFeeAtOrAboveAmount(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	operation_setting.SetQuotaDisplayTypeForTest(operation_setting.QuotaDisplayTypeUSD)
+	operation_setting.GetPaymentSetting().AmountDiscount = nil
+	setting.PaymentAsiaCurrency = "HKD"
+	setting.PaymentAsiaUnitPrice = 1
+
+	// 信用卡固定费 HK$2 已超过 1 元实付。
+	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "手续费")
+}
+
+// TestRequestPaymentAsiaAmountReturnsServiceFee 报价 data 仍是用户实付 base，
+// 启用手续费时额外返回 fee/fee_rate/fee_fixed/net_amount/net_quota。
+func TestRequestPaymentAsiaAmountReturnsServiceFee(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	initPaymentAsiaControllerColumnNames(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	setting.PaymentAsiaServiceChargeEnabled = true
+	setting.PaymentAsiaUnitPrice = 1
+	operation_setting.GetPaymentSetting().AmountDiscount = nil
+
+	recorder := postPaymentAsiaAmount(t, `{"amount":100,"payment_method":"paymentasia_alipayhk"}`)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Message   string  `json:"message"`
+		Data      string  `json:"data"`
+		Fee       string  `json:"fee"`
+		FeeRate   float64 `json:"fee_rate"`
+		FeeFixed  float64 `json:"fee_fixed"`
+		NetAmount string  `json:"net_amount"`
+		NetQuota  int     `json:"net_quota"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "success", response.Message)
+	assert.Equal(t, "100.00", response.Data, "报价 data 必须保持用户实付 base")
+	assert.Equal(t, "1.6000", response.Fee)
+	assert.Equal(t, 0.016, response.FeeRate)
+	assert.Zero(t, response.FeeFixed)
+	assert.Equal(t, "98.4000", response.NetAmount)
+	assert.Equal(t, 49_200_000, response.NetQuota)
+
+	// 关闭开关后报价与旧行为完全一致：不返回任何手续费字段。
+	setting.PaymentAsiaServiceChargeEnabled = false
+	recorder = postPaymentAsiaAmount(t, `{"amount":100,"payment_method":"paymentasia_alipayhk"}`)
+	var raw map[string]interface{}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &raw))
+	assert.Equal(t, "100.00", raw["data"])
+	for _, key := range []string{"fee", "fee_rate", "fee_fixed", "net_amount", "net_quota"} {
+		assert.NotContains(t, raw, key)
+	}
+}
+
+// TestRequestPaymentAsiaPaySnapshotsServiceFee 下单时把手续费与净额快照到订单，
+// 实付 Money 与用户填写 Amount 均保持不变。
+func TestRequestPaymentAsiaPaySnapshotsServiceFee(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	setting.PaymentAsiaServiceChargeEnabled = true
+	setting.PaymentAsiaUnitPrice = 1
+	operation_setting.GetPaymentSetting().AmountDiscount = nil
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/pay",
+		strings.NewReader(`{"amount":100,"payment_method":"paymentasia_alipayhk"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestPaymentAsiaPay(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Message string            `json:"message"`
+		Data    map[string]string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "success", response.Message)
+	assert.Equal(t, "100.00", response.Data["amount"], "支付表单金额保持用户实付 base")
+
+	topUp := model.GetTopUpByTradeNo(response.Data["merchant_reference"])
+	require.NotNil(t, topUp)
+	assert.Equal(t, int64(100), topUp.Amount)
+	assert.Equal(t, 100.0, topUp.Money)
+	assert.Equal(t, 1.6, topUp.Fee)
+	assert.Equal(t, 0.016, topUp.FeeRate)
+	assert.Zero(t, topUp.FeeFixed)
+	assert.Equal(t, 98.4, topUp.NetAmount)
+	assert.Equal(t, 49_200_000, topUp.NetQuota)
+}
+
+// TestRequestPaymentAsiaPayWithoutServiceChargeKeepsLegacySnapshot 开关关闭时
+// 订单不写手续费快照，结算按全额入账（NetQuota=0 回退）。
+func TestRequestPaymentAsiaPayWithoutServiceChargeKeepsLegacySnapshot(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+	setting.PaymentAsiaUnitPrice = 1
+	operation_setting.GetPaymentSetting().AmountDiscount = nil
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/pay",
+		strings.NewReader(`{"amount":100,"payment_method":"paymentasia_alipayhk"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestPaymentAsiaPay(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Message string            `json:"message"`
+		Data    map[string]string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "success", response.Message)
+
+	topUp := model.GetTopUpByTradeNo(response.Data["merchant_reference"])
+	require.NotNil(t, topUp)
+	assert.Zero(t, topUp.Fee)
+	assert.Zero(t, topUp.FeeRate)
+	assert.Zero(t, topUp.FeeFixed)
+	assert.Zero(t, topUp.NetAmount)
+	assert.Zero(t, topUp.NetQuota)
 }

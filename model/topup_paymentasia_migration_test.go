@@ -35,28 +35,33 @@ import (
 	"gorm.io/gorm"
 )
 
-// paymentAsiaLegacyTopUp 复刻引入币种/环境快照列之前的 top_ups 表结构，仅用于
-// 迁移测试构造一张升级前的代表性表（新增列之前的最新发布版本）。
+// paymentAsiaLegacyTopUp 复刻引入手续费快照列之前的最新发布版 top_ups 表结构
+// （含币种/环境快照列），仅用于迁移测试构造一张升级前的代表性表。
 type paymentAsiaLegacyTopUp struct {
-	Id              int
-	UserId          int `gorm:"index"`
-	Amount          int64
-	Money           float64
-	TradeNo         string `gorm:"unique;type:varchar(255);index"`
-	PaymentMethod   string `gorm:"type:varchar(50)"`
-	PaymentProvider string `gorm:"type:varchar(50);default:''"`
-	CreateTime      int64
-	CompleteTime    int64
-	Status          string
-	Rate            float64 `gorm:"column:rate"`
+	Id                 int
+	UserId             int `gorm:"index"`
+	Amount             int64
+	Money              float64
+	TradeNo            string `gorm:"unique;type:varchar(255);index"`
+	PaymentMethod      string `gorm:"type:varchar(50)"`
+	PaymentProvider    string `gorm:"type:varchar(50);default:''"`
+	CreateTime         int64
+	CompleteTime       int64
+	Status             string
+	Rate               float64 `gorm:"column:rate"`
+	Currency           string  `gorm:"type:varchar(10);default:''"`
+	PaymentEnvironment string  `gorm:"type:varchar(16);default:''"`
 }
 
 func (paymentAsiaLegacyTopUp) TableName() string {
 	return "top_ups"
 }
 
+// paymentAsiaFeeSnapshotColumns 是手续费功能新增的订单快照列（additive migration）。
+var paymentAsiaFeeSnapshotColumns = []string{"Fee", "FeeRate", "FeeFixed", "NetAmount", "NetQuota"}
+
 // runPaymentAsiaTopUpSnapshotMigration 在 db 上执行完整的快照列迁移场景：
-// 旧表（无两列）→ 两次 AutoMigrate → 列存在、旧数据保留、唯一索引仍生效，
+// 旧表（无手续费快照列）→ 两次 AutoMigrate → 列存在、旧数据保留、唯一索引仍生效，
 // 且带快照的新订单可以写入并读回。SQLite 与真实 MySQL/PostgreSQL 共用。
 func runPaymentAsiaTopUpSnapshotMigration(t *testing.T, db *gorm.DB) {
 	t.Helper()
@@ -64,19 +69,25 @@ func runPaymentAsiaTopUpSnapshotMigration(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Migrator().DropTable("top_ups"))
 	require.NoError(t, db.Migrator().CreateTable(&paymentAsiaLegacyTopUp{}))
 	legacy := &paymentAsiaLegacyTopUp{
-		UserId:          901,
-		Amount:          2,
-		Money:           15.6,
-		TradeNo:         "PA-MIGRATION-LEGACY",
-		PaymentMethod:   "paymentasia_alipayhk",
-		PaymentProvider: PaymentProviderPaymentAsia,
-		CreateTime:      1_760_000_000,
-		Status:          common.TopUpStatusPending,
+		UserId:             901,
+		Amount:             2,
+		Money:              15.6,
+		TradeNo:            "PA-MIGRATION-LEGACY",
+		PaymentMethod:      "paymentasia_alipayhk",
+		PaymentProvider:    PaymentProviderPaymentAsia,
+		CreateTime:         1_760_000_000,
+		Status:             common.TopUpStatusPending,
+		Currency:           "HKD",
+		PaymentEnvironment: "live",
 	}
 	require.NoError(t, db.Create(legacy).Error)
 
-	require.False(t, db.Migrator().HasColumn(&TopUp{}, "Currency"))
-	require.False(t, db.Migrator().HasColumn(&TopUp{}, "PaymentEnvironment"))
+	require.True(t, db.Migrator().HasColumn(&TopUp{}, "Currency"))
+	require.True(t, db.Migrator().HasColumn(&TopUp{}, "PaymentEnvironment"))
+	for _, column := range paymentAsiaFeeSnapshotColumns {
+		require.False(t, db.Migrator().HasColumn(&TopUp{}, column),
+			"column %s must not exist before the migration", column)
+	}
 
 	// 启动迁移在每次进程启动时都会执行：重复执行必须幂等。
 	require.NoError(t, db.AutoMigrate(&TopUp{}))
@@ -84,6 +95,10 @@ func runPaymentAsiaTopUpSnapshotMigration(t *testing.T, db *gorm.DB) {
 
 	require.True(t, db.Migrator().HasColumn(&TopUp{}, "Currency"))
 	require.True(t, db.Migrator().HasColumn(&TopUp{}, "PaymentEnvironment"))
+	for _, column := range paymentAsiaFeeSnapshotColumns {
+		require.True(t, db.Migrator().HasColumn(&TopUp{}, column),
+			"column %s must exist after the migration", column)
+	}
 	assert.True(t, db.Migrator().HasIndex(&TopUp{}, "TradeNo"), "trade_no index must survive the migration")
 
 	var migrated TopUp
@@ -95,8 +110,14 @@ func runPaymentAsiaTopUpSnapshotMigration(t *testing.T, db *gorm.DB) {
 	assert.Equal(t, legacy.PaymentProvider, migrated.PaymentProvider)
 	assert.Equal(t, legacy.CreateTime, migrated.CreateTime)
 	assert.Equal(t, common.TopUpStatusPending, migrated.Status)
-	assert.Empty(t, migrated.Currency, "旧订单不做币种回填")
-	assert.Empty(t, migrated.PaymentEnvironment, "旧订单不做环境回填")
+	assert.Equal(t, "HKD", migrated.Currency)
+	assert.Equal(t, "live", migrated.PaymentEnvironment)
+	// 旧订单不做手续费回填：NetQuota=0 表示结算回退全额入账。
+	assert.Zero(t, migrated.Fee)
+	assert.Zero(t, migrated.FeeRate)
+	assert.Zero(t, migrated.FeeFixed)
+	assert.Zero(t, migrated.NetAmount)
+	assert.Zero(t, migrated.NetQuota)
 
 	// 唯一性保证必须仍在：重复 trade_no 插入失败。
 	duplicate := &TopUp{
@@ -111,15 +132,20 @@ func runPaymentAsiaTopUpSnapshotMigration(t *testing.T, db *gorm.DB) {
 
 	snapshot := &TopUp{
 		UserId:             903,
-		Amount:             2,
-		Money:              15.6,
+		Amount:             100,
+		Money:              100,
 		TradeNo:            "PA-MIGRATION-SNAPSHOT",
-		PaymentMethod:      "paymentasia_alipayhk",
+		PaymentMethod:      "paymentasia_creditcard",
 		PaymentProvider:    PaymentProviderPaymentAsia,
 		CreateTime:         common.GetTimestamp(),
 		Status:             common.TopUpStatusPending,
 		Currency:           "HKD",
 		PaymentEnvironment: "live",
+		Fee:                5.7,
+		FeeRate:            0.037,
+		FeeFixed:           2,
+		NetAmount:          94.3,
+		NetQuota:           47_150_000,
 	}
 	require.NoError(t, db.Create(snapshot).Error)
 
@@ -127,6 +153,11 @@ func runPaymentAsiaTopUpSnapshotMigration(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Where("trade_no = ?", snapshot.TradeNo).First(&readBack).Error)
 	assert.Equal(t, "HKD", readBack.Currency)
 	assert.Equal(t, "live", readBack.PaymentEnvironment)
+	assert.Equal(t, 5.7, readBack.Fee)
+	assert.Equal(t, 0.037, readBack.FeeRate)
+	assert.Equal(t, 2.0, readBack.FeeFixed)
+	assert.Equal(t, 94.3, readBack.NetAmount)
+	assert.Equal(t, 47_150_000, readBack.NetQuota)
 }
 
 // runPaymentAsiaTopUpSnapshotFreshMigration 在全新库上验证同一组列的建表路径：
@@ -140,12 +171,16 @@ func runPaymentAsiaTopUpSnapshotFreshMigration(t *testing.T, db *gorm.DB) {
 
 	require.True(t, db.Migrator().HasColumn(&TopUp{}, "Currency"))
 	require.True(t, db.Migrator().HasColumn(&TopUp{}, "PaymentEnvironment"))
+	for _, column := range paymentAsiaFeeSnapshotColumns {
+		require.True(t, db.Migrator().HasColumn(&TopUp{}, column),
+			"column %s must exist on a fresh database", column)
+	}
 	assert.True(t, db.Migrator().HasIndex(&TopUp{}, "TradeNo"))
 
 	snapshot := &TopUp{
 		UserId:             904,
-		Amount:             2,
-		Money:              15.6,
+		Amount:             100,
+		Money:              100,
 		TradeNo:            "PA-MIGRATION-FRESH",
 		PaymentMethod:      "paymentasia_creditcard",
 		PaymentProvider:    PaymentProviderPaymentAsia,
@@ -153,6 +188,11 @@ func runPaymentAsiaTopUpSnapshotFreshMigration(t *testing.T, db *gorm.DB) {
 		Status:             common.TopUpStatusPending,
 		Currency:           "USD",
 		PaymentEnvironment: "sandbox",
+		Fee:                3.9564,
+		FeeRate:            0.037,
+		FeeFixed:           0.2564,
+		NetAmount:          96.0436,
+		NetQuota:           48_021_800,
 	}
 	require.NoError(t, db.Create(snapshot).Error)
 
@@ -160,6 +200,11 @@ func runPaymentAsiaTopUpSnapshotFreshMigration(t *testing.T, db *gorm.DB) {
 	require.NoError(t, db.Where("trade_no = ?", snapshot.TradeNo).First(&readBack).Error)
 	assert.Equal(t, "USD", readBack.Currency)
 	assert.Equal(t, "sandbox", readBack.PaymentEnvironment)
+	assert.Equal(t, snapshot.Fee, readBack.Fee)
+	assert.Equal(t, snapshot.FeeRate, readBack.FeeRate)
+	assert.Equal(t, snapshot.FeeFixed, readBack.FeeFixed)
+	assert.Equal(t, snapshot.NetAmount, readBack.NetAmount)
+	assert.Equal(t, snapshot.NetQuota, readBack.NetQuota)
 }
 
 // TestPaymentAsiaTopUpSnapshotMigrationSQLite 在临时 SQLite 文件库上验证

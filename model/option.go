@@ -164,6 +164,7 @@ func InitOptionMap() {
 	common.OptionMap["PaymentAsiaCurrency"] = setting.PaymentAsiaCurrency
 	common.OptionMap["PaymentAsiaUnitPrice"] = strconv.FormatFloat(setting.PaymentAsiaUnitPrice, 'f', -1, 64)
 	common.OptionMap["PaymentAsiaMinTopUp"] = strconv.Itoa(setting.PaymentAsiaMinTopUp)
+	common.OptionMap["PaymentAsiaServiceChargeEnabled"] = strconv.FormatBool(setting.PaymentAsiaServiceChargeEnabled)
 	common.OptionMap["PaymentAsiaNotifyUrl"] = setting.PaymentAsiaNotifyUrl
 	common.OptionMap["PaymentAsiaReturnUrl"] = setting.PaymentAsiaReturnUrl
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
@@ -668,6 +669,8 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.PaymentAsiaUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "PaymentAsiaMinTopUp":
 		setting.PaymentAsiaMinTopUp, _ = strconv.Atoi(value)
+	case "PaymentAsiaServiceChargeEnabled":
+		setting.PaymentAsiaServiceChargeEnabled = value == "true"
 	case "PaymentAsiaNotifyUrl":
 		setting.PaymentAsiaNotifyUrl = value
 	case "PaymentAsiaReturnUrl":

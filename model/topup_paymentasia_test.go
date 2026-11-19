@@ -278,3 +278,136 @@ func TestValidatePaymentAsiaUnitPriceOption(t *testing.T) {
 		require.NoError(t, validateOptionValue("PaymentAsiaUnitPrice", value), "value %q must be accepted", value)
 	}
 }
+
+// TestRechargePaymentAsiaCreditsNetQuota 结算优先使用订单的 NetQuota 快照：
+// 用户实付不变，手续费从到账额度中扣除，审计日志带完整手续费计算。
+func TestRechargePaymentAsiaCreditsNetQuota(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 602, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAYMENTASIANETQUOTA",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+		Fee:             1.6,
+		FeeRate:         0.016,
+		FeeFixed:        0,
+		NetAmount:       98.4,
+		NetQuota:        49_200_000,
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, paymentAsiaTestMeta(), "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 49_200_000, getUserQuotaForPaymentGuardTest(t, user.Id),
+		"结算必须按 NetQuota 入账，而不是按 Amount 全额")
+
+	var logs []Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&logs).Error)
+	require.Len(t, logs, 1)
+	otherMap, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+	require.True(t, ok, "topup log must carry admin_info")
+	assert.EqualValues(t, 1.6, adminInfo["fee"])
+	assert.EqualValues(t, 0.016, adminInfo["fee_rate"])
+	assert.EqualValues(t, 0, adminInfo["fee_fixed"])
+	assert.EqualValues(t, 98.4, adminInfo["net_amount"])
+	assert.EqualValues(t, 49_200_000, adminInfo["net_quota"])
+	assert.Contains(t, logs[0].Content, "手续费", "用户可见日志必须说明手续费")
+}
+
+// TestRechargePaymentAsiaLegacyOrderCreditsFullAmount 无快照的旧订单
+// (NetQuota=0) 不受手续费功能影响，仍按订单 Amount 全额入账。
+func TestRechargePaymentAsiaLegacyOrderCreditsFullAmount(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 605, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAYMENTASIALEGACYFULL",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, paymentAsiaTestMeta(), "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 50_000_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+}
+
+// TestManualCompleteTopUpUsesPaymentAsiaNetQuota 管理员补单与回调结算口径一致：
+// PaymentAsia 订单有 NetQuota 快照时按快照入账，旧订单回退全额。
+func TestManualCompleteTopUpUsesPaymentAsiaNetQuota(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 606, 0)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAMANUALNETQUOTA",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+		Fee:             1.6,
+		FeeRate:         0.016,
+		NetAmount:       98.4,
+		NetQuota:        49_200_000,
+	}).Error)
+
+	require.NoError(t, ManualCompleteTopUp("PAMANUALNETQUOTA", "127.0.0.1"))
+	assert.Equal(t, 49_200_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	legacyUser := &User{Id: 607, Username: "paymentasia_manual_legacy", AffCode: "PALG", Status: common.UserStatusEnabled}
+	require.NoError(t, DB.Create(legacyUser).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          legacyUser.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAMANUALLEGACYFULL",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}).Error)
+
+	require.NoError(t, ManualCompleteTopUp("PAMANUALLEGACYFULL", "127.0.0.1"))
+	assert.Equal(t, 50_000_000, getUserQuotaForPaymentGuardTest(t, legacyUser.Id))
+}
+
+// TestPaymentAsiaServiceChargeEnabledOption 验证开关的 OptionMap 注册路径：
+// 默认 false 由注册值控制，UpdateOption 能即时切换运行时配置。
+func TestPaymentAsiaServiceChargeEnabledOption(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	origEnabled := setting.PaymentAsiaServiceChargeEnabled
+	origOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		setting.PaymentAsiaServiceChargeEnabled = origEnabled
+		common.OptionMap = origOptionMap
+		DB.Where("key = ?", "PaymentAsiaServiceChargeEnabled").Delete(&Option{})
+	})
+
+	setting.PaymentAsiaServiceChargeEnabled = false
+	require.NoError(t, UpdateOption("PaymentAsiaServiceChargeEnabled", "true"))
+	assert.True(t, setting.PaymentAsiaServiceChargeEnabled)
+	require.NoError(t, UpdateOption("PaymentAsiaServiceChargeEnabled", "false"))
+	assert.False(t, setting.PaymentAsiaServiceChargeEnabled)
+}

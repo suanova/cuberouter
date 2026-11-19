@@ -37,6 +37,9 @@ var (
 	PaymentAsiaCurrency             string  = "HKD"
 	PaymentAsiaUnitPrice            float64 = 1.0
 	PaymentAsiaMinTopUp             int     = 1
+	// PaymentAsiaServiceChargeEnabled 开启后从充值到账额度中扣除 PaymentAsia
+	// 渠道手续费；用户实付金额不变。
+	PaymentAsiaServiceChargeEnabled bool
 )
 
 // GetPaymentAsiaCredentials returns the merchant token and secret of the

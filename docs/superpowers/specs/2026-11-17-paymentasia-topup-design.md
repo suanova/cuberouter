@@ -27,7 +27,7 @@ PaymentAsia 是香港收单网关，提供：
 1. 退款（Refund API）、对账（Reconciliation API）、主动查询（Payment Query API）。退款产品本身不支持；查询留到 phase 2，作为管理员补单/掉单排查的辅助。
 2. 订阅支付（subscription plans）走 PaymentAsia。
 3. 自动汇率/自动同步 PaymentAsia 结算价；`PaymentAsiaUnitPrice` 由管理员手工配置。
-4. 新增数据库表；只允许在 `top_ups` 增加两列订单快照（`currency` / `payment_environment`），不做数据回填。
+4. 新增数据库表；只允许在 `top_ups` 增加订单快照列（`currency` / `payment_environment` / 手续费快照列），不做数据回填。
 5. 在仓库保存任何 PaymentAsia 凭据；`paymentasia/` 目录保持不入库。
 6. 默认启用 Octopus/PayMe/CUP；映射保留，是否启用由运营决定。
 7. 收集用户地址/电话等风控字段；只发送用户邮箱（可选）与 IP。
@@ -341,8 +341,45 @@ case PaymentProviderPaymentAsia:
 
 **已知限制：** `TopUp` 表没有 `request_reference` 列（v1 不加该列），所以不能按网关侧单号在管理端充值列表直接搜索；需要时在应用日志/`admin_info` 中检索。若后续运营强依赖该检索，再评估加列。
 
-## 7. 前端设计
+### 6.10 渠道手续费从到账额度扣除（2026-11-19 增补）
 
+PaymentAsia 渠道手续费改由用户承担，但**用户实付金额不变**：下单仍按 `Money`（base）
+支付，回调结算时从充值额度中扣除渠道手续费，记为 `NetQuota`。
+
+- 开关：`PaymentAsiaServiceChargeEnabled`（默认 `false`；关闭时行为与旧版完全一致，
+  `NetQuota=0`，结算按 `Amount` 全额入账）。
+- 费率表（按 PayMethod type）：
+  | 通道 | 费率 | 固定费 |
+  |---|---|---|
+  | `paymentasia_creditcard` | 3.7% | HK$2 |
+  | `paymentasia_cup` | 2.3% | — |
+  | `paymentasia_alipay*` / `wechat` / `fps` / `octopus` / `payme` / `generic` / 未知 | 1.6% | — |
+- 计算（全程 decimal）：
+  ```
+  baseGateway  = formatPaymentAsiaAmount(getPaymentAsiaPayMoney(amount, group))  // 用户实付，不变
+  fixedGateway = fixedHKD；USD 结算时 ÷ 7.8
+  feeGateway   = baseGateway × percent + fixedGateway
+  feeDisplay   = round(feeGateway ÷ PaymentAsiaUnitPrice, 4)   // 展示单位
+  netDisplay   = Amount(订单单位) − feeDisplay
+  grossQuota   = TopupAmountToQuotaDecimal(Amount, rate)       // rate=CNY 时 Price 快照，否则 0
+  feeQuota     = TopupAmountToQuotaDecimal(feeDisplay, rate)
+  netQuota     = WalletQuotaFromDecimalStrict(grossQuota − feeQuota)
+  ```
+  `netQuota <= 0`、换算失败或 `feeDisplay >= Amount` 时拒绝下单/报价
+  （`充值金额过低，无法覆盖手续费`）。报价与下单调用同一函数。
+- 订单快照（`top_ups` 新增列，均可空/默认 0，无回填）：`Fee`（网关币种手续费）、
+  `FeeRate`、`FeeFixed`（网关币种固定费）、`NetAmount`（展示单位净额）、
+  `NetQuota`（实际入账额度）。`Amount` 仍是用户填写的数量，`Money` 仍是用户实付。
+- 报价响应：`data` 仍为用户实付 base；启用手续费时额外返回 `fee`（展示单位，
+  4 位小数字符串）、`fee_rate`、`fee_fixed`（网关币种）、`net_amount`（展示单位
+  字符串）、`net_quota`；关闭时不返回这些字段。
+- 结算：`RechargePaymentAsia` / `ManualCompleteTopUp` 优先使用 `NetQuota`，旧订单
+  回退按 `Amount` 全额；日志 `admin_info`（JSON）增加 `fee/fee_rate/fee_fixed/
+  net_amount/net_quota`，用户可见充值日志说明手续费与实际到账。
+- 兼容性：`top_ups` 为 additive migration，SQLite/MySQL/PostgreSQL 三库验证
+  （含 MySQL 5.7 / PostgreSQL 9.6 最低版本与两次 AutoMigrate 幂等）。
+
+## 7. 前端设计
 ### 7.1 钱包充值
 
 - `constants.ts`：`PAYMENT_TYPES` 增加 10 个 `paymentasia_*`；新增
