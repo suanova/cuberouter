@@ -414,6 +414,9 @@ func newPaymentAsiaCheckoutDB(t *testing.T) {
 	require.NoError(t, db.AutoMigrate(&model.User{}, &model.TopUp{}))
 	model.DB = db
 	t.Cleanup(func() {
+		// GetUserGroup schedules an async cache refresh; let it finish before the
+		// in-memory DB is restored/closed (otherwise -race sees a use-after-close).
+		model.WaitForQuotaCacheWorkers()
 		model.DB = previousDB
 		sqlDB, closeErr := db.DB()
 		if closeErr == nil {
@@ -580,6 +583,7 @@ func newPaymentAsiaNotifyDB(t *testing.T) {
 	common.RedisEnabled = false
 	common.MemoryCacheEnabled = false
 	t.Cleanup(func() {
+		model.WaitForQuotaCacheWorkers()
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
 		common.SetMainDatabaseType(previousDatabaseType)
