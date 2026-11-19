@@ -206,7 +206,9 @@ export function Wallet(props: WalletProps) {
         topupAmount,
         method.type
       )
-      if (calculatedAmount === null) {
+      // A failed quote (e.g. the fee exceeds the amount) yields 0; never open
+      // the confirm dialog without a payable amount.
+      if (calculatedAmount === null || calculatedAmount <= 0) {
         return
       }
       setConfirmDialogOpen(true)
@@ -292,7 +294,7 @@ export function Wallet(props: WalletProps) {
         topupAmount,
         PAYMENT_TYPES.WAFFO
       )
-      if (calculatedAmount === null) {
+      if (calculatedAmount === null || calculatedAmount <= 0) {
         return
       }
       setConfirmDialogOpen(true)

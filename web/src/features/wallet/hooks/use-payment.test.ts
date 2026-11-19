@@ -159,6 +159,38 @@ describe('PaymentAsia service fee quotes', () => {
     expect(result).toEqual({ amount: 365 })
     expect(result.feeInfo).toBeUndefined()
   })
+
+  test('omits fee info when the fee payload is partial or malformed', async () => {
+    const payloads: AmountResponse[] = [
+      // net_amount missing
+      { success: true, data: '100.00', fee: '1.6000' },
+      // fee missing
+      { success: true, data: '100.00', net_amount: '98.4000' },
+      // non-numeric fee
+      {
+        success: true,
+        data: '100.00',
+        fee: 'oops',
+        net_amount: '98.4000',
+      },
+      // non-numeric net amount
+      {
+        success: true,
+        data: '100.00',
+        fee: '1.6000',
+        net_amount: 'oops',
+      },
+    ]
+
+    for (const payload of payloads) {
+      const result = await requestPaymentAmount(
+        100,
+        'paymentasia_alipayhk',
+        amountCalculators({ paymentAsia: async () => payload })
+      )
+      expect(result).toEqual({ amount: 100 })
+    }
+  })
 })
 
 describe('service fee state in the payment hook', () => {

@@ -63,13 +63,17 @@ function renderDialog(props: {
   return screen.findByRole('alertdialog')
 }
 
-beforeEach(() => {
+function setDisplayCurrency(quotaDisplayType: 'CNY' | 'USD') {
   useSystemConfigStore.setState((state) => ({
     config: {
       ...state.config,
-      currency: { ...DEFAULT_CURRENCY_CONFIG, quotaDisplayType: 'CNY' },
+      currency: { ...DEFAULT_CURRENCY_CONFIG, quotaDisplayType },
     },
   }))
+}
+
+beforeEach(() => {
+  setDisplayCurrency('CNY')
 })
 
 describe('PaymentAsia service fee notice', () => {
@@ -84,6 +88,36 @@ describe('PaymentAsia service fee notice', () => {
         'This payment includes a 1.60% service fee (¥1.6); the credited amount will be ¥98.4.'
       )
     ).toBeInTheDocument()
+  })
+
+  test('uses the display currency symbol in USD mode', async () => {
+    setDisplayCurrency('USD')
+
+    const dialog = await renderDialog({
+      paymentMethod: paymentAsiaMethod,
+      feeInfo,
+    })
+
+    expect(
+      within(dialog).getByText(
+        'This payment includes a 1.60% service fee ($1.6); the credited amount will be $98.4.'
+      )
+    ).toBeInTheDocument()
+    expect(within(dialog).queryByText(/¥/)).not.toBeInTheDocument()
+  })
+
+  test('keeps the payment at the quoted base while the notice shows the net credit', async () => {
+    const dialog = await renderDialog({
+      paymentMethod: paymentAsiaMethod,
+      feeInfo,
+    })
+
+    // You Pay stays the gateway amount the backend quoted (HK$100); the fee
+    // notice only describes the credited side.
+    expect(within(dialog).getByText('You Pay').parentElement).toHaveTextContent(
+      'HK$100'
+    )
+    expect(within(dialog).getByText(/service fee/)).toHaveTextContent('¥98.4')
   })
 
   test('hides the notice for a non-PaymentAsia gateway', async () => {

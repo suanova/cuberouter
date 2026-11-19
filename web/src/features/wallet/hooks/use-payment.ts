@@ -114,19 +114,23 @@ export async function requestPaymentAmount(
   }
 
   const amount = Number.parseFloat(response.data)
-  if (response.fee == null) {
+  if (response.fee == null || response.net_amount == null) {
     return { amount }
   }
 
   const fee = Number.parseFloat(response.fee)
-  const netAmount = Number.parseFloat(response.net_amount ?? '')
+  const netAmount = Number.parseFloat(response.net_amount)
+  if (!Number.isFinite(fee) || !Number.isFinite(netAmount)) {
+    return { amount }
+  }
+
   return {
     amount,
     feeInfo: {
-      fee: Number.isFinite(fee) ? fee : 0,
+      fee,
       feeRate: response.fee_rate ?? 0,
       feeFixed: response.fee_fixed ?? 0,
-      netAmount: Number.isFinite(netAmount) ? netAmount : 0,
+      netAmount,
       netQuota: response.net_quota ?? 0,
     },
   }

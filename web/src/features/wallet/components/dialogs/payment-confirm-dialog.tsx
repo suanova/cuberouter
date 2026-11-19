@@ -35,7 +35,7 @@ import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
 import {
   formatCurrency,
-  getLocalCurrencySymbol,
+  getCurrencySymbol,
   getPaymentIcon,
   getPaymentMethodCurrencySymbol,
   isPaymentAsiaPayment,
@@ -75,7 +75,9 @@ export function PaymentConfirmDialog({
   const payCurrencySymbol = getPaymentMethodCurrencySymbol(
     paymentMethod?.currency
   )
-  const localCurrencySymbol = getLocalCurrencySymbol()
+  // The quote's fee/net_amount are display units, so the notice uses the
+  // display currency symbol (USD sites show $, not the local payment symbol).
+  const displayCurrencySymbol = getCurrencySymbol()
   // Payment amount is unchanged; only the credited amount is net of the fee.
   // Hidden while a re-quote is in flight so a stale fee never shows.
   const showFeeNotice =
@@ -148,8 +150,8 @@ export function PaymentConfirmDialog({
                   'This payment includes a {{rate}} service fee ({{fee}}); the credited amount will be {{net}}.',
                   {
                     rate: `${(feeInfo.feeRate * 100).toFixed(2)}%`,
-                    fee: `${localCurrencySymbol}${formatCurrency(feeInfo.fee)}`,
-                    net: `${localCurrencySymbol}${formatCurrency(feeInfo.netAmount)}`,
+                    fee: `${displayCurrencySymbol}${formatCurrency(feeInfo.fee)}`,
+                    net: `${displayCurrencySymbol}${formatCurrency(feeInfo.netAmount)}`,
                   }
                 )}
               </p>
