@@ -91,6 +91,7 @@ describe('top-up audit service fee fields', () => {
     renderTopupLog({
       payment_method: 'paymentasia_alipayhk',
       trade_no: 'PA-1',
+      currency: 'HKD',
       fee: 1.6,
       fee_rate: 0.016,
       fee_fixed: 0,
@@ -99,15 +100,17 @@ describe('top-up audit service fee fields', () => {
     })
 
     expect(screen.getByText('Service Fee').parentElement).toHaveTextContent(
-      '1.6'
+      'HKD 1.6000'
     )
     expect(screen.getByText('Fee Rate').parentElement).toHaveTextContent(
-      '0.0160'
+      '1.60%'
     )
-    expect(screen.getByText('Fixed Fee').parentElement).toHaveTextContent('0')
-    expect(screen.getByText('Net Amount').parentElement).toHaveTextContent(
-      '98.4'
+    expect(screen.getByText('Fixed Fee').parentElement).toHaveTextContent(
+      'HKD 0.0000'
     )
+    expect(
+      screen.getByText('Net Amount (display units)').parentElement
+    ).toHaveTextContent('98.4000')
     expect(screen.getByText('Net Quota').parentElement).toHaveTextContent(
       '49200000'
     )
@@ -122,7 +125,9 @@ describe('top-up audit service fee fields', () => {
     expect(screen.queryByText('Service Fee')).not.toBeInTheDocument()
     expect(screen.queryByText('Fee Rate')).not.toBeInTheDocument()
     expect(screen.queryByText('Fixed Fee')).not.toBeInTheDocument()
-    expect(screen.queryByText('Net Amount')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Net Amount (display units)')
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Net Quota')).not.toBeInTheDocument()
   })
 })

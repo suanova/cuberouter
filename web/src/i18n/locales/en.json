@@ -6446,6 +6446,7 @@
     "Fee Rate": "Fee Rate",
     "Fixed Fee": "Fixed Fee",
     "Net Amount": "Net Amount",
+    "Net Amount (display units)": "Net Amount (display units)",
     "Net Quota": "Net Quota"
   }
 }

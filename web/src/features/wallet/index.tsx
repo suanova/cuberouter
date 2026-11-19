@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
@@ -202,13 +203,16 @@ export function Wallet(props: WalletProps) {
       }
 
       // Calculate payment amount and show confirmation dialog
-      const calculatedAmount = await calculatePaymentAmount(
-        topupAmount,
-        method.type
-      )
+      const quote = await calculatePaymentAmount(topupAmount, method.type)
       // A failed quote (e.g. the fee exceeds the amount) yields 0; never open
-      // the confirm dialog without a payable amount.
-      if (calculatedAmount === null || calculatedAmount <= 0) {
+      // the confirm dialog without a payable amount, and surface the reason.
+      if (!quote) {
+        return
+      }
+      if (quote.amount <= 0) {
+        if (quote.error) {
+          toast.error(quote.error)
+        }
         return
       }
       setConfirmDialogOpen(true)
@@ -290,11 +294,17 @@ export function Wallet(props: WalletProps) {
     setPaymentLoading(loadingKey)
 
     try {
-      const calculatedAmount = await calculatePaymentAmount(
+      const quote = await calculatePaymentAmount(
         topupAmount,
         PAYMENT_TYPES.WAFFO
       )
-      if (calculatedAmount === null || calculatedAmount <= 0) {
+      if (!quote) {
+        return
+      }
+      if (quote.amount <= 0) {
+        if (quote.error) {
+          toast.error(quote.error)
+        }
         return
       }
       setConfirmDialogOpen(true)

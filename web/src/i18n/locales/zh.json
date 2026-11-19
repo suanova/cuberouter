@@ -6446,6 +6446,7 @@
     "Fee Rate": "费率",
     "Fixed Fee": "固定手续费",
     "Net Amount": "净额",
+    "Net Amount (display units)": "到账金额（展示单位）",
     "Net Quota": "到账额度"
   }
 }

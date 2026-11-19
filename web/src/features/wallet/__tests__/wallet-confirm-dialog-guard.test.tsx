@@ -35,6 +35,16 @@ import {
 } from '../api'
 import { Wallet } from '../index'
 
+const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
+
+vi.mock('sonner', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('sonner')>()
+  return {
+    ...actual,
+    toast: { ...actual.toast, error: toastError },
+  }
+})
+
 vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>()
   return {
@@ -127,6 +137,7 @@ function renderWallet() {
 }
 
 beforeEach(() => {
+  toastError.mockClear()
   useSystemConfigStore.setState((state) => ({
     config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
   }))
@@ -161,6 +172,7 @@ describe('wallet confirm dialog quote guard', () => {
     fireEvent.click(method)
 
     await waitFor(() => expect(method).not.toBeDisabled())
+    expect(toastError).toHaveBeenCalledWith('充值金额过低，无法覆盖手续费')
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 

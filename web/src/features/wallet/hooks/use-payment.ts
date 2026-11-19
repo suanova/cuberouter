@@ -77,6 +77,10 @@ const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
 interface PaymentAmountQuote {
   amount: number
   /**
+   * Present when the quote was rejected; callers may surface it to the user.
+   */
+  error?: string
+  /**
    * Present only when the gateway quotes a service fee (PaymentAsia with the
    * service-charge option on); the fee is deducted from the credited amount.
    */
@@ -110,7 +114,11 @@ export async function requestPaymentAmount(
 
   const response = await calculator(request)
   if (!isApiSuccess(response) || !response.data) {
-    return { amount: 0 }
+    const errorMessage =
+      typeof response.data === 'string' && response.data.trim() !== ''
+        ? response.data
+        : response.message || i18next.t('Payment request failed')
+    return { amount: 0, error: errorMessage }
   }
 
   const amount = Number.parseFloat(response.data)
@@ -158,14 +166,14 @@ export function usePayment() {
         }
         setAmount(quote.amount)
         setPaymentFeeInfo(quote.feeInfo ?? null)
-        return quote.amount
+        return quote
       } catch {
         if (requestSeq !== amountRequestSeqRef.current) {
           return null
         }
         setAmount(0)
         setPaymentFeeInfo(null)
-        return 0
+        return { amount: 0, error: i18next.t('Payment request failed') }
       } finally {
         if (requestSeq === amountRequestSeqRef.current) {
           setCalculating(false)

@@ -191,6 +191,24 @@ describe('PaymentAsia service fee quotes', () => {
       expect(result).toEqual({ amount: 100 })
     }
   })
+
+  test('returns the backend rejection message when the quote fails', async () => {
+    const result = await requestPaymentAmount(
+      100,
+      'paymentasia_alipayhk',
+      amountCalculators({
+        paymentAsia: async () => ({
+          message: 'error',
+          data: '充值金额过低，无法覆盖手续费',
+        }),
+      })
+    )
+
+    expect(result).toEqual({
+      amount: 0,
+      error: '充值金额过低，无法覆盖手续费',
+    })
+  })
 })
 
 describe('service fee state in the payment hook', () => {
@@ -204,12 +222,13 @@ describe('service fee state in the payment hook', () => {
     const { result } = renderHook(() => usePayment())
     expect(result.current.paymentFeeInfo).toBeNull()
 
-    let paymentAsiaAmount: number | null = null
+    let paymentAsiaAmount = 0
     await act(async () => {
-      paymentAsiaAmount = await result.current.calculatePaymentAmount(
+      const quote = await result.current.calculatePaymentAmount(
         100,
         'paymentasia_alipayhk'
       )
+      paymentAsiaAmount = quote?.amount ?? 0
     })
     expect(paymentAsiaAmount).toBe(100)
     expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
@@ -232,14 +251,18 @@ describe('service fee state in the payment hook', () => {
     })
     expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
 
-    let failedAmount: number | null = null
+    let failedAmount = -1
+    let failedError = ''
     await act(async () => {
-      failedAmount = await result.current.calculatePaymentAmount(
+      const quote = await result.current.calculatePaymentAmount(
         100,
         'paymentasia_alipayhk'
       )
+      failedAmount = quote?.amount ?? -1
+      failedError = quote?.error ?? ''
     })
     expect(failedAmount).toBe(0)
+    expect(failedError).not.toBe('')
     expect(result.current.paymentFeeInfo).toBeNull()
   })
 })
@@ -263,14 +286,14 @@ describe('stale amount requests', () => {
 
     const { result } = renderHook(() => usePayment())
 
-    let regularRequest!: Promise<number | null>
+    let regularRequest!: Promise<{ amount: number; error?: string } | null>
     act(() => {
       regularRequest = result.current.calculatePaymentAmount(
         100,
         PAYMENT_TYPES.ALIPAY
       )
     })
-    let paymentAsiaRequest!: Promise<number | null>
+    let paymentAsiaRequest!: Promise<{ amount: number; error?: string } | null>
     act(() => {
       paymentAsiaRequest = result.current.calculatePaymentAmount(
         100,
@@ -281,7 +304,7 @@ describe('stale amount requests', () => {
     await act(async () => {
       resolvePaymentAsia({ ...feeQuote, data: '108.00' })
     })
-    await expect(paymentAsiaRequest).resolves.toBe(108)
+    await expect(paymentAsiaRequest).resolves.toMatchObject({ amount: 108 })
     expect(result.current.amount).toBe(108)
     expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
 

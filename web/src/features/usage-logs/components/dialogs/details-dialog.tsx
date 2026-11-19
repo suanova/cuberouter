@@ -566,6 +566,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const showAdminIp =
     !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
   const adminInfo = other?.admin_info
+  const auditCurrencyPrefix = adminInfo?.currency
+    ? `${adminInfo.currency} `
+    : ''
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
       ? ([
@@ -611,23 +614,23 @@ export function DetailsDialog(props: DetailsDialogProps) {
           },
           adminInfo.fee != null && {
             label: t('Service Fee'),
-            value: String(adminInfo.fee),
+            value: `${auditCurrencyPrefix}${Number(adminInfo.fee).toFixed(4)}`,
           },
           adminInfo.fee_rate != null && {
             label: t('Fee Rate'),
-            value: formatRatio(adminInfo.fee_rate),
+            value: `${(Number(adminInfo.fee_rate) * 100).toFixed(2)}%`,
           },
           adminInfo.fee_fixed != null && {
             label: t('Fixed Fee'),
-            value: String(adminInfo.fee_fixed),
+            value: `${auditCurrencyPrefix}${Number(adminInfo.fee_fixed).toFixed(4)}`,
           },
           adminInfo.net_amount != null && {
-            label: t('Net Amount'),
-            value: String(adminInfo.net_amount),
+            label: t('Net Amount (display units)'),
+            value: Number(adminInfo.net_amount).toFixed(4),
           },
           adminInfo.net_quota != null && {
             label: t('Net Quota'),
-            value: String(adminInfo.net_quota),
+            value: String(Math.trunc(Number(adminInfo.net_quota))),
           },
         ].filter(Boolean) as Array<{ label: string; value: string }>)
       : []
