@@ -609,6 +609,26 @@ export function DetailsDialog(props: DetailsDialogProps) {
             label: t('Payment Channel'),
             value: adminInfo.channel,
           },
+          adminInfo.fee != null && {
+            label: t('Service Fee'),
+            value: String(adminInfo.fee),
+          },
+          adminInfo.fee_rate != null && {
+            label: t('Fee Rate'),
+            value: formatRatio(adminInfo.fee_rate),
+          },
+          adminInfo.fee_fixed != null && {
+            label: t('Fixed Fee'),
+            value: String(adminInfo.fee_fixed),
+          },
+          adminInfo.net_amount != null && {
+            label: t('Net Amount'),
+            value: String(adminInfo.net_amount),
+          },
+          adminInfo.net_quota != null && {
+            label: t('Net Quota'),
+            value: String(adminInfo.net_quota),
+          },
         ].filter(Boolean) as Array<{ label: string; value: string }>)
       : []
   const showLegacyTopupWarning = isTopup && props.isAdmin && !adminInfo

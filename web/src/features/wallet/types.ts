@@ -34,7 +34,38 @@ export interface ApiResponse<T = unknown> {
  */
 export type TopupInfoResponse = ApiResponse<TopupInfo>
 export type RedemptionResponse = ApiResponse<number>
-export type AmountResponse = ApiResponse<string>
+
+/**
+ * Payment amount quote. `data` is the amount the user pays; when the
+ * PaymentAsia service charge is enabled the gateway also quotes the fee
+ * breakdown that will be deducted from the credited quota.
+ */
+export interface AmountResponse extends ApiResponse<string> {
+  /** Service fee in display units (e.g. "1.6000") */
+  fee?: string
+  /** Percentage part of the service fee, 0-1 */
+  fee_rate?: number
+  /** Fixed part of the service fee in the gateway currency */
+  fee_fixed?: number
+  /** Amount credited to the wallet before quota conversion, display units */
+  net_amount?: string
+  /** Quota actually credited after the service fee */
+  net_quota?: number
+}
+
+/** PaymentAsia service fee quoted alongside the payment amount. */
+export interface PaymentAsiaFeeInfo {
+  /** Service fee in display units */
+  fee: number
+  /** Percentage part of the service fee, 0-1 */
+  feeRate: number
+  /** Fixed part of the service fee in the gateway currency */
+  feeFixed: number
+  /** Amount credited to the wallet before quota conversion, display units */
+  netAmount: number
+  /** Quota actually credited after the service fee */
+  netQuota: number
+}
 export type PaymentResponse = ApiResponse<Record<string, unknown>> & {
   url?: string
 }

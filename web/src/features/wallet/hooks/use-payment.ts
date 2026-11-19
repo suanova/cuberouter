@@ -45,6 +45,7 @@ import type {
   AmountRequest,
   AmountResponse,
   AlipayPaymentResponse,
+  PaymentAsiaFeeInfo,
   PaymentResponse,
   StripePaymentResponse,
 } from '../types'
@@ -73,11 +74,20 @@ const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
   paymentAsia: calculatePaymentAsiaAmount,
 }
 
+interface PaymentAmountQuote {
+  amount: number
+  /**
+   * Present only when the gateway quotes a service fee (PaymentAsia with the
+   * service-charge option on); the fee is deducted from the credited amount.
+   */
+  feeInfo?: PaymentAsiaFeeInfo
+}
+
 export async function requestPaymentAmount(
   topupAmount: number,
   paymentType: string,
   calculators: PaymentAmountCalculators = defaultPaymentAmountCalculators
-): Promise<number> {
+): Promise<PaymentAmountQuote> {
   let calculator = calculators.regular
   if (isStripePayment(paymentType)) {
     calculator = calculators.stripe
@@ -100,14 +110,32 @@ export async function requestPaymentAmount(
 
   const response = await calculator(request)
   if (!isApiSuccess(response) || !response.data) {
-    return 0
+    return { amount: 0 }
   }
 
-  return Number.parseFloat(response.data)
+  const amount = Number.parseFloat(response.data)
+  if (response.fee == null) {
+    return { amount }
+  }
+
+  const fee = Number.parseFloat(response.fee)
+  const netAmount = Number.parseFloat(response.net_amount ?? '')
+  return {
+    amount,
+    feeInfo: {
+      fee: Number.isFinite(fee) ? fee : 0,
+      feeRate: response.fee_rate ?? 0,
+      feeFixed: response.fee_fixed ?? 0,
+      netAmount: Number.isFinite(netAmount) ? netAmount : 0,
+      netQuota: response.net_quota ?? 0,
+    },
+  }
 }
 
 export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
+  const [paymentFeeInfo, setPaymentFeeInfo] =
+    useState<PaymentAsiaFeeInfo | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
   // Quotes resolve out of order when the user switches amount or gateway
@@ -120,20 +148,19 @@ export function usePayment() {
       const requestSeq = ++amountRequestSeqRef.current
       try {
         setCalculating(true)
-        const calculatedAmount = await requestPaymentAmount(
-          topupAmount,
-          paymentType
-        )
+        const quote = await requestPaymentAmount(topupAmount, paymentType)
         if (requestSeq !== amountRequestSeqRef.current) {
           return null
         }
-        setAmount(calculatedAmount)
-        return calculatedAmount
+        setAmount(quote.amount)
+        setPaymentFeeInfo(quote.feeInfo ?? null)
+        return quote.amount
       } catch {
         if (requestSeq !== amountRequestSeqRef.current) {
           return null
         }
         setAmount(0)
+        setPaymentFeeInfo(null)
         return 0
       } finally {
         if (requestSeq === amountRequestSeqRef.current) {
@@ -229,6 +256,7 @@ export function usePayment() {
 
   return {
     amount,
+    paymentFeeInfo,
     calculating,
     processing,
     calculatePaymentAmount,

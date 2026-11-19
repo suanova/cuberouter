@@ -192,6 +192,8 @@ const BILLING_SECTIONS = [
           PaymentAsiaMinTopUp: settings.PaymentAsiaMinTopUp ?? 1,
           PaymentAsiaNotifyUrl: settings.PaymentAsiaNotifyUrl ?? '',
           PaymentAsiaReturnUrl: settings.PaymentAsiaReturnUrl ?? '',
+          PaymentAsiaServiceChargeEnabled:
+            settings.PaymentAsiaServiceChargeEnabled ?? false,
         }}
         waffoPancakeProvisionedStoreID={settings.WaffoPancakeStoreID ?? ''}
         waffoPancakeProvisionedProductID={settings.WaffoPancakeProductID ?? ''}

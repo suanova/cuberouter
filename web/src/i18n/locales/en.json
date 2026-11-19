@@ -6383,6 +6383,14 @@
     "Vector": "Vector",
     "Alipay CN": "Alipay CN",
     "Failed to save \"{{key}}\": {{message}}. Earlier changes may already be saved and were not rolled back.": "Failed to save \"{{key}}\": {{message}}. Earlier changes may already be saved and were not rolled back.",
-    "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.": "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back."
+    "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.": "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.",
+    "This payment includes a {{rate}} service fee ({{fee}}); the credited amount will be {{net}}.": "This payment includes a {{rate}} service fee ({{fee}}); the credited amount will be {{net}}.",
+    "Deduct service fee from credited amount": "Deduct service fee from credited amount",
+    "Payment amount stays unchanged; the channel fee is deducted from the credited quota.": "Payment amount stays unchanged; the channel fee is deducted from the credited quota.",
+    "Service Fee": "Service Fee",
+    "Fee Rate": "Fee Rate",
+    "Fixed Fee": "Fixed Fee",
+    "Net Amount": "Net Amount",
+    "Net Quota": "Net Quota"
   }
 }

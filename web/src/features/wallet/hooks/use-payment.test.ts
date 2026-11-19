@@ -22,7 +22,11 @@ import { describe, expect, test, vi } from 'vitest'
 import { calculateAmount, calculatePaymentAsiaAmount } from '../api'
 import { PAYMENT_TYPES } from '../constants'
 import type { AmountRequest, AmountResponse } from '../types'
-import { requestPaymentAmount, usePayment } from './use-payment'
+import {
+  requestPaymentAmount,
+  usePayment,
+  type PaymentAmountCalculators,
+} from './use-payment'
 
 vi.mock('../api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api')>()
@@ -33,118 +37,178 @@ vi.mock('../api', async (importOriginal) => {
   }
 })
 
+/** Every calculator resolves to an unused value unless the test overrides it. */
+function amountCalculators(
+  overrides: Partial<PaymentAmountCalculators> = {}
+): PaymentAmountCalculators {
+  return {
+    regular: async () => ({ success: true, data: '1' }),
+    stripe: async () => ({ success: true, data: '2' }),
+    alipay: async () => ({ success: true, data: '3' }),
+    waffo: async () => ({ success: true, data: '4' }),
+    waffoPancake: async () => ({ success: true, data: '4' }),
+    paymentAsia: async () => ({ success: true, data: '5' }),
+    ...overrides,
+  }
+}
+
+/** 报价接口在启用手续费时额外返回的字段；data 仍是用户实付 base。 */
+const feeQuote: AmountResponse = {
+  success: true,
+  data: '100.00',
+  fee: '1.6000',
+  fee_rate: 0.016,
+  fee_fixed: 0,
+  net_amount: '98.4000',
+  net_quota: 49_200_000,
+}
+
+const expectedFeeInfo = {
+  fee: 1.6,
+  feeRate: 0.016,
+  feeFixed: 0,
+  netAmount: 98.4,
+  netQuota: 49_200_000,
+}
+
 describe('payment amount routing', () => {
   test('uses the dedicated Waffo amount calculator', async () => {
     const calls: string[] = []
     let waffoRequest: AmountRequest | undefined
-    const amount = await requestPaymentAmount(120, PAYMENT_TYPES.WAFFO, {
-      regular: async () => {
-        calls.push('regular')
-        return { success: true, data: '1' }
-      },
-      stripe: async () => {
-        calls.push('stripe')
-        return { success: true, data: '2' }
-      },
-      alipay: async (request) => {
-        calls.push(`alipay:${request.amount}`)
-        return { success: true, data: '3' }
-      },
-      waffo: async (request) => {
-        calls.push(`waffo:${request.amount}`)
-        waffoRequest = request
-        return { success: true, data: '18.75' }
-      },
-      waffoPancake: async () => {
-        calls.push('pancake')
-        return { success: true, data: '4' }
-      },
-      paymentAsia: async () => {
-        calls.push('paymentAsia')
-        return { success: true, data: '5' }
-      },
-    })
+    const result = await requestPaymentAmount(
+      120,
+      PAYMENT_TYPES.WAFFO,
+      amountCalculators({
+        waffo: async (request) => {
+          calls.push(`waffo:${request.amount}`)
+          waffoRequest = request
+          return { success: true, data: '18.75' }
+        },
+      })
+    )
 
-    expect(amount).toBe(18.75)
+    expect(result).toEqual({ amount: 18.75 })
     expect(calls).toEqual(['waffo:120'])
     expect(waffoRequest).toEqual({ amount: 120 })
   })
 
   test('uses the dedicated official Alipay amount calculator', async () => {
     const calls: string[] = []
-    const amount = await requestPaymentAmount(
+    const result = await requestPaymentAmount(
       50,
       PAYMENT_TYPES.ALIPAY_OFFICIAL,
-      {
-        regular: async () => {
-          calls.push('regular')
-          return { success: true, data: '1' }
-        },
-        stripe: async () => {
-          calls.push('stripe')
-          return { success: true, data: '2' }
-        },
+      amountCalculators({
         alipay: async (request) => {
           calls.push(`alipay:${request.amount}`)
           return { success: true, data: '365.00' }
         },
-        waffo: async () => {
-          calls.push('waffo')
-          return { success: true, data: '4' }
-        },
-        waffoPancake: async () => {
-          calls.push('pancake')
-          return { success: true, data: '4' }
-        },
-        paymentAsia: async () => {
-          calls.push('paymentAsia')
-          return { success: true, data: '5' }
-        },
-      }
+      })
     )
 
-    expect(amount).toBe(365)
+    expect(result).toEqual({ amount: 365 })
     expect(calls).toEqual(['alipay:50'])
   })
 
   test('uses the dedicated PaymentAsia amount calculator', async () => {
     const calls: string[] = []
     let paymentAsiaRequest: AmountRequest | undefined
-    const amount = await requestPaymentAmount(100, 'paymentasia_alipayhk', {
-      regular: async () => {
-        calls.push('regular')
-        return { success: true, data: '1' }
-      },
-      stripe: async () => {
-        calls.push('stripe')
-        return { success: true, data: '2' }
-      },
-      alipay: async () => {
-        calls.push('alipay')
-        return { success: true, data: '3' }
-      },
-      waffo: async () => {
-        calls.push('waffo')
-        return { success: true, data: '4' }
-      },
-      waffoPancake: async () => {
-        calls.push('pancake')
-        return { success: true, data: '4' }
-      },
-      paymentAsia: async (request) => {
-        calls.push(`paymentAsia:${request.amount}`)
-        paymentAsiaRequest = request
-        return { success: true, data: '108.00' }
-      },
-    })
+    const result = await requestPaymentAmount(
+      100,
+      'paymentasia_alipayhk',
+      amountCalculators({
+        paymentAsia: async (request) => {
+          calls.push(`paymentAsia:${request.amount}`)
+          paymentAsiaRequest = request
+          return { success: true, data: '108.00' }
+        },
+      })
+    )
 
-    expect(amount).toBe(108)
+    expect(result).toEqual({ amount: 108 })
     expect(calls).toEqual(['paymentAsia:100'])
     // The backend quotes per channel: Octopus is formatted with one decimal.
     expect(paymentAsiaRequest).toEqual({
       amount: 100,
       payment_method: 'paymentasia_alipayhk',
     })
+  })
+})
+
+describe('PaymentAsia service fee quotes', () => {
+  test('parses the service fee returned with the quote', async () => {
+    const result = await requestPaymentAmount(
+      100,
+      'paymentasia_alipayhk',
+      amountCalculators({
+        paymentAsia: async () => feeQuote,
+      })
+    )
+
+    expect(result).toEqual({ amount: 100, feeInfo: expectedFeeInfo })
+  })
+
+  test('omits fee info for gateways without a service fee', async () => {
+    const result = await requestPaymentAmount(
+      50,
+      PAYMENT_TYPES.ALIPAY_OFFICIAL,
+      amountCalculators({
+        alipay: async () => ({ success: true, data: '365.00' }),
+      })
+    )
+
+    expect(result).toEqual({ amount: 365 })
+    expect(result.feeInfo).toBeUndefined()
+  })
+})
+
+describe('service fee state in the payment hook', () => {
+  test('publishes the newest fee quote and clears it for a fee-free gateway', async () => {
+    vi.mocked(calculateAmount).mockResolvedValue({
+      success: true,
+      data: '365.00',
+    })
+    vi.mocked(calculatePaymentAsiaAmount).mockResolvedValue(feeQuote)
+
+    const { result } = renderHook(() => usePayment())
+    expect(result.current.paymentFeeInfo).toBeNull()
+
+    let paymentAsiaAmount: number | null = null
+    await act(async () => {
+      paymentAsiaAmount = await result.current.calculatePaymentAmount(
+        100,
+        'paymentasia_alipayhk'
+      )
+    })
+    expect(paymentAsiaAmount).toBe(100)
+    expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
+
+    await act(async () => {
+      await result.current.calculatePaymentAmount(50, PAYMENT_TYPES.ALIPAY)
+    })
+    expect(result.current.paymentFeeInfo).toBeNull()
+  })
+
+  test('clears the previous fee when a later quote fails', async () => {
+    vi.mocked(calculatePaymentAsiaAmount)
+      .mockResolvedValueOnce(feeQuote)
+      .mockRejectedValueOnce(new Error('quote failed'))
+
+    const { result } = renderHook(() => usePayment())
+
+    await act(async () => {
+      await result.current.calculatePaymentAmount(100, 'paymentasia_alipayhk')
+    })
+    expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
+
+    let failedAmount: number | null = null
+    await act(async () => {
+      failedAmount = await result.current.calculatePaymentAmount(
+        100,
+        'paymentasia_alipayhk'
+      )
+    })
+    expect(failedAmount).toBe(0)
+    expect(result.current.paymentFeeInfo).toBeNull()
   })
 })
 
@@ -183,16 +247,18 @@ describe('stale amount requests', () => {
     })
 
     await act(async () => {
-      resolvePaymentAsia({ success: true, data: '108.00' })
+      resolvePaymentAsia({ ...feeQuote, data: '108.00' })
     })
     await expect(paymentAsiaRequest).resolves.toBe(108)
     expect(result.current.amount).toBe(108)
+    expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
 
     await act(async () => {
       resolveRegular({ success: true, data: '365.00' })
     })
     await expect(regularRequest).resolves.toBeNull()
     expect(result.current.amount).toBe(108)
+    expect(result.current.paymentFeeInfo).toEqual(expectedFeeInfo)
     expect(result.current.calculating).toBe(false)
   })
 })

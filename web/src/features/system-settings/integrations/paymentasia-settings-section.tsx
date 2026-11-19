@@ -45,6 +45,7 @@ export interface PaymentAsiaSettingsValues {
   PaymentAsiaMinTopUp: number
   PaymentAsiaNotifyUrl: string
   PaymentAsiaReturnUrl: string
+  PaymentAsiaServiceChargeEnabled: boolean
 }
 
 type PaymentAsiaSettingsSectionProps = {
@@ -236,6 +237,21 @@ export function PaymentAsiaSettingsSection(
             {t('Global minimum top-up quantity for PaymentAsia.')}
           </p>
         </div>
+      </div>
+
+      <div className='grid gap-4 sm:grid-cols-2'>
+        <SettingsSwitchField
+          checked={props.values.PaymentAsiaServiceChargeEnabled}
+          onCheckedChange={(value) =>
+            props.onValueChange('PaymentAsiaServiceChargeEnabled', value)
+          }
+          label={t('Deduct service fee from credited amount')}
+          switchAriaLabel={t('Deduct service fee from credited amount')}
+          description={t(
+            'Payment amount stays unchanged; the channel fee is deducted from the credited quota.'
+          )}
+          className='py-0'
+        />
       </div>
 
       <div className='grid grid-cols-2 gap-4'>

@@ -6383,6 +6383,14 @@
     "Vector": "向量",
     "Alipay CN": "支付宝（大陆）",
     "Failed to save \"{{key}}\": {{message}}. Earlier changes may already be saved and were not rolled back.": "保存「{{key}}」失败：{{message}}。之前的改动可能已保存，且不会回滚。",
-    "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.": "保存「{{key}}」失败。之前的改动可能已保存，且不会回滚。"
+    "Failed to save \"{{key}}\". Earlier changes may already be saved and were not rolled back.": "保存「{{key}}」失败。之前的改动可能已保存，且不会回滚。",
+    "This payment includes a {{rate}} service fee ({{fee}}); the credited amount will be {{net}}.": "本次支付包含 {{rate}} 手续费（{{fee}}），到账额度将扣除该费用，实际到账 {{net}}。",
+    "Deduct service fee from credited amount": "从到账额度中扣除手续费",
+    "Payment amount stays unchanged; the channel fee is deducted from the credited quota.": "支付金额保持不变，通道手续费从到账额度中扣除。",
+    "Service Fee": "手续费",
+    "Fee Rate": "费率",
+    "Fixed Fee": "固定手续费",
+    "Net Amount": "净额",
+    "Net Quota": "到账额度"
   }
 }

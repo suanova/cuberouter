@@ -120,6 +120,7 @@ const defaultBillingSettings: BillingSettings = {
   PaymentAsiaMinTopUp: 1,
   PaymentAsiaNotifyUrl: '',
   PaymentAsiaReturnUrl: '',
+  PaymentAsiaServiceChargeEnabled: false,
   'checkin_setting.enabled': false,
   'checkin_setting.min_quota': 1000,
   'checkin_setting.max_quota': 10000,

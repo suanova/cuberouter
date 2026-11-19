@@ -198,6 +198,7 @@ const paymentSchema = z.object({
   PaymentAsiaMinTopUp: z.coerce.number().int().min(1),
   PaymentAsiaNotifyUrl: z.string(),
   PaymentAsiaReturnUrl: z.string(),
+  PaymentAsiaServiceChargeEnabled: z.boolean(),
 })
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
@@ -436,6 +437,7 @@ export function PaymentSettingsSection({
       PaymentAsiaMinTopUp: values.PaymentAsiaMinTopUp,
       PaymentAsiaNotifyUrl: removeTrailingSlash(values.PaymentAsiaNotifyUrl),
       PaymentAsiaReturnUrl: removeTrailingSlash(values.PaymentAsiaReturnUrl),
+      PaymentAsiaServiceChargeEnabled: values.PaymentAsiaServiceChargeEnabled,
     }
 
     const initial = {
@@ -511,6 +513,8 @@ export function PaymentSettingsSection({
       PaymentAsiaReturnUrl: removeTrailingSlash(
         initialRef.current.PaymentAsiaReturnUrl
       ),
+      PaymentAsiaServiceChargeEnabled:
+        initialRef.current.PaymentAsiaServiceChargeEnabled,
     }
 
     const updates: OptionUpdate[] = []
@@ -832,6 +836,16 @@ export function PaymentSettingsSection({
       })
     }
 
+    if (
+      sanitized.PaymentAsiaServiceChargeEnabled !==
+      initial.PaymentAsiaServiceChargeEnabled
+    ) {
+      updates.push({
+        key: 'PaymentAsiaServiceChargeEnabled',
+        value: sanitized.PaymentAsiaServiceChargeEnabled,
+      })
+    }
+
     const hasWaffoPancakeChanges =
       sanitized.WaffoPancakeMerchantID !== initial.WaffoPancakeMerchantID ||
       sanitized.WaffoPancakePrivateKey.length > 0 ||
@@ -953,6 +967,8 @@ export function PaymentSettingsSection({
     PaymentAsiaMinTopUp: currentFormValues.PaymentAsiaMinTopUp,
     PaymentAsiaNotifyUrl: currentFormValues.PaymentAsiaNotifyUrl,
     PaymentAsiaReturnUrl: currentFormValues.PaymentAsiaReturnUrl,
+    PaymentAsiaServiceChargeEnabled:
+      currentFormValues.PaymentAsiaServiceChargeEnabled,
   }
 
   return (

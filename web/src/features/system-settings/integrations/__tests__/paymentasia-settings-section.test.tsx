@@ -45,13 +45,14 @@ const baseValues: PaymentAsiaSettingsValues = {
   PaymentAsiaMinTopUp: 1,
   PaymentAsiaNotifyUrl: '',
   PaymentAsiaReturnUrl: '',
+  PaymentAsiaServiceChargeEnabled: false,
 }
 
-function renderSection() {
+function renderSection(overrides: Partial<PaymentAsiaSettingsValues> = {}) {
   const onValueChange = vi.fn()
   render(
     <PaymentAsiaSettingsSection
-      values={baseValues}
+      values={{ ...baseValues, ...overrides }}
       onValueChange={onValueChange}
     />
   )
@@ -84,6 +85,38 @@ describe('PaymentAsiaSettingsSection', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Sandbox mode' }))
 
     expect(onValueChange).toHaveBeenCalledWith('PaymentAsiaSandbox', true)
+  })
+
+  test('toggles the service charge switch through onValueChange', () => {
+    const onValueChange = renderSection()
+
+    fireEvent.click(
+      screen.getByRole('switch', {
+        name: 'Deduct service fee from credited amount',
+      })
+    )
+
+    expect(onValueChange).toHaveBeenCalledWith(
+      'PaymentAsiaServiceChargeEnabled',
+      true
+    )
+  })
+
+  test('turns the service charge switch off through onValueChange', () => {
+    const onValueChange = renderSection({
+      PaymentAsiaServiceChargeEnabled: true,
+    })
+
+    fireEvent.click(
+      screen.getByRole('switch', {
+        name: 'Deduct service fee from credited amount',
+      })
+    )
+
+    expect(onValueChange).toHaveBeenCalledWith(
+      'PaymentAsiaServiceChargeEnabled',
+      false
+    )
   })
 
   test('emits the edited merchant token through onValueChange', () => {

@@ -35,10 +35,12 @@ import { formatLocalCurrencyAmount } from '@/lib/currency'
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
 import {
   formatCurrency,
+  getLocalCurrencySymbol,
   getPaymentIcon,
   getPaymentMethodCurrencySymbol,
+  isPaymentAsiaPayment,
 } from '../../lib'
-import type { PaymentMethod } from '../../types'
+import type { PaymentAsiaFeeInfo, PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
   open: boolean
@@ -47,6 +49,8 @@ interface PaymentConfirmDialogProps {
   topupAmount: number
   paymentAmount: number
   paymentMethod: PaymentMethod | undefined
+  /** Service fee quoted for the selected PaymentAsia method, if any. */
+  feeInfo?: PaymentAsiaFeeInfo
   calculating: boolean
   processing: boolean
   discountRate?: number
@@ -59,6 +63,7 @@ export function PaymentConfirmDialog({
   topupAmount,
   paymentAmount,
   paymentMethod,
+  feeInfo,
   calculating,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
@@ -70,6 +75,11 @@ export function PaymentConfirmDialog({
   const payCurrencySymbol = getPaymentMethodCurrencySymbol(
     paymentMethod?.currency
   )
+  const localCurrencySymbol = getLocalCurrencySymbol()
+  // Payment amount is unchanged; only the credited amount is net of the fee.
+  // Hidden while a re-quote is in flight so a stale fee never shows.
+  const showFeeNotice =
+    !!feeInfo && !calculating && isPaymentAsiaPayment(paymentMethod?.type ?? '')
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -128,6 +138,21 @@ export function PaymentConfirmDialog({
                   {formatCurrency(discountAmount)}
                 </span>
               </div>
+            </div>
+          )}
+
+          {showFeeNotice && feeInfo && (
+            <div className='bg-muted/50 rounded-lg p-3'>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'This payment includes a {{rate}} service fee ({{fee}}); the credited amount will be {{net}}.',
+                  {
+                    rate: `${(feeInfo.feeRate * 100).toFixed(2)}%`,
+                    fee: `${localCurrencySymbol}${formatCurrency(feeInfo.fee)}`,
+                    net: `${localCurrencySymbol}${formatCurrency(feeInfo.netAmount)}`,
+                  }
+                )}
+              </p>
             </div>
           )}
 
