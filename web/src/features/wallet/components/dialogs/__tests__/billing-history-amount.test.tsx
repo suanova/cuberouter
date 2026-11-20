@@ -51,6 +51,20 @@ const cnyOrder: TopupRecord = {
   status: 'success',
 }
 
+/** 一条 PaymentAsia 支付宝香港订单:10.8 港元,带下单时的币种快照。 */
+const hkdPaymentAsiaOrder: TopupRecord = {
+  id: 2,
+  user_id: 1,
+  amount: 10.8,
+  money: 10.8,
+  trade_no: 'PAHKUSR1NO1758000100',
+  payment_method: 'paymentasia_alipayhk',
+  currency: 'HKD',
+  payment_environment: 'live',
+  create_time: 1758000100,
+  status: 'success',
+}
+
 /** 记录卡片里的字段值:按字段名找到 Label,再取它相邻的值节点。 */
 function fieldValue(label: string): string {
   const labelElement = screen.getByText(label)
@@ -110,5 +124,21 @@ describe('billing history record amounts', () => {
 
     expect(fieldValue('Amount')).toBe('$1')
     expect(fieldValue('Payment')).toBe('1')
+  })
+
+  test('PaymentAsia 订单:Payment 带上订单币种,支付方式显示网关通道名', async () => {
+    vi.mocked(getUserBillingHistory).mockResolvedValue({
+      success: true,
+      data: { items: [hkdPaymentAsiaOrder], total: 1 },
+    })
+
+    render(<BillingHistoryDialog open onOpenChange={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(screen.getByText('PAHKUSR1NO1758000100')).toBeInTheDocument()
+    })
+
+    expect(fieldValue('Payment')).toBe('HKD 10.8')
+    expect(fieldValue('Payment Method')).toBe('AlipayHK')
   })
 })

@@ -26,11 +26,7 @@ import { toast } from 'sonner'
 import * as z from 'zod'
 
 import { JsonCodeEditor } from '@/components/json-code-editor'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -60,10 +56,16 @@ import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
+  PaymentAsiaSettingsSection,
+  type PaymentAsiaSettingsValues,
+} from './paymentasia-settings-section'
+import {
+  applyOptionUpdates,
   formatJsonForEditor,
   getJsonError,
   normalizeJsonForComparison,
   removeTrailingSlash,
+  type OptionUpdate,
 } from './utils'
 import { saveWaffoPancakeConfig } from './waffo-pancake-api'
 import {
@@ -186,13 +188,26 @@ const paymentSchema = z.object({
   WaffoPancakeMerchantID: z.string(),
   WaffoPancakePrivateKey: z.string(),
   WaffoPancakeReturnURL: z.string(),
+  PaymentAsiaSandbox: z.boolean(),
+  PaymentAsiaMerchantToken: z.string(),
+  PaymentAsiaSecret: z.string(),
+  PaymentAsiaSandboxMerchantToken: z.string(),
+  PaymentAsiaSandboxSecret: z.string(),
+  PaymentAsiaCurrency: z.string(),
+  PaymentAsiaUnitPrice: z.coerce.number().positive(),
+  PaymentAsiaMinTopUp: z.coerce.number().int().min(1),
+  PaymentAsiaNotifyUrl: z.string(),
+  PaymentAsiaReturnUrl: z.string(),
+  PaymentAsiaServiceChargeEnabled: z.boolean(),
 })
 
 type PaymentFormValues = z.infer<typeof paymentSchema>
 type WaffoFormFieldValues = Omit<WaffoSettingsValues, 'WaffoPayMethods'>
 type PaymentBaseFormValues = Omit<
   PaymentFormValues,
-  keyof WaffoFormFieldValues | keyof WaffoPancakeSettingsValues
+  | keyof WaffoFormFieldValues
+  | keyof WaffoPancakeSettingsValues
+  | keyof PaymentAsiaSettingsValues
 >
 
 const paymentTabContentClassName = 'mt-6 min-w-0'
@@ -201,6 +216,7 @@ type PaymentSettingsSectionProps = {
   defaultValues: PaymentBaseFormValues
   waffoDefaultValues: WaffoSettingsValues
   waffoPancakeDefaultValues: WaffoPancakeSettingsValues
+  paymentAsiaDefaultValues: PaymentAsiaSettingsValues
   waffoPancakeProvisionedStoreID?: string
   waffoPancakeProvisionedProductID?: string
 }
@@ -218,6 +234,7 @@ export function PaymentSettingsSection({
   defaultValues,
   waffoDefaultValues,
   waffoPancakeDefaultValues,
+  paymentAsiaDefaultValues,
   waffoPancakeProvisionedStoreID,
   waffoPancakeProvisionedProductID,
 }: PaymentSettingsSectionProps) {
@@ -229,8 +246,14 @@ export function PaymentSettingsSection({
       ...defaultValues,
       ...waffoDefaultValues,
       ...waffoPancakeDefaultValues,
+      ...paymentAsiaDefaultValues,
     }),
-    [defaultValues, waffoDefaultValues, waffoPancakeDefaultValues]
+    [
+      defaultValues,
+      waffoDefaultValues,
+      waffoPancakeDefaultValues,
+      paymentAsiaDefaultValues,
+    ]
   )
   const initialRef = React.useRef(initialFormValues)
   const defaultsSignature = React.useMemo(
@@ -329,6 +352,19 @@ export function PaymentSettingsSection({
     [setPaymentValue]
   )
 
+  const setPaymentAsiaValue = React.useCallback(
+    <K extends keyof PaymentAsiaSettingsValues>(
+      key: K,
+      value: PaymentAsiaSettingsValues[K]
+    ) => {
+      setPaymentValue(
+        key as keyof PaymentFormValues,
+        value as PaymentFormValues[keyof PaymentFormValues]
+      )
+    },
+    [setPaymentValue]
+  )
+
   React.useEffect(() => {
     const parsedDefaults = JSON.parse(defaultsSignature) as PaymentFormValues
     initialRef.current = parsedDefaults
@@ -390,6 +426,18 @@ export function PaymentSettingsSection({
       WaffoPancakeReturnURL: removeTrailingSlash(
         values.WaffoPancakeReturnURL.trim()
       ),
+      PaymentAsiaSandbox: values.PaymentAsiaSandbox,
+      PaymentAsiaMerchantToken: values.PaymentAsiaMerchantToken.trim(),
+      PaymentAsiaSecret: values.PaymentAsiaSecret.trim(),
+      PaymentAsiaSandboxMerchantToken:
+        values.PaymentAsiaSandboxMerchantToken.trim(),
+      PaymentAsiaSandboxSecret: values.PaymentAsiaSandboxSecret.trim(),
+      PaymentAsiaCurrency: values.PaymentAsiaCurrency.trim() || 'HKD',
+      PaymentAsiaUnitPrice: values.PaymentAsiaUnitPrice,
+      PaymentAsiaMinTopUp: values.PaymentAsiaMinTopUp,
+      PaymentAsiaNotifyUrl: removeTrailingSlash(values.PaymentAsiaNotifyUrl),
+      PaymentAsiaReturnUrl: removeTrailingSlash(values.PaymentAsiaReturnUrl),
+      PaymentAsiaServiceChargeEnabled: values.PaymentAsiaServiceChargeEnabled,
     }
 
     const initial = {
@@ -447,9 +495,29 @@ export function PaymentSettingsSection({
       WaffoPancakeReturnURL: removeTrailingSlash(
         initialRef.current.WaffoPancakeReturnURL.trim()
       ),
+      PaymentAsiaSandbox: initialRef.current.PaymentAsiaSandbox,
+      PaymentAsiaMerchantToken:
+        initialRef.current.PaymentAsiaMerchantToken.trim(),
+      PaymentAsiaSecret: initialRef.current.PaymentAsiaSecret.trim(),
+      PaymentAsiaSandboxMerchantToken:
+        initialRef.current.PaymentAsiaSandboxMerchantToken.trim(),
+      PaymentAsiaSandboxSecret:
+        initialRef.current.PaymentAsiaSandboxSecret.trim(),
+      PaymentAsiaCurrency:
+        initialRef.current.PaymentAsiaCurrency.trim() || 'HKD',
+      PaymentAsiaUnitPrice: initialRef.current.PaymentAsiaUnitPrice,
+      PaymentAsiaMinTopUp: initialRef.current.PaymentAsiaMinTopUp,
+      PaymentAsiaNotifyUrl: removeTrailingSlash(
+        initialRef.current.PaymentAsiaNotifyUrl
+      ),
+      PaymentAsiaReturnUrl: removeTrailingSlash(
+        initialRef.current.PaymentAsiaReturnUrl
+      ),
+      PaymentAsiaServiceChargeEnabled:
+        initialRef.current.PaymentAsiaServiceChargeEnabled,
     }
 
-    const updates: Array<{ key: string; value: string | number | boolean }> = []
+    const updates: OptionUpdate[] = []
 
     if (sanitized.PayAddress !== initial.PayAddress) {
       updates.push({ key: 'PayAddress', value: sanitized.PayAddress })
@@ -691,6 +759,93 @@ export function PaymentSettingsSection({
       updates.push({ key: 'WaffoPayMethods', value: sanitized.WaffoPayMethods })
     }
 
+    if (sanitized.PaymentAsiaSandbox !== initial.PaymentAsiaSandbox) {
+      updates.push({
+        key: 'PaymentAsiaSandbox',
+        value: sanitized.PaymentAsiaSandbox,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaMerchantToken !== initial.PaymentAsiaMerchantToken
+    ) {
+      updates.push({
+        key: 'PaymentAsiaMerchantToken',
+        value: sanitized.PaymentAsiaMerchantToken,
+      })
+    }
+
+    if (sanitized.PaymentAsiaSecret !== initial.PaymentAsiaSecret) {
+      updates.push({
+        key: 'PaymentAsiaSecret',
+        value: sanitized.PaymentAsiaSecret,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaSandboxMerchantToken !==
+      initial.PaymentAsiaSandboxMerchantToken
+    ) {
+      updates.push({
+        key: 'PaymentAsiaSandboxMerchantToken',
+        value: sanitized.PaymentAsiaSandboxMerchantToken,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaSandboxSecret !== initial.PaymentAsiaSandboxSecret
+    ) {
+      updates.push({
+        key: 'PaymentAsiaSandboxSecret',
+        value: sanitized.PaymentAsiaSandboxSecret,
+      })
+    }
+
+    if (sanitized.PaymentAsiaCurrency !== initial.PaymentAsiaCurrency) {
+      updates.push({
+        key: 'PaymentAsiaCurrency',
+        value: sanitized.PaymentAsiaCurrency,
+      })
+    }
+
+    if (sanitized.PaymentAsiaUnitPrice !== initial.PaymentAsiaUnitPrice) {
+      updates.push({
+        key: 'PaymentAsiaUnitPrice',
+        value: sanitized.PaymentAsiaUnitPrice,
+      })
+    }
+
+    if (sanitized.PaymentAsiaMinTopUp !== initial.PaymentAsiaMinTopUp) {
+      updates.push({
+        key: 'PaymentAsiaMinTopUp',
+        value: sanitized.PaymentAsiaMinTopUp,
+      })
+    }
+
+    if (sanitized.PaymentAsiaNotifyUrl !== initial.PaymentAsiaNotifyUrl) {
+      updates.push({
+        key: 'PaymentAsiaNotifyUrl',
+        value: sanitized.PaymentAsiaNotifyUrl,
+      })
+    }
+
+    if (sanitized.PaymentAsiaReturnUrl !== initial.PaymentAsiaReturnUrl) {
+      updates.push({
+        key: 'PaymentAsiaReturnUrl',
+        value: sanitized.PaymentAsiaReturnUrl,
+      })
+    }
+
+    if (
+      sanitized.PaymentAsiaServiceChargeEnabled !==
+      initial.PaymentAsiaServiceChargeEnabled
+    ) {
+      updates.push({
+        key: 'PaymentAsiaServiceChargeEnabled',
+        value: sanitized.PaymentAsiaServiceChargeEnabled,
+      })
+    }
+
     const hasWaffoPancakeChanges =
       sanitized.WaffoPancakeMerchantID !== initial.WaffoPancakeMerchantID ||
       sanitized.WaffoPancakePrivateKey.length > 0 ||
@@ -703,8 +858,23 @@ export function PaymentSettingsSection({
       return
     }
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
+    const failedUpdate = await applyOptionUpdates(updates, (update) =>
+      updateOption.mutateAsync(update)
+    )
+
+    if (failedUpdate) {
+      toast.error(
+        failedUpdate.message
+          ? t(
+              'Failed to save "{{key}}": {{message}}. Earlier changes may already be saved and were not rolled back.',
+              { key: failedUpdate.key, message: failedUpdate.message }
+            )
+          : t(
+              'Failed to save "{{key}}". Earlier changes may already be saved and were not rolled back.',
+              { key: failedUpdate.key }
+            )
+      )
+      return
     }
 
     if (!hasWaffoPancakeChanges) {
@@ -785,6 +955,21 @@ export function PaymentSettingsSection({
     WaffoPancakePrivateKey: currentFormValues.WaffoPancakePrivateKey,
     WaffoPancakeReturnURL: currentFormValues.WaffoPancakeReturnURL,
   }
+  const paymentAsiaValues: PaymentAsiaSettingsValues = {
+    PaymentAsiaSandbox: currentFormValues.PaymentAsiaSandbox,
+    PaymentAsiaMerchantToken: currentFormValues.PaymentAsiaMerchantToken,
+    PaymentAsiaSecret: currentFormValues.PaymentAsiaSecret,
+    PaymentAsiaSandboxMerchantToken:
+      currentFormValues.PaymentAsiaSandboxMerchantToken,
+    PaymentAsiaSandboxSecret: currentFormValues.PaymentAsiaSandboxSecret,
+    PaymentAsiaCurrency: currentFormValues.PaymentAsiaCurrency,
+    PaymentAsiaUnitPrice: currentFormValues.PaymentAsiaUnitPrice,
+    PaymentAsiaMinTopUp: currentFormValues.PaymentAsiaMinTopUp,
+    PaymentAsiaNotifyUrl: currentFormValues.PaymentAsiaNotifyUrl,
+    PaymentAsiaReturnUrl: currentFormValues.PaymentAsiaReturnUrl,
+    PaymentAsiaServiceChargeEnabled:
+      currentFormValues.PaymentAsiaServiceChargeEnabled,
+  }
 
   return (
     <SettingsSection title={t('Payment Gateway')}>
@@ -801,7 +986,7 @@ export function PaymentSettingsSection({
           />
           <Tabs defaultValue='general' className='min-w-0'>
             <div className='overflow-x-auto pb-1'>
-              <TabsList className='grid min-w-[48rem] grid-cols-7'>
+              <TabsList className='grid min-w-[48rem] grid-cols-8'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
                 <TabsTrigger value='epay'>Epay</TabsTrigger>
                 <TabsTrigger value='alipay'>Alipay</TabsTrigger>
@@ -809,6 +994,9 @@ export function PaymentSettingsSection({
                 <TabsTrigger value='creem'>Creem</TabsTrigger>
                 <TabsTrigger value='waffo-pancake'>Waffo Pancake</TabsTrigger>
                 <TabsTrigger value='waffo'>Waffo</TabsTrigger>
+                <TabsTrigger value='paymentasia'>
+                  {t('PaymentAsia')}
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -824,8 +1012,6 @@ export function PaymentSettingsSection({
                 </div>
 
                 <div className='grid gap-6 md:grid-cols-2'>
-
-
                   <FormField
                     control={form.control}
                     name='AmountOptions'
@@ -1072,7 +1258,9 @@ export function PaymentSettingsSection({
                     name='EpayRate'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Epay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormLabel>
+                          {t('Epay exchange rate (USD to local currency)')}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1115,67 +1303,73 @@ export function PaymentSettingsSection({
                       </FormItem>
                     )}
                   />
-                <FormField
-                  control={form.control}
-                  name='PayMethods'
-                  render={({ field }) => (
-                    <FormItem>
-                      <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
-                        <FormLabel>{t('Payment methods')}</FormLabel>
-                        <Button
-                          type='button'
-                          variant='outline'
-                          size='sm'
-                          onClick={() =>
-                            setPayMethodsVisualMode(!payMethodsVisualMode)
-                          }
-                          className='w-full sm:w-auto'
-                        >
+                  <FormField
+                    control={form.control}
+                    name='PayMethods'
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className='mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between'>
+                          <FormLabel>{t('Payment methods')}</FormLabel>
+                          <Button
+                            type='button'
+                            variant='outline'
+                            size='sm'
+                            onClick={() =>
+                              setPayMethodsVisualMode(!payMethodsVisualMode)
+                            }
+                            className='w-full sm:w-auto'
+                          >
+                            {payMethodsVisualMode ? (
+                              <>
+                                <Code2 className='mr-2 h-3 w-3' />
+                                {t('JSON Editor')}
+                              </>
+                            ) : (
+                              <>
+                                <Eye className='mr-2 h-3 w-3' />
+                                {t('Visual Editor')}
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                        <FormControl>
                           {payMethodsVisualMode ? (
-                            <>
-                              <Code2 className='mr-2 h-3 w-3' />
-                              {t('JSON Editor')}
-                            </>
+                            <PaymentMethodsVisualEditor
+                              value={field.value}
+                              onChange={field.onChange}
+                              typeFilter={(type) =>
+                                !type.startsWith('paymentasia_')
+                              }
+                            />
                           ) : (
-                            <>
-                              <Eye className='mr-2 h-3 w-3' />
-                              {t('Visual Editor')}
-                            </>
+                            <JsonCodeEditor
+                              value={field.value}
+                              onChange={field.onChange}
+                              name={field.name}
+                              onBlur={field.onBlur}
+                              textareaRef={field.ref}
+                              placeholder={t(
+                                '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
+                              )}
+                              heightClassName='h-40 min-h-40 max-h-40'
+                              aria-invalid={Boolean(
+                                form.formState.errors.PayMethods
+                              )}
+                            />
                           )}
-                        </Button>
-                      </div>
-                      <FormControl>
-                        {payMethodsVisualMode ? (
-                          <PaymentMethodsVisualEditor
-                            value={field.value}
-                            onChange={field.onChange}
-                          />
-                        ) : (
-                          <JsonCodeEditor
-                            value={field.value}
-                            onChange={field.onChange}
-                            name={field.name}
-                            onBlur={field.onBlur}
-                            textareaRef={field.ref}
-                            placeholder={t(
-                              '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
-                            )}
-                            heightClassName='h-40 min-h-40 max-h-40'
-                            aria-invalid={Boolean(
-                              form.formState.errors.PayMethods
-                            )}
-                          />
-                        )}
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, paymentasia_* for PaymentAsia, and other values are sent to Epay as the type parameter.'
+                          )}{' '}
+                          {t(
+                            'PaymentAsia payment methods are managed on the PaymentAsia tab; JSON mode still shows the complete shared list.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -1210,7 +1404,9 @@ export function PaymentSettingsSection({
                         <FormLabel>{t('App ID (AppID)')}</FormLabel>
                         <FormControl>
                           <Input
-                            placeholder={t('Application AppId from Alipay Open Platform')}
+                            placeholder={t(
+                              'Application AppId from Alipay Open Platform'
+                            )}
                             autoComplete='off'
                             {...field}
                             onChange={(event) =>
@@ -1228,7 +1424,9 @@ export function PaymentSettingsSection({
                     name='AlipayRate'
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>{t('Alipay exchange rate (USD to local currency)')}</FormLabel>
+                        <FormLabel>
+                          {t('Alipay exchange rate (USD to local currency)')}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type='number'
@@ -1745,6 +1943,45 @@ export function PaymentSettingsSection({
                 payMethods={waffoPayMethods}
                 onPayMethodsChange={setWaffoPayMethods}
               />
+            </TabsContent>
+
+            <TabsContent
+              value='paymentasia'
+              className={paymentTabContentClassName}
+            >
+              <PaymentAsiaSettingsSection
+                values={paymentAsiaValues}
+                onValueChange={setPaymentAsiaValue}
+              />
+              <div className='mt-8 space-y-4'>
+                <div>
+                  <h3 className='text-lg font-medium'>
+                    {t('PaymentAsia Payment Methods')}
+                  </h3>
+                  <p className='text-muted-foreground text-sm'>
+                    {t(
+                      'Manage the channels shown in the wallet under PaymentAsia. Methods for other gateways are configured in their own tabs.'
+                    )}
+                  </p>
+                </div>
+                <FormField
+                  control={form.control}
+                  name='PayMethods'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <PaymentMethodsVisualEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                          typeFilter={(type) => type.startsWith('paymentasia_')}
+                          allowCustomValue={false}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </TabsContent>
           </Tabs>
         </SettingsForm>

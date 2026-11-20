@@ -1,0 +1,468 @@
+/*
+Copyright (C) 2023-2026 QuantumNous
+Copyright (C) 2026 CubeRouter
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+package model
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+)
+
+const paymentAsiaTestQuotaPerUnit = 500000
+
+// pinPaymentAsiaTestDisplay 固定额度展示类型与 QuotaPerUnit，保证 Amount=2 的
+// 订单恰好入账 1,000,000，并在用例结束后恢复全局状态。
+func pinPaymentAsiaTestDisplay(t *testing.T, displayType string) {
+	t.Helper()
+	origType := operation_setting.GetQuotaDisplayType()
+	origQuotaPerUnit := common.QuotaPerUnit
+	t.Cleanup(func() {
+		operation_setting.SetQuotaDisplayTypeForTest(origType)
+		common.QuotaPerUnit = origQuotaPerUnit
+	})
+	operation_setting.SetQuotaDisplayTypeForTest(displayType)
+	common.QuotaPerUnit = paymentAsiaTestQuotaPerUnit
+}
+
+func createPaymentAsiaTestTopUp(t *testing.T, userId int, tradeNo string) *TopUp {
+	t.Helper()
+	topUp := &TopUp{
+		UserId:          userId,
+		Amount:          2,
+		Money:           15.6,
+		TradeNo:         tradeNo,
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, DB.Create(topUp).Error)
+	return topUp
+}
+
+func paymentAsiaTestMeta() PaymentAsiaRechargeMeta {
+	return PaymentAsiaRechargeMeta{
+		RequestReference: "PA-REQ-20261117-001",
+		Currency:         "HKD",
+		Channel:          "paymentasia_alipayhk",
+	}
+}
+
+// TestRechargePaymentAsiaCreditsExactlyOnce 覆盖结算主路径：首次回调入账一次，
+// 重复回调幂等返回 alreadyDone，且审计日志只写一条并带上网关侧关联字段。
+func TestRechargePaymentAsiaCreditsExactlyOnce(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 601, 0)
+	order := createPaymentAsiaTestTopUp(t, user.Id, "PAYMENTASIATESTONCE")
+	meta := paymentAsiaTestMeta()
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, meta, "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 1_000_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	reloaded := GetTopUpByTradeNo(order.TradeNo)
+	require.NotNil(t, reloaded)
+	assert.Equal(t, common.TopUpStatusSuccess, reloaded.Status)
+	assert.NotZero(t, reloaded.CompleteTime)
+
+	var logs []Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&logs).Error)
+	require.Len(t, logs, 1)
+	otherMap, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+	require.True(t, ok, "topup log must carry admin_info")
+	assert.Equal(t, order.TradeNo, adminInfo["trade_no"])
+	assert.Equal(t, "HKD", adminInfo["currency"])
+	assert.Equal(t, meta.RequestReference, adminInfo["request_reference"])
+	assert.Equal(t, meta.Channel, adminInfo["channel"])
+	assert.Equal(t, "127.0.0.1", adminInfo["caller_ip"])
+	assert.Equal(t, PaymentProviderPaymentAsia, adminInfo["callback_payment_method"])
+
+	alreadyDone, err = RechargePaymentAsia(order.TradeNo, meta, "127.0.0.1")
+	require.NoError(t, err)
+	assert.True(t, alreadyDone)
+	assert.Equal(t, 1_000_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	logs = nil
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&logs).Error)
+	assert.Len(t, logs, 1, "重复回调不得重复写审计日志")
+}
+
+// TestRechargePaymentAsiaOnExternalDatabases 在真实 MySQL / PostgreSQL 上复验
+// 同一场景（一次入账 + 一次幂等）。行锁语义与方言引号只有真实数据库能覆盖，
+// SQLite 由 TestRechargePaymentAsiaCreditsExactlyOnce 覆盖。
+//
+// 用例会清空固定 ID 的 user/topup/log 行，因此必须指向一次性库；未设置
+// PAYMENTASIA_TEST_ALLOW_DESTRUCTIVE=1 时跳过，避免误伤。
+func TestRechargePaymentAsiaOnExternalDatabases(t *testing.T) {
+	cases := []struct {
+		name  string
+		env   string
+		dbTyp common.DatabaseType
+		open  func(dsn string) (*gorm.DB, error)
+	}{
+		{
+			name:  "mysql",
+			env:   "TEST_MYSQL_DSN",
+			dbTyp: common.DatabaseTypeMySQL,
+			open: func(dsn string) (*gorm.DB, error) {
+				return gorm.Open(mysql.Open(dsn), &gorm.Config{})
+			},
+		},
+		{
+			name:  "postgres",
+			env:   "TEST_POSTGRES_DSN",
+			dbTyp: common.DatabaseTypePostgreSQL,
+			open: func(dsn string) (*gorm.DB, error) {
+				return gorm.Open(postgres.New(postgres.Config{DSN: dsn, PreferSimpleProtocol: true}), &gorm.Config{})
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dsn := strings.TrimSpace(os.Getenv(tc.env))
+			if dsn == "" {
+				t.Skipf("%s is not configured", tc.env)
+			}
+			require.Equal(t, "1", os.Getenv("PAYMENTASIA_TEST_ALLOW_DESTRUCTIVE"),
+				"用例会清理固定 ID 的数据行，确认指向一次性库后再打开")
+
+			db, err := tc.open(dsn)
+			require.NoError(t, err)
+			sqlDB, err := db.DB()
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = sqlDB.Close() })
+
+			originalDB, originalLogDB := DB, LOG_DB
+			originalMainType, originalLogType := common.MainDatabaseType(), common.LogDatabaseType()
+			t.Cleanup(func() {
+				DB, LOG_DB = originalDB, originalLogDB
+				common.SetDatabaseTypes(originalMainType, originalLogType)
+				initCol()
+			})
+			DB, LOG_DB = db, db
+			common.SetDatabaseTypes(tc.dbTyp, tc.dbTyp)
+			initCol()
+
+			require.NoError(t, db.AutoMigrate(&User{}, &TopUp{}, &Log{}))
+			pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+			const (
+				userID  = 990601
+				tradeNo = "PAYMENTASIAEXTERNALONCE"
+			)
+			// 允许在同一一次性库上重复执行：先清掉本用例的固定行。
+			require.NoError(t, db.Unscoped().Where("id = ?", userID).Delete(&User{}).Error)
+			require.NoError(t, db.Where("trade_no = ?", tradeNo).Delete(&TopUp{}).Error)
+			require.NoError(t, db.Where("user_id = ?", userID).Delete(&Log{}).Error)
+
+			user := &User{
+				Id:       userID,
+				Username: "paymentasia_external_user",
+				Status:   common.UserStatusEnabled,
+				Quota:    0,
+			}
+			require.NoError(t, DB.Create(user).Error)
+			order := createPaymentAsiaTestTopUp(t, user.Id, tradeNo)
+			meta := paymentAsiaTestMeta()
+
+			alreadyDone, err := RechargePaymentAsia(order.TradeNo, meta, "127.0.0.1")
+			require.NoError(t, err)
+			assert.False(t, alreadyDone)
+			assert.Equal(t, 1_000_000, getUserQuotaFromDB(t, userID))
+
+			reloaded := GetTopUpByTradeNo(tradeNo)
+			require.NotNil(t, reloaded)
+			assert.Equal(t, common.TopUpStatusSuccess, reloaded.Status)
+
+			alreadyDone, err = RechargePaymentAsia(order.TradeNo, meta, "127.0.0.1")
+			require.NoError(t, err)
+			assert.True(t, alreadyDone)
+			assert.Equal(t, 1_000_000, getUserQuotaFromDB(t, userID))
+
+			var logCount int64
+			require.NoError(t, LOG_DB.Model(&Log{}).Where("user_id = ? AND type = ?", userID, LogTypeTopup).Count(&logCount).Error)
+			assert.Equal(t, int64(1), logCount, "重复回调不得重复写审计日志")
+		})
+	}
+}
+
+func TestGetTopUpByTradeNoWithError(t *testing.T) {
+	truncateTables(t)
+
+	topUp, err := GetTopUpByTradeNoWithError("PA-MISSING-ORDER")
+	require.Nil(t, topUp)
+	require.ErrorIs(t, err, ErrTopUpNotFound)
+
+	order := createPaymentAsiaTestTopUp(t, 611, "PA-LOOKUP-EXISTING")
+	found, err := GetTopUpByTradeNoWithError(order.TradeNo)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, order.TradeNo, found.TradeNo)
+}
+
+// TestUpdatePaymentAsiaCurrencyWithoutPendingOrderGuard 证明订单快照方案移除了
+// 「存在待支付订单时禁止改币种」的 guard：配置可以随时切换，旧订单回调按订单
+// 快照里的币种核对，不再依赖阻塞配置变更来保安全。
+func TestUpdatePaymentAsiaCurrencyWithoutPendingOrderGuard(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	origCurrency := setting.PaymentAsiaCurrency
+	origOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		setting.PaymentAsiaCurrency = origCurrency
+		common.OptionMap = origOptionMap
+		DB.Where("key = ?", "PaymentAsiaCurrency").Delete(&Option{})
+	})
+	setting.PaymentAsiaCurrency = "HKD"
+
+	createPaymentAsiaTestTopUp(t, 613, "PA-CURRENCY-SNAPSHOT-PENDING")
+
+	require.NoError(t, UpdateOption("PaymentAsiaCurrency", "USD"))
+	assert.Equal(t, "USD", setting.PaymentAsiaCurrency)
+	require.NoError(t, UpdateOptionsBulk(map[string]string{"PaymentAsiaCurrency": "HKD"}))
+	assert.Equal(t, "HKD", setting.PaymentAsiaCurrency)
+}
+
+// TestValidatePaymentAsiaCurrencyOption 币种配置只接受 HKD / USD（比较时忽略
+// 大小写与首尾空白）。其它值会让通道过滤、报价与回调核对落到未知分支，直接拒绝。
+func TestValidatePaymentAsiaCurrencyOption(t *testing.T) {
+	for _, value := range []string{"", "   ", "EUR", "HK", "HKDX", "US"} {
+		require.Error(t, validateOptionValue("PaymentAsiaCurrency", value), "value %q must be rejected", value)
+	}
+	for _, value := range []string{"HKD", "hkd", " usd ", "Usd"} {
+		require.NoError(t, validateOptionValue("PaymentAsiaCurrency", value), "value %q must be accepted", value)
+	}
+
+	require.Error(t, UpdateOption("PaymentAsiaCurrency", "EUR"))
+	require.Error(t, UpdateOptionsBulk(map[string]string{"PaymentAsiaCurrency": "EUR"}))
+}
+
+func TestValidatePaymentAsiaUnitPriceOption(t *testing.T) {
+	for _, value := range []string{"0", "-1", "abc", "NaN", "+Inf", "-Inf"} {
+		require.Error(t, validateOptionValue("PaymentAsiaUnitPrice", value), "value %q must be rejected", value)
+	}
+	for _, value := range []string{"1", "1.08"} {
+		require.NoError(t, validateOptionValue("PaymentAsiaUnitPrice", value), "value %q must be accepted", value)
+	}
+}
+
+// TestRechargePaymentAsiaCreditsNetQuota 结算优先使用订单的 NetQuota 快照：
+// 用户实付不变，手续费从到账额度中扣除，审计日志带完整手续费计算。
+func TestRechargePaymentAsiaCreditsNetQuota(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 602, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAYMENTASIANETQUOTA",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+		Fee:             1.6,
+		FeeRate:         0.016,
+		FeeFixed:        0,
+		NetAmount:       98.4,
+		NetQuota:        49_200_000,
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, paymentAsiaTestMeta(), "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 49_200_000, getUserQuotaForPaymentGuardTest(t, user.Id),
+		"结算必须按 NetQuota 入账，而不是按 Amount 全额")
+
+	var logs []Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&logs).Error)
+	require.Len(t, logs, 1)
+	otherMap, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+	require.True(t, ok, "topup log must carry admin_info")
+	assert.EqualValues(t, 1.6, adminInfo["fee"])
+	assert.EqualValues(t, 0.016, adminInfo["fee_rate"])
+	assert.EqualValues(t, 0, adminInfo["fee_fixed"])
+	assert.EqualValues(t, 98.4, adminInfo["net_amount"])
+	assert.EqualValues(t, 49_200_000, adminInfo["net_quota"])
+	assert.Contains(t, logs[0].Content, "手续费", "用户可见日志必须说明手续费")
+}
+
+// TestRechargePaymentAsiaLegacyOrderCreditsFullAmount 无快照的旧订单
+// (NetQuota=0) 不受手续费功能影响，仍按订单 Amount 全额入账。
+func TestRechargePaymentAsiaLegacyOrderCreditsFullAmount(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 605, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAYMENTASIALEGACYFULL",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, paymentAsiaTestMeta(), "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 50_000_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+}
+
+// TestManualCompleteTopUpUsesPaymentAsiaNetQuota 管理员补单与回调结算口径一致：
+// PaymentAsia 订单有 NetQuota 快照时按快照入账，旧订单回退全额。
+func TestManualCompleteTopUpUsesPaymentAsiaNetQuota(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 606, 0)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAMANUALNETQUOTA",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+		Currency:        "HKD",
+		Fee:             1.6,
+		FeeRate:         0.016,
+		NetAmount:       98.4,
+		NetQuota:        49_200_000,
+	}).Error)
+
+	require.NoError(t, ManualCompleteTopUp("PAMANUALNETQUOTA", "127.0.0.1"))
+	assert.Equal(t, 49_200_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	var manualLogs []Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&manualLogs).Error)
+	require.Len(t, manualLogs, 1)
+	assert.Contains(t, manualLogs[0].Content, "手续费")
+	manualOther, err := common.StrToMap(manualLogs[0].Other)
+	require.NoError(t, err)
+	manualAdminInfo, ok := manualOther["admin_info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "HKD", manualAdminInfo["currency"])
+	assert.Equal(t, 1.6, manualAdminInfo["fee"])
+	assert.Equal(t, 0.016, manualAdminInfo["fee_rate"])
+	assert.Equal(t, 98.4, manualAdminInfo["net_amount"])
+	assert.Equal(t, float64(49_200_000), manualAdminInfo["net_quota"])
+
+	legacyUser := &User{Id: 607, Username: "paymentasia_manual_legacy", AffCode: "PALG", Status: common.UserStatusEnabled}
+	require.NoError(t, DB.Create(legacyUser).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          legacyUser.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAMANUALLEGACYFULL",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}).Error)
+
+	require.NoError(t, ManualCompleteTopUp("PAMANUALLEGACYFULL", "127.0.0.1"))
+	assert.Equal(t, 50_000_000, getUserQuotaForPaymentGuardTest(t, legacyUser.Id))
+}
+
+// TestPaymentAsiaServiceChargeEnabledOption 验证开关的 OptionMap 注册路径：
+// 默认 false 由注册值控制，UpdateOption 能即时切换运行时配置。
+func TestPaymentAsiaServiceChargeEnabledOption(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.AutoMigrate(&Option{}))
+	origEnabled := setting.PaymentAsiaServiceChargeEnabled
+	origOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	t.Cleanup(func() {
+		setting.PaymentAsiaServiceChargeEnabled = origEnabled
+		common.OptionMap = origOptionMap
+		DB.Where("key = ?", "PaymentAsiaServiceChargeEnabled").Delete(&Option{})
+	})
+
+	setting.PaymentAsiaServiceChargeEnabled = false
+	require.NoError(t, UpdateOption("PaymentAsiaServiceChargeEnabled", "true"))
+	assert.True(t, setting.PaymentAsiaServiceChargeEnabled)
+	require.NoError(t, UpdateOption("PaymentAsiaServiceChargeEnabled", "false"))
+	assert.False(t, setting.PaymentAsiaServiceChargeEnabled)
+}
+
+// TestFillUserTopUpBreakdownUsesPaymentAsiaNetQuota 回归：管理端累计充值拆分
+// 通过 FillUserTopUpBreakdown 只 Select 部分列加载订单，必须包含 net_quota，
+// 否则手续费订单会按全额 Amount 上报现金，推高现金并压低赠金。
+func TestFillUserTopUpBreakdownUsesPaymentAsiaNetQuota(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := &User{
+		Id:       608,
+		Username: "paymentasia_breakdown_user",
+		AffCode:  "PABK",
+		Status:   common.UserStatusEnabled,
+		Quota:    60_000_000,
+	}
+	require.NoError(t, DB.Create(user).Error)
+	require.NoError(t, DB.Create(&TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PABREAKDOWNNET",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusSuccess,
+		Fee:             1.6,
+		FeeRate:         0.016,
+		NetAmount:       98.4,
+		NetQuota:        49_200_000,
+	}).Error)
+
+	FillUserTopUpBreakdown(user)
+
+	require.NotNil(t, user.CashTopUpTotal)
+	require.NotNil(t, user.GiftTopUpTotal)
+	assert.Equal(t, 49_200_000, *user.CashTopUpTotal,
+		"现金口径必须使用 NetQuota，而不是按 Amount 全额")
+	assert.Equal(t, 10_800_000, *user.GiftTopUpTotal,
+		"赠金 = 余额 + 已消费 - 现金，应随现金口径一起计算")
+}

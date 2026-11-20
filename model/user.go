@@ -1975,7 +1975,7 @@ func FillUserTopUpBreakdown(user *User) {
 		return
 	}
 	var topUps []TopUp
-	if err := DB.Select("amount", "rate", "money", "payment_method", "payment_provider").
+	if err := DB.Select("amount", "rate", "money", "payment_method", "payment_provider", "net_quota").
 		Where("user_id = ? AND status = ?", user.Id, common.TopUpStatusSuccess).
 		Find(&topUps).Error; err != nil {
 		common.SysLog("failed to load user top-ups for breakdown: " + err.Error())

@@ -104,6 +104,16 @@ export function isWaffoPancakePayment(paymentType: string): boolean {
   return paymentType === PAYMENT_TYPES.WAFFO_PANCAKE
 }
 
+/**
+ * Check if payment method belongs to the PaymentAsia gateway
+ *
+ * PaymentAsia exposes one PayMethods entry per channel, all sharing the
+ * reserved `paymentasia_` type namespace.
+ */
+export function isPaymentAsiaPayment(paymentType: string): boolean {
+  return paymentType.startsWith('paymentasia_')
+}
+
 export interface PaymentProcessors {
   regular: (topupAmount: number, paymentType: string) => Promise<boolean>
   waffo: (topupAmount: number, payMethodIndex: number) => Promise<boolean>
@@ -186,7 +196,35 @@ export function getMinTopupAmount(topupInfo: TopupInfo | null): number {
     return topupInfo.waffo_pancake_min_topup || DEFAULT_MIN_TOPUP
   }
 
+  if (topupInfo.enable_paymentasia_topup) {
+    return topupInfo.paymentasia_min_topup || DEFAULT_MIN_TOPUP
+  }
+
   return DEFAULT_MIN_TOPUP
+}
+
+/**
+ * Effective minimum topup for a single payment method
+ *
+ * getMinTopupAmount reports the first enabled gateway's minimum, which may
+ * belong to a different gateway (e.g. Stripe's) than the selected method. A
+ * PaymentAsia method's floor is therefore the highest of its own minimum, the
+ * site minimum, and the configured PaymentAsia minimum; other methods still
+ * take their gateway's minimum from getMinTopupAmount.
+ */
+export function getPaymentMethodMinTopup(
+  topupInfo: TopupInfo | null,
+  method: PaymentMethod
+): number {
+  if (isPaymentAsiaPayment(method.type)) {
+    return Math.max(
+      method.min_topup || 0,
+      topupInfo?.min_topup || 0,
+      topupInfo?.paymentasia_min_topup || 0
+    )
+  }
+
+  return Math.max(method.min_topup || 0, getMinTopupAmount(topupInfo))
 }
 
 /**

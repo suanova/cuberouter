@@ -180,6 +180,21 @@ const BILLING_SECTIONS = [
           WaffoPancakePrivateKey: settings.WaffoPancakePrivateKey ?? '',
           WaffoPancakeReturnURL: settings.WaffoPancakeReturnURL ?? '',
         }}
+        paymentAsiaDefaultValues={{
+          PaymentAsiaSandbox: settings.PaymentAsiaSandbox ?? false,
+          PaymentAsiaMerchantToken: settings.PaymentAsiaMerchantToken ?? '',
+          PaymentAsiaSecret: settings.PaymentAsiaSecret ?? '',
+          PaymentAsiaSandboxMerchantToken:
+            settings.PaymentAsiaSandboxMerchantToken ?? '',
+          PaymentAsiaSandboxSecret: settings.PaymentAsiaSandboxSecret ?? '',
+          PaymentAsiaCurrency: settings.PaymentAsiaCurrency ?? 'HKD',
+          PaymentAsiaUnitPrice: settings.PaymentAsiaUnitPrice ?? 1,
+          PaymentAsiaMinTopUp: settings.PaymentAsiaMinTopUp ?? 1,
+          PaymentAsiaNotifyUrl: settings.PaymentAsiaNotifyUrl ?? '',
+          PaymentAsiaReturnUrl: settings.PaymentAsiaReturnUrl ?? '',
+          PaymentAsiaServiceChargeEnabled:
+            settings.PaymentAsiaServiceChargeEnabled ?? false,
+        }}
         waffoPancakeProvisionedStoreID={settings.WaffoPancakeStoreID ?? ''}
         waffoPancakeProvisionedProductID={settings.WaffoPancakeProductID ?? ''}
       />

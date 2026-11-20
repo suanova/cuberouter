@@ -134,6 +134,18 @@ export interface LogOtherData {
     server_ip?: string
     version?: string
     node_name?: string
+    // PaymentAsia settlement fields (type=1, admin only)
+    trade_no?: string
+    currency?: string
+    request_reference?: string
+    channel?: string
+    // PaymentAsia service fee snapshot (type=1, admin only); written only when
+    // the service-charge option was on and the credited quota is net of fees.
+    fee?: number
+    fee_rate?: number
+    fee_fixed?: number
+    net_amount?: number
+    net_quota?: number
     // Operator identity for audit logs (type=3, admin only)
     admin_username?: string
     admin_id?: number | string

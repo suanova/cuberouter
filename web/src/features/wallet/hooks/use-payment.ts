@@ -17,22 +17,25 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import i18next from 'i18next'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 
 import {
   calculateAmount,
   calculateAlipayAmount,
+  calculatePaymentAsiaAmount,
   calculateStripeAmount,
   calculateWaffoAmount,
   calculateWaffoPancakeAmount,
   requestPayment,
   requestAlipayPayment,
+  requestPaymentAsiaPayment,
   requestStripePayment,
   isApiSuccess,
 } from '../api'
 import {
   isAlipayPayment,
+  isPaymentAsiaPayment,
   isStripePayment,
   isWaffoPayment,
   isWaffoPancakePayment,
@@ -42,6 +45,7 @@ import type {
   AmountRequest,
   AmountResponse,
   AlipayPaymentResponse,
+  PaymentAsiaFeeInfo,
   PaymentResponse,
   StripePaymentResponse,
 } from '../types'
@@ -58,6 +62,7 @@ export interface PaymentAmountCalculators {
   alipay: AmountCalculator
   waffo: AmountCalculator
   waffoPancake: AmountCalculator
+  paymentAsia: AmountCalculator
 }
 
 const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
@@ -66,13 +71,27 @@ const defaultPaymentAmountCalculators: PaymentAmountCalculators = {
   alipay: calculateAlipayAmount,
   waffo: calculateWaffoAmount,
   waffoPancake: calculateWaffoPancakeAmount,
+  paymentAsia: calculatePaymentAsiaAmount,
+}
+
+interface PaymentAmountQuote {
+  amount: number
+  /**
+   * Present when the quote was rejected; callers may surface it to the user.
+   */
+  error?: string
+  /**
+   * Present only when the gateway quotes a service fee (PaymentAsia with the
+   * service-charge option on); the fee is deducted from the credited amount.
+   */
+  feeInfo?: PaymentAsiaFeeInfo
 }
 
 export async function requestPaymentAmount(
   topupAmount: number,
   paymentType: string,
   calculators: PaymentAmountCalculators = defaultPaymentAmountCalculators
-): Promise<number> {
+): Promise<PaymentAmountQuote> {
   let calculator = calculators.regular
   if (isStripePayment(paymentType)) {
     calculator = calculators.stripe
@@ -82,37 +101,83 @@ export async function requestPaymentAmount(
     calculator = calculators.waffo
   } else if (isWaffoPancakePayment(paymentType)) {
     calculator = calculators.waffoPancake
+  } else if (isPaymentAsiaPayment(paymentType)) {
+    calculator = calculators.paymentAsia
   }
 
-  const response = await calculator({ amount: topupAmount })
+  // The channel travels with the quote so the gateway can format per channel
+  // (e.g. Octopus is quoted with one decimal).
+  const request: AmountRequest = { amount: topupAmount }
+  if (isPaymentAsiaPayment(paymentType)) {
+    request.payment_method = paymentType
+  }
+
+  const response = await calculator(request)
   if (!isApiSuccess(response) || !response.data) {
-    return 0
+    const errorMessage =
+      typeof response.data === 'string' && response.data.trim() !== ''
+        ? response.data
+        : response.message || i18next.t('Payment request failed')
+    return { amount: 0, error: errorMessage }
   }
 
-  return Number.parseFloat(response.data)
+  const amount = Number.parseFloat(response.data)
+  if (response.fee == null || response.net_amount == null) {
+    return { amount }
+  }
+
+  const fee = Number.parseFloat(response.fee)
+  const netAmount = Number.parseFloat(response.net_amount)
+  if (!Number.isFinite(fee) || !Number.isFinite(netAmount)) {
+    return { amount }
+  }
+
+  return {
+    amount,
+    feeInfo: {
+      fee,
+      feeRate: response.fee_rate ?? 0,
+      feeFixed: response.fee_fixed ?? 0,
+      netAmount,
+      netQuota: response.net_quota ?? 0,
+    },
+  }
 }
 
 export function usePayment() {
   const [amount, setAmount] = useState<number>(0)
+  const [paymentFeeInfo, setPaymentFeeInfo] =
+    useState<PaymentAsiaFeeInfo | null>(null)
   const [calculating, setCalculating] = useState(false)
   const [processing, setProcessing] = useState(false)
+  // Quotes resolve out of order when the user switches amount or gateway
+  // quickly; only the newest request may publish its result.
+  const amountRequestSeqRef = useRef(0)
 
   // Calculate payment amount
   const calculatePaymentAmount = useCallback(
     async (topupAmount: number, paymentType: string) => {
+      const requestSeq = ++amountRequestSeqRef.current
       try {
         setCalculating(true)
-        const calculatedAmount = await requestPaymentAmount(
-          topupAmount,
-          paymentType
-        )
-        setAmount(calculatedAmount)
-        return calculatedAmount
+        const quote = await requestPaymentAmount(topupAmount, paymentType)
+        if (requestSeq !== amountRequestSeqRef.current) {
+          return null
+        }
+        setAmount(quote.amount)
+        setPaymentFeeInfo(quote.feeInfo ?? null)
+        return quote
       } catch {
+        if (requestSeq !== amountRequestSeqRef.current) {
+          return null
+        }
         setAmount(0)
-        return 0
+        setPaymentFeeInfo(null)
+        return { amount: 0, error: i18next.t('Payment request failed') }
       } finally {
-        setCalculating(false)
+        if (requestSeq === amountRequestSeqRef.current) {
+          setCalculating(false)
+        }
       }
     },
     []
@@ -126,9 +191,13 @@ export function usePayment() {
 
         const isStripe = isStripePayment(paymentType)
         const isAlipay = isAlipayPayment(paymentType)
+        const isPaymentAsia = isPaymentAsiaPayment(paymentType)
         const amount = Math.floor(topupAmount)
 
-        let response: PaymentResponse | StripePaymentResponse | AlipayPaymentResponse
+        let response:
+          | PaymentResponse
+          | StripePaymentResponse
+          | AlipayPaymentResponse
         if (isStripe) {
           response = await requestStripePayment({
             amount,
@@ -136,6 +205,11 @@ export function usePayment() {
           })
         } else if (isAlipay) {
           response = await requestAlipayPayment({
+            amount,
+            payment_method: paymentType,
+          })
+        } else if (isPaymentAsia) {
+          response = await requestPaymentAsiaPayment({
             amount,
             payment_method: paymentType,
           })
@@ -194,6 +268,7 @@ export function usePayment() {
 
   return {
     amount,
+    paymentFeeInfo,
     calculating,
     processing,
     calculatePaymentAmount,

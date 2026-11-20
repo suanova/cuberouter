@@ -41,6 +41,8 @@ import {
 type PaymentMethodsVisualEditorProps = {
   value: string
   onChange: (value: string) => void
+  typeFilter?: (type: string) => boolean
+  allowCustomValue?: boolean
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -48,6 +50,16 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
+  paymentasia_alipay: 'SiAlipay',
+  paymentasia_alipaycn: 'SiAlipay',
+  paymentasia_alipayhk: 'SiAlipay',
+  paymentasia_wechat: 'SiWechat',
+  paymentasia_cup: 'LuCreditCard',
+  paymentasia_creditcard: 'LuCreditCard',
+  paymentasia_fps: 'LuLandmark',
+  paymentasia_octopus: 'LuCreditCard',
+  paymentasia_payme: 'LuCreditCard',
+  paymentasia_generic: 'LuCreditCard',
 }
 
 function getDefaultIconName(type: string) {
@@ -58,9 +70,94 @@ function getEffectiveIconName(method: PaymentMethodData) {
   return method.icon || getDefaultIconName(method.type)
 }
 
+function isPaymentMethodData(item: unknown): item is PaymentMethodData {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'name' in item &&
+    'type' in item &&
+    typeof item.name === 'string' &&
+    typeof item.type === 'string' &&
+    (!('icon' in item) || typeof item.icon === 'string') &&
+    (!('min_topup' in item) || typeof item.min_topup === 'string') &&
+    (!('color' in item) || typeof item.color === 'string')
+  )
+}
+
+function parsePaymentMethods(rawValue: string): unknown[] {
+  return safeJsonParseWithValidation<unknown[]>(rawValue, {
+    fallback: [],
+    validator: isArray,
+    silent: true,
+  })
+}
+
+export function savePaymentMethod(
+  rawValue: string,
+  editData: PaymentMethodData | null,
+  data: PaymentMethodData
+): string {
+  const parsed = parsePaymentMethods(rawValue)
+  const updatedArray = [...parsed]
+
+  if (editData) {
+    const index = updatedArray.findIndex(
+      (item) =>
+        isPaymentMethodData(item) &&
+        item.name === editData.name &&
+        item.type === editData.type
+    )
+    if (index === -1) {
+      updatedArray.push(data)
+    } else {
+      updatedArray[index] = data
+    }
+  } else {
+    updatedArray.push(data)
+  }
+
+  return JSON.stringify(updatedArray, null, 2)
+}
+
+export function deletePaymentMethod(
+  rawValue: string,
+  method: PaymentMethodData
+): string {
+  const parsed = parsePaymentMethods(rawValue)
+  const updatedArray = parsed.filter(
+    (item) =>
+      !(
+        isPaymentMethodData(item) &&
+        item.name === method.name &&
+        item.type === method.type
+      )
+  )
+
+  return JSON.stringify(updatedArray, null, 2)
+}
+
+export function insertPaymentMethodTemplate(
+  rawValue: string,
+  template: PaymentMethodData
+): string {
+  const parsed = parsePaymentMethods(rawValue)
+  const exists = parsed.some(
+    (item) =>
+      isPaymentMethodData(item) &&
+      item.type === template.type &&
+      item.name === template.name
+  )
+
+  if (exists) return rawValue
+
+  return JSON.stringify([...parsed, template], null, 2)
+}
+
 export function PaymentMethodsVisualEditor({
   value,
   onChange,
+  typeFilter,
+  allowCustomValue = true,
 }: PaymentMethodsVisualEditorProps) {
   const { t } = useTranslation()
   const paymentTemplates = [
@@ -98,6 +195,46 @@ export function PaymentMethodsVisualEditor({
       },
     },
     {
+      name: t('PaymentAsia AlipayHK'),
+      template: {
+        icon: getDefaultIconName('paymentasia_alipayhk'),
+        name: 'AlipayHK',
+        type: 'paymentasia_alipayhk',
+      },
+    },
+    {
+      name: t('PaymentAsia WeChat Pay'),
+      template: {
+        icon: getDefaultIconName('paymentasia_wechat'),
+        name: 'WeChat Pay',
+        type: 'paymentasia_wechat',
+      },
+    },
+    {
+      name: t('PaymentAsia Credit Card'),
+      template: {
+        icon: getDefaultIconName('paymentasia_creditcard'),
+        name: t('Credit Card'),
+        type: 'paymentasia_creditcard',
+      },
+    },
+    {
+      name: t('PaymentAsia FPS'),
+      template: {
+        icon: getDefaultIconName('paymentasia_fps'),
+        name: 'FPS',
+        type: 'paymentasia_fps',
+      },
+    },
+    {
+      name: t('PaymentAsia Generic'),
+      template: {
+        icon: getDefaultIconName('paymentasia_generic'),
+        name: 'PaymentAsia',
+        type: 'paymentasia_generic',
+      },
+    },
+    {
       name: t('Custom Epay method'),
       template: {
         icon: 'LuCreditCard',
@@ -119,82 +256,35 @@ export function PaymentMethodsVisualEditor({
       context: 'payment methods',
     })
 
-    return parsed.filter(
-      (item): item is PaymentMethodData =>
-        typeof item === 'object' &&
-        item !== null &&
-        'name' in item &&
-        'type' in item &&
-        typeof item.name === 'string' &&
-        typeof item.type === 'string' &&
-        (!('icon' in item) || typeof item.icon === 'string') &&
-        (!('min_topup' in item) || typeof item.min_topup === 'string') &&
-        (!('color' in item) || typeof item.color === 'string')
-    )
+    return parsed.filter(isPaymentMethodData)
   }, [value])
 
+  const visibleMethods = useMemo(() => {
+    if (!typeFilter) return paymentMethods
+    return paymentMethods.filter((method) => typeFilter(method.type))
+  }, [paymentMethods, typeFilter])
+
+  const visibleTemplates = typeFilter
+    ? paymentTemplates.filter((item) => typeFilter(item.template.type))
+    : paymentTemplates
+
   const filteredMethods = useMemo(() => {
-    if (!searchText) return paymentMethods
+    if (!searchText) return visibleMethods
     const lowerSearch = searchText.toLowerCase()
-    return paymentMethods.filter(
+    return visibleMethods.filter(
       (method) =>
         method.name.toLowerCase().includes(lowerSearch) ||
         method.type.toLowerCase().includes(lowerSearch) ||
         getEffectiveIconName(method).toLowerCase().includes(lowerSearch)
     )
-  }, [paymentMethods, searchText])
+  }, [visibleMethods, searchText])
 
   const handleSave = (data: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      silent: true,
-    })
-
-    const updatedArray = [...parsed]
-
-    if (editData) {
-      const index = updatedArray.findIndex(
-        (item): item is PaymentMethodData =>
-          typeof item === 'object' &&
-          item !== null &&
-          'name' in item &&
-          'type' in item &&
-          item.name === editData.name &&
-          item.type === editData.type
-      )
-      if (index !== -1) {
-        updatedArray[index] = data
-      } else {
-        updatedArray.push(data)
-      }
-    } else {
-      updatedArray.push(data)
-    }
-
-    onChange(JSON.stringify(updatedArray, null, 2))
+    onChange(savePaymentMethod(value, editData, data))
   }
 
   const handleDelete = (method: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      silent: true,
-    })
-
-    const updatedArray = parsed.filter(
-      (item) =>
-        !(
-          typeof item === 'object' &&
-          item !== null &&
-          'name' in item &&
-          'type' in item &&
-          item.name === method.name &&
-          item.type === method.type
-        )
-    )
-
-    onChange(JSON.stringify(updatedArray, null, 2))
+    onChange(deletePaymentMethod(value, method))
   }
 
   const handleEdit = (method: PaymentMethodData) => {
@@ -208,26 +298,9 @@ export function PaymentMethodsVisualEditor({
   }
 
   const handleInsertTemplate = (template: PaymentMethodData) => {
-    const parsed = safeJsonParseWithValidation<unknown[]>(value, {
-      fallback: [],
-      validator: isArray,
-      silent: true,
-    })
-
-    // Check if template already exists
-    const exists = parsed.some(
-      (item) =>
-        typeof item === 'object' &&
-        item !== null &&
-        'type' in item &&
-        'name' in item &&
-        item.type === template.type &&
-        item.name === template.name
-    )
-
-    if (!exists) {
-      parsed.push(template)
-      onChange(JSON.stringify(parsed, null, 2))
+    const updatedValue = insertPaymentMethodTemplate(value, template)
+    if (updatedValue !== value) {
+      onChange(updatedValue)
     }
   }
 
@@ -259,7 +332,7 @@ export function PaymentMethodsVisualEditor({
                   {t('Quick insert payment entries')}
                 </p>
                 <div className='space-y-1'>
-                  {paymentTemplates.map((item) => (
+                  {visibleTemplates.map((item) => (
                     <Button
                       key={item.name}
                       type='button'
@@ -468,6 +541,8 @@ export function PaymentMethodsVisualEditor({
         onOpenChange={setDialogOpen}
         onSave={handleSave}
         editData={editData}
+        typeFilter={typeFilter}
+        allowCustomValue={allowCustomValue}
       />
     </div>
   )

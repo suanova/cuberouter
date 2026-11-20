@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -37,6 +38,11 @@ func GetTopUpInfo(c *gin.Context) {
 		case model.PaymentMethodWaffo:
 			return isWaffoTopUpEnabled()
 		default:
+			// paymentasia_* 是保留命名空间：只展示已知通道，错拼的 type 直接
+			// 隐藏，绝不落回 Epay 判定变成死按钮。
+			if service.IsPaymentAsiaType(method["type"]) {
+				return service.IsPaymentAsiaMethod(method["type"]) && isPaymentAsiaTopUpEnabled()
+			}
 			return isEpayWebhookConfigured()
 		}
 	})
@@ -126,8 +132,44 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// PaymentAsia 方法在返回给前端前克隆并附加结算币种：PayMethods 里的 map 被
+	// 多处共享，直接写入会污染全局配置。
+	payMethods = lo.Map(payMethods, func(method map[string]string, _ int) map[string]string {
+		cloned := maps.Clone(method)
+		if cloned == nil {
+			cloned = map[string]string{}
+		}
+		if service.IsPaymentAsiaMethod(cloned["type"]) {
+			cloned["currency"] = paymentAsiaCurrency()
+		}
+		return cloned
+	})
+	// 结算币种决定可用通道：HKD 保留全部已知 PaymentAsia 方法；USD 只有信用卡
+	// 通道；其它（配置已由选项校验拦截，这里兜底）整体隐藏 PaymentAsia 方法。
+	// 非 PaymentAsia 方法不受影响。
+	paymentAsiaSettlementCurrency := paymentAsiaCurrency()
+	payMethods = lo.Filter(payMethods, func(method map[string]string, _ int) bool {
+		if !service.IsPaymentAsiaMethod(method["type"]) {
+			return true
+		}
+		switch paymentAsiaSettlementCurrency {
+		case "HKD":
+			return true
+		case "USD":
+			channel, ok := service.PaymentAsiaChannelByMethodType(method["type"])
+			return ok && channel.Network == "CreditCard"
+		default:
+			return false
+		}
+	})
+	enablePaymentAsia := isPaymentAsiaTopUpEnabled() && lo.ContainsBy(payMethods, func(method map[string]string) bool {
+		return service.IsPaymentAsiaMethod(method["type"])
+	})
+
 	data := gin.H{
 		"enable_online_topup":        isEpayTopUpEnabled(),
+		"enable_paymentasia_topup":   enablePaymentAsia,
+		"paymentasia_min_topup":      paymentAsiaMinimumTopUp(),
 		"enable_stripe_topup":        isStripeTopUpEnabled(),
 		"enable_alipay_topup":        isAlipayTopUpEnabled(),
 		"alipay_min_topup":           setting.AlipayMinTopUp,
@@ -320,6 +362,13 @@ func rejectInvalidTopUpQuota(c *gin.Context, userId int, amount int64) bool {
 	return false
 }
 
+// isEpayOnlyPaymentMethod reports whether methodType may be launched through
+// the Epay gateway. The paymentasia_* namespace is reserved for the
+// first-class PaymentAsia provider, so Epay must never handle it.
+func isEpayOnlyPaymentMethod(methodType string) bool {
+	return methodType != "" && !service.IsPaymentAsiaType(methodType)
+}
+
 func RequestEpay(c *gin.Context) {
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
@@ -347,7 +396,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	if !isEpayOnlyPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
