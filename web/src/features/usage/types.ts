@@ -49,6 +49,8 @@ export interface SelfUsageRow {
   billing_account_type: 'personal' | 'organization'
   organization_id: number
   organization_name: string
+  user_id?: number
+  user_name?: string
   responsible_user_id?: number
   responsible_name?: string
   token_id: number
@@ -116,6 +118,7 @@ export interface SelfUsageFilterOptions {
   models: string[]
   tokens: SelfUsageTokenOption[]
   users?: UsageUserOption[]
+  organizations?: UsageOrganizationOption[]
 }
 
 /** The fields the shared usage table reads; both personal and organization responses provide them. */
@@ -125,7 +128,29 @@ export interface UsageTableData {
   filter_options: SelfUsageFilterOptions
 }
 
-export type UsageTableVariant = 'personal' | 'organization'
+export type UsageTableVariant = 'personal' | 'organization' | 'site'
+
+export type UsageScope = 'all' | 'self'
+
+/** Site-wide usage response; aggregates every actor and has no account overview. */
+export interface SiteUsageData {
+  backfill_complete: boolean
+  range: SelfUsageRange
+  rows: SelfUsageRows
+  totals: SelfUsageTotals
+  charts: SelfUsageChartPoint[]
+  filter_options: SiteUsageFilterOptions
+}
+
+export interface SiteUsageFilterOptions extends SelfUsageFilterOptions {
+  organizations: UsageOrganizationOption[]
+}
+
+export interface SiteUsageEnvelope {
+  success: boolean
+  message?: string
+  data?: SiteUsageData
+}
 
 export interface SelfUsageTokenOption {
   id: number
@@ -179,6 +204,33 @@ export interface ExportSelfUsageParams {
   token_id?: number
   billing_account_type?: string
   organization_id?: number
+}
+
+export interface GetSiteUsageParams {
+  start: string
+  end: string
+  model_name?: string
+  token_name?: string
+  token_id?: number
+  billing_account_type?: string
+  organization_id?: number
+  user_id?: number
+  /** "hour" asks the backend for hourly chart buckets; the table stays daily. */
+  chart_granularity?: 'hour'
+  p: number
+  page_size: number
+}
+
+export interface ExportSiteUsageParams {
+  start: string
+  end: string
+  granularity: UsageExportGranularity
+  model_name?: string
+  token_name?: string
+  token_id?: number
+  billing_account_type?: string
+  organization_id?: number
+  user_id?: number
 }
 
 export interface UsageOrganizationOption {

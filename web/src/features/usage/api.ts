@@ -21,9 +21,12 @@ import { api } from '@/lib/api'
 
 import type {
   ExportSelfUsageParams,
+  ExportSiteUsageParams,
   GetSelfUsageParams,
+  GetSiteUsageParams,
   SelfUsageEnvelope,
   SelfUsageExportEnvelope,
+  SiteUsageEnvelope,
 } from './types'
 
 export async function getSelfUsage(
@@ -37,5 +40,19 @@ export async function exportSelfUsage(
   params: ExportSelfUsageParams
 ): Promise<SelfUsageExportEnvelope> {
   const res = await api.get('/api/usage/self/export', { params })
+  return res.data
+}
+
+export async function getSiteUsage(
+  params: GetSiteUsageParams
+): Promise<SiteUsageEnvelope> {
+  const res = await api.get('/api/usage/site', { params })
+  return res.data
+}
+
+export async function exportSiteUsage(
+  params: ExportSiteUsageParams
+): Promise<SelfUsageExportEnvelope> {
+  const res = await api.get('/api/usage/site/export', { params })
   return res.data
 }

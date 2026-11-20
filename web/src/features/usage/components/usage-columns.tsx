@@ -56,15 +56,19 @@ export function buildUsageColumns(
     },
   ]
 
-  if (variant === 'organization') {
+  const showUser = variant === 'organization' || variant === 'site'
+  const showBillingAccount = variant !== 'organization'
+  if (showUser) {
     columns.push({
-      accessorKey: 'responsible_name',
+      accessorKey: variant === 'site' ? 'user_name' : 'responsible_name',
       header: () => <span className='whitespace-nowrap'>{t('User')}</span>,
       enableSorting: false,
       size: 150,
       cell: ({ row }) => (
         <span className='block max-w-44 truncate text-sm'>
-          {row.original.responsible_name || '-'}
+          {variant === 'site'
+            ? row.original.user_name || row.original.responsible_name || '-'
+            : row.original.responsible_name || '-'}
         </span>
       ),
     })
@@ -82,7 +86,7 @@ export function buildUsageColumns(
     ),
   })
 
-  if (variant === 'personal') {
+  if (showBillingAccount) {
     columns.push({
       accessorKey: 'billing_account_type',
       header: () => (

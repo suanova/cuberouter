@@ -68,6 +68,8 @@ type SelfUsageRow struct {
 	BillingAccountType string `json:"billing_account_type"`
 	OrganizationId     int    `json:"organization_id"`
 	OrganizationName   string `json:"organization_name"`
+	UserId             int    `json:"user_id,omitempty"`
+	UserName           string `json:"user_name,omitempty"`
 	ResponsibleUserId  int    `json:"responsible_user_id,omitempty"`
 	ResponsibleName    string `json:"responsible_name,omitempty"`
 	TokenId            int    `json:"token_id"`

@@ -188,9 +188,11 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
       token: selectedToken?.name ?? (token.trim() || undefined),
       tokenId: selectedToken?.id,
       billingAccountType:
-        variant === 'personal' && billing !== BILLING_ALL ? billing : undefined,
+        variant !== 'organization' && billing !== BILLING_ALL
+          ? billing
+          : undefined,
       organizationId:
-        variant === 'personal' && billing === 'organization'
+        variant !== 'organization' && billing === 'organization'
           ? organizationId
           : undefined,
       userId: userId === '' ? undefined : Number(userId),
@@ -231,7 +233,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
               className='h-8 min-w-0 text-sm leading-5'
             />
           </LogsFilterField>
-          {variant === 'organization' ? (
+          {variant !== 'personal' ? (
             <LogsFilterField>
               <Combobox
                 options={userItems}
@@ -242,7 +244,8 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
                 className='h-8 min-w-0 text-sm leading-5'
               />
             </LogsFilterField>
-          ) : (
+          ) : null}
+          {variant !== 'organization' ? (
             <>
               <LogsFilterField>
                 <Select
@@ -298,7 +301,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
                 </LogsFilterField>
               ) : null}
             </>
-          )}
+          ) : null}
         </>
       }
       hasActiveFilters={hasActiveFilters}

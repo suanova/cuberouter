@@ -56,6 +56,12 @@ export function UsageTable(props: UsageTableProps) {
     pageIndex: Math.max(0, props.page - 1),
     pageSize: props.pageSize,
   }
+  let columnVisibilityStorageKey = 'usage-table-column-visibility'
+  if (props.variant === 'organization') {
+    columnVisibilityStorageKey = 'organization-usage-table-column-visibility'
+  } else if (props.variant === 'site') {
+    columnVisibilityStorageKey = 'site-usage-table-column-visibility'
+  }
   const { table } = useDataTable({
     data: props.data.rows.items,
     columns,
@@ -67,10 +73,7 @@ export function UsageTable(props: UsageTableProps) {
       const next = typeof updater === 'function' ? updater(pagination) : updater
       props.onPageChange(next.pageIndex + 1, next.pageSize)
     },
-    columnVisibilityStorageKey:
-      props.variant === 'organization'
-        ? 'organization-usage-table-column-visibility'
-        : 'usage-table-column-visibility',
+    columnVisibilityStorageKey,
   })
 
   return (

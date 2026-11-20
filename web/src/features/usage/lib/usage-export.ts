@@ -59,12 +59,15 @@ export function buildSelfUsageExportSheet(
   const costHeader = `${t('Cost')} (${currency})`
   const timeHeader = data.granularity === 'hour' ? t('Time') : t('Date')
   const organization = options.variant === 'organization'
+  const site = options.variant === 'site'
+  const showUser = site || organization
+  const showBillingAccount = site || !organization
 
   const headers = [
     headerCell(timeHeader),
-    ...(organization ? [headerCell(t('User'))] : []),
+    ...(showUser ? [headerCell(t('User'))] : []),
     headerCell(t('Type')),
-    ...(organization ? [] : [headerCell(t('Billing Account'))]),
+    ...(showBillingAccount ? [headerCell(t('Billing Account'))] : []),
     headerCell(t('API Key')),
     headerCell(t('Model')),
     headerCell(t('Requests')),
@@ -78,9 +81,9 @@ export function buildSelfUsageExportSheet(
 
   const columnWidths = [
     { width: 18 },
-    ...(organization ? [{ width: 16 }] : []),
+    ...(showUser ? [{ width: 16 }] : []),
     { width: 10 },
-    ...(organization ? [] : [{ width: 18 }]),
+    ...(showBillingAccount ? [{ width: 18 }] : []),
     { width: 20 },
     { width: 22 },
     { width: 10 },
@@ -92,20 +95,34 @@ export function buildSelfUsageExportSheet(
     { width: 18 },
   ]
 
+  let defaultFilenamePrefix = 'usage'
+  if (organization) {
+    defaultFilenamePrefix = 'organization-usage'
+  }
+  if (site) {
+    defaultFilenamePrefix = 'site-usage'
+  }
+
   return {
     rows: [
       headers,
       ...data.rows.map((row) => [
         row.date,
-        ...(organization ? [row.responsible_name || '-'] : []),
+        ...(showUser
+          ? [
+              site
+                ? row.user_name || row.responsible_name || '-'
+                : row.responsible_name || '-',
+            ]
+          : []),
         t(usageTypeLabelKey(row.type)),
-        ...(organization
-          ? []
-          : [
+        ...(showBillingAccount
+          ? [
               row.billing_account_type === 'organization'
                 ? row.organization_name || '-'
                 : t('Personal'),
-            ]),
+            ]
+          : []),
         row.token_name || '-',
         row.model_name || '-',
         tokenCell(row.request_count),
@@ -118,7 +135,7 @@ export function buildSelfUsageExportSheet(
       ]),
     ],
     columns: columnWidths,
-    filename: `${options.filenamePrefix ?? (organization ? 'organization-usage' : 'usage')}-${data.granularity}-${dayjs().format('YYYY-MM-DD-HHmmss')}.xlsx`,
+    filename: `${options.filenamePrefix ?? defaultFilenamePrefix}-${data.granularity}-${dayjs().format('YYYY-MM-DD-HHmmss')}.xlsx`,
   }
 }
 

@@ -63,18 +63,48 @@ type selfUsageAsyncKey struct {
 }
 
 // usageAsyncScope selects whose rows the task and Midjourney loaders read.
-// Exactly one field is set: a person's own usage, or one organization's.
+// Exactly one of ActorUserId, OrganizationId, or Site is set.
 type usageAsyncScope struct {
 	ActorUserId    int
 	OrganizationId int
+	Site           bool
 }
 
 func (scope usageAsyncScope) apply(query *gorm.DB) *gorm.DB {
+	if scope.Site {
+		return query
+	}
 	if scope.OrganizationId > 0 {
 		return query.Where("billing_account_type = ? AND billing_account_id = ? AND organization_id = ?",
 			AccountContextTypeOrganization, scope.OrganizationId, scope.OrganizationId)
 	}
 	return query.Where("actor_user_id = ?", scope.ActorUserId)
+}
+
+// usageUserDimension selects which user a task/MJ row is attributed to.
+type usageUserDimension int
+
+const (
+	usageUserNone usageUserDimension = iota
+	usageUserResponsible
+	usageUserActor
+)
+
+// usageRowUser resolves the user fields for one aggregated row. The actor
+// dimension falls back to user_id for legacy rows written before
+// actor_user_id was populated.
+func usageRowUser(dimension usageUserDimension, responsibleUserId int, responsibleName string, actorUserId, userId int) (int, string) {
+	switch dimension {
+	case usageUserResponsible:
+		return responsibleUserId, responsibleName
+	case usageUserActor:
+		if actorUserId > 0 {
+			return actorUserId, ""
+		}
+		return userId, ""
+	default:
+		return 0, ""
+	}
 }
 
 // localBucketKey mirrors the SQL bucket_key expression used for log aggregation.
@@ -106,7 +136,7 @@ func GetSelfUsageTaskRows(actorUserId int, startTs, endTs int64) ([]SelfUsageAsy
 // GetSelfUsageTaskRowsByBucket is GetSelfUsageTaskRows with a caller-chosen
 // bucket size, used by exports that group by hour instead of by day.
 func GetSelfUsageTaskRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds int64) ([]SelfUsageAsyncRow, error) {
-	return getUsageTaskRowsByBucket(usageAsyncScope{ActorUserId: actorUserId}, startTs, endTs, bucketSeconds, 0, false)
+	return getUsageTaskRowsByBucket(usageAsyncScope{ActorUserId: actorUserId}, SiteUsageFilter{}, startTs, endTs, bucketSeconds, 0, usageUserNone)
 }
 
 // GetOrganizationUsageTaskRowsByBucket aggregates the organization's tasks by
@@ -115,11 +145,11 @@ func GetOrganizationUsageTaskRowsByBucket(organizationId int, startTs, endTs, bu
 	if organizationId <= 0 {
 		return nil, errors.New("组织 ID 无效")
 	}
-	return getUsageTaskRowsByBucket(usageAsyncScope{OrganizationId: organizationId}, startTs, endTs, bucketSeconds, responsibleUserId, true)
+	return getUsageTaskRowsByBucket(usageAsyncScope{OrganizationId: organizationId}, SiteUsageFilter{}, startTs, endTs, bucketSeconds, responsibleUserId, usageUserResponsible)
 }
 
-func getUsageTaskRowsByBucket(scope usageAsyncScope, startTs, endTs, bucketSeconds int64, responsibleUserId int, groupByResponsible bool) ([]SelfUsageAsyncRow, error) {
-	if scope.ActorUserId <= 0 && scope.OrganizationId <= 0 {
+func getUsageTaskRowsByBucket(scope usageAsyncScope, filter SiteUsageFilter, startTs, endTs, bucketSeconds int64, responsibleUserId int, dimension usageUserDimension) ([]SelfUsageAsyncRow, error) {
+	if !scope.Site && scope.ActorUserId <= 0 && scope.OrganizationId <= 0 {
 		return nil, errors.New("用户 ID 无效")
 	}
 	if bucketSeconds <= 0 {
@@ -130,13 +160,14 @@ func getUsageTaskRowsByBucket(scope usageAsyncScope, startTs, endTs, bucketSecon
 	query := DB.Model(&Task{})
 	query = scope.apply(query).
 		Where("COALESCE(NULLIF(submit_time, 0), created_at) BETWEEN ? AND ?", startTs, endTs)
+	query = filter.apply(query)
 	if responsibleUserId > 0 {
 		query = query.Where("responsible_user_id = ?", responsibleUserId)
 	}
 	err := query.
-		Select("id, task_id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, responsible_user_id, responsible_name, status, quota, submit_time, created_at, properties").
+		Select("id, task_id, user_id, actor_user_id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, responsible_user_id, responsible_name, status, quota, submit_time, created_at, properties").
 		FindInBatches(&tasks, usageAsyncBatchSize, func(_ *gorm.DB, _ int) error {
-			aggregateUsageTasksInto(byKey, tasks, bucketSeconds, groupByResponsible)
+			aggregateUsageTasksInto(byKey, tasks, bucketSeconds, dimension)
 			return nil
 		}).Error
 	if err != nil {
@@ -147,17 +178,14 @@ func getUsageTaskRowsByBucket(scope usageAsyncScope, startTs, endTs, bucketSecon
 }
 
 // aggregateUsageTasksInto folds one batch of tasks into the shared aggregation map.
-func aggregateUsageTasksInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, tasks []Task, bucketSeconds int64, groupByResponsible bool) {
+func aggregateUsageTasksInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, tasks []Task, bucketSeconds int64, dimension usageUserDimension) {
 	for i := range tasks {
 		task := &tasks[i]
 		ts := task.SubmitTime
 		if ts == 0 {
 			ts = task.CreatedAt
 		}
-		responsibleUserId, responsibleName := 0, ""
-		if groupByResponsible {
-			responsibleUserId, responsibleName = task.ResponsibleUserId, task.ResponsibleName
-		}
+		responsibleUserId, responsibleName := usageRowUser(dimension, task.ResponsibleUserId, task.ResponsibleName, task.ActorUserId, task.UserId)
 		key := selfUsageAsyncKey{
 			BucketKey:          localBucketKey(ts, bucketSeconds),
 			BillingAccountType: selfUsageBillingType(task.BillingAccountType),
@@ -206,7 +234,7 @@ func GetSelfUsageMidjourneyRows(actorUserId int, startTs, endTs int64) ([]SelfUs
 // GetSelfUsageMidjourneyRowsByBucket is GetSelfUsageMidjourneyRows with a
 // caller-chosen bucket size, used by exports that group by hour.
 func GetSelfUsageMidjourneyRowsByBucket(actorUserId int, startTs, endTs, bucketSeconds int64) ([]SelfUsageAsyncRow, error) {
-	return getUsageMidjourneyRowsByBucket(usageAsyncScope{ActorUserId: actorUserId}, startTs, endTs, bucketSeconds, 0, false)
+	return getUsageMidjourneyRowsByBucket(usageAsyncScope{ActorUserId: actorUserId}, SiteUsageFilter{}, startTs, endTs, bucketSeconds, 0, usageUserNone)
 }
 
 // GetOrganizationUsageMidjourneyRowsByBucket aggregates the organization's MJ
@@ -215,11 +243,11 @@ func GetOrganizationUsageMidjourneyRowsByBucket(organizationId int, startTs, end
 	if organizationId <= 0 {
 		return nil, errors.New("组织 ID 无效")
 	}
-	return getUsageMidjourneyRowsByBucket(usageAsyncScope{OrganizationId: organizationId}, startTs, endTs, bucketSeconds, responsibleUserId, true)
+	return getUsageMidjourneyRowsByBucket(usageAsyncScope{OrganizationId: organizationId}, SiteUsageFilter{}, startTs, endTs, bucketSeconds, responsibleUserId, usageUserResponsible)
 }
 
-func getUsageMidjourneyRowsByBucket(scope usageAsyncScope, startTs, endTs, bucketSeconds int64, responsibleUserId int, groupByResponsible bool) ([]SelfUsageAsyncRow, error) {
-	if scope.ActorUserId <= 0 && scope.OrganizationId <= 0 {
+func getUsageMidjourneyRowsByBucket(scope usageAsyncScope, filter SiteUsageFilter, startTs, endTs, bucketSeconds int64, responsibleUserId int, dimension usageUserDimension) ([]SelfUsageAsyncRow, error) {
+	if !scope.Site && scope.ActorUserId <= 0 && scope.OrganizationId <= 0 {
 		return nil, errors.New("用户 ID 无效")
 	}
 	if bucketSeconds <= 0 {
@@ -231,13 +259,14 @@ func getUsageMidjourneyRowsByBucket(scope usageAsyncScope, startTs, endTs, bucke
 	query := DB.Model(&Midjourney{})
 	query = scope.apply(query).
 		Where(mjTimeExpr+" >= ? AND "+mjTimeExpr+" < ?", startTs*1000, (endTs+1)*1000)
+	query = filter.apply(query)
 	if responsibleUserId > 0 {
 		query = query.Where("responsible_user_id = ?", responsibleUserId)
 	}
 	err := query.
-		Select("id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, responsible_user_id, responsible_name, action, status, quota, submit_time, start_time, finish_time").
+		Select("id, user_id, actor_user_id, token_id, token_name, billing_account_type, billing_account_id, organization_id, organization_name, responsible_user_id, responsible_name, action, status, quota, submit_time, start_time, finish_time").
 		FindInBatches(&journeys, usageAsyncBatchSize, func(_ *gorm.DB, _ int) error {
-			aggregateUsageJourneysInto(byKey, journeys, bucketSeconds, groupByResponsible)
+			aggregateUsageJourneysInto(byKey, journeys, bucketSeconds, dimension)
 			return nil
 		}).Error
 	if err != nil {
@@ -248,7 +277,7 @@ func getUsageMidjourneyRowsByBucket(scope usageAsyncScope, startTs, endTs, bucke
 }
 
 // aggregateUsageJourneysInto folds one batch of Midjourney rows into the shared aggregation map.
-func aggregateUsageJourneysInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, journeys []Midjourney, bucketSeconds int64, groupByResponsible bool) {
+func aggregateUsageJourneysInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, journeys []Midjourney, bucketSeconds int64, dimension usageUserDimension) {
 	for i := range journeys {
 		journey := &journeys[i]
 		tsMs := journey.SubmitTime
@@ -261,10 +290,7 @@ func aggregateUsageJourneysInto(byKey map[selfUsageAsyncKey]*SelfUsageAsyncRow, 
 		if tsMs <= 0 {
 			continue
 		}
-		responsibleUserId, responsibleName := 0, ""
-		if groupByResponsible {
-			responsibleUserId, responsibleName = journey.ResponsibleUserId, journey.ResponsibleName
-		}
+		responsibleUserId, responsibleName := usageRowUser(dimension, journey.ResponsibleUserId, journey.ResponsibleName, journey.ActorUserId, journey.UserId)
 		key := selfUsageAsyncKey{
 			BucketKey:          localBucketKey(tsMs/1000, bucketSeconds),
 			BillingAccountType: selfUsageBillingType(journey.BillingAccountType),
