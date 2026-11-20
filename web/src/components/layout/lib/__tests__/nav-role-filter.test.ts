@@ -32,6 +32,12 @@ const groups: NavGroup[] = [
     title: 'Ops',
     items: [
       { title: 'Ops Campaigns', url: '/ops/campaign', requiredRole: 5 },
+      {
+        title: 'Users',
+        url: '/users',
+        requiredRole: 5,
+        maxRole: 5,
+      },
       { title: 'Invite History', url: '/ops/invite-history', requiredRole: 5 },
     ],
   },
@@ -75,17 +81,33 @@ describe('filterNavGroupsByRole', () => {
   it('ops user sees console and ops groups, but not admin', () => {
     const result = filterNavGroupsByRole(groups, 5)
     expect(result.map((g) => g.id)).toEqual(['console', 'ops'])
+    const ops = result.find((g) => g.id === 'ops')
+    expect(ops?.items.map((i) => i.title)).toEqual([
+      'Ops Campaigns',
+      'Users',
+      'Invite History',
+    ])
   })
 
-  it('admin sees all groups, with requiredRole items filtered', () => {
+  it('admin sees all groups, with requiredRole and maxRole items filtered', () => {
     const result = filterNavGroupsByRole(groups, 10)
     expect(result.map((g) => g.id)).toEqual(['console', 'ops', 'admin'])
+    const ops = result.find((g) => g.id === 'ops')
+    expect(ops?.items.map((i) => i.title)).toEqual([
+      'Ops Campaigns',
+      'Invite History',
+    ])
     const admin = result.find((g) => g.id === 'admin')
     expect(admin?.items.map((i) => i.title)).toEqual(['Users'])
   })
 
-  it('root sees everything', () => {
+  it('root sees everything, without ops-only entries', () => {
     const result = filterNavGroupsByRole(groups, 100)
+    const ops = result.find((g) => g.id === 'ops')
+    expect(ops?.items.map((i) => i.title)).toEqual([
+      'Ops Campaigns',
+      'Invite History',
+    ])
     const admin = result.find((g) => g.id === 'admin')
     expect(admin?.items.map((i) => i.title)).toEqual(['System Info', 'Users'])
   })

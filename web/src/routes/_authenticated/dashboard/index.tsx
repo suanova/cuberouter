@@ -18,19 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { createFileRoute, redirect } from '@tanstack/react-router'
 
-import { DASHBOARD_DEFAULT_SECTION } from '@/features/dashboard/section-registry'
-import { ROLE } from '@/lib/roles'
-import { useAuthStore } from '@/stores/auth-store'
-
 export const Route = createFileRoute('/_authenticated/dashboard/')({
   beforeLoad: () => {
-    const { auth } = useAuthStore.getState()
-    if (!auth.user || auth.user.role < ROLE.ADMIN) {
-      throw redirect({ to: '/usage' })
-    }
-    throw redirect({
-      to: '/dashboard/$section',
-      params: { section: DASHBOARD_DEFAULT_SECTION },
-    })
+    // The bare dashboard URL is a generic "home" fallback: send every role to
+    // the usage page. The dashboard sections below /dashboard/<section>
+    // remain reachable from their own sidebar entries.
+    throw redirect({ to: '/usage' })
   },
 })
