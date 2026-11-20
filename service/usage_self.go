@@ -327,10 +327,12 @@ func buildSelfUsageChartPoints(rows []usageRow, granularity string) []dto.SelfUs
 
 // collectSelfUsageFilterOptions feeds the model and API key dropdowns with
 // what the caller can actually see and use: models enabled for their groups
-// (narrowed by member model access), personal keys, and organization keys they
-// are allowed to view. It is independent of the current table filters so the
-// lists do not collapse to the current selection.
-func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfUsageFilterOptions, error) {
+// (narrowed by member model access) plus the models their own rows mention, so
+// a retired model stays filterable from the table it appears in. Personal keys
+// and organization keys they are allowed to view fill the key dropdown. It is
+// independent of the current table filters so the lists do not collapse to the
+// current selection.
+func collectSelfUsageFilterOptions(actorUserId int, user *model.User, merged []usageRow) (dto.SelfUsageFilterOptions, error) {
 	organizations, err := ListUserOrganizations(actorUserId, false)
 	if err != nil {
 		return dto.SelfUsageFilterOptions{}, err
@@ -354,10 +356,7 @@ func collectSelfUsageFilterOptions(actorUserId int, user *model.User) (dto.SelfU
 	}
 	models := GetGroupsEnabledModels(groups)
 	models = model.FilterModelsByMemberAccess(model.GetUserModelAllowList(actorUserId), models)
-	if models == nil {
-		models = []string{}
-	}
-	sort.Strings(models)
+	models = usageModelFilterOptions(models, merged)
 
 	options := dto.SelfUsageFilterOptions{
 		Models: models,
@@ -555,7 +554,7 @@ func GetSelfUsage(query SelfUsageQuery) (dto.SelfUsageData, error) {
 	if err != nil {
 		return dto.SelfUsageData{}, err
 	}
-	filterOptions, err := collectSelfUsageFilterOptions(query.ActorUserId, user)
+	filterOptions, err := collectSelfUsageFilterOptions(query.ActorUserId, user, merged)
 	if err != nil {
 		return dto.SelfUsageData{}, err
 	}
