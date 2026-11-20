@@ -154,8 +154,9 @@ func toSiteUsageDTO(row usageRow) dto.SelfUsageRow {
 }
 
 // collectSiteUsageFilterOptions feeds the site table's dropdowns from the
-// unfiltered rows plus the enabled site catalog, so a current selection cannot
-// collapse its own option list and retired models stay filterable.
+// range-wide rows (not the active selection) plus the enabled site catalog, so
+// a current selection cannot collapse its own option list and retired models
+// stay filterable.
 func collectSiteUsageFilterOptions(rows []usageRow) dto.SiteUsageFilterOptions {
 	tokens := make(map[int]dto.SelfUsageTokenOption)
 	users := make(map[int]dto.SiteUsageUserOption)
@@ -258,6 +259,15 @@ func ExportSiteUsage(query SiteUsageQuery, granularity string) (dto.SelfUsageExp
 	}, nil
 }
 
+// siteUsageHasNarrowingFilter reports whether the query hides rows in SQL, so
+// the option list needs a second range-wide read to stay complete.
+func siteUsageHasNarrowingFilter(query SiteUsageQuery) bool {
+	return query.UserId > 0 ||
+		query.OrganizationID > 0 ||
+		query.TokenId > 0 ||
+		query.BillingAccountType != ""
+}
+
 // GetSiteUsage assembles the site-wide usage table and chart from text/fee
 // logs, tasks, and Midjourney rows. It mirrors GetSelfUsage apart from the
 // scope and the absent account overview.
@@ -269,6 +279,21 @@ func GetSiteUsage(query SiteUsageQuery) (dto.SiteUsageData, error) {
 	merged, err := collectSiteUsageRows(query, model.SelfUsageDaySeconds)
 	if err != nil {
 		return dto.SiteUsageData{}, err
+	}
+	optionRows := merged
+	if siteUsageHasNarrowingFilter(query) {
+		// The table rows are narrowed in SQL for speed; the dropdowns must still
+		// describe the whole date range so an admin can switch directly from one
+		// user/key/organization to another.
+		optionQuery := query
+		optionQuery.UserId = 0
+		optionQuery.OrganizationID = 0
+		optionQuery.TokenId = 0
+		optionQuery.BillingAccountType = ""
+		optionRows, err = collectSiteUsageRows(optionQuery, model.SelfUsageDaySeconds)
+		if err != nil {
+			return dto.SiteUsageData{}, err
+		}
 	}
 
 	filtered := make([]usageRow, 0, len(merged))
@@ -330,6 +355,6 @@ func GetSiteUsage(query SiteUsageQuery) (dto.SiteUsageData, error) {
 		},
 		Totals:        totals,
 		Charts:        buildSelfUsageChartPoints(chartRows, chartGranularity),
-		FilterOptions: collectSiteUsageFilterOptions(merged),
+		FilterOptions: collectSiteUsageFilterOptions(optionRows),
 	}, nil
 }

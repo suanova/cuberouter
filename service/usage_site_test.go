@@ -174,6 +174,11 @@ func TestGetSiteUsageFiltersByActorModelBillingAndOrganization(t *testing.T) {
 	assert.Equal(t, 2, data.Totals.SuccessCount)
 	assert.Equal(t, 1, data.Totals.FailureCount)
 	assert.Equal(t, 170, data.Totals.Quota)
+	// Filter options describe the whole date range, not the active selection:
+	// an admin must be able to switch directly from one user/key/org to another.
+	assert.Contains(t, data.FilterOptions.Users, dto.SiteUsageUserOption{Id: 101, Name: "Alice Chen"})
+	assert.Contains(t, data.FilterOptions.Tokens, dto.SelfUsageTokenOption{Id: 1, Name: "alice-key"})
+	assert.Contains(t, data.FilterOptions.Organizations, dto.SiteUsageOrganizationOption{Id: 9, Name: "Acme"})
 
 	byBilling := base
 	byBilling.BillingAccountType = "organization"
@@ -181,6 +186,7 @@ func TestGetSiteUsageFiltersByActorModelBillingAndOrganization(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, data.Rows.Total)
 	assert.Equal(t, 30, data.Totals.Quota)
+	assert.Contains(t, data.FilterOptions.Users, dto.SiteUsageUserOption{Id: 102, Name: "bob"})
 
 	byOrganization := base
 	byOrganization.OrganizationID = 9
@@ -188,6 +194,15 @@ func TestGetSiteUsageFiltersByActorModelBillingAndOrganization(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, data.Rows.Total)
 	assert.Equal(t, 30, data.Totals.Quota)
+	assert.Contains(t, data.FilterOptions.Tokens, dto.SelfUsageTokenOption{Id: 2, Name: "bob-key"})
+
+	byToken := base
+	byToken.TokenId = 2
+	data, err = GetSiteUsage(byToken)
+	require.NoError(t, err)
+	assert.Equal(t, 2, data.Rows.Total)
+	assert.Equal(t, 90, data.Totals.Quota)
+	assert.Contains(t, data.FilterOptions.Tokens, dto.SelfUsageTokenOption{Id: 1, Name: "alice-key"})
 
 	for _, modelName := range []string{"gpt-4o", "GPT"} {
 		byModel := base
