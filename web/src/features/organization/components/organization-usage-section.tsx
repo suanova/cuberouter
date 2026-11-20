@@ -189,6 +189,7 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
       title={t('Usage')}
       description={t('Per-day usage and charges for the organization.')}
       count={usage.data?.rows.total}
+      scroll
     >
       <div className='flex h-full min-h-0 flex-col gap-3'>
         <div className='flex flex-wrap items-center gap-3'>
@@ -233,7 +234,11 @@ export function OrganizationUsageSection(props: OrganizationUsageSectionProps) {
           </div>
         ) : null}
         {!backfillPending && !failed ? (
-          <div className='min-h-0 flex-1 rounded-lg border'>
+          // The organization page fixes its header and tabs, so the table is
+          // the only flexible area left. Keep it tall enough to stay usable on
+          // laptop screens; when the chrome above leaves less room, the
+          // section body scrolls (OrganizationSection scroll).
+          <div className='min-h-[520px] flex-1 rounded-lg border'>
             {usage.data ? (
               <UsageTable
                 data={usage.data}

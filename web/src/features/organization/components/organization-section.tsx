@@ -78,8 +78,9 @@ type OrganizationSectionProps = {
   /** Buttons rendered at the end of the header row. */
   actions?: ReactNode
   /**
-   * Let the body scroll on its own. Tables manage their own scrolling, so this
-   * is only for the sections that render a plain form or a chart stack.
+   * Let the body scroll on its own. Tables usually manage their own scrolling;
+   * enable this for a plain form or a chart stack, or when a table keeps a
+   * minimum usable height and the page chrome can leave less room than that.
    */
   scroll?: boolean
   children: ReactNode
