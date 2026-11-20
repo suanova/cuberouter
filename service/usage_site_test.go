@@ -239,3 +239,58 @@ func TestGetSiteUsagePaginationCoversAllRows(t *testing.T) {
 	assert.Equal(t, 6, data.Rows.Total)
 	assert.Equal(t, 390, data.Totals.Quota)
 }
+
+func TestExportSiteUsageGroupsByDayAndHourWithUserNames(t *testing.T) {
+	db := newSelfUsageTestDB(t)
+	base := time.Date(2026, 11, 3, 0, 0, 0, 0, time.Local)
+	at := func(hour, minute int) int64 {
+		return base.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute).Unix()
+	}
+	require.NoError(t, db.Create(&[]model.User{
+		{Id: 101, Username: "alice", DisplayName: "Alice Chen", AffCode: "alice-site-export", Group: "default"},
+		{Id: 102, Username: "bob", AffCode: "bob-site-export", Group: "default"},
+	}).Error)
+	require.NoError(t, db.Create(&[]model.Log{
+		{UserId: 101, ActorUserId: 101, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(10, 5), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "personal", RequestId: "e1", Quota: 10},
+		{UserId: 102, ActorUserId: 102, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(11, 10), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "personal", RequestId: "e2", Quota: 20},
+		{UserId: 101, ActorUserId: 101, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText, CreatedAt: at(11, 20), ModelName: "gpt-4o", TokenId: 1, TokenName: "key", BillingAccountType: "organization", OrganizationId: 9, OrganizationName: "Acme", RequestId: "e3", Quota: 30},
+	}).Error)
+	require.NoError(t, db.Create(&model.Task{
+		TaskID: "e-task", UserId: 102, ActorUserId: 102, BillingAccountType: "personal", TokenId: 1, TokenName: "key",
+		Status: model.TaskStatusSuccess, Quota: 40, SubmitTime: at(11, 20), Properties: model.Properties{OriginModelName: "wan3.0-video"},
+	}).Error)
+
+	query := SiteUsageQuery{
+		StartTs: base.Unix(),
+		EndTs:   base.Add(24*time.Hour - time.Second).Unix(),
+	}
+	day, err := ExportSiteUsage(query, SelfUsageGranularityDay)
+	require.NoError(t, err)
+	assert.Equal(t, SelfUsageGranularityDay, day.Granularity)
+	assert.Equal(t, 4, day.Total)
+	assert.False(t, day.Truncated)
+	dayByKey := make(map[string]dto.SelfUsageRow, len(day.Rows))
+	for _, row := range day.Rows {
+		dayByKey[row.UserName+"|"+row.ModelName+"|"+row.BillingAccountType] = row
+		assert.Equal(t, "2026-11-03", row.Date)
+	}
+	assert.Equal(t, 10, dayByKey["Alice Chen|gpt-4o|personal"].Quota)
+	assert.Equal(t, 20, dayByKey["bob|gpt-4o|personal"].Quota)
+	organizationRow := dayByKey["Alice Chen|gpt-4o|organization"]
+	assert.Equal(t, 30, organizationRow.Quota)
+	assert.Equal(t, "Acme", organizationRow.OrganizationName)
+	assert.Equal(t, 40, dayByKey["bob|wan3.0-video|personal"].Quota)
+
+	hour, err := ExportSiteUsage(query, SelfUsageGranularityHour)
+	require.NoError(t, err)
+	assert.Equal(t, SelfUsageGranularityHour, hour.Granularity)
+	assert.Equal(t, 4, hour.Total)
+	hourDates := make(map[string]string, len(hour.Rows))
+	for _, row := range hour.Rows {
+		hourDates[row.UserName+"|"+row.ModelName+"|"+row.BillingAccountType] = row.Date
+	}
+	assert.Equal(t, "2026-11-03 10:00", hourDates["Alice Chen|gpt-4o|personal"])
+	assert.Equal(t, "2026-11-03 11:00", hourDates["bob|gpt-4o|personal"])
+	assert.Equal(t, "2026-11-03 11:00", hourDates["Alice Chen|gpt-4o|organization"])
+	assert.Equal(t, "2026-11-03 11:00", hourDates["bob|wan3.0-video|personal"])
+}

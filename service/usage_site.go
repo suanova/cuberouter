@@ -219,6 +219,45 @@ func collectSiteUsageFilterOptions(rows []usageRow) dto.SiteUsageFilterOptions {
 	return options
 }
 
+// ExportSiteUsage returns every filtered site row at the requested bucket
+// size, up to MaxSelfUsageExportRows, so the client can build one sheet.
+func ExportSiteUsage(query SiteUsageQuery, granularity string) (dto.SelfUsageExportData, error) {
+	if query.StartTs > query.EndTs {
+		return dto.SelfUsageExportData{}, errors.New("时间范围无效")
+	}
+	normalized, bucketSeconds := normalizeSelfUsageGranularity(granularity)
+
+	merged, err := collectSiteUsageRows(query, bucketSeconds)
+	if err != nil {
+		return dto.SelfUsageExportData{}, err
+	}
+	filtered := make([]usageRow, 0, len(merged))
+	for _, row := range merged {
+		if siteUsageMatchesFilters(row, query) {
+			filtered = append(filtered, row)
+		}
+	}
+	sortSelfUsageRows(filtered)
+
+	total := len(filtered)
+	truncated := total > MaxSelfUsageExportRows
+	if truncated {
+		filtered = filtered[:MaxSelfUsageExportRows]
+	}
+	rows := make([]dto.SelfUsageRow, 0, len(filtered))
+	for _, row := range filtered {
+		item := toSiteUsageDTO(row)
+		item.Date = formatSelfUsageBucket(row.BucketKey, normalized)
+		rows = append(rows, item)
+	}
+	return dto.SelfUsageExportData{
+		Granularity: normalized,
+		Rows:        rows,
+		Total:       total,
+		Truncated:   truncated,
+	}, nil
+}
+
 // GetSiteUsage assembles the site-wide usage table and chart from text/fee
 // logs, tasks, and Midjourney rows. It mirrors GetSelfUsage apart from the
 // scope and the absent account overview.
