@@ -365,6 +365,7 @@ func TestManualCompleteTopUpUsesPaymentAsiaNetQuota(t *testing.T) {
 		PaymentProvider: PaymentProviderPaymentAsia,
 		CreateTime:      common.GetTimestamp(),
 		Status:          common.TopUpStatusPending,
+		Currency:        "HKD",
 		Fee:             1.6,
 		FeeRate:         0.016,
 		NetAmount:       98.4,
@@ -373,6 +374,20 @@ func TestManualCompleteTopUpUsesPaymentAsiaNetQuota(t *testing.T) {
 
 	require.NoError(t, ManualCompleteTopUp("PAMANUALNETQUOTA", "127.0.0.1"))
 	assert.Equal(t, 49_200_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	var manualLogs []Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&manualLogs).Error)
+	require.Len(t, manualLogs, 1)
+	assert.Contains(t, manualLogs[0].Content, "手续费")
+	manualOther, err := common.StrToMap(manualLogs[0].Other)
+	require.NoError(t, err)
+	manualAdminInfo, ok := manualOther["admin_info"].(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "HKD", manualAdminInfo["currency"])
+	assert.Equal(t, 1.6, manualAdminInfo["fee"])
+	assert.Equal(t, 0.016, manualAdminInfo["fee_rate"])
+	assert.Equal(t, 98.4, manualAdminInfo["net_amount"])
+	assert.Equal(t, float64(49_200_000), manualAdminInfo["net_quota"])
 
 	legacyUser := &User{Id: 607, Username: "paymentasia_manual_legacy", AffCode: "PALG", Status: common.UserStatusEnabled}
 	require.NoError(t, DB.Create(legacyUser).Error)

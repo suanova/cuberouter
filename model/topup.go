@@ -739,6 +739,8 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	var logContent string
+	var auditMeta map[string]interface{}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -791,6 +793,20 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		userId = topUp.UserId
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
+		logContent = fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney)
+		if topUp.PaymentProvider == PaymentProviderPaymentAsia && topUp.NetQuota > 0 {
+			auditMeta = map[string]interface{}{
+				"trade_no":   topUp.TradeNo,
+				"currency":   topUp.Currency,
+				"fee":        topUp.Fee,
+				"fee_rate":   topUp.FeeRate,
+				"fee_fixed":  topUp.FeeFixed,
+				"net_amount": topUp.NetAmount,
+				"net_quota":  topUp.NetQuota,
+			}
+			logContent = fmt.Sprintf("管理员补单成功，充值金额: %s，支付金额：%.2f，手续费: %.4f，实际到账: %v",
+				decimal.NewFromFloat(topUp.NetAmount).StringFixed(2), topUp.Money, topUp.Fee, logger.FormatQuota(quotaToAdd))
+		}
 		return nil
 	})
 
@@ -800,7 +816,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 	// 事务外记录日志，避免阻塞
 	syncCreditUserQuotaCache(userId, quotaToAdd, "manual topup")
-	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	RecordTopupLogWithMeta(userId, logContent, callerIp, paymentMethod, "admin", auditMeta)
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {
