@@ -20,17 +20,26 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, test, vi } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { getOrganizations } from '@/features/organization/api'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
-import { exportSelfUsage, getSelfUsage } from '../api'
+import {
+  exportSelfUsage,
+  exportSiteUsage,
+  getSelfUsage,
+  getSiteUsage,
+} from '../api'
 import { UsagePage, type UsageSearch } from '../index'
-import type { SelfUsageData } from '../types'
+import type { SelfUsageData, SiteUsageData } from '../types'
 
 vi.mock('../api', () => ({
   getSelfUsage: vi.fn(),
   exportSelfUsage: vi.fn(),
+  getSiteUsage: vi.fn(),
+  exportSiteUsage: vi.fn(),
 }))
 vi.mock('@/features/organization/api', () => ({ getOrganizations: vi.fn() }))
 vi.mock('../components/usage-date-range-picker', () => ({
@@ -67,6 +76,8 @@ vi.mock('../lib/usage-export', () => exportFileMock)
 
 const getSelfUsageMock = vi.mocked(getSelfUsage)
 const exportSelfUsageMock = vi.mocked(exportSelfUsage)
+const getSiteUsageMock = vi.mocked(getSiteUsage)
+const exportSiteUsageMock = vi.mocked(exportSiteUsage)
 const getOrganizationsMock = vi.mocked(getOrganizations)
 
 function usageData(backfillComplete: boolean): SelfUsageData {
@@ -125,6 +136,34 @@ function usageData(backfillComplete: boolean): SelfUsageData {
   }
 }
 
+function siteUsageData(): SiteUsageData {
+  const data = usageData(true)
+  return {
+    backfill_complete: true,
+    range: data.range,
+    rows: {
+      page: 1,
+      page_size: 20,
+      total: 1,
+      items: [
+        {
+          ...data.rows.items[0],
+          user_id: 101,
+          user_name: 'Alice Chen',
+        },
+      ],
+    },
+    totals: data.totals,
+    charts: [],
+    filter_options: {
+      models: [],
+      tokens: [],
+      users: [],
+      organizations: [],
+    },
+  }
+}
+
 function renderUsagePage(
   search: UsageSearch,
   organizations: { id: number; name: string }[] = []
@@ -148,6 +187,11 @@ function renderUsagePage(
 }
 
 describe('UsagePage', () => {
+  beforeEach(() => {
+    useAuthStore.getState().auth.setUser(null)
+    vi.clearAllMocks()
+  })
+
   test('shows only the preparation notice until the history backfill completes', async () => {
     getSelfUsageMock.mockResolvedValue({
       success: true,
@@ -283,6 +327,103 @@ describe('UsagePage', () => {
     })
     await waitFor(() =>
       expect(exportFileMock.writeSelfUsageExportFile).toHaveBeenCalled()
+    )
+  })
+
+  test('normal users only see their own usage without a scope switch', async () => {
+    getSelfUsageMock.mockResolvedValue({
+      success: true,
+      data: usageData(true),
+    })
+
+    renderUsagePage({ start: '2026-11-03', end: '2026-11-03' })
+
+    expect(await screen.findByTestId('usage-table')).toBeInTheDocument()
+    expect(screen.queryByRole('tab', { name: 'All' })).not.toBeInTheDocument()
+    expect(getSiteUsageMock).not.toHaveBeenCalled()
+  })
+
+  test('admins default to site-wide usage without the account overview', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'root',
+      role: ROLE.ADMIN,
+    })
+    getSiteUsageMock.mockResolvedValue({
+      success: true,
+      data: siteUsageData(),
+    })
+
+    renderUsagePage({ start: '2026-11-03', end: '2026-11-03' })
+
+    const table = await screen.findByTestId('usage-table')
+    expect(table).toHaveTextContent('gpt-4o')
+    expect(screen.queryByTestId('usage-overview')).not.toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'All' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(getSiteUsageMock).toHaveBeenCalledTimes(1)
+    expect(getSelfUsageMock).not.toHaveBeenCalled()
+  })
+
+  test('admins can view only their own usage', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'root',
+      role: ROLE.ADMIN,
+    })
+    getSelfUsageMock.mockResolvedValue({
+      success: true,
+      data: usageData(true),
+    })
+
+    renderUsagePage({
+      start: '2026-11-03',
+      end: '2026-11-03',
+      scope: 'self',
+    })
+
+    expect(await screen.findByTestId('usage-overview')).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Only Mine' })).toHaveAttribute(
+      'aria-selected',
+      'true'
+    )
+    expect(getSelfUsageMock).toHaveBeenCalledTimes(1)
+    expect(getSiteUsageMock).not.toHaveBeenCalled()
+  })
+
+  test('exports site-wide rows through the site endpoint with user columns', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'root',
+      role: ROLE.ADMIN,
+    })
+    getSiteUsageMock.mockResolvedValue({
+      success: true,
+      data: siteUsageData(),
+    })
+    exportSiteUsageMock.mockResolvedValue({
+      success: true,
+      data: {
+        granularity: 'hour',
+        rows: siteUsageData().rows.items,
+        total: 1,
+        truncated: false,
+      },
+    })
+
+    renderUsagePage({ start: '2026-11-03', end: '2026-11-03' })
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'export-hour' })
+    )
+    await waitFor(() => expect(exportSiteUsageMock).toHaveBeenCalled())
+    expect(exportSelfUsageMock).not.toHaveBeenCalled()
+    expect(exportFileMock.buildSelfUsageExportSheet).toHaveBeenCalledWith(
+      expect.objectContaining({ granularity: 'hour' }),
+      expect.any(Function),
+      { variant: 'site' }
     )
   })
 })
