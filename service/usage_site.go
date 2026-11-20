@@ -22,6 +22,7 @@ package service
 
 import (
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -152,6 +153,72 @@ func toSiteUsageDTO(row usageRow) dto.SelfUsageRow {
 	return item
 }
 
+// collectSiteUsageFilterOptions feeds the site table's dropdowns from the
+// unfiltered rows plus the enabled site catalog, so a current selection cannot
+// collapse its own option list and retired models stay filterable.
+func collectSiteUsageFilterOptions(rows []usageRow) dto.SiteUsageFilterOptions {
+	tokens := make(map[int]dto.SelfUsageTokenOption)
+	users := make(map[int]dto.SiteUsageUserOption)
+	organizations := make(map[int]dto.SiteUsageOrganizationOption)
+	for _, row := range rows {
+		if row.TokenID > 0 && row.TokenName != "" {
+			tokens[row.TokenID] = dto.SelfUsageTokenOption{
+				Id:               row.TokenID,
+				Name:             row.TokenName,
+				OrganizationId:   row.OrganizationID,
+				OrganizationName: row.OrganizationName,
+			}
+		}
+		if row.ResponsibleUserID > 0 {
+			users[row.ResponsibleUserID] = dto.SiteUsageUserOption{
+				Id:   row.ResponsibleUserID,
+				Name: row.ResponsibleName,
+			}
+		}
+		if row.OrganizationID > 0 {
+			organizations[row.OrganizationID] = dto.SiteUsageOrganizationOption{
+				Id:   row.OrganizationID,
+				Name: row.OrganizationName,
+			}
+		}
+	}
+
+	options := dto.SiteUsageFilterOptions{
+		Models:        usageModelFilterOptions(model.GetEnabledModels(), rows),
+		Tokens:        make([]dto.SelfUsageTokenOption, 0, len(tokens)),
+		Users:         make([]dto.SiteUsageUserOption, 0, len(users)),
+		Organizations: make([]dto.SiteUsageOrganizationOption, 0, len(organizations)),
+	}
+	for _, token := range tokens {
+		options.Tokens = append(options.Tokens, token)
+	}
+	sort.Slice(options.Tokens, func(i, j int) bool {
+		if options.Tokens[i].Name != options.Tokens[j].Name {
+			return options.Tokens[i].Name < options.Tokens[j].Name
+		}
+		return options.Tokens[i].Id < options.Tokens[j].Id
+	})
+	for _, user := range users {
+		options.Users = append(options.Users, user)
+	}
+	sort.Slice(options.Users, func(i, j int) bool {
+		if options.Users[i].Name != options.Users[j].Name {
+			return options.Users[i].Name < options.Users[j].Name
+		}
+		return options.Users[i].Id < options.Users[j].Id
+	})
+	for _, organization := range organizations {
+		options.Organizations = append(options.Organizations, organization)
+	}
+	sort.Slice(options.Organizations, func(i, j int) bool {
+		if options.Organizations[i].Name != options.Organizations[j].Name {
+			return options.Organizations[i].Name < options.Organizations[j].Name
+		}
+		return options.Organizations[i].Id < options.Organizations[j].Id
+	})
+	return options
+}
+
 // GetSiteUsage assembles the site-wide usage table and chart from text/fee
 // logs, tasks, and Midjourney rows. It mirrors GetSelfUsage apart from the
 // scope and the absent account overview.
@@ -224,6 +291,6 @@ func GetSiteUsage(query SiteUsageQuery) (dto.SiteUsageData, error) {
 		},
 		Totals:        totals,
 		Charts:        buildSelfUsageChartPoints(chartRows, chartGranularity),
-		FilterOptions: dto.SiteUsageFilterOptions{},
+		FilterOptions: collectSiteUsageFilterOptions(merged),
 	}, nil
 }

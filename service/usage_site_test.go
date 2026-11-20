@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -133,4 +134,108 @@ type dtoSelfUsageTotalsView struct {
 	CompletionTokens int
 	CacheTokens      int
 	Quota            int
+}
+
+func TestGetSiteUsageFilterOptionsUnionCatalogAndRows(t *testing.T) {
+	ts := seedSiteUsage(t)
+
+	data, err := GetSiteUsage(SiteUsageQuery{
+		StartTs:  ts - 3600,
+		EndTs:    ts + 3600,
+		Page:     1,
+		PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"claude", "gpt-4o", "mj_imagine", "org-only-model", "wan3.0-video"}, data.FilterOptions.Models)
+	assert.Equal(t, []dto.SiteUsageUserOption{
+		{Id: 101, Name: "Alice Chen"},
+		{Id: 102, Name: "bob"},
+	}, data.FilterOptions.Users)
+	assert.Equal(t, []dto.SelfUsageTokenOption{
+		{Id: 1, Name: "alice-key"},
+		{Id: 2, Name: "bob-key"},
+		{Id: 3, Name: "team-key", OrganizationId: 9, OrganizationName: "Acme"},
+	}, data.FilterOptions.Tokens)
+	assert.Equal(t, []dto.SiteUsageOrganizationOption{
+		{Id: 9, Name: "Acme"},
+	}, data.FilterOptions.Organizations)
+}
+
+func TestGetSiteUsageFiltersByActorModelBillingAndOrganization(t *testing.T) {
+	ts := seedSiteUsage(t)
+	base := SiteUsageQuery{StartTs: ts - 3600, EndTs: ts + 3600, Page: 1, PageSize: 20}
+
+	byUser := base
+	byUser.UserId = 102
+	data, err := GetSiteUsage(byUser)
+	require.NoError(t, err)
+	assert.Equal(t, 3, data.Rows.Total)
+	assert.Equal(t, 3, data.Totals.RequestCount)
+	assert.Equal(t, 2, data.Totals.SuccessCount)
+	assert.Equal(t, 1, data.Totals.FailureCount)
+	assert.Equal(t, 170, data.Totals.Quota)
+
+	byBilling := base
+	byBilling.BillingAccountType = "organization"
+	data, err = GetSiteUsage(byBilling)
+	require.NoError(t, err)
+	assert.Equal(t, 1, data.Rows.Total)
+	assert.Equal(t, 30, data.Totals.Quota)
+
+	byOrganization := base
+	byOrganization.OrganizationID = 9
+	data, err = GetSiteUsage(byOrganization)
+	require.NoError(t, err)
+	assert.Equal(t, 1, data.Rows.Total)
+	assert.Equal(t, 30, data.Totals.Quota)
+
+	for _, modelName := range []string{"gpt-4o", "GPT"} {
+		byModel := base
+		byModel.ModelName = modelName
+		data, err = GetSiteUsage(byModel)
+		require.NoError(t, err)
+		assert.Equal(t, 2, data.Rows.Total, modelName)
+		assert.Equal(t, 3, data.Totals.RequestCount, modelName)
+		assert.Equal(t, 180, data.Totals.Quota, modelName)
+	}
+}
+
+func TestGetSiteUsageChartsAggregateFilteredRows(t *testing.T) {
+	ts := seedSiteUsage(t)
+
+	data, err := GetSiteUsage(SiteUsageQuery{
+		StartTs:  ts - 3600,
+		EndTs:    ts + 3600,
+		Page:     1,
+		PageSize: 20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []dto.SelfUsageChartPoint{
+		{Date: "2026-11-03", ModelName: "claude", RequestCount: 1, Quota: 70},
+		{Date: "2026-11-03", ModelName: "gpt-4o", RequestCount: 3, Quota: 180},
+		{Date: "2026-11-03", ModelName: "mj_imagine", RequestCount: 1, Quota: 80},
+		{Date: "2026-11-03", ModelName: "wan3.0-video", RequestCount: 2, Quota: 60},
+	}, data.Charts)
+	chartQuota, chartRequests := 0, 0
+	for _, point := range data.Charts {
+		chartQuota += point.Quota
+		chartRequests += point.RequestCount
+	}
+	assert.Equal(t, data.Totals.Quota, chartQuota)
+	assert.Equal(t, data.Totals.RequestCount, chartRequests)
+}
+
+func TestGetSiteUsagePaginationCoversAllRows(t *testing.T) {
+	ts := seedSiteUsage(t)
+
+	data, err := GetSiteUsage(SiteUsageQuery{
+		StartTs:  ts - 3600,
+		EndTs:    ts + 3600,
+		Page:     1,
+		PageSize: 1,
+	})
+	require.NoError(t, err)
+	assert.Len(t, data.Rows.Items, 1)
+	assert.Equal(t, 6, data.Rows.Total)
+	assert.Equal(t, 390, data.Totals.Quota)
 }
