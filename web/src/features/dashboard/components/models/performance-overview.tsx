@@ -128,6 +128,9 @@ export function PerformanceOverview(): React.JSX.Element {
           <span className='text-xs font-semibold whitespace-nowrap'>
             {t('Performance health')}
           </span>
+          <span className='text-muted-foreground text-[11px] font-normal whitespace-nowrap'>
+            · {t('Last 24h')}
+          </span>
         </div>
 
         {/* Separator */}
