@@ -7,11 +7,30 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
+
+// collectPricingGroups 汇总价目表里出现的全部业务分组，供平台管理员的全量视图使用。
+// 管理员的可用分组不来自本人分组，而是价目表本身；只看本人分组会把管理视角
+// 收窄到自己那一组，看不到其它分组配了什么模型。
+func collectPricingGroups(pricing []model.Pricing) map[string]string {
+	groups := make(map[string]string)
+	for _, item := range pricing {
+		for _, group := range item.EnableGroup {
+			if group == "" || group == "all" {
+				continue
+			}
+			if _, ok := groups[group]; !ok {
+				groups[group] = setting.GetUsableGroupDescription(group)
+			}
+		}
+	}
+	return groups
+}
 
 func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string]string) []model.Pricing {
 	if len(pricing) == 0 {
@@ -97,8 +116,12 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
-	usableGroup = service.GetAccountUsableGroups(group)
-	pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	if c.GetInt("role") >= common.RoleAdminUser {
+		usableGroup = collectPricingGroups(pricing)
+	} else {
+		usableGroup = service.GetAccountUsableGroups(group)
+		pricing = filterPricingByUsableGroups(pricing, usableGroup)
+	}
 	// 组织成员模型白名单：受限成员只看到白名单内的模型价目（平台管理员与无成员
 	// 限制的用户 allow 为 nil，整段跳过）。只按本请求重建切片，绝不改写共享缓存
 	// 元素——否则会串到其他用户的价目表。
