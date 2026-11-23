@@ -216,7 +216,7 @@ type paymentAsiaFeeBreakdown struct {
 // 手续费折回展示单位，从到账额度中扣除。requestAmount 是用户输入数量（用于
 // 计算实付），storedAmount 是落库的 Amount（TOKENS 模式已 ÷QuotaPerUnit）。
 // 报价与下单都调用本函数，保证展示与实际到账一致。
-func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string, currency string) (paymentAsiaFeeBreakdown, error) {
+func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string, currency string, rate float64) (paymentAsiaFeeBreakdown, error) {
 	charge := paymentAsiaServiceChargeRateForMethod(methodType)
 	_, baseGateway, err := formatPaymentAsiaAmount(getPaymentAsiaPayMoney(requestAmount, group), network)
 	if err != nil {
@@ -238,7 +238,6 @@ func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, gro
 		return paymentAsiaFeeBreakdown{}, errPaymentAsiaServiceFeeExceedsAmount
 	}
 
-	rate := paymentAsiaOrderRateSnapshot()
 	grossQuota := model.TopupAmountToQuotaDecimal(decimal.NewFromInt(storedAmount), rate)
 	feeQuota := model.TopupAmountToQuotaDecimal(feeDisplay, rate)
 	netQuota, quotaErr := common.WalletQuotaFromDecimalStrict(grossQuota.Sub(feeQuota))
@@ -279,6 +278,7 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 	}
 	// 本请求只读取一次结算币种：通道校验、报价与手续费换算必须同源。
 	currency := paymentAsiaCurrency()
+	rate := paymentAsiaOrderRateSnapshot()
 	network := ""
 	if req.PaymentMethod != "" {
 		channel, ok := service.PaymentAsiaChannelByMethodType(req.PaymentMethod)
@@ -316,6 +316,7 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 			req.PaymentMethod,
 			network,
 			currency,
+			rate,
 		)
 		if feeErr != nil {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": feeErr.Error()})
@@ -401,7 +402,7 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 	}
 	var feeBreakdown paymentAsiaFeeBreakdown
 	if setting.PaymentAsiaServiceChargeEnabled {
-		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network, currency)
+		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network, currency, topUpRate)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 			return

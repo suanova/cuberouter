@@ -1252,6 +1252,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 		currency       string
 		unitPrice      float64
 		displayType    string
+		rate           float64
 		requestAmount  int64
 		storedAmount   int64
 		method         string
@@ -1299,6 +1300,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 			currency:       "HKD",
 			unitPrice:      1.08,
 			displayType:    operation_setting.QuotaDisplayTypeCNY,
+			rate:           7.3,
 			requestAmount:  100,
 			storedAmount:   100,
 			method:         "paymentasia_alipayhk",
@@ -1341,10 +1343,11 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 			wantNetQuota:   984_000,
 		},
 		{
-			name:           "custom hkd display converts via custom rate",
+			name:           "custom hkd display converts via the passed rate",
 			currency:       "HKD",
 			unitPrice:      1,
 			displayType:    operation_setting.QuotaDisplayTypeCustom,
+			rate:           7.8,
 			requestAmount:  100,
 			storedAmount:   100,
 			method:         "paymentasia_alipayhk",
@@ -1353,7 +1356,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 			wantFeeRate:    0.016,
 			wantFeeDisplay: "1.6000",
 			wantNetDisplay: "98.4000",
-			wantNetQuota:   6_739_726,
+			wantNetQuota:   6_307_692,
 		},
 	}
 
@@ -1373,6 +1376,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 				testCase.method,
 				testCase.network,
 				testCase.currency,
+				testCase.rate,
 			)
 			require.NoError(t, err)
 			assert.InDelta(t, testCase.wantFee, breakdown.Fee, 1e-9)
@@ -1395,7 +1399,7 @@ func TestCalculatePaymentAsiaServiceFeeRejectsFeeAtOrAboveAmount(t *testing.T) {
 	setting.PaymentAsiaUnitPrice = 1
 
 	// 信用卡固定费 HK$2 已超过 1 元实付。
-	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard", "HKD")
+	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard", "HKD", 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "手续费")
 }
