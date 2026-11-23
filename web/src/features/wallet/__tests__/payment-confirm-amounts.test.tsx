@@ -35,6 +35,7 @@ import {
 } from '@/stores/system-config-store'
 
 import { calculateAlipayAmount, getAffiliateCode, getTopupInfo } from '../api'
+import { PaymentConfirmDialog } from '../components/dialogs/payment-confirm-dialog'
 import { Wallet } from '../index'
 
 // 网络边界按真实响应形状给出:站点状态(展示货币 + 汇率)、用户、充值配置与
@@ -170,5 +171,30 @@ describe('wallet confirm dialog amounts', () => {
 
     const youPay = within(dialog).getByText('You Pay').parentElement
     expect(youPay).toHaveTextContent('7.3')
+  })
+})
+
+describe('PaymentAsia confirm currency', () => {
+  test('HKD 通道在「You Pay」金额前显示 HK$', async () => {
+    render(
+      <PaymentConfirmDialog
+        open
+        onOpenChange={() => undefined}
+        onConfirm={() => undefined}
+        topupAmount={100}
+        paymentAmount={108}
+        paymentMethod={{
+          name: 'AlipayHK',
+          type: 'paymentasia_alipayhk',
+          currency: 'HKD',
+        }}
+        calculating={false}
+        processing={false}
+      />
+    )
+
+    const dialog = await screen.findByRole('alertdialog')
+
+    expect(within(dialog).getByText(/HK\$/)).toBeInTheDocument()
   })
 })

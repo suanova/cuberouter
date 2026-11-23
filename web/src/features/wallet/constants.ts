@@ -37,6 +37,16 @@ export const PAYMENT_TYPES = {
   CREEM: 'creem',
   WAFFO: 'waffo',
   WAFFO_PANCAKE: 'waffo_pancake',
+  PAYMENTASIA_ALIPAY: 'paymentasia_alipay',
+  PAYMENTASIA_ALIPAYCN: 'paymentasia_alipaycn',
+  PAYMENTASIA_ALIPAYHK: 'paymentasia_alipayhk',
+  PAYMENTASIA_WECHAT: 'paymentasia_wechat',
+  PAYMENTASIA_CUP: 'paymentasia_cup',
+  PAYMENTASIA_CREDITCARD: 'paymentasia_creditcard',
+  PAYMENTASIA_FPS: 'paymentasia_fps',
+  PAYMENTASIA_OCTOPUS: 'paymentasia_octopus',
+  PAYMENTASIA_PAYME: 'paymentasia_payme',
+  PAYMENTASIA_GENERIC: 'paymentasia_generic',
 } as const
 
 /**

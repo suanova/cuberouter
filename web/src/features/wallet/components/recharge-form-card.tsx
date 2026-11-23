@@ -43,6 +43,8 @@ import {
   getDiscountLabel,
   getLocalCurrencySymbol,
   getPaymentIcon,
+  getPaymentMethodCurrencySymbol,
+  getPaymentMethodMinTopup,
   getMinTopupAmount,
   calculatePresetPricing,
 } from '../lib'
@@ -66,6 +68,7 @@ interface RechargeFormCardProps {
   calculating: boolean
   onPaymentMethodSelect: (method: PaymentMethod) => void
   paymentLoading: string | null
+  paymentCurrency?: string
   redemptionCode: string
   onRedemptionCodeChange: (code: string) => void
   onRedeem: () => void
@@ -96,6 +99,7 @@ export function RechargeFormCard({
   calculating,
   onPaymentMethodSelect,
   paymentLoading,
+  paymentCurrency,
   redemptionCode,
   onRedemptionCodeChange,
   onRedeem,
@@ -116,7 +120,19 @@ export function RechargeFormCard({
 }: RechargeFormCardProps) {
   const { t } = useTranslation()
   const currencySymbol = getCurrencySymbol()
-  const payCurrencySymbol = getLocalCurrencySymbol()
+  // The prefix is absolutely positioned; give multi-character custom symbols
+  // (e.g. "HKD") enough left padding so the value never runs into the prefix.
+  let amountInputPaddingClass = ''
+  if (currencySymbol) {
+    amountInputPaddingClass = 'pl-7'
+    if (currencySymbol.length > 1) amountInputPaddingClass = 'pl-12'
+    if (currencySymbol.length > 3) amountInputPaddingClass = 'pl-16'
+  }
+  // Preset "Pay"/"Save" estimates follow local-currency pricing (Price/Epay);
+  // only the live quote below is charged in the selected gateway's currency.
+  const localCurrencySymbol = getLocalCurrencySymbol()
+  const gatewayCurrencySymbol =
+    getPaymentMethodCurrencySymbol(paymentCurrency) ?? localCurrencySymbol
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
 
   useEffect(() => {
@@ -138,6 +154,7 @@ export function RechargeFormCard({
     topupInfo?.enable_online_topup ||
     topupInfo?.enable_stripe_topup ||
     topupInfo?.enable_alipay_topup ||
+    topupInfo?.enable_paymentasia_topup ||
     enableWaffoTopup ||
     enableWaffoPancakeTopup
   const hasAnyTopup = hasConfigurableTopup || enableCreemTopup
@@ -271,12 +288,12 @@ export function RechargeFormCard({
                             )}
                           </div>
                           <div className='text-muted-foreground mt-1.5 w-full text-xs sm:mt-2'>
-                            {t('Pay')} {payCurrencySymbol}
+                            {t('Pay')} {localCurrencySymbol}
                             {formatCurrency(actualPrice)}
                             {hasDiscount && savedAmount > 0 && (
                               <span className='text-green-600'>
                                 {' '}
-                                • {t('Save')} {payCurrencySymbol}
+                                • {t('Save')} {localCurrencySymbol}
                                 {formatCurrency(savedAmount)}
                               </span>
                             )}
@@ -298,7 +315,7 @@ export function RechargeFormCard({
                 <div className='grid grid-cols-[minmax(0,1fr)_minmax(110px,0.55fr)] gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center'>
                   <div className='relative'>
                     {currencySymbol && (
-                      <span className='text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm'>
+                      <span className='text-muted-foreground pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm whitespace-nowrap'>
                         {currencySymbol}
                       </span>
                     )}
@@ -308,10 +325,12 @@ export function RechargeFormCard({
                       value={localAmount}
                       onChange={(e) => handleAmountChange(e.target.value)}
                       min={minTopup}
-                      placeholder={t('Minimum topup amount: {{amount}}', { amount: minTopup })}
+                      placeholder={t('Minimum topup amount: {{amount}}', {
+                        amount: minTopup,
+                      })}
                       className={cn(
                         'h-9 text-base sm:h-10 sm:text-lg',
-                        currencySymbol && 'pl-7'
+                        amountInputPaddingClass
                       )}
                     />
                   </div>
@@ -323,7 +342,7 @@ export function RechargeFormCard({
                       <Skeleton className='h-5 w-16' />
                     ) : (
                       <span className='text-sm font-semibold'>
-                        {payCurrencySymbol}
+                        {gatewayCurrencySymbol}
                         {formatCurrency(paymentAmount)}
                       </span>
                     )}
@@ -338,9 +357,9 @@ export function RechargeFormCard({
                 {hasStandardPaymentMethods ? (
                   <div className='grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-3'>
                     {topupInfo?.pay_methods?.map((method) => {
-                      const minTopup = Math.max(
-                        method.min_topup || 0,
-                        getMinTopupAmount(topupInfo)
+                      const minTopup = getPaymentMethodMinTopup(
+                        topupInfo,
+                        method
                       )
                       const disabled = minTopup > topupAmount
                       const disabledReason = disabled

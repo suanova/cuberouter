@@ -33,8 +33,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatLocalCurrencyAmount } from '@/lib/currency'
 
 import { DEFAULT_DISCOUNT_RATE } from '../../constants'
-import { formatCurrency, getPaymentIcon } from '../../lib'
-import type { PaymentMethod } from '../../types'
+import {
+  formatCurrency,
+  getCurrencySymbol,
+  getPaymentIcon,
+  getPaymentMethodCurrencySymbol,
+  isPaymentAsiaPayment,
+} from '../../lib'
+import type { PaymentAsiaFeeInfo, PaymentMethod } from '../../types'
 
 interface PaymentConfirmDialogProps {
   open: boolean
@@ -43,6 +49,8 @@ interface PaymentConfirmDialogProps {
   topupAmount: number
   paymentAmount: number
   paymentMethod: PaymentMethod | undefined
+  /** Service fee quoted for the selected PaymentAsia method, if any. */
+  feeInfo?: PaymentAsiaFeeInfo
   calculating: boolean
   processing: boolean
   discountRate?: number
@@ -55,6 +63,7 @@ export function PaymentConfirmDialog({
   topupAmount,
   paymentAmount,
   paymentMethod,
+  feeInfo,
   calculating,
   processing,
   discountRate = DEFAULT_DISCOUNT_RATE,
@@ -63,6 +72,16 @@ export function PaymentConfirmDialog({
   const hasDiscount = discountRate > 0 && discountRate < 1 && paymentAmount > 0
   const originalAmount = hasDiscount ? paymentAmount / discountRate : 0
   const discountAmount = hasDiscount ? originalAmount - paymentAmount : 0
+  const payCurrencySymbol = getPaymentMethodCurrencySymbol(
+    paymentMethod?.currency
+  )
+  // The quote's fee/net_amount are display units, so the notice uses the
+  // display currency symbol (USD sites show $, not the local payment symbol).
+  const displayCurrencySymbol = getCurrencySymbol()
+  // Payment amount is unchanged; only the credited amount is net of the fee.
+  // Hidden while a re-quote is in flight so a stale fee never shows.
+  const showFeeNotice =
+    !!feeInfo && !calculating && isPaymentAsiaPayment(paymentMethod?.type ?? '')
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -101,6 +120,7 @@ export function PaymentConfirmDialog({
             ) : (
               <div className='flex items-baseline gap-2'>
                 <span className='text-2xl font-semibold'>
+                  {payCurrencySymbol}
                   {formatCurrency(paymentAmount)}
                 </span>
                 {hasDiscount && (
@@ -120,6 +140,21 @@ export function PaymentConfirmDialog({
                   {formatCurrency(discountAmount)}
                 </span>
               </div>
+            </div>
+          )}
+
+          {showFeeNotice && feeInfo && (
+            <div className='bg-muted/50 rounded-lg p-3'>
+              <p className='text-muted-foreground text-xs'>
+                {t(
+                  'This payment includes a {{rate}} service fee ({{fee}}); the credited amount will be {{net}}.',
+                  {
+                    rate: `${(feeInfo.feeRate * 100).toFixed(2)}%`,
+                    fee: `${displayCurrencySymbol}${formatCurrency(feeInfo.fee)}`,
+                    net: `${displayCurrencySymbol}${formatCurrency(feeInfo.netAmount)}`,
+                  }
+                )}
+              </p>
             </div>
           )}
 
