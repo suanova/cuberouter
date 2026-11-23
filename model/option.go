@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -154,6 +156,17 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
 	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
 	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
+	common.OptionMap["PaymentAsiaSandbox"] = strconv.FormatBool(setting.PaymentAsiaSandbox)
+	common.OptionMap["PaymentAsiaMerchantToken"] = setting.PaymentAsiaMerchantToken
+	common.OptionMap["PaymentAsiaSecret"] = setting.PaymentAsiaSecret
+	common.OptionMap["PaymentAsiaSandboxMerchantToken"] = setting.PaymentAsiaSandboxMerchantToken
+	common.OptionMap["PaymentAsiaSandboxSecret"] = setting.PaymentAsiaSandboxSecret
+	common.OptionMap["PaymentAsiaCurrency"] = setting.PaymentAsiaCurrency
+	common.OptionMap["PaymentAsiaUnitPrice"] = strconv.FormatFloat(setting.PaymentAsiaUnitPrice, 'f', -1, 64)
+	common.OptionMap["PaymentAsiaMinTopUp"] = strconv.Itoa(setting.PaymentAsiaMinTopUp)
+	common.OptionMap["PaymentAsiaServiceChargeEnabled"] = strconv.FormatBool(setting.PaymentAsiaServiceChargeEnabled)
+	common.OptionMap["PaymentAsiaNotifyUrl"] = setting.PaymentAsiaNotifyUrl
+	common.OptionMap["PaymentAsiaReturnUrl"] = setting.PaymentAsiaReturnUrl
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
@@ -261,6 +274,23 @@ func validateOptionValue(key string, value string) error {
 	}
 	if key == "EmailDomainBlacklist" {
 		return common.ValidateEmailDomainList(common.ParseEmailDomainList(value))
+	}
+	if key == "PaymentAsiaUnitPrice" {
+		// 单价是网关金额的乘数：必须能解析为有限正数，否则报价/扣费会静默
+		// 回退到 1 或 0，与管理员配置不一致。
+		unitPrice, err := strconv.ParseFloat(value, 64)
+		if err != nil || math.IsNaN(unitPrice) || math.IsInf(unitPrice, 0) || unitPrice <= 0 {
+			return errors.New("PaymentAsia 单价必须为大于 0 的数字")
+		}
+	}
+	if key == "PaymentAsiaCurrency" {
+		// 结算币种决定可用通道（USD 仅 CreditCard），非法值会让通道过滤、
+		// 报价与回调核对落到未知分支，直接拒绝。
+		switch strings.ToUpper(strings.TrimSpace(value)) {
+		case "HKD", "USD":
+		default:
+			return errors.New("PaymentAsia 支付币种只支持 HKD 或 USD")
+		}
 	}
 	return nil
 }
@@ -623,6 +653,28 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
+	case "PaymentAsiaSandbox":
+		setting.PaymentAsiaSandbox = value == "true"
+	case "PaymentAsiaMerchantToken":
+		setting.PaymentAsiaMerchantToken = value
+	case "PaymentAsiaSecret":
+		setting.PaymentAsiaSecret = value
+	case "PaymentAsiaSandboxMerchantToken":
+		setting.PaymentAsiaSandboxMerchantToken = value
+	case "PaymentAsiaSandboxSecret":
+		setting.PaymentAsiaSandboxSecret = value
+	case "PaymentAsiaCurrency":
+		setting.PaymentAsiaCurrency = value
+	case "PaymentAsiaUnitPrice":
+		setting.PaymentAsiaUnitPrice, _ = strconv.ParseFloat(value, 64)
+	case "PaymentAsiaMinTopUp":
+		setting.PaymentAsiaMinTopUp, _ = strconv.Atoi(value)
+	case "PaymentAsiaServiceChargeEnabled":
+		setting.PaymentAsiaServiceChargeEnabled = value == "true"
+	case "PaymentAsiaNotifyUrl":
+		setting.PaymentAsiaNotifyUrl = value
+	case "PaymentAsiaReturnUrl":
+		setting.PaymentAsiaReturnUrl = value
 	case "TopupGroupRatio":
 		err = common.UpdateTopupGroupRatioByJSONString(value)
 	case "GitHubClientId":

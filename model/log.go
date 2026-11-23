@@ -376,6 +376,13 @@ func RecordOperationAuditLog(logUserId int, content string, ip string, action st
 }
 
 func RecordTopupLog(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string) {
+	RecordTopupLogWithMeta(userId, content, callerIp, paymentMethod, callbackPaymentMethod, nil)
+}
+
+// RecordTopupLogWithMeta 记录充值日志，并把 meta 合并进 Other.admin_info 供
+// 审计追溯（如 PaymentAsia 的 trade_no/currency/request_reference/channel）。
+// 已存在的审计字段（caller_ip、payment_method 等）优先，meta 不得覆盖。
+func RecordTopupLogWithMeta(userId int, content string, callerIp string, paymentMethod string, callbackPaymentMethod string, meta map[string]interface{}) {
 	username, _ := GetUsernameById(userId, false)
 	adminInfo := map[string]interface{}{
 		"server_ip":               common.GetIp(),
@@ -384,6 +391,11 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 		"payment_method":          paymentMethod,
 		"callback_payment_method": callbackPaymentMethod,
 		"version":                 common.Version,
+	}
+	for key, value := range meta {
+		if _, exists := adminInfo[key]; !exists {
+			adminInfo[key] = value
+		}
 	}
 	other := map[string]interface{}{
 		"admin_info": adminInfo,
