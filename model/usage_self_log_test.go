@@ -189,6 +189,17 @@ func TestSelfUsageLogRowsConfiguredDatabases(t *testing.T) {
 			assert.Equal(t, 50, got[0].CompletionTokens)
 			assert.Equal(t, 30, got[0].CacheTokens)
 			assert.Equal(t, 1000+50-200, got[0].Quota)
+
+			site, err := GetSiteUsageLogRowsByBucket(SiteUsageFilter{}, ts-60, ts+60, SelfUsageDaySeconds)
+			require.NoError(t, err)
+			require.Len(t, site, 2)
+			siteQuota, siteRequests := 0, 0
+			for _, row := range site {
+				siteQuota += row.Quota
+				siteRequests += row.RequestCount
+			}
+			assert.Equal(t, 2, siteRequests)
+			assert.Equal(t, 1000+50-200+11, siteQuota)
 		})
 	}
 }
@@ -239,4 +250,10 @@ func TestSelfUsageLogRowsClickHouse(t *testing.T) {
 	assert.Equal(t, 50, got[0].CompletionTokens)
 	assert.Equal(t, 30, got[0].CacheTokens)
 	assert.Equal(t, 1000+50-200, got[0].Quota)
+
+	site, err := GetSiteUsageLogRowsByBucket(SiteUsageFilter{}, ts-60, ts+60, SelfUsageDaySeconds)
+	require.NoError(t, err)
+	require.Len(t, site, 1)
+	assert.Equal(t, 1, site[0].RequestCount)
+	assert.Equal(t, 1000+50-200, site[0].Quota)
 }

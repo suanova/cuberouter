@@ -335,6 +335,8 @@ func registerApiRoutes(apiRouter *gin.RouterGroup, documented bool) {
 		{
 			usageRoute.GET("/self", middleware.UserAuth(), controller.GetSelfUsage)
 			usageRoute.GET("/self/export", middleware.UserAuth(), controller.ExportSelfUsage)
+			usageRoute.GET("/site", middleware.AdminAuth(), controller.GetSiteUsage)
+			usageRoute.GET("/site/export", middleware.AdminAuth(), controller.ExportSiteUsage)
 			tokenUsageRoute := usageRoute.Group("/token")
 			tokenUsageRoute.Use(middleware.TokenAuthReadOnly())
 			{

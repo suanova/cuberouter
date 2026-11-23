@@ -24,13 +24,21 @@ import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { getOrganizations } from '@/features/organization/api'
+import { ROLE } from '@/lib/roles'
 import {
   ACCOUNT_CONTEXT_TYPE,
   useAccountContextStore,
 } from '@/stores/account-context-store'
+import { useAuthStore } from '@/stores/auth-store'
 
-import { exportSelfUsage, getSelfUsage } from './api'
+import {
+  exportSelfUsage,
+  exportSiteUsage,
+  getSelfUsage,
+  getSiteUsage,
+} from './api'
 import { UsageDateRangePicker } from './components/usage-date-range-picker'
 import type { UsageFilterValues } from './components/usage-filter-bar'
 import { UsageOverview } from './components/usage-overview'
@@ -44,8 +52,13 @@ import {
 } from './lib/usage-export'
 import type {
   GetSelfUsageParams,
+  GetSiteUsageParams,
+  SelfUsageData,
+  SelfUsageEnvelope,
+  SiteUsageEnvelope,
   UsageExportGranularity,
   UsageOrganizationOption,
+  UsageScope,
 } from './types'
 
 const LazyUsageCharts = lazy(() =>
@@ -57,9 +70,11 @@ const LazyUsageCharts = lazy(() =>
 export interface UsageSearch {
   start?: string
   end?: string
+  scope?: UsageScope
   model?: string
   token?: string
   tokenId?: string
+  userId?: string
   billingAccountType?: string
   organizationId?: string
   overviewOrganizationId?: string
@@ -74,6 +89,10 @@ interface UsagePageProps {
 
 export function UsagePage(props: UsagePageProps) {
   const { t } = useTranslation()
+  const role = useAuthStore((state) => state.auth.user?.role ?? ROLE.GUEST)
+  const canViewAll = role >= ROLE.ADMIN
+  const scope: UsageScope =
+    canViewAll && props.search.scope !== 'self' ? 'all' : 'self'
   const window = usageWindowFromSearch(props.search)
   const dateParams = usageDateParams(window)
   const singleDay = dateParams.start === dateParams.end
@@ -87,6 +106,7 @@ export function UsagePage(props: UsagePageProps) {
         name: organization.name,
       }))
     },
+    enabled: scope === 'self',
   })
   const organizations = organizationsQuery.data ?? []
   const currentContextOrganizationId = useAccountContextStore((state) =>
@@ -109,7 +129,7 @@ export function UsagePage(props: UsagePageProps) {
           currentContextOrganizationId
         )
 
-  const params: GetSelfUsageParams = {
+  const commonParams = {
     start: dateParams.start,
     end: dateParams.end,
     p: props.search.page ?? 1,
@@ -123,21 +143,33 @@ export function UsagePage(props: UsagePageProps) {
     ...(props.search.organizationId
       ? { organization_id: Number(props.search.organizationId) }
       : {}),
+    ...(singleDay ? { chart_granularity: 'hour' as const } : {}),
+  }
+  const selfParams: GetSelfUsageParams = {
+    ...commonParams,
     ...(selectedOrganizationId
       ? { overview_organization_id: selectedOrganizationId }
       : {}),
-    ...(singleDay ? { chart_granularity: 'hour' as const } : {}),
+  }
+  const siteParams: GetSiteUsageParams = {
+    ...commonParams,
+    ...(props.search.userId ? { user_id: Number(props.search.userId) } : {}),
   }
 
-  const usageQuery = useQuery({
-    queryKey: ['self-usage', params],
-    queryFn: () => getSelfUsage(params),
+  const usageQuery = useQuery<SelfUsageEnvelope | SiteUsageEnvelope>({
+    queryKey: ['usage', scope, scope === 'all' ? siteParams : selfParams],
+    queryFn: () =>
+      scope === 'all' ? getSiteUsage(siteParams) : getSelfUsage(selfParams),
     placeholderData: (previousData) => previousData,
     // 回填完成前页面只显示提示；轮询到完成即可自动放出数据。
     refetchInterval: (query) =>
       usageRefetchInterval(query.state.data?.data?.backfill_complete),
   })
   const data = usageQuery.data?.data
+  const selfData: SelfUsageData | undefined =
+    data && 'overview' in data ? data : undefined
+  const pageOrganizations =
+    scope === 'all' ? (data?.filter_options.organizations ?? []) : organizations
   const failed = usageQuery.isError || usageQuery.data?.success === false
   // 回填完成前旧任务日志会被当成 text，行数与金额都不准；按设计（§7.3）
   // 只显示说明，不暴露任何用量数字。
@@ -150,7 +182,7 @@ export function UsagePage(props: UsagePageProps) {
   const handleExport = async (granularity: UsageExportGranularity) => {
     setExporting(granularity)
     try {
-      const response = await exportSelfUsage({
+      const exportParams = {
         start: dateParams.start,
         end: dateParams.end,
         granularity,
@@ -165,7 +197,16 @@ export function UsagePage(props: UsagePageProps) {
         ...(props.search.organizationId
           ? { organization_id: Number(props.search.organizationId) }
           : {}),
-      })
+      }
+      const response =
+        scope === 'all'
+          ? await exportSiteUsage({
+              ...exportParams,
+              ...(props.search.userId
+                ? { user_id: Number(props.search.userId) }
+                : {}),
+            })
+          : await exportSelfUsage(exportParams)
       if (!response.success || !response.data) {
         toast.error(response.message || t('The export could not be prepared.'))
         return
@@ -175,7 +216,9 @@ export function UsagePage(props: UsagePageProps) {
         return
       }
       await writeSelfUsageExportFile(
-        buildSelfUsageExportSheet(response.data, t)
+        buildSelfUsageExportSheet(response.data, t, {
+          variant: scope === 'all' ? 'site' : undefined,
+        })
       )
       if (response.data.truncated) {
         toast.warning(
@@ -195,10 +238,17 @@ export function UsagePage(props: UsagePageProps) {
   const updateSearch = (next: Partial<UsageSearch>) => {
     props.onSearchChange(next)
   }
+  const handleScopeChange = (next: string) => {
+    if (next !== 'all' && next !== 'self') {
+      return
+    }
+    updateSearch({ scope: next, page: 1, overviewOrganizationId: '' })
+  }
   const initialFilters: UsageFilterValues = {
     model: props.search.model,
     token: props.search.token,
     tokenId: props.search.tokenId ? Number(props.search.tokenId) : undefined,
+    userId: props.search.userId ? Number(props.search.userId) : undefined,
     billingAccountType: props.search.billingAccountType,
     organizationId: props.search.organizationId
       ? Number(props.search.organizationId)
@@ -208,6 +258,16 @@ export function UsagePage(props: UsagePageProps) {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Usage')}</SectionPageLayout.Title>
+      {canViewAll ? (
+        <SectionPageLayout.Actions>
+          <Tabs value={scope} onValueChange={handleScopeChange}>
+            <TabsList>
+              <TabsTrigger value='all'>{t('All')}</TabsTrigger>
+              <TabsTrigger value='self'>{t('Only Mine')}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </SectionPageLayout.Actions>
+      ) : null}
       <SectionPageLayout.Content>
         <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
           <div className='flex flex-wrap items-center gap-3'>
@@ -246,15 +306,20 @@ export function UsagePage(props: UsagePageProps) {
           ) : null}
           {!failed && !backfillPending ? (
             <>
-              <UsageOverview
-                data={data}
-                loading={usageQuery.isLoading}
-                organizations={organizations}
-                selectedOrganizationId={selectedOrganizationId}
-                onSelectOrganization={(id) =>
-                  updateSearch({ overviewOrganizationId: String(id), page: 1 })
-                }
-              />
+              {scope === 'self' ? (
+                <UsageOverview
+                  data={selfData}
+                  loading={usageQuery.isLoading}
+                  organizations={organizations}
+                  selectedOrganizationId={selectedOrganizationId}
+                  onSelectOrganization={(id) =>
+                    updateSearch({
+                      overviewOrganizationId: String(id),
+                      page: 1,
+                    })
+                  }
+                />
+              ) : null}
               <Suspense
                 fallback={
                   <div className='bg-muted/20 h-96 animate-pulse rounded-lg border' />
@@ -272,7 +337,8 @@ export function UsagePage(props: UsagePageProps) {
                     data={data}
                     loading={usageQuery.isLoading}
                     filtering={usageQuery.isFetching}
-                    organizations={organizations}
+                    organizations={pageOrganizations}
+                    variant={scope === 'all' ? 'site' : 'personal'}
                     initialFilters={initialFilters}
                     page={props.search.page ?? 1}
                     pageSize={props.search.pageSize ?? 20}
@@ -283,6 +349,7 @@ export function UsagePage(props: UsagePageProps) {
                         model: filters.model ?? '',
                         token: filters.token ?? '',
                         tokenId: filters.tokenId ? String(filters.tokenId) : '',
+                        userId: filters.userId ? String(filters.userId) : '',
                         billingAccountType: filters.billingAccountType ?? '',
                         organizationId: filters.organizationId
                           ? String(filters.organizationId)

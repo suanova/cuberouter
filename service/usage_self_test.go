@@ -464,3 +464,30 @@ func TestExportSelfUsageGroupsByDayAndHour(t *testing.T) {
 	assert.Equal(t, 3, filtered.Total)
 	assert.Len(t, filtered.Rows, 3)
 }
+
+func TestGetSelfUsageFilterOptionsIncludeRetiredModelsFromRows(t *testing.T) {
+	setupServiceTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Model{}, &model.Ability{}))
+	const actor = 717
+	ts := time.Date(2026, 11, 3, 10, 0, 0, 0, time.Local).Unix()
+	require.NoError(t, model.DB.Create(&model.User{
+		Id: actor, Username: "u717", AffCode: "u717retired", Group: "default",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Ability{
+		Group: "default", Model: "gpt-4o", ChannelId: 1, Enabled: true,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.Log{
+		UserId: actor, ActorUserId: actor, Type: model.LogTypeConsume, UsageSource: model.LogUsageSourceText,
+		CreatedAt: ts, ModelName: "retired-model", BillingAccountType: "personal", RequestId: "retired-1", Quota: 10,
+	}).Error)
+
+	got, err := GetSelfUsage(SelfUsageQuery{
+		ActorUserId: actor,
+		StartTs:     ts - 3600,
+		EndTs:       ts + 3600,
+		Page:        1,
+		PageSize:    20,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"gpt-4o", "retired-model"}, got.FilterOptions.Models)
+}

@@ -25,8 +25,10 @@ import { UsagePage, type UsageSearch } from '@/features/usage'
 const usageSearchSchema = z.object({
   start: z.string().optional().catch(''),
   end: z.string().optional().catch(''),
+  scope: z.enum(['all', 'self']).optional().catch('all'),
   model: z.string().optional().catch(''),
   token: z.string().optional().catch(''),
+  userId: z.string().optional().catch(''),
   billingAccountType: z.string().optional().catch(''),
   organizationId: z.string().optional().catch(''),
   overviewOrganizationId: z.string().optional().catch(''),
