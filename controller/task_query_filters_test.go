@@ -87,9 +87,9 @@ func TestGetAllTaskFiltersQueryParams(t *testing.T) {
 	setupTaskQueryFilterControllerTestDB(t)
 
 	cases := []struct {
-		name string
+		name  string
 		query string
-		want string
+		want  string
 	}{
 		{"model name", "model_name=wan3.0-video", "tq-1"},
 		{"token name", "token_name=key-b", "tq-2"},
