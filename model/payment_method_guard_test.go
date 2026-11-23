@@ -140,6 +140,18 @@ func TestUpdatePendingTopUpStatus_RejectsMismatchedPaymentProvider(t *testing.T)
 	}
 }
 
+// TestUpdatePendingTopUpStatusPreservesDatabaseErrors 数据库读失败不能被
+// 伪装成"订单不存在"：只有 gorm.ErrRecordNotFound 才映射为 ErrTopUpNotFound。
+func TestUpdatePendingTopUpStatusPreservesDatabaseErrors(t *testing.T) {
+	truncateTables(t)
+	require.NoError(t, DB.Migrator().DropTable(&TopUp{}))
+	t.Cleanup(func() { require.NoError(t, DB.AutoMigrate(&TopUp{})) })
+
+	err := UpdatePendingTopUpStatus("missing-table-trade-no", PaymentProviderPaymentAsia, common.TopUpStatusFailed)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrTopUpNotFound)
+}
+
 func TestCompleteSubscriptionOrder_RejectsMismatchedPaymentProvider(t *testing.T) {
 	truncateTables(t)
 

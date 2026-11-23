@@ -29,6 +29,22 @@ type TopUp struct {
 	// 防止管理员在订单待支付期间改汇率导致同一实付金额入账不同额度。
 	// 0 表示未快照(USD/TOKENS 模式或旧订单),结算时回退当前 Price。
 	Rate float64 `json:"rate" gorm:"column:rate"`
+	// Currency / PaymentEnvironment 是 PaymentAsia 下单时的网关结算币种与环境
+	// 快照。回调按订单快照核对币种、选择验签 secret，因此待支付期间切换币种或
+	// 环境不会让旧订单回调失效。非 PaymentAsia 订单保持空串；空值表示旧订单
+	//（无数据回填），回调时回退当前配置。
+	Currency           string `json:"currency" gorm:"type:varchar(10);default:''"`
+	PaymentEnvironment string `json:"payment_environment" gorm:"type:varchar(16);default:''"`
+	// 以下五列是 PaymentAsia 渠道手续费快照（additive migration，无数据回填）。
+	// Amount 仍是用户填写的展示数量，Money 仍是用户实付（不做 gross-up）；
+	// Fee/FeeFixed 以网关币种记录，NetAmount 是扣费后的展示数量，NetQuota 是
+	// 实际入账额度。新订单总是快照 NetQuota（免手续费时等于全额）；NetQuota=0
+	// 仅表示旧订单，结算回退全额入账。手续费是否存在以 FeeRate > 0 判断。
+	Fee       float64 `json:"fee" gorm:"default:0"`
+	FeeRate   float64 `json:"fee_rate" gorm:"default:0"`
+	FeeFixed  float64 `json:"fee_fixed" gorm:"default:0"`
+	NetAmount float64 `json:"net_amount" gorm:"default:0"`
+	NetQuota  int     `json:"net_quota" gorm:"default:0"`
 }
 
 const (
@@ -51,6 +67,7 @@ const (
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderAlipay       = "alipay"
 	PaymentProviderBalance      = "balance"
+	PaymentProviderPaymentAsia  = "paymentasia"
 )
 
 var (
@@ -155,6 +172,21 @@ func GetTopUpByTradeNo(tradeNo string) *TopUp {
 	return topUp
 }
 
+// GetTopUpByTradeNoWithError returns the order of a trade number and keeps the
+// database failure separate from a missing order: ErrTopUpNotFound means the
+// order does not exist, any other error means the lookup itself failed and the
+// caller may safely retry.
+func GetTopUpByTradeNoWithError(tradeNo string) (*TopUp, error) {
+	var topUp TopUp
+	if err := DB.Where("trade_no = ?", tradeNo).First(&topUp).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTopUpNotFound
+		}
+		return nil, err
+	}
+	return &topUp, nil
+}
+
 func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, targetStatus string) error {
 	if tradeNo == "" {
 		return errors.New("未提供支付单号")
@@ -168,7 +200,10 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	return DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
-			return ErrTopUpNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
 		}
 		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
@@ -245,6 +280,95 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	return false, nil
 }
 
+// PaymentAsiaRechargeMeta 携带 datafeed 回调中仅用于审计的网关侧信息。
+// 它不参与结算计算，只写入充值日志的 admin_info 供四层交易对齐。
+type PaymentAsiaRechargeMeta struct {
+	RequestReference string
+	Currency         string
+	Channel          string
+}
+
+// RechargePaymentAsia 原子完成 PaymentAsia 订单，事务骨架与 RechargeEpay 一致：
+// 订单行锁、provider 校验、状态幂等与额度增加在同一事务内完成。额度按订单
+// Amount 的展示单位语义换算（与 Epay 相同，CNY 模式使用下单时汇率快照）。
+func RechargePaymentAsia(tradeNo string, meta PaymentAsiaRechargeMeta, callerIp string) (alreadyDone bool, err error) {
+	if tradeNo == "" {
+		return false, errors.New("未提供支付单号")
+	}
+
+	refCol := "`trade_no`"
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
+		refCol = `"trade_no"`
+	}
+
+	var quotaToAdd int
+	topUp := &TopUp{}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
+		}
+		if topUp.PaymentProvider != PaymentProviderPaymentAsia {
+			return ErrPaymentMethodMismatch
+		}
+		if topUp.Status == common.TopUpStatusSuccess {
+			alreadyDone = true
+			return nil
+		}
+		if topUp.Status != common.TopUpStatusPending {
+			return ErrTopUpStatusInvalid
+		}
+		var quotaErr error
+		quotaToAdd, quotaErr = paymentAsiaTopUpQuota(topUp)
+		if quotaErr != nil || quotaToAdd <= 0 {
+			return ErrInvalidTopUpQuota
+		}
+		topUp.CompleteTime = common.GetTimestamp()
+		topUp.Status = common.TopUpStatusSuccess
+		if err := tx.Save(topUp).Error; err != nil {
+			return err
+		}
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+	})
+	if err != nil {
+		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
+			common.SysError("paymentasia topup failed: " + err.Error())
+		}
+		return false, err
+	}
+	if alreadyDone {
+		return true, nil
+	}
+	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "paymentasia topup")
+
+	common.SysLog(fmt.Sprintf("paymentasia 充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f fee=%.4f fee_rate=%.4f fee_fixed=%.4f net_amount=%.4f net_quota=%d request_reference=%s",
+		topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money, topUp.Fee, topUp.FeeRate, topUp.FeeFixed, topUp.NetAmount, topUp.NetQuota, meta.RequestReference))
+
+	logContent := fmt.Sprintf("PaymentAsia充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money)
+	if topUp.FeeRate > 0 {
+		feeDisplay := decimal.NewFromInt(topUp.Amount).Sub(decimal.NewFromFloat(topUp.NetAmount))
+		logContent = fmt.Sprintf("PaymentAsia充值成功，充值金额: %s，支付金额：%.2f，手续费: %s，实际到账: %v",
+			decimal.NewFromFloat(topUp.NetAmount).StringFixed(2), topUp.Money, feeDisplay.StringFixed(4), logger.FormatQuota(quotaToAdd))
+	}
+	metaFields := map[string]interface{}{
+		"trade_no":          topUp.TradeNo,
+		"currency":          meta.Currency,
+		"request_reference": meta.RequestReference,
+		"channel":           meta.Channel,
+	}
+	if topUp.FeeRate > 0 {
+		metaFields["fee"] = topUp.Fee
+		metaFields["fee_rate"] = topUp.FeeRate
+		metaFields["fee_fixed"] = topUp.FeeFixed
+		metaFields["net_amount"] = topUp.NetAmount
+		metaFields["net_quota"] = topUp.NetQuota
+	}
+	RecordTopupLogWithMeta(topUp.UserId, logContent, callerIp, topUp.PaymentMethod, PaymentProviderPaymentAsia, metaFields)
+	return false, nil
+}
+
 func Recharge(referenceId string, customerId string, callerIp string) (err error) {
 	if referenceId == "" {
 		return errors.New("未提供支付单号")
@@ -309,15 +433,32 @@ func topUpRate(topUp *TopUp) float64 {
 	return operation_setting.Price
 }
 
-// topupAmountToQuotaDecimal 充值金额 → 额度(decimal,未截断)。金额语义跟随展示类型:
-// - TOKENS: 下单时 Amount 已 ÷QuotaPerUnit 存储,乘回即原 token 数
+// TopupAmountToQuotaDecimal 把与 TopUp.Amount 同单位的金额(decimal,可为小数)
+// 换算成额度,未截断。金额语义跟随展示类型:
+// - TOKENS: 订单 Amount 已 ÷QuotaPerUnit 存储,乘回即原 token 数
 // - CNY: Amount 为元,先 ÷汇率(订单快照,回退 Price)换成美元再 × QuotaPerUnit
 // - USD/CUSTOM: Amount 为美元,直接 × QuotaPerUnit
-func topupAmountToQuotaDecimal(amount int64, rate float64) decimal.Decimal {
+// 需要换算部分金额(如渠道手续费)的调用方复用同一口径,保证与结算一致。
+func TopupAmountToQuotaDecimal(amount decimal.Decimal, rate float64) decimal.Decimal {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
-		return rmbTopupAmountToUSD(amount, rate).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+		return rmbDecimalToUSD(amount, rate).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
-	return decimal.NewFromInt(amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	return amount.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+}
+
+// topupAmountToQuotaDecimal 是 TopupAmountToQuotaDecimal 的整数入口。
+func topupAmountToQuotaDecimal(amount int64, rate float64) decimal.Decimal {
+	return TopupAmountToQuotaDecimal(decimal.NewFromInt(amount), rate)
+}
+
+// paymentAsiaTopUpQuota 返回 PaymentAsia 订单应入账的额度：优先使用下单时的
+// NetQuota 手续费快照；旧订单(NetQuota=0)回退按 Amount 全额换算。两种路径都经
+// WalletQuotaFromDecimalStrict 强制钱包容许范围。
+func paymentAsiaTopUpQuota(topUp *TopUp) (int, error) {
+	if topUp.NetQuota > 0 {
+		return common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(int64(topUp.NetQuota)))
+	}
+	return common.WalletQuotaFromDecimalStrict(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
 }
 
 // topUpCreditedQuota 返回一笔成功充值订单实际入账的额度。不同渠道的 Amount 语义
@@ -340,6 +481,13 @@ func topUpCreditedQuota(topUp *TopUp) int {
 		return common.QuotaFromDecimal(
 			decimal.NewFromInt(topUp.Amount).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 		)
+	case PaymentProviderPaymentAsia:
+		quota, err := paymentAsiaTopUpQuota(topUp)
+		if err != nil {
+			common.SysError(fmt.Sprintf("paymentasia top-up credited quota conversion failed trade_no=%s error=%q", topUp.TradeNo, err.Error()))
+			return 0
+		}
+		return quota
 	}
 	if topUp.Money > 0 {
 		if rate := topUpRate(topUp); rate > 0 {
@@ -352,13 +500,13 @@ func topUpCreditedQuota(topUp *TopUp) int {
 	return common.QuotaFromDecimal(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
 }
 
-// rmbTopupAmountToUSD 把人民币充值金额(元)按汇率折算为美元金额。
+// rmbDecimalToUSD 把人民币金额按汇率折算为美元金额。
 // 汇率非法(<=0/NaN/Inf)时回退 1,仅影响换算数值,不影响计费安全。
-func rmbTopupAmountToUSD(amount int64, exchangeRate float64) decimal.Decimal {
+func rmbDecimalToUSD(amount decimal.Decimal, exchangeRate float64) decimal.Decimal {
 	if exchangeRate <= 0 || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) {
 		exchangeRate = 1
 	}
-	return decimal.NewFromInt(amount).Div(decimal.NewFromFloat(exchangeRate))
+	return amount.Div(decimal.NewFromFloat(exchangeRate))
 }
 
 // RechargeAlipay 支付宝回调充值：行级锁 + 幂等 + quota 累加。
@@ -598,6 +746,8 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 	var quotaToAdd int
 	var payMoney float64
 	var paymentMethod string
+	var logContent string
+	var auditMeta map[string]interface{}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
@@ -623,6 +773,9 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 				decimal.NewFromFloat(topUp.Money).Mul(decimal.NewFromFloat(common.QuotaPerUnit)),
 			)
+		} else if topUp.PaymentProvider == PaymentProviderPaymentAsia {
+			// 与回调结算同口径：优先 NetQuota 手续费快照，旧订单回退全额。
+			quotaToAdd, quotaErr = paymentAsiaTopUpQuota(topUp)
 		} else {
 			quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
 				topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)),
@@ -647,6 +800,20 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		userId = topUp.UserId
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
+		logContent = fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney)
+		if topUp.PaymentProvider == PaymentProviderPaymentAsia && topUp.FeeRate > 0 {
+			auditMeta = map[string]interface{}{
+				"trade_no":   topUp.TradeNo,
+				"currency":   topUp.Currency,
+				"fee":        topUp.Fee,
+				"fee_rate":   topUp.FeeRate,
+				"fee_fixed":  topUp.FeeFixed,
+				"net_amount": topUp.NetAmount,
+				"net_quota":  topUp.NetQuota,
+			}
+			logContent = fmt.Sprintf("管理员补单成功，充值金额: %s，支付金额：%.2f，手续费: %.4f，实际到账: %v",
+				decimal.NewFromFloat(topUp.NetAmount).StringFixed(2), topUp.Money, topUp.Fee, logger.FormatQuota(quotaToAdd))
+		}
 		return nil
 	})
 
@@ -656,7 +823,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 	// 事务外记录日志，避免阻塞
 	syncCreditUserQuotaCache(userId, quotaToAdd, "manual topup")
-	RecordTopupLog(userId, fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney), callerIp, paymentMethod, "admin")
+	RecordTopupLogWithMeta(userId, logContent, callerIp, paymentMethod, "admin", auditMeta)
 	return nil
 }
 func RechargeCreem(referenceId string, customerEmail string, customerName string, callerIp string) (err error) {

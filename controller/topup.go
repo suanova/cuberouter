@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -26,6 +27,7 @@ import (
 func GetTopUpInfo(c *gin.Context) {
 	// 获取支付方式：只保留对应网关已启用的方式（stripe/waffo_pancake/alipay_official 由各自
 	// 网关判定，其余为 EPay 透传类型，仅在 EPay 已配置时展示）
+	enableEpayTopUp := false
 	payMethods := lo.Filter(operation_setting.PayMethods, func(method map[string]string, _ int) bool {
 		switch method["type"] {
 		case "stripe":
@@ -37,7 +39,16 @@ func GetTopUpInfo(c *gin.Context) {
 		case model.PaymentMethodWaffo:
 			return isWaffoTopUpEnabled()
 		default:
-			return isEpayWebhookConfigured()
+			// paymentasia_* 是保留命名空间：只展示已知通道，错拼的 type 直接
+			// 隐藏，绝不落回 Epay 判定变成死按钮。
+			if service.IsPaymentAsiaType(method["type"]) {
+				return service.IsPaymentAsiaMethod(method["type"]) && isPaymentAsiaTopUpEnabled()
+			}
+			if isEpayWebhookConfigured() {
+				enableEpayTopUp = true
+				return true
+			}
+			return false
 		}
 	})
 
@@ -126,8 +137,44 @@ func GetTopUpInfo(c *gin.Context) {
 		}
 	}
 
+	// PaymentAsia 方法在返回给前端前克隆并附加结算币种：PayMethods 里的 map 被
+	// 多处共享，直接写入会污染全局配置。币种只读一次，标签与过滤必须同源。
+	paymentAsiaSettlementCurrency := paymentAsiaCurrency()
+	payMethods = lo.Map(payMethods, func(method map[string]string, _ int) map[string]string {
+		cloned := maps.Clone(method)
+		if cloned == nil {
+			cloned = map[string]string{}
+		}
+		if service.IsPaymentAsiaMethod(cloned["type"]) {
+			cloned["currency"] = paymentAsiaSettlementCurrency
+		}
+		return cloned
+	})
+	// 结算币种决定可用通道：HKD 保留全部已知 PaymentAsia 方法；USD 只有信用卡
+	// 通道；其它（配置已由选项校验拦截，这里兜底）整体隐藏 PaymentAsia 方法。
+	// 非 PaymentAsia 方法不受影响。
+	payMethods = lo.Filter(payMethods, func(method map[string]string, _ int) bool {
+		if !service.IsPaymentAsiaMethod(method["type"]) {
+			return true
+		}
+		switch paymentAsiaSettlementCurrency {
+		case "HKD":
+			return true
+		case "USD":
+			channel, ok := service.PaymentAsiaChannelByMethodType(method["type"])
+			return ok && channel.Network == "CreditCard"
+		default:
+			return false
+		}
+	})
+	enablePaymentAsia := isPaymentAsiaTopUpEnabled() && lo.ContainsBy(payMethods, func(method map[string]string) bool {
+		return service.IsPaymentAsiaMethod(method["type"])
+	})
+
 	data := gin.H{
-		"enable_online_topup":        isEpayTopUpEnabled(),
+		"enable_online_topup":        enableEpayTopUp,
+		"enable_paymentasia_topup":   enablePaymentAsia,
+		"paymentasia_min_topup":      paymentAsiaMinimumTopUp(),
 		"enable_stripe_topup":        isStripeTopUpEnabled(),
 		"enable_alipay_topup":        isAlipayTopUpEnabled(),
 		"alipay_min_topup":           setting.AlipayMinTopUp,
@@ -222,6 +269,10 @@ func getPayMoney(amount int64, group string, rate float64) float64 {
 func getMinTopup() int64 {
 	minTopup := operation_setting.MinTopUp
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+			common.SysError(fmt.Sprintf("QuotaPerUnit 配置无效(%v)，TOKENS 模式最低充值回退为 %d", common.QuotaPerUnit, minTopup))
+			return int64(minTopup)
+		}
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())
@@ -320,6 +371,13 @@ func rejectInvalidTopUpQuota(c *gin.Context, userId int, amount int64) bool {
 	return false
 }
 
+// isEpayOnlyPaymentMethod reports whether methodType may be launched through
+// the Epay gateway. The paymentasia_* namespace is reserved for the
+// first-class PaymentAsia provider, so Epay must never handle it.
+func isEpayOnlyPaymentMethod(methodType string) bool {
+	return methodType != "" && !service.IsPaymentAsiaType(methodType)
+}
+
 func RequestEpay(c *gin.Context) {
 	var req EpayRequest
 	err := c.ShouldBindJSON(&req)
@@ -347,7 +405,7 @@ func RequestEpay(c *gin.Context) {
 		return
 	}
 
-	if !operation_setting.ContainsPayMethod(req.PaymentMethod) {
+	if !isEpayOnlyPaymentMethod(req.PaymentMethod) || !operation_setting.ContainsPayMethod(req.PaymentMethod) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 		return
 	}
