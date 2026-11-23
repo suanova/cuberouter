@@ -566,6 +566,9 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const showAdminIp =
     !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
   const adminInfo = other?.admin_info
+  const auditCurrencyPrefix = adminInfo?.currency
+    ? `${adminInfo.currency} `
+    : ''
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
       ? ([
@@ -592,6 +595,42 @@ export function DetailsDialog(props: DetailsDialogProps) {
           adminInfo.version && {
             label: t('System Version'),
             value: adminInfo.version,
+          },
+          adminInfo.trade_no && {
+            label: t('Order Trade No'),
+            value: adminInfo.trade_no,
+          },
+          adminInfo.currency && {
+            label: t('Currency'),
+            value: adminInfo.currency,
+          },
+          adminInfo.request_reference && {
+            label: t('Upstream Reference'),
+            value: adminInfo.request_reference,
+          },
+          adminInfo.channel && {
+            label: t('Payment Channel'),
+            value: adminInfo.channel,
+          },
+          adminInfo.fee != null && {
+            label: t('Service Fee'),
+            value: `${auditCurrencyPrefix}${Number(adminInfo.fee).toFixed(4)}`,
+          },
+          adminInfo.fee_rate != null && {
+            label: t('Fee Rate'),
+            value: `${(Number(adminInfo.fee_rate) * 100).toFixed(2)}%`,
+          },
+          adminInfo.fee_fixed != null && {
+            label: t('Fixed Fee'),
+            value: `${auditCurrencyPrefix}${Number(adminInfo.fee_fixed).toFixed(4)}`,
+          },
+          adminInfo.net_amount != null && {
+            label: t('Net Amount (display units)'),
+            value: Number(adminInfo.net_amount).toFixed(4),
+          },
+          adminInfo.net_quota != null && {
+            label: t('Net Quota'),
+            value: String(Math.trunc(Number(adminInfo.net_quota))),
           },
         ].filter(Boolean) as Array<{ label: string; value: string }>)
       : []

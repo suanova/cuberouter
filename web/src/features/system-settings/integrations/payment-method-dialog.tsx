@@ -64,6 +64,8 @@ type PaymentMethodDialogProps = {
   onOpenChange: (open: boolean) => void
   onSave: (data: PaymentMethodData) => void
   editData?: PaymentMethodData | null
+  typeFilter?: (type: string) => boolean
+  allowCustomValue?: boolean
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -71,6 +73,16 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   stripe: 'SiStripe',
   waffo_pancake: 'LuCreditCard',
   wxpay: 'SiWechat',
+  paymentasia_alipay: 'SiAlipay',
+  paymentasia_alipaycn: 'SiAlipay',
+  paymentasia_alipayhk: 'SiAlipay',
+  paymentasia_wechat: 'SiWechat',
+  paymentasia_cup: 'LuCreditCard',
+  paymentasia_creditcard: 'LuCreditCard',
+  paymentasia_fps: 'LuLandmark',
+  paymentasia_octopus: 'LuCreditCard',
+  paymentasia_payme: 'LuCreditCard',
+  paymentasia_generic: 'LuCreditCard',
 }
 
 const getDefaultIconName = (type: string) => PAYMENT_TYPE_ICON_NAMES[type] ?? ''
@@ -80,6 +92,8 @@ export function PaymentMethodDialog({
   onOpenChange,
   onSave,
   editData,
+  typeFilter,
+  allowCustomValue = true,
 }: PaymentMethodDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
@@ -109,7 +123,70 @@ export function PaymentMethodDialog({
       name: 'Waffo Pancake',
       value: 'waffo_pancake',
     },
+    {
+      iconName: 'SiAlipay',
+      label: `${t('Alipay')} (paymentasia_alipay)`,
+      name: t('Alipay'),
+      value: 'paymentasia_alipay',
+    },
+    {
+      iconName: 'SiAlipay',
+      label: `${t('AlipayCN')} (paymentasia_alipaycn)`,
+      name: t('AlipayCN'),
+      value: 'paymentasia_alipaycn',
+    },
+    {
+      iconName: 'SiAlipay',
+      label: `${t('AlipayHK')} (paymentasia_alipayhk)`,
+      name: t('AlipayHK'),
+      value: 'paymentasia_alipayhk',
+    },
+    {
+      iconName: 'SiWechat',
+      label: `${t('WeChat Pay')} (paymentasia_wechat)`,
+      name: t('WeChat Pay'),
+      value: 'paymentasia_wechat',
+    },
+    {
+      iconName: 'LuCreditCard',
+      label: `${t('UnionPay')} (paymentasia_cup)`,
+      name: t('UnionPay'),
+      value: 'paymentasia_cup',
+    },
+    {
+      iconName: 'LuCreditCard',
+      label: `${t('Credit Card')} (paymentasia_creditcard)`,
+      name: t('Credit Card'),
+      value: 'paymentasia_creditcard',
+    },
+    {
+      iconName: 'LuLandmark',
+      label: `${t('FPS')} (paymentasia_fps)`,
+      name: t('FPS'),
+      value: 'paymentasia_fps',
+    },
+    {
+      iconName: 'LuCreditCard',
+      label: `${t('Octopus')} (paymentasia_octopus)`,
+      name: t('Octopus'),
+      value: 'paymentasia_octopus',
+    },
+    {
+      iconName: 'LuCreditCard',
+      label: `${t('PayMe')} (paymentasia_payme)`,
+      name: t('PayMe'),
+      value: 'paymentasia_payme',
+    },
+    {
+      iconName: 'LuCreditCard',
+      label: `${t('Generic')} (paymentasia_generic)`,
+      name: t('Generic'),
+      value: 'paymentasia_generic',
+    },
   ]
+  const visiblePaymentTypeOptions = typeFilter
+    ? paymentTypeOptions.filter((option) => typeFilter(option.value))
+    : paymentTypeOptions
   const getPaymentTypeOption = (value: string) =>
     paymentTypeOptions.find((option) => option.value === value)
 
@@ -214,7 +291,7 @@ export function PaymentMethodDialog({
                 <FormLabel>{t('Payment type key')}</FormLabel>
                 <FormControl>
                   <Combobox
-                    options={paymentTypeOptions}
+                    options={visiblePaymentTypeOptions}
                     value={field.value}
                     onValueChange={(value) => {
                       if (value === null) return
@@ -244,12 +321,12 @@ export function PaymentMethodDialog({
                     }}
                     placeholder={t('Select or enter payment type key')}
                     searchPlaceholder={t('Search payment type keys...')}
-                    allowCustomValue
+                    allowCustomValue={allowCustomValue}
                   />
                 </FormControl>
                 <FormDescription className='leading-relaxed'>
                   {t(
-                    'Used to decide the payment flow. Built-in keys include stripe for Stripe and waffo_pancake for Waffo Pancake; other values are sent to Epay as the type parameter.'
+                    'Used to decide the payment flow. Built-in keys include stripe for Stripe, waffo_pancake for Waffo Pancake, and paymentasia_* for PaymentAsia channels; other values are sent to Epay as the type parameter.'
                   )}
                 </FormDescription>
                 <FormMessage />
