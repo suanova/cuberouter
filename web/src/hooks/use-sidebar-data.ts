@@ -18,7 +18,6 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import {
-  Activity,
   Box,
   Building2,
   ChartColumn,
@@ -100,12 +99,6 @@ export function useSidebarData(): SidebarData {
         id: 'general',
         title: t('General'),
         items: [
-          {
-            title: t('Overview'),
-            url: '/dashboard/overview',
-            icon: Activity,
-            requiredRole: ROLE.ADMIN,
-          },
           {
             title: t('Dashboard'),
             url: '/dashboard/models',
@@ -253,10 +246,14 @@ export function useSidebarData(): SidebarData {
             requiredRole: ROLE.OPS,
           },
           {
+            // Ops users browse users read-only; admins and root already have
+            // the same page under the admin group, so this entry stays within
+            // the ops role band.
             title: t('Users'),
             url: '/users',
             icon: Users,
             requiredRole: ROLE.OPS,
+            maxRole: ROLE.OPS,
           },
           {
             title: t('Invite History'),

@@ -96,6 +96,13 @@ describe('performance overview model badges', () => {
     expect(chip).toHaveAttribute('aria-expanded', 'false')
   })
 
+  test('labels the metrics with the 24-hour window', () => {
+    const queryClient = renderOverview(makeModels(MODEL_NAMES.slice(0, 5)))
+    queryClients.push(queryClient)
+
+    expect(screen.getByText(/Last 24h/)).toBeInTheDocument()
+  })
+
   test('clicking the +N chip expands the remaining badges and collapses again', async () => {
     const user = userEvent.setup()
     const queryClient = renderOverview(makeModels(MODEL_NAMES))

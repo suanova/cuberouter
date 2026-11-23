@@ -3047,6 +3047,7 @@
     "Language preference saved": "語言偏好已儲存",
     "Language Preferences": "語言偏好",
     "Language preferences sync across your signed-in devices and affect API error messages.": "語言偏好會同步到您登入的所有設備，並影響 API 錯誤訊息語言。",
+    "Last 24h": "最近 24 小時",
     "Last 24h usage": "近 24 小時消耗",
     "Last 30 days uptime": "近 30 天可用率",
     "Last active {{time}} · Expires {{expires}}": "最後活動於 {{time}} · 到期時間 {{expires}}",

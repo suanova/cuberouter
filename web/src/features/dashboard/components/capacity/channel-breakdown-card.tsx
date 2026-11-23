@@ -316,7 +316,12 @@ export function ChannelBreakdownCard(): React.JSX.Element | null {
   return (
     <Card size='sm' className='h-full'>
       <CardHeader className='border-border/60 border-b'>
-        <CardTitle>{t('Channel Breakdown')}</CardTitle>
+        <CardTitle>
+          {t('Channel Breakdown')}
+          <span className='text-muted-foreground ml-1.5 text-xs font-normal'>
+            · {t('Last 24h')}
+          </span>
+        </CardTitle>
         <CardAction>{modelPicker}</CardAction>
       </CardHeader>
       <CardContent>{tableContent}</CardContent>

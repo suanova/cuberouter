@@ -24,7 +24,8 @@ import type { NavGroup } from '../types'
  * Narrow root navigation groups by the user's role:
  * - the `admin` group requires an admin-or-higher role, the `ops` group
  *   requires an ops-or-higher role;
- * - items with a `requiredRole` are hidden below that role.
+ * - items with a `requiredRole` are hidden below that role;
+ * - items with a `maxRole` are hidden above that role.
  */
 export function filterNavGroupsByRole(
   navGroups: NavGroup[],
@@ -44,7 +45,8 @@ export function filterNavGroupsByRole(
     .map((group) => {
       const items = group.items.filter(
         (item) =>
-          item.requiredRole === undefined || current >= item.requiredRole
+          (item.requiredRole === undefined || current >= item.requiredRole) &&
+          (item.maxRole === undefined || current <= item.maxRole)
       )
       return items.length === group.items.length ? group : { ...group, items }
     })
