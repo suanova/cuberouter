@@ -59,14 +59,18 @@ func paymentAsiaUnitPrice() float64 {
 	return unitPrice
 }
 
-// paymentAsiaOrderRateSnapshot returns the CNY exchange rate to snapshot on an
-// order; zero means "not CNY or no snapshot" and settlement falls back to the
-// current Price.
+// paymentAsiaOrderRateSnapshot returns the CNY/CUSTOM exchange rate to snapshot
+// on an order; zero means "USD/TOKENS or no snapshot" and settlement falls back
+// to the current rate.
 func paymentAsiaOrderRateSnapshot() float64 {
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
 		return operation_setting.Price
+	case operation_setting.QuotaDisplayTypeCustom:
+		return operation_setting.GetUsdToCurrencyRate(operation_setting.Price)
+	default:
+		return 0
 	}
-	return 0
 }
 
 // paymentAsiaStoredAmount converts a user-entered amount to the unit stored on
@@ -105,7 +109,8 @@ func paymentAsiaMinimumTopUp() int64 {
 
 // getPaymentAsiaPayMoney 计算网关实付金额:amount(展示单位)× PaymentAsiaUnitPrice
 // (网关币种单价)× 分组充值倍率 × 折扣。金额语义沿用 Epay:TOKENS 模式下 amount
-// 是 token 数,先 ÷ QuotaPerUnit 换成美元;CNY 模式的元金额不再换算,直接乘单价。
+// 是 token 数,先 ÷ QuotaPerUnit 换成美元;CNY/CUSTOM 模式的金额已是展示货币,
+// 不再除以汇率,直接乘单价(单价即网关币种/展示货币的换算率)。
 func getPaymentAsiaPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {

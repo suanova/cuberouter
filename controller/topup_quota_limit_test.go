@@ -21,10 +21,13 @@ import (
 func TestTopUpQuotaValidation(t *testing.T) {
 	oldQuotaPerUnit := common.QuotaPerUnit
 	oldDisplayType := operation_setting.GetGeneralSetting().QuotaDisplayType
+	oldCustomRate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
 	common.QuotaPerUnit = 500000
+	operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = 7.3
 	t.Cleanup(func() {
 		common.QuotaPerUnit = oldQuotaPerUnit
 		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplayType
+		operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = oldCustomRate
 	})
 
 	testCases := []struct {
@@ -45,6 +48,12 @@ func TestTopUpQuotaValidation(t *testing.T) {
 			displayType: operation_setting.QuotaDisplayTypeUSD,
 			amount:      4295,
 			wantQuota:   2_147_500_000,
+		},
+		{
+			name:        "custom currency amount uses custom rate",
+			displayType: operation_setting.QuotaDisplayTypeCustom,
+			amount:      100,
+			wantQuota:   6_849_315,
 		},
 		{
 			name:        "token amount preserves settlement truncation",

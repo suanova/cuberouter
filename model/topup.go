@@ -25,9 +25,9 @@ type TopUp struct {
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
 	Status          string  `json:"status"`
-	// Rate 为 CNY 模式下下单时的汇率快照(USD→CNY),结算按快照换算,
+	// Rate 为 CNY/CUSTOM 模式下下单时的汇率快照(USD→展示货币),结算按快照换算,
 	// 防止管理员在订单待支付期间改汇率导致同一实付金额入账不同额度。
-	// 0 表示未快照(USD/TOKENS 模式或旧订单),结算时回退当前 Price。
+	// 0 表示未快照(USD/TOKENS 模式或旧订单),结算时回退当前汇率。
 	Rate float64 `json:"rate" gorm:"column:rate"`
 	// Currency / PaymentEnvironment 是 PaymentAsia 下单时的网关结算币种与环境
 	// 快照。回调按订单快照核对币种、选择验签 secret，因此待支付期间切换币种或
@@ -430,6 +430,9 @@ func topUpRate(topUp *TopUp) float64 {
 	if topUp.Rate > 0 {
 		return topUp.Rate
 	}
+	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCustom {
+		return operation_setting.GetUsdToCurrencyRate(operation_setting.Price)
+	}
 	return operation_setting.Price
 }
 
@@ -437,13 +440,16 @@ func topUpRate(topUp *TopUp) float64 {
 // 换算成额度,未截断。金额语义跟随展示类型:
 // - TOKENS: 订单 Amount 已 ÷QuotaPerUnit 存储,乘回即原 token 数
 // - CNY: Amount 为元,先 ÷汇率(订单快照,回退 Price)换成美元再 × QuotaPerUnit
-// - USD/CUSTOM: Amount 为美元,直接 × QuotaPerUnit
+// - CUSTOM: Amount 为自定义货币,先 ÷汇率(订单快照,回退当前 custom rate)换成美元再 × QuotaPerUnit
+// - USD: Amount 为美元,直接 × QuotaPerUnit
 // 需要换算部分金额(如渠道手续费)的调用方复用同一口径,保证与结算一致。
 func TopupAmountToQuotaDecimal(amount decimal.Decimal, rate float64) decimal.Decimal {
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
-		return rmbDecimalToUSD(amount, rate).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY, operation_setting.QuotaDisplayTypeCustom:
+		return amountToUSDByRate(amount, rate).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	default:
+		return amount.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
-	return amount.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 }
 
 // topupAmountToQuotaDecimal 是 TopupAmountToQuotaDecimal 的整数入口。
@@ -500,9 +506,9 @@ func topUpCreditedQuota(topUp *TopUp) int {
 	return common.QuotaFromDecimal(topupAmountToQuotaDecimal(topUp.Amount, topUpRate(topUp)))
 }
 
-// rmbDecimalToUSD 把人民币金额按汇率折算为美元金额。
+// amountToUSDByRate 把展示货币金额按汇率折算为美元金额。
 // 汇率非法(<=0/NaN/Inf)时回退 1,仅影响换算数值,不影响计费安全。
-func rmbDecimalToUSD(amount decimal.Decimal, exchangeRate float64) decimal.Decimal {
+func amountToUSDByRate(amount decimal.Decimal, exchangeRate float64) decimal.Decimal {
 	if exchangeRate <= 0 || math.IsNaN(exchangeRate) || math.IsInf(exchangeRate, 0) {
 		exchangeRate = 1
 	}

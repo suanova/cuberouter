@@ -133,7 +133,7 @@ $sign = hash('SHA512', http_build_query($fields) . $secret);
 | `PaymentAsiaSandboxMerchantToken` | string | "" | 沙箱 Merchant Token |
 | `PaymentAsiaSandboxSecret` | string | "" | 沙箱 Merchant Secret |
 | `PaymentAsiaCurrency` | string | `HKD` | 收款币种，只接受 HKD/USD（写入时校验） |
-| `PaymentAsiaUnitPrice` | float64 | 1.0 | 1 个展示单位折合的支付币种金额（CNY 站点+HKD 约 1.08；USD 站点+HKD 约 7.8） |
+| `PaymentAsiaUnitPrice` | float64 | 1.0 | 1 个展示单位折合的支付币种金额（CUSTOM/HKD 站点填 1；CNY 站点+HKD 约 1.08；USD 站点+HKD 约 7.8） |
 | `PaymentAsiaMinTopUp` | int | 1 | 全局最低充值数量（展示单位） |
 | `PaymentAsiaNotifyUrl` | string | "" | 覆盖默认回调地址 |
 | `PaymentAsiaReturnUrl` | string | "" | 覆盖默认回跳地址 |
@@ -228,7 +228,7 @@ func PaymentAsiaGatewayURL(sandbox, generic bool, token string) string
 4. 生成 `trade_no`：`PA{uid}NO{6位随机}{unix}`，校验 ≤36；插入 `TopUp`：
    - `Amount`：与 Epay 相同（TOKENS 模式先 ÷QuotaPerUnit 取整）
    - `Money`：四舍五入后的实付金额（网关币种）
-   - `Rate`：CNY 展示模式下快照 `operation_setting.Price`，否则 0
+   - `Rate`：CNY 展示模式下快照 `operation_setting.Price`；CUSTOM 展示模式下快照当前 `USD→custom` 汇率（`GetUsdToCurrencyRate(Price)`）；其它模式为 0
    - `Currency`：下单时的 `paymentAsiaCurrency()` 快照
    - `PaymentEnvironment`：下单时的 `live` / `sandbox` 快照
    - `PaymentMethod`：`paymentasia_xxx`
@@ -291,6 +291,8 @@ case PaymentProviderPaymentAsia:
 `ManualCompleteTopUp` 对非 Stripe 渠道已按 `Amount` 语义结算，无需改动，管理员补单天然可用。
 
 订单快照两列（`Currency` / `PaymentEnvironment`）只用于回调验签与核对，不参与额度换算；结算的事务骨架、行锁与幂等逻辑保持不变。
+
+> CUSTOM 展示与 CNY 同口径：`TopupAmountToQuotaDecimal` / `getTopUpQuota` 先把 Amount 除以 custom rate 换成 USD，再乘 QuotaPerUnit；下单时 `Rate` 快照 custom rate，旧订单回退当前 custom rate。这样 CUSTOM/HKD 下 100 HKD 到账约 98.4 HKD 等值额度，而不是按 USD 超发。
 
 ### 6.6 GetTopUpInfo（`controller/topup.go`）
 
@@ -434,7 +436,7 @@ PaymentAsia 渠道手续费改由用户承担，但**用户实付金额不变**�
   - 通道映射：每个 type → network/wallet；未知 type 拒绝。
 - 支付方式隔离：Epay 与订阅支付接口拒绝 `paymentasia_*`；`GetTopUpInfo` 不展示未知 `paymentasia_*`（把 type 判定抽成小函数后做表驱动测试）。
 - `controller/payment_webhook_availability_test.go`：`isPaymentAsiaTopUpEnabled` 在 live/sandbox 凭据组合下的真假值。
-- `model/topup_test.go`：`TestTopUpCreditedQuotaByProvider` 增加 paymentasia 行（CNY/USD 两种展示类型）。
+- `model/topup_test.go`：`TestTopUpCreditedQuotaByProvider` 增加 paymentasia 行（CNY/USD/CUSTOM 展示类型）。
 - 前端：`web/src/features/wallet/__tests__/` 增加 `isPaymentAsiaPayment` / Pay 币种符号的行为测试；受影响组件测试按 `web/AGENTS.md` 3.14 补充。
 - 命令：
   - 后端：`go test ./service/... ./model/... ./controller/... ./router/... -race`（按本地全量测试规程）；
