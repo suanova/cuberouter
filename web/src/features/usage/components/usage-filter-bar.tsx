@@ -99,6 +99,7 @@ function initialTokenOptionValue(
 export function UsageFilterBar(props: UsageFilterBarProps) {
   const { t } = useTranslation()
   const variant = props.variant ?? 'personal'
+  const showBilling = variant === 'personal'
   const [model, setModel] = useState(props.initial.model ?? '')
   const [token, setToken] = useState(
     initialTokenOptionValue(
@@ -108,7 +109,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
     )
   )
   const [billing, setBilling] = useState(
-    props.initial.billingAccountType || BILLING_ALL
+    showBilling ? props.initial.billingAccountType || BILLING_ALL : BILLING_ALL
   )
   const [organizationId, setOrganizationId] = useState<number | undefined>(
     props.initial.organizationId
@@ -116,11 +117,17 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
   const [userId, setUserId] = useState(
     props.initial.userId ? String(props.initial.userId) : ''
   )
+  const showOrganization =
+    variant === 'site' || (variant === 'personal' && billing === 'organization')
   const appliedTokenKeyRef = useRef('')
 
   useEffect(() => {
     setModel(props.initial.model ?? '')
-    setBilling(props.initial.billingAccountType || BILLING_ALL)
+    setBilling(
+      showBilling
+        ? props.initial.billingAccountType || BILLING_ALL
+        : BILLING_ALL
+    )
     setOrganizationId(props.initial.organizationId)
     setUserId(props.initial.userId ? String(props.initial.userId) : '')
   }, [
@@ -128,6 +135,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
     props.initial.billingAccountType,
     props.initial.organizationId,
     props.initial.userId,
+    showBilling,
   ])
 
   // 只在「已应用的密钥」变化时重置草稿；选项随日期刷新时不能清掉用户未应用的编辑。
@@ -175,7 +183,7 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
   const hasActiveFilters =
     model.trim() !== '' ||
     token.trim() !== '' ||
-    billing !== BILLING_ALL ||
+    (showBilling && billing !== BILLING_ALL) ||
     organizationId !== undefined ||
     userId !== ''
 
@@ -183,20 +191,19 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
     (option) => String(option.id) === token
   )
   const apply = () => {
-    props.onApply({
+    const values: UsageFilterValues = {
       model: model.trim() || undefined,
       token: selectedToken?.name ?? (token.trim() || undefined),
       tokenId: selectedToken?.id,
-      billingAccountType:
-        variant !== 'organization' && billing !== BILLING_ALL
-          ? billing
-          : undefined,
-      organizationId:
-        variant !== 'organization' && billing === 'organization'
-          ? organizationId
-          : undefined,
       userId: userId === '' ? undefined : Number(userId),
-    })
+    }
+    if (showBilling && billing !== BILLING_ALL) {
+      values.billingAccountType = billing
+    }
+    if (showOrganization) {
+      values.organizationId = organizationId
+    }
+    props.onApply(values)
   }
 
   const reset = () => {
@@ -245,62 +252,53 @@ export function UsageFilterBar(props: UsageFilterBarProps) {
               />
             </LogsFilterField>
           ) : null}
-          {variant !== 'organization' ? (
-            <>
-              <LogsFilterField>
-                <Select
-                  items={billingItems}
-                  value={billing}
-                  onValueChange={(next) => {
-                    const value = next ?? BILLING_ALL
-                    setBilling(value)
-                    if (value !== 'organization') setOrganizationId(undefined)
-                  }}
-                >
-                  <SelectTrigger size='sm' aria-label={t('Billing Account')}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {billingItems.map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </LogsFilterField>
-              {billing === 'organization' ? (
-                <LogsFilterField>
-                  <Select
-                    items={organizationItems}
-                    value={
-                      organizationId === undefined
-                        ? null
-                        : String(organizationId)
-                    }
-                    onValueChange={(next) =>
-                      setOrganizationId(
-                        next === null ? undefined : Number(next)
-                      )
-                    }
-                  >
-                    <SelectTrigger
-                      size='sm'
-                      aria-label={t('Select organization')}
-                    >
-                      <SelectValue placeholder={t('Select organization')} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {organizationItems.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </LogsFilterField>
-              ) : null}
-            </>
+          {showBilling ? (
+            <LogsFilterField>
+              <Select
+                items={billingItems}
+                value={billing}
+                onValueChange={(next) => {
+                  const value = next ?? BILLING_ALL
+                  setBilling(value)
+                  if (value !== 'organization') setOrganizationId(undefined)
+                }}
+              >
+                <SelectTrigger size='sm' aria-label={t('Billing Account')}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {billingItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </LogsFilterField>
+          ) : null}
+          {showOrganization ? (
+            <LogsFilterField>
+              <Select
+                items={organizationItems}
+                value={
+                  organizationId === undefined ? null : String(organizationId)
+                }
+                onValueChange={(next) =>
+                  setOrganizationId(next === null ? undefined : Number(next))
+                }
+              >
+                <SelectTrigger size='sm' aria-label={t('Select organization')}>
+                  <SelectValue placeholder={t('Select organization')} />
+                </SelectTrigger>
+                <SelectContent>
+                  {organizationItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </LogsFilterField>
           ) : null}
         </>
       }
