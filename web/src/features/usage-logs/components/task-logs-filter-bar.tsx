@@ -131,7 +131,25 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
             ...(searchParams.action
               ? { action: String(searchParams.action) }
               : {}),
-            ...(searchParams.billingAccountType
+            ...(searchParams.model
+              ? { model: String(searchParams.model) }
+              : {}),
+            ...(searchParams.token
+              ? { token: String(searchParams.token) }
+              : {}),
+            ...(searchParams.requestId
+              ? { requestId: String(searchParams.requestId) }
+              : {}),
+            ...(searchParams.platform
+              ? { platform: String(searchParams.platform) }
+              : {}),
+            ...(isAdmin && searchParams.username
+              ? { username: String(searchParams.username) }
+              : {}),
+            ...(isAdmin && searchParams.group
+              ? { group: String(searchParams.group) }
+              : {}),
+            ...(!isAdmin && searchParams.billingAccountType
               ? {
                   billingAccountType: String(searchParams.billingAccountType),
                 }
@@ -150,8 +168,15 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     searchParams.filter,
     searchParams.status,
     searchParams.action,
+    searchParams.model,
+    searchParams.token,
+    searchParams.requestId,
+    searchParams.platform,
+    searchParams.username,
+    searchParams.group,
     searchParams.billingAccountType,
     searchParams.organizationId,
+    isAdmin,
   ])
 
   const handleChange = useCallback(
@@ -271,10 +296,23 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
 
   const hasAdvancedFilters =
     !!filterValue ||
-    (isAdmin && !!taskFilters?.channel) ||
-    (isAdmin && !!taskFilters?.organizationId)
+    !!taskFilters?.model ||
+    !!taskFilters?.token ||
+    !!taskFilters?.requestId ||
+    !!taskFilters?.platform ||
+    (isAdmin &&
+      (!!taskFilters?.username ||
+        !!taskFilters?.group ||
+        !!taskFilters?.channel ||
+        !!taskFilters?.organizationId))
   const advancedFilterCount = [
     filterValue,
+    taskFilters?.model,
+    taskFilters?.token,
+    taskFilters?.requestId,
+    taskFilters?.platform,
+    isAdmin ? taskFilters?.username : undefined,
+    isAdmin ? taskFilters?.group : undefined,
     isAdmin ? taskFilters?.channel : undefined,
     isAdmin ? taskFilters?.organizationId : undefined,
   ].filter(Boolean).length
@@ -282,7 +320,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
     hasAdvancedFilters ||
     !!taskFilters?.status ||
     !!taskFilters?.action ||
-    !!taskFilters?.billingAccountType ||
+    (!isAdmin && !!taskFilters?.billingAccountType) ||
     (!isAdmin && !!taskFilters?.organizationId)
 
   const dateRangeFilter = (
@@ -312,6 +350,66 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
       />
     </LogsFilterField>
   )
+  const modelFilter = (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Model Name')}
+        value={taskFilters?.model ?? ''}
+        onChange={(e) => handleChange('model', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
+  const tokenFilter = (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Token Name')}
+        value={taskFilters?.token ?? ''}
+        onChange={(e) => handleChange('token', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
+  const requestIdFilter = (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Request ID')}
+        value={taskFilters?.requestId ?? ''}
+        onChange={(e) => handleChange('requestId', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
+  const platformFilter = (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Platform')}
+        value={taskFilters?.platform ?? ''}
+        onChange={(e) => handleChange('platform', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  )
+  const usernameFilter = isAdmin ? (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Username')}
+        value={taskFilters?.username ?? ''}
+        onChange={(e) => handleChange('username', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  ) : null
+  const groupFilter = isAdmin ? (
+    <LogsFilterField>
+      <LogsFilterInput
+        placeholder={t('Group')}
+        value={taskFilters?.group ?? ''}
+        onChange={(e) => handleChange('group', e.target.value)}
+        onKeyDown={handleKeyDown}
+      />
+    </LogsFilterField>
+  ) : null
   const channelFilter = isAdmin ? (
     <LogsFilterField>
       <LogsFilterInput
@@ -486,13 +584,19 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
           {dateRangeFilter}
           {statusFilter}
           {actionFilter}
-          {billingAccountTypeFilter}
+          {!isAdmin && billingAccountTypeFilter}
           {organizationFilter}
         </>
       }
       advancedFilters={
         <>
           {taskIdFilter}
+          {modelFilter}
+          {tokenFilter}
+          {requestIdFilter}
+          {platformFilter}
+          {usernameFilter}
+          {groupFilter}
           {channelFilter}
           {organizationIdFilter}
         </>
@@ -502,9 +606,15 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         <>
           {statusFilter}
           {actionFilter}
-          {billingAccountTypeFilter}
+          {!isAdmin && billingAccountTypeFilter}
           {organizationFilter}
           {taskIdFilter}
+          {modelFilter}
+          {tokenFilter}
+          {requestIdFilter}
+          {platformFilter}
+          {usernameFilter}
+          {groupFilter}
           {channelFilter}
           {organizationIdFilter}
         </>
@@ -514,7 +624,7 @@ export function TaskLogsFilterBar<TData>(props: TaskLogsFilterBarProps<TData>) {
         [
           taskFilters?.status,
           taskFilters?.action,
-          taskFilters?.billingAccountType,
+          !isAdmin ? taskFilters?.billingAccountType : undefined,
           !isAdmin ? taskFilters?.organizationId : undefined,
         ].filter(Boolean).length
       }

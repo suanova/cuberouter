@@ -80,6 +80,12 @@ export function buildSearchParams(
         ...(taskFilters.taskId && { filter: taskFilters.taskId }),
         ...(taskFilters.status && { status: taskFilters.status }),
         ...(taskFilters.action && { action: taskFilters.action }),
+        ...(taskFilters.model && { model: taskFilters.model }),
+        ...(taskFilters.token && { token: taskFilters.token }),
+        ...(taskFilters.requestId && { requestId: taskFilters.requestId }),
+        ...(taskFilters.platform && { platform: taskFilters.platform }),
+        ...(taskFilters.username && { username: taskFilters.username }),
+        ...(taskFilters.group && { group: taskFilters.group }),
         ...(taskFilters.billingAccountType && {
           billingAccountType: taskFilters.billingAccountType,
         }),
