@@ -58,6 +58,7 @@ import type {
 } from '@/features/subscriptions/types'
 import { cn } from '@/lib/utils'
 
+import { isPaymentAsiaPayment } from '../lib'
 import type { PaymentMethod, TopupInfo } from '../types'
 
 interface SubscriptionPlansCardProps {
@@ -69,7 +70,11 @@ interface SubscriptionPlansCardProps {
 
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   return payMethods.filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem'
+    (m) =>
+      m?.type &&
+      m.type !== 'stripe' &&
+      m.type !== 'creem' &&
+      !isPaymentAsiaPayment(m.type)
   )
 }
 

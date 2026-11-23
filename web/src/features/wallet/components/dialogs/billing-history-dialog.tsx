@@ -64,6 +64,14 @@ interface BillingHistoryDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+const BILLING_SKELETON_KEYS = [
+  'billing-skeleton-1',
+  'billing-skeleton-2',
+  'billing-skeleton-3',
+  'billing-skeleton-4',
+  'billing-skeleton-5',
+]
+
 export function BillingHistoryDialog({
   open,
   onOpenChange,
@@ -151,10 +159,10 @@ export function BillingHistoryDialog({
 
           {/* Records List */}
           <div className='max-h-[min(54vh,520px)] overflow-y-auto pr-1'>
-            {loading ? (
+            {loading && (
               <div className='space-y-3'>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className='rounded-lg border p-3 sm:p-4'>
+                {BILLING_SKELETON_KEYS.map((key) => (
+                  <div key={key} className='rounded-lg border p-3 sm:p-4'>
                     <div className='flex items-start justify-between'>
                       <div className='flex-1 space-y-2'>
                         <Skeleton className='h-4 w-48' />
@@ -170,7 +178,8 @@ export function BillingHistoryDialog({
                   </div>
                 ))}
               </div>
-            ) : records.length === 0 ? (
+            )}
+            {!loading && records.length === 0 && (
               <div className='text-muted-foreground flex min-h-40 flex-col items-center justify-center py-10 text-center'>
                 <p className='text-sm font-medium'>
                   {t('No billing records found')}
@@ -181,7 +190,8 @@ export function BillingHistoryDialog({
                     : t('Your transaction history will appear here')}
                 </p>
               </div>
-            ) : (
+            )}
+            {!loading && records.length > 0 && (
               <div className='space-y-3'>
                 {records.map((record) => {
                   const statusConfig = getStatusConfig(record.status)
@@ -264,7 +274,9 @@ export function BillingHistoryDialog({
                             {t('Payment')}
                           </Label>
                           <div className='text-sm font-semibold text-red-600'>
-                            {formatNumber(record.money)}
+                            {record.currency
+                              ? `${record.currency} ${formatNumber(record.money)}`
+                              : formatNumber(record.money)}
                           </div>
                         </div>
                       </div>

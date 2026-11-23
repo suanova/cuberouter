@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
 import { useStatus } from '@/hooks/use-status'
@@ -47,6 +48,7 @@ import {
 import {
   getDefaultPaymentType,
   getMinTopupAmount,
+  getPaymentMethodMinTopup,
   dispatchSelectedPayment,
 } from './lib'
 import type {
@@ -88,6 +90,16 @@ export function Wallet(props: WalletProps) {
   const { currency } = useSystemConfig()
   const { topupInfo, presetAmounts, loading: topupLoading } = useTopupInfo()
 
+  // Currency of the gateway the live quote belongs to: the selected method,
+  // or the default one before the user picks.
+  const defaultPaymentMethod = useMemo(() => {
+    const defaultPaymentType = getDefaultPaymentType(topupInfo)
+    return topupInfo?.pay_methods?.find(
+      (method) => method.type === defaultPaymentType
+    )
+  }, [topupInfo])
+  const effectivePaymentMethod = selectedPaymentMethod ?? defaultPaymentMethod
+
   // Calculate effective exchange rate - when display type is USD, use rate of 1
   const effectiveUsdExchangeRate = useMemo(() => {
     return currency?.quotaDisplayType === 'USD'
@@ -96,6 +108,7 @@ export function Wallet(props: WalletProps) {
   }, [currency?.quotaDisplayType, currency?.usdExchangeRate])
   const {
     amount: paymentAmount,
+    paymentFeeInfo,
     calculating,
     processing,
     calculatePaymentAmount,
@@ -181,14 +194,27 @@ export function Wallet(props: WalletProps) {
     setPaymentLoading(method.type)
 
     try {
-      // Validate minimum topup
-      const minTopup = getMinTopupAmount(topupInfo)
+      // Validate minimum topup: a method's own minimum or its gateway minimum
+      // may exceed the site-wide one (PaymentAsia's minimum applies to every
+      // PaymentAsia channel).
+      const minTopup = getPaymentMethodMinTopup(topupInfo, method)
       if (topupAmount < minTopup) {
         return
       }
 
       // Calculate payment amount and show confirmation dialog
-      await calculatePaymentAmount(topupAmount, method.type)
+      const quote = await calculatePaymentAmount(topupAmount, method.type)
+      // A failed quote (e.g. the fee exceeds the amount) yields 0; never open
+      // the confirm dialog without a payable amount, and surface the reason.
+      if (!quote) {
+        return
+      }
+      if (quote.amount <= 0) {
+        if (quote.error) {
+          toast.error(quote.error)
+        }
+        return
+      }
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -268,7 +294,19 @@ export function Wallet(props: WalletProps) {
     setPaymentLoading(loadingKey)
 
     try {
-      await calculatePaymentAmount(topupAmount, PAYMENT_TYPES.WAFFO)
+      const quote = await calculatePaymentAmount(
+        topupAmount,
+        PAYMENT_TYPES.WAFFO
+      )
+      if (!quote) {
+        return
+      }
+      if (quote.amount <= 0) {
+        if (quote.error) {
+          toast.error(quote.error)
+        }
+        return
+      }
       setConfirmDialogOpen(true)
     } finally {
       setPaymentLoading(null)
@@ -315,6 +353,7 @@ export function Wallet(props: WalletProps) {
                   calculating={calculating}
                   onPaymentMethodSelect={handlePaymentMethodSelect}
                   paymentLoading={paymentLoading}
+                  paymentCurrency={effectivePaymentMethod?.currency}
                   redemptionCode={redemptionCode}
                   onRedemptionCodeChange={setRedemptionCode}
                   onRedeem={handleRedeem}
@@ -364,6 +403,7 @@ export function Wallet(props: WalletProps) {
         topupAmount={topupAmount}
         paymentAmount={paymentAmount}
         paymentMethod={selectedPaymentMethod}
+        feeInfo={paymentFeeInfo ?? undefined}
         calculating={calculating}
         processing={processing || waffoProcessing || pancakeProcessing}
         discountRate={getDiscountRate()}

@@ -120,6 +120,18 @@ export async function calculateWaffoAmount(
 }
 
 /**
+ * Calculate payment amount for PaymentAsia payment
+ */
+export async function calculatePaymentAsiaAmount(
+  request: AmountRequest
+): Promise<AmountResponse> {
+  const res = await api.post('/api/user/paymentasia/amount', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return res.data
+}
+
+/**
  * Request regular payment
  */
 export async function requestPayment(
@@ -180,6 +192,21 @@ export async function requestWaffoPayment(
     skipBusinessError: true,
   } as Record<string, unknown>)
   return res.data
+}
+
+/**
+ * Request PaymentAsia payment
+ */
+export async function requestPaymentAsiaPayment(
+  request: PaymentRequest
+): Promise<PaymentResponse> {
+  const res = await api.post('/api/user/paymentasia/pay', request, {
+    skipBusinessError: true,
+  } as Record<string, unknown>)
+  return {
+    ...res.data,
+    url: res.data.url || (res as unknown as { url?: string }).url,
+  }
 }
 
 /**

@@ -63,6 +63,16 @@ export const PAYMENT_METHOD_NAMES: Record<string, string> = {
   alipay: 'Alipay',
   wxpay: 'WeChat Pay',
   waffo: 'Waffo',
+  paymentasia_alipay: 'Alipay',
+  paymentasia_alipaycn: 'Alipay CN',
+  paymentasia_alipayhk: 'AlipayHK',
+  paymentasia_wechat: 'WeChat Pay',
+  paymentasia_cup: 'UnionPay',
+  paymentasia_creditcard: 'Credit Card',
+  paymentasia_fps: 'FPS',
+  paymentasia_octopus: 'Octopus',
+  paymentasia_payme: 'PayMe',
+  paymentasia_generic: 'PaymentAsia',
 }
 
 /**
