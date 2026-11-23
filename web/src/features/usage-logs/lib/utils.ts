@@ -210,7 +210,9 @@ export function buildApiParams(config: {
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
     ...(!isAdmin ? { include_organization: true } : {}),
-    ...(billingAccountType ? { billing_account_type: billingAccountType } : {}),
+    ...(!isAdmin && billingAccountType
+      ? { billing_account_type: billingAccountType }
+      : {}),
     ...(searchParams.organizationId
       ? { organization_id: Number(searchParams.organizationId) || 0 }
       : {}),

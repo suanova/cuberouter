@@ -22,7 +22,7 @@ import { describe, expect, test } from 'vitest'
 import { buildApiParams } from '../utils'
 
 describe('admin billing filters in log API params', () => {
-  test('passes the billing type and organization id for an admin view', () => {
+  test('drops the billing type but keeps the organization id for an admin view', () => {
     const params = buildApiParams({
       page: 1,
       pageSize: 20,
@@ -33,7 +33,7 @@ describe('admin billing filters in log API params', () => {
       isAdmin: true,
     })
 
-    expect(params.billing_account_type).toBe('organization')
+    expect(params).not.toHaveProperty('billing_account_type')
     expect(params.organization_id).toBe(7)
   })
 

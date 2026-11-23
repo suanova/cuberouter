@@ -167,8 +167,9 @@ export function CommonLogsFilterBar<TData>(
       requestId: searchParams.requestId || undefined,
       upstreamRequestId: searchParams.upstreamRequestId || undefined,
       billingAccountType:
-        searchParams.billingAccountType === 'personal' ||
-        searchParams.billingAccountType === 'organization'
+        !isAdmin &&
+        (searchParams.billingAccountType === 'personal' ||
+          searchParams.billingAccountType === 'organization')
           ? searchParams.billingAccountType
           : undefined,
       organizationId: searchParams.organizationId || undefined,
@@ -191,6 +192,7 @@ export function CommonLogsFilterBar<TData>(
     searchParams.billingAccountType,
     searchParams.organizationId,
     searchParams.type,
+    isAdmin,
   ])
   const [draft, setDraft] = useState<CommonLogDraft>(() => searchState)
   const activeDraft =
@@ -271,7 +273,7 @@ export function CommonLogsFilterBar<TData>(
     filters.model,
     filters.group,
     hasTypeFilter ? 'type' : undefined,
-    filters.billingAccountType,
+    !isAdmin ? filters.billingAccountType : undefined,
     filters.token,
     isAdmin ? filters.username : undefined,
     isAdmin ? filters.channel : undefined,
@@ -499,7 +501,7 @@ export function CommonLogsFilterBar<TData>(
   const selectFilters = (
     <>
       {typeFilter}
-      {billingAccountTypeFilter}
+      {!isAdmin && billingAccountTypeFilter}
       {organizationFilter}
     </>
   )
