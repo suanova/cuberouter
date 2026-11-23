@@ -376,7 +376,26 @@ func GetAllTask(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
-	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp, ChannelID: c.Query("channel_id"), BillingAccountType: c.Query("billing_account_type"), OrganizationID: organizationId}
+	if err := validateTaskLogTextFilters(c.Query("model_name"), c.Query("username")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	queryParams := model.SyncTaskQueryParams{
+		Platform:           constant.TaskPlatform(c.Query("platform")),
+		TaskID:             c.Query("task_id"),
+		Status:             c.Query("status"),
+		Action:             c.Query("action"),
+		StartTimestamp:     startTimestamp,
+		EndTimestamp:       endTimestamp,
+		ChannelID:          c.Query("channel_id"),
+		BillingAccountType: c.Query("billing_account_type"),
+		OrganizationID:     organizationId,
+		ModelName:          c.Query("model_name"),
+		TokenName:          c.Query("token_name"),
+		Group:              c.Query("group"),
+		Username:           c.Query("username"),
+		RequestID:          c.Query("request_id"),
+	}
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	if err := service.HydrateOrganizationTaskNames(items); err != nil {
 		common.ApiError(c, err)
@@ -393,7 +412,25 @@ func GetUserTask(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
 	organizationId, _ := strconv.Atoi(c.Query("organization_id"))
-	queryParams := model.SyncTaskQueryParams{Platform: constant.TaskPlatform(c.Query("platform")), TaskID: c.Query("task_id"), Status: c.Query("status"), Action: c.Query("action"), StartTimestamp: startTimestamp, EndTimestamp: endTimestamp, IncludeOrganization: c.Query("include_organization") == "true", BillingAccountType: c.Query("billing_account_type"), OrganizationID: organizationId}
+	if err := validateTaskLogTextFilters(c.Query("model_name")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	queryParams := model.SyncTaskQueryParams{
+		Platform:            constant.TaskPlatform(c.Query("platform")),
+		TaskID:              c.Query("task_id"),
+		Status:              c.Query("status"),
+		Action:              c.Query("action"),
+		StartTimestamp:      startTimestamp,
+		EndTimestamp:        endTimestamp,
+		IncludeOrganization: c.Query("include_organization") == "true",
+		BillingAccountType:  c.Query("billing_account_type"),
+		OrganizationID:      organizationId,
+		ModelName:           c.Query("model_name"),
+		TokenName:           c.Query("token_name"),
+		Group:               c.Query("group"),
+		RequestID:           c.Query("request_id"),
+	}
 	items := model.TaskGetAllUserTask(userID, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	if err := service.HydrateOrganizationTaskNames(items); err != nil {
 		common.ApiError(c, err)
@@ -402,6 +439,19 @@ func GetUserTask(c *gin.Context) {
 	pageInfo.SetTotal(int(model.TaskCountAllUserTask(userID, queryParams)))
 	pageInfo.SetItems(tasksToDto(items, false, common.RoleCommonUser))
 	common.ApiSuccess(c, pageInfo)
+}
+
+// validateTaskLogTextFilters rejects malformed LIKE patterns up front so task
+// log search matches the common-log model/username filter behavior.
+func validateTaskLogTextFilters(values ...string) error {
+	for _, value := range values {
+		if strings.Contains(value, "%") {
+			if _, err := model.SanitizeLikePattern(value); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool, viewerRole int) []*dto.TaskDto {

@@ -163,4 +163,26 @@ describe('UsageFilterBar dropdowns', () => {
       expect.objectContaining({ userId: 102 })
     )
   })
+
+  test('site usage hides billing and keeps the organization picker', () => {
+    const onApply = vi.fn()
+    render(
+      <UsageFilterBar
+        table={table}
+        initial={{}}
+        organizations={[{ id: 9, name: 'Acme' }]}
+        modelOptions={[]}
+        tokenOptions={[]}
+        variant='site'
+        loading={false}
+        onApply={onApply}
+        onReset={() => undefined}
+      />
+    )
+
+    expect(screen.queryByText('All Billing Types')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('combobox', { name: 'Select organization' })
+    ).toBeInTheDocument()
+  })
 })

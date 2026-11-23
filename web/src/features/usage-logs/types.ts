@@ -74,6 +74,12 @@ export interface TaskLogFilters extends CommonFilters {
   action?: string
   billingAccountType?: string
   organizationId?: string
+  model?: string
+  token?: string
+  group?: string
+  username?: string
+  requestId?: string
+  platform?: string
 }
 
 /**
@@ -488,6 +494,11 @@ export interface GetTaskLogsParams {
   platform?: string
   status?: string
   action?: string
+  model_name?: string
+  token_name?: string
+  group?: string
+  username?: string
+  request_id?: string
   include_organization?: boolean
   billing_account_type?: 'personal' | 'organization'
   organization_id?: number

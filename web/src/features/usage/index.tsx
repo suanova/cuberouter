@@ -137,7 +137,7 @@ export function UsagePage(props: UsagePageProps) {
     ...(props.search.model ? { model_name: props.search.model } : {}),
     ...(props.search.token ? { token_name: props.search.token } : {}),
     ...(props.search.tokenId ? { token_id: Number(props.search.tokenId) } : {}),
-    ...(props.search.billingAccountType
+    ...(props.search.billingAccountType && scope !== 'all'
       ? { billing_account_type: props.search.billingAccountType }
       : {}),
     ...(props.search.organizationId
@@ -191,7 +191,7 @@ export function UsagePage(props: UsagePageProps) {
         ...(props.search.tokenId
           ? { token_id: Number(props.search.tokenId) }
           : {}),
-        ...(props.search.billingAccountType
+        ...(props.search.billingAccountType && scope !== 'all'
           ? { billing_account_type: props.search.billingAccountType }
           : {}),
         ...(props.search.organizationId
@@ -249,7 +249,8 @@ export function UsagePage(props: UsagePageProps) {
     token: props.search.token,
     tokenId: props.search.tokenId ? Number(props.search.tokenId) : undefined,
     userId: props.search.userId ? Number(props.search.userId) : undefined,
-    billingAccountType: props.search.billingAccountType,
+    billingAccountType:
+      scope === 'all' ? undefined : props.search.billingAccountType,
     organizationId: props.search.organizationId
       ? Number(props.search.organizationId)
       : undefined,

@@ -426,4 +426,42 @@ describe('UsagePage', () => {
       { variant: 'site' }
     )
   })
+
+  test('site-wide requests and exports omit a stale billing filter', async () => {
+    useAuthStore.getState().auth.setUser({
+      id: 1,
+      username: 'root',
+      role: ROLE.ADMIN,
+    })
+    getSiteUsageMock.mockResolvedValue({
+      success: true,
+      data: siteUsageData(),
+    })
+    exportSiteUsageMock.mockResolvedValue({
+      success: true,
+      data: {
+        granularity: 'hour',
+        rows: siteUsageData().rows.items,
+        total: 1,
+        truncated: false,
+      },
+    })
+
+    renderUsagePage({
+      start: '2026-11-03',
+      end: '2026-11-03',
+      billingAccountType: 'organization',
+    })
+
+    await screen.findByTestId('usage-table')
+    expect(getSiteUsageMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      'billing_account_type'
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: 'export-hour' }))
+    await waitFor(() => expect(exportSiteUsageMock).toHaveBeenCalled())
+    expect(exportSiteUsageMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      'billing_account_type'
+    )
+  })
 })

@@ -49,6 +49,7 @@ const usageLogsSearchSchema = z.object({
   organizationId: z.string().optional().catch(''),
   status: z.string().optional().catch(''),
   action: z.string().optional().catch(''),
+  platform: z.string().optional().catch(''),
   startTime: z.number().optional(),
   endTime: z.number().optional(),
 })
@@ -71,10 +72,18 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
     const hasBillingSearch =
       Boolean(search?.billingAccountType) || Boolean(search?.organizationId)
     const hasTaskSearch = Boolean(search?.status) || Boolean(search?.action)
+    const hasPlatformSearch = Boolean(search?.platform)
     const shouldClearType = params.section !== 'common' && hasTypeSearch
     const shouldClearBilling = params.section === 'drawing' && hasBillingSearch
     const shouldClearTask = params.section !== 'task' && hasTaskSearch
-    if (shouldClearType || shouldClearBilling || shouldClearTask) {
+    const shouldClearPlatform =
+      params.section !== 'task' && hasPlatformSearch
+    if (
+      shouldClearType ||
+      shouldClearBilling ||
+      shouldClearTask ||
+      shouldClearPlatform
+    ) {
       throw redirect({
         to: '/usage-logs/$section',
         params: { section: params.section },
@@ -85,6 +94,7 @@ export const Route = createFileRoute('/_authenticated/usage-logs/$section')({
             ? { billingAccountType: undefined, organizationId: undefined }
             : {}),
           ...(shouldClearTask ? { status: undefined, action: undefined } : {}),
+          ...(shouldClearPlatform ? { platform: undefined } : {}),
         },
         replace: true,
       })

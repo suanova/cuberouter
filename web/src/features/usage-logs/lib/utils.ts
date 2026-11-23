@@ -210,7 +210,9 @@ export function buildApiParams(config: {
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
     ...(!isAdmin ? { include_organization: true } : {}),
-    ...(billingAccountType ? { billing_account_type: billingAccountType } : {}),
+    ...(!isAdmin && billingAccountType
+      ? { billing_account_type: billingAccountType }
+      : {}),
     ...(searchParams.organizationId
       ? { organization_id: Number(searchParams.organizationId) || 0 }
       : {}),
@@ -294,8 +296,26 @@ export async function fetchLogsByCategory(
           ...(searchParams.action
             ? { action: String(searchParams.action) }
             : {}),
+          ...(searchParams.model
+            ? { model_name: String(searchParams.model) }
+            : {}),
+          ...(searchParams.token
+            ? { token_name: String(searchParams.token) }
+            : {}),
+          ...(searchParams.requestId
+            ? { request_id: String(searchParams.requestId) }
+            : {}),
+          ...(searchParams.platform
+            ? { platform: String(searchParams.platform) }
+            : {}),
+          ...(isAdmin && searchParams.username
+            ? { username: String(searchParams.username) }
+            : {}),
+          ...(isAdmin && searchParams.group
+            ? { group: String(searchParams.group) }
+            : {}),
           ...(!isAdmin ? { include_organization: true } : {}),
-          ...(searchParams.billingAccountType
+          ...(!isAdmin && searchParams.billingAccountType
             ? {
                 billing_account_type: String(
                   searchParams.billingAccountType

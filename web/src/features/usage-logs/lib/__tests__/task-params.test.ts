@@ -56,12 +56,19 @@ describe('task log API params', () => {
         action: 'generate',
         billingAccountType: 'organization',
         organizationId: '7',
+        model: 'wan3.0-video',
+        token: 'key-a',
+        requestId: 'req-1',
+        platform: 'kling',
+        username: 'someone',
+        group: 'default',
         startTime: 1_700_000_000_000,
         endTime: 1_700_003_600_000,
       },
     })
 
-    expect(getUserTaskLogsMock).toHaveBeenCalledWith(
+    const params = getUserTaskLogsMock.mock.calls[0]?.[0]
+    expect(params).toEqual(
       expect.objectContaining({
         task_id: 'task-1',
         status: 'SUCCESS',
@@ -69,8 +76,14 @@ describe('task log API params', () => {
         include_organization: true,
         billing_account_type: 'organization',
         organization_id: 7,
+        model_name: 'wan3.0-video',
+        token_name: 'key-a',
+        request_id: 'req-1',
+        platform: 'kling',
       })
     )
+    expect(params).not.toHaveProperty('username')
+    expect(params).not.toHaveProperty('group')
   })
 
   test('the admin page uses the all-tasks endpoint without a union flag', async () => {
@@ -84,6 +97,12 @@ describe('task log API params', () => {
       searchParams: {
         channel: '3',
         billingAccountType: 'personal',
+        model: 'wan3.0-video',
+        token: 'key-a',
+        requestId: 'req-1',
+        platform: 'kling',
+        username: 'alice',
+        group: 'default',
       },
     })
 
@@ -91,9 +110,15 @@ describe('task log API params', () => {
     expect(params).toEqual(
       expect.objectContaining({
         channel_id: '3',
-        billing_account_type: 'personal',
+        model_name: 'wan3.0-video',
+        token_name: 'key-a',
+        request_id: 'req-1',
+        platform: 'kling',
+        username: 'alice',
+        group: 'default',
       })
     )
+    expect(params).not.toHaveProperty('billing_account_type')
     expect(params).not.toHaveProperty('include_organization')
   })
 })
