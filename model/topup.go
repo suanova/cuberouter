@@ -38,7 +38,8 @@ type TopUp struct {
 	// 以下五列是 PaymentAsia 渠道手续费快照（additive migration，无数据回填）。
 	// Amount 仍是用户填写的展示数量，Money 仍是用户实付（不做 gross-up）；
 	// Fee/FeeFixed 以网关币种记录，NetAmount 是扣费后的展示数量，NetQuota 是
-	// 实际入账额度。NetQuota=0 表示旧订单或未启用手续费，结算回退全额入账。
+	// 实际入账额度。新订单总是快照 NetQuota（免手续费时等于全额）；NetQuota=0
+	// 仅表示旧订单，结算回退全额入账。手续费是否存在以 FeeRate > 0 判断。
 	Fee       float64 `json:"fee" gorm:"default:0"`
 	FeeRate   float64 `json:"fee_rate" gorm:"default:0"`
 	FeeFixed  float64 `json:"fee_fixed" gorm:"default:0"`
@@ -199,7 +200,10 @@ func UpdatePendingTopUpStatus(tradeNo string, expectedPaymentProvider string, ta
 	return DB.Transaction(func(tx *gorm.DB) error {
 		topUp := &TopUp{}
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
-			return ErrTopUpNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
 		}
 		if expectedPaymentProvider != "" && topUp.PaymentProvider != expectedPaymentProvider {
 			return ErrPaymentMethodMismatch
@@ -301,7 +305,10 @@ func RechargePaymentAsia(tradeNo string, meta PaymentAsiaRechargeMeta, callerIp 
 	topUp := &TopUp{}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
-			return ErrTopUpNotFound
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTopUpNotFound
+			}
+			return err
 		}
 		if topUp.PaymentProvider != PaymentProviderPaymentAsia {
 			return ErrPaymentMethodMismatch
@@ -340,7 +347,7 @@ func RechargePaymentAsia(tradeNo string, meta PaymentAsiaRechargeMeta, callerIp 
 		topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money, topUp.Fee, topUp.FeeRate, topUp.FeeFixed, topUp.NetAmount, topUp.NetQuota, meta.RequestReference))
 
 	logContent := fmt.Sprintf("PaymentAsia充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money)
-	if topUp.NetQuota > 0 {
+	if topUp.FeeRate > 0 {
 		feeDisplay := decimal.NewFromInt(topUp.Amount).Sub(decimal.NewFromFloat(topUp.NetAmount))
 		logContent = fmt.Sprintf("PaymentAsia充值成功，充值金额: %s，支付金额：%.2f，手续费: %s，实际到账: %v",
 			decimal.NewFromFloat(topUp.NetAmount).StringFixed(2), topUp.Money, feeDisplay.StringFixed(4), logger.FormatQuota(quotaToAdd))
@@ -351,7 +358,7 @@ func RechargePaymentAsia(tradeNo string, meta PaymentAsiaRechargeMeta, callerIp 
 		"request_reference": meta.RequestReference,
 		"channel":           meta.Channel,
 	}
-	if topUp.NetQuota > 0 {
+	if topUp.FeeRate > 0 {
 		metaFields["fee"] = topUp.Fee
 		metaFields["fee_rate"] = topUp.FeeRate
 		metaFields["fee_fixed"] = topUp.FeeFixed
@@ -794,7 +801,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 		payMoney = topUp.Money
 		paymentMethod = topUp.PaymentMethod
 		logContent = fmt.Sprintf("管理员补单成功，充值金额: %v，支付金额：%f", logger.FormatQuota(quotaToAdd), payMoney)
-		if topUp.PaymentProvider == PaymentProviderPaymentAsia && topUp.NetQuota > 0 {
+		if topUp.PaymentProvider == PaymentProviderPaymentAsia && topUp.FeeRate > 0 {
 			auditMeta = map[string]interface{}{
 				"trade_no":   topUp.TradeNo,
 				"currency":   topUp.Currency,

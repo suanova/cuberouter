@@ -324,6 +324,46 @@ func TestRechargePaymentAsiaCreditsNetQuota(t *testing.T) {
 	assert.Contains(t, logs[0].Content, "手续费", "用户可见日志必须说明手续费")
 }
 
+// TestRechargePaymentAsiaFeeFreeSnapshotDoesNotLogFee 免手续费订单只快照全额
+// 入账额度，日志与审计字段不得出现手续费信息（手续费存在信号不能再用
+// NetQuota > 0）。
+func TestRechargePaymentAsiaFeeFreeSnapshotDoesNotLogFee(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeUSD)
+
+	user := insertUserForPaymentGuardTest(t, 608, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PAFEEFREESNAPSHOT",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+		NetQuota:        50_000_000,
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, paymentAsiaTestMeta(), "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 50_000_000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	var logs []Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", user.Id, LogTypeTopup).Find(&logs).Error)
+	require.Len(t, logs, 1)
+	assert.NotContains(t, logs[0].Content, "手续费")
+
+	otherMap, err := common.StrToMap(logs[0].Other)
+	require.NoError(t, err)
+	adminInfo, ok := otherMap["admin_info"].(map[string]interface{})
+	require.True(t, ok, "topup log must carry admin_info")
+	assert.NotContains(t, adminInfo, "fee")
+	assert.NotContains(t, adminInfo, "fee_rate")
+	assert.NotContains(t, adminInfo, "net_quota")
+}
+
 // TestRechargePaymentAsiaLegacyOrderCreditsFullAmount 无快照的旧订单
 // (NetQuota=0) 不受手续费功能影响，仍按订单 Amount 全额入账。
 func TestRechargePaymentAsiaLegacyOrderCreditsFullAmount(t *testing.T) {

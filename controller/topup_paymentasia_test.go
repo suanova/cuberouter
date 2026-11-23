@@ -324,6 +324,7 @@ func TestGetTopUpInfoAttachesPaymentAsiaCurrencyWithoutMutatingConfig(t *testing
 	require.Equal(t, http.StatusOK, recorder.Code)
 	var response struct {
 		Data struct {
+			EnableOnlineTopUp      bool                `json:"enable_online_topup"`
 			EnablePaymentAsiaTopUp bool                `json:"enable_paymentasia_topup"`
 			PaymentAsiaMinTopUp    int64               `json:"paymentasia_min_topup"`
 			PayMethods             []map[string]string `json:"pay_methods"`
@@ -336,6 +337,8 @@ func TestGetTopUpInfoAttachesPaymentAsiaCurrencyWithoutMutatingConfig(t *testing
 	assert.Equal(t, "HKD", response.Data.PayMethods[0]["currency"])
 	assert.True(t, response.Data.EnablePaymentAsiaTopUp)
 	assert.Equal(t, int64(1), response.Data.PaymentAsiaMinTopUp)
+	assert.False(t, response.Data.EnableOnlineTopUp,
+		"PayMethods 只有 PaymentAsia 通道时不能宣称 Epay 可用")
 
 	for _, method := range operation_setting.PayMethods {
 		_, hasCurrency := method["currency"]
@@ -367,6 +370,25 @@ func TestGetTopUpInfoRequiresEnabledCredentialsForPaymentAsiaTopUp(t *testing.T)
 	// 凭据缺失时 PaymentAsia 方法整体隐藏，不会退化展示为 Epay 方法
 	assert.False(t, response.Data.EnablePaymentAsiaTopUp)
 	assert.Empty(t, response.Data.PayMethods)
+}
+
+// TestGetMinTopupFallsBackWhenQuotaPerUnitInvalid 覆盖 TOKENS 模式下
+// QuotaPerUnit 非法（NaN/Inf/非正）时的最低充值计算：必须回退站点最低值而不是
+// 让 decimal.NewFromFloat panic。
+func TestGetMinTopupFallsBackWhenQuotaPerUnitInvalid(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	operation_setting.SetQuotaDisplayTypeForTest(operation_setting.QuotaDisplayTypeTokens)
+	origMinTopUp := operation_setting.MinTopUp
+	t.Cleanup(func() { operation_setting.MinTopUp = origMinTopUp })
+	operation_setting.MinTopUp = 3
+
+	for _, quotaPerUnit := range []float64{math.NaN(), math.Inf(1), math.Inf(-1), 0, -1} {
+		common.QuotaPerUnit = quotaPerUnit
+		require.NotPanics(t, func() {
+			assert.Equal(t, int64(3), getMinTopup(),
+				"QuotaPerUnit=%v 时必须回退站点最低充值", quotaPerUnit)
+		})
+	}
 }
 
 // initPaymentAsiaControllerColumnNames 触发 model 的保留字列初始化：controller
@@ -1062,12 +1084,15 @@ func TestGetTopUpInfoFiltersPaymentAsiaMethodsByCurrency(t *testing.T) {
 			require.Equal(t, http.StatusOK, recorder.Code)
 			var response struct {
 				Data struct {
+					EnableOnlineTopUp      bool                `json:"enable_online_topup"`
 					EnablePaymentAsiaTopUp bool                `json:"enable_paymentasia_topup"`
 					PayMethods             []map[string]string `json:"pay_methods"`
 				} `json:"data"`
 			}
 			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 
+			assert.True(t, response.Data.EnableOnlineTopUp,
+				"pay_methods 中存在可选的 Epay 方法时 enable_online_topup 必须为 true")
 			gotTypes := make([]string, 0, len(response.Data.PayMethods))
 			for _, method := range response.Data.PayMethods {
 				gotTypes = append(gotTypes, method["type"])
@@ -1314,7 +1339,9 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			setting.PaymentAsiaCurrency = testCase.currency
+			// 配置故意固定为 HKD：手续费助手必须使用调用方传入的币种，
+			// 而不是在请求内部再次读取全局配置。
+			setting.PaymentAsiaCurrency = "HKD"
 			setting.PaymentAsiaUnitPrice = testCase.unitPrice
 			operation_setting.SetQuotaDisplayTypeForTest(testCase.displayType)
 			operation_setting.GetPaymentSetting().AmountDiscount = nil
@@ -1325,6 +1352,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 				"default",
 				testCase.method,
 				testCase.network,
+				testCase.currency,
 			)
 			require.NoError(t, err)
 			assert.InDelta(t, testCase.wantFee, breakdown.Fee, 1e-9)
@@ -1347,7 +1375,7 @@ func TestCalculatePaymentAsiaServiceFeeRejectsFeeAtOrAboveAmount(t *testing.T) {
 	setting.PaymentAsiaUnitPrice = 1
 
 	// 信用卡固定费 HK$2 已超过 1 元实付。
-	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard")
+	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard", "HKD")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "手续费")
 }
@@ -1437,9 +1465,9 @@ func TestRequestPaymentAsiaPaySnapshotsServiceFee(t *testing.T) {
 	assert.Equal(t, 49_200_000, topUp.NetQuota)
 }
 
-// TestRequestPaymentAsiaPayWithoutServiceChargeKeepsLegacySnapshot 开关关闭时
-// 订单不写手续费快照，结算按全额入账（NetQuota=0 回退）。
-func TestRequestPaymentAsiaPayWithoutServiceChargeKeepsLegacySnapshot(t *testing.T) {
+// TestRequestPaymentAsiaPayWithoutServiceChargeSnapshotsGrossQuota 开关关闭时
+// 不写手续费字段，但仍快照全额入账额度，结算不受期间展示类型切换影响。
+func TestRequestPaymentAsiaPayWithoutServiceChargeSnapshotsGrossQuota(t *testing.T) {
 	pinPaymentAsiaControllerFixture(t)
 	newPaymentAsiaCheckoutDB(t)
 	createPaymentAsiaPayer(t)
@@ -1473,5 +1501,6 @@ func TestRequestPaymentAsiaPayWithoutServiceChargeKeepsLegacySnapshot(t *testing
 	assert.Zero(t, topUp.FeeRate)
 	assert.Zero(t, topUp.FeeFixed)
 	assert.Zero(t, topUp.NetAmount)
-	assert.Zero(t, topUp.NetQuota)
+	assert.Equal(t, 50_000_000, topUp.NetQuota,
+		"免手续费订单也必须快照全额入账额度")
 }

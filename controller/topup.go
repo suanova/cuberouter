@@ -27,6 +27,7 @@ import (
 func GetTopUpInfo(c *gin.Context) {
 	// 获取支付方式：只保留对应网关已启用的方式（stripe/waffo_pancake/alipay_official 由各自
 	// 网关判定，其余为 EPay 透传类型，仅在 EPay 已配置时展示）
+	enableEpayTopUp := false
 	payMethods := lo.Filter(operation_setting.PayMethods, func(method map[string]string, _ int) bool {
 		switch method["type"] {
 		case "stripe":
@@ -43,7 +44,11 @@ func GetTopUpInfo(c *gin.Context) {
 			if service.IsPaymentAsiaType(method["type"]) {
 				return service.IsPaymentAsiaMethod(method["type"]) && isPaymentAsiaTopUpEnabled()
 			}
-			return isEpayWebhookConfigured()
+			if isEpayWebhookConfigured() {
+				enableEpayTopUp = true
+				return true
+			}
+			return false
 		}
 	})
 
@@ -133,21 +138,21 @@ func GetTopUpInfo(c *gin.Context) {
 	}
 
 	// PaymentAsia 方法在返回给前端前克隆并附加结算币种：PayMethods 里的 map 被
-	// 多处共享，直接写入会污染全局配置。
+	// 多处共享，直接写入会污染全局配置。币种只读一次，标签与过滤必须同源。
+	paymentAsiaSettlementCurrency := paymentAsiaCurrency()
 	payMethods = lo.Map(payMethods, func(method map[string]string, _ int) map[string]string {
 		cloned := maps.Clone(method)
 		if cloned == nil {
 			cloned = map[string]string{}
 		}
 		if service.IsPaymentAsiaMethod(cloned["type"]) {
-			cloned["currency"] = paymentAsiaCurrency()
+			cloned["currency"] = paymentAsiaSettlementCurrency
 		}
 		return cloned
 	})
 	// 结算币种决定可用通道：HKD 保留全部已知 PaymentAsia 方法；USD 只有信用卡
 	// 通道；其它（配置已由选项校验拦截，这里兜底）整体隐藏 PaymentAsia 方法。
 	// 非 PaymentAsia 方法不受影响。
-	paymentAsiaSettlementCurrency := paymentAsiaCurrency()
 	payMethods = lo.Filter(payMethods, func(method map[string]string, _ int) bool {
 		if !service.IsPaymentAsiaMethod(method["type"]) {
 			return true
@@ -167,7 +172,7 @@ func GetTopUpInfo(c *gin.Context) {
 	})
 
 	data := gin.H{
-		"enable_online_topup":        isEpayTopUpEnabled(),
+		"enable_online_topup":        enableEpayTopUp,
 		"enable_paymentasia_topup":   enablePaymentAsia,
 		"paymentasia_min_topup":      paymentAsiaMinimumTopUp(),
 		"enable_stripe_topup":        isStripeTopUpEnabled(),
@@ -264,6 +269,10 @@ func getPayMoney(amount int64, group string, rate float64) float64 {
 func getMinTopup() int64 {
 	minTopup := operation_setting.MinTopUp
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
+		if common.QuotaPerUnit <= 0 || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
+			common.SysError(fmt.Sprintf("QuotaPerUnit 配置无效(%v)，TOKENS 模式最低充值回退为 %d", common.QuotaPerUnit, minTopup))
+			return int64(minTopup)
+		}
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
 		minTopup = int(dMinTopup.Mul(dQuotaPerUnit).IntPart())

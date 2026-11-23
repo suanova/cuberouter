@@ -211,7 +211,7 @@ type paymentAsiaFeeBreakdown struct {
 // 手续费折回展示单位，从到账额度中扣除。requestAmount 是用户输入数量（用于
 // 计算实付），storedAmount 是落库的 Amount（TOKENS 模式已 ÷QuotaPerUnit）。
 // 报价与下单都调用本函数，保证展示与实际到账一致。
-func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string) (paymentAsiaFeeBreakdown, error) {
+func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string, currency string) (paymentAsiaFeeBreakdown, error) {
 	charge := paymentAsiaServiceChargeRateForMethod(methodType)
 	_, baseGateway, err := formatPaymentAsiaAmount(getPaymentAsiaPayMoney(requestAmount, group), network)
 	if err != nil {
@@ -219,7 +219,7 @@ func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, gro
 	}
 
 	fixedGateway := decimal.NewFromFloat(charge.FixedHKD)
-	if paymentAsiaCurrency() == "USD" {
+	if currency == "USD" {
 		fixedGateway = fixedGateway.Div(decimal.NewFromFloat(paymentAsiaFixedFeeHKDToUSD))
 	}
 	feeGateway := decimal.NewFromFloat(baseGateway).
@@ -272,6 +272,8 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 		return
 	}
+	// 本请求只读取一次结算币种：通道校验、报价与手续费换算必须同源。
+	currency := paymentAsiaCurrency()
 	network := ""
 	if req.PaymentMethod != "" {
 		channel, ok := service.PaymentAsiaChannelByMethodType(req.PaymentMethod)
@@ -279,7 +281,7 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
 			return
 		}
-		if paymentAsiaCurrency() == "USD" && channel.Network != "CreditCard" {
+		if currency == "USD" && channel.Network != "CreditCard" {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": "该支付通道不支持 USD 支付"})
 			return
 		}
@@ -308,6 +310,7 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 			group,
 			req.PaymentMethod,
 			network,
+			currency,
 		)
 		if feeErr != nil {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": feeErr.Error()})
@@ -323,7 +326,12 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 }
 
 func RequestPaymentAsiaPay(c *gin.Context) {
-	if !isPaymentAsiaTopUpEnabled() {
+	// 凭据只读取一次：可用性判定、环境快照与本次签名必须来自同一份配置。
+	// 读取后立即校验，避免管理员在判定与下单之间清空凭据时生成无法支付的订单。
+	merchantToken, secret, sandbox := setting.GetPaymentAsiaCredentials()
+	merchantToken = strings.TrimSpace(merchantToken)
+	secret = strings.TrimSpace(secret)
+	if merchantToken == "" || secret == "" {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
 	}
@@ -378,13 +386,22 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 	amount := paymentAsiaStoredAmount(req.Amount)
 	// CNY 模式下快照当前汇率到订单,结算按快照换算,防止待支付期间改汇率
 	topUpRate := paymentAsiaOrderRateSnapshot()
+	// 所有新订单都快照入账额度，包括免手续费订单：结算不再依赖回调时的展示类型。
+	netQuota, quotaErr := common.WalletQuotaFromDecimalStrict(
+		model.TopupAmountToQuotaDecimal(decimal.NewFromInt(amount), topUpRate),
+	)
+	if quotaErr != nil || netQuota <= 0 {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "充值额度无效"})
+		return
+	}
 	var feeBreakdown paymentAsiaFeeBreakdown
 	if setting.PaymentAsiaServiceChargeEnabled {
-		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network)
+		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network, currency)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 			return
 		}
+		netQuota = feeBreakdown.NetQuota
 	}
 
 	tradeNo := fmt.Sprintf("PA%dNO%s%d", id, common.GetRandomString(6), time.Now().Unix())
@@ -392,10 +409,6 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "订单号生成失败"})
 		return
 	}
-	// 凭据在插入订单前读取：环境快照与本次签名所用 secret 必须来自同一次配置。
-	merchantToken, secret, sandbox := setting.GetPaymentAsiaCredentials()
-	merchantToken = strings.TrimSpace(merchantToken)
-	secret = strings.TrimSpace(secret)
 
 	topUp := &model.TopUp{
 		UserId:             id,
@@ -413,7 +426,7 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 		FeeRate:            feeBreakdown.FeeRate,
 		FeeFixed:           feeBreakdown.FeeFixed,
 		NetAmount:          feeBreakdown.NetDisplay.InexactFloat64(),
-		NetQuota:           feeBreakdown.NetQuota,
+		NetQuota:           netQuota,
 	}
 	if err := topUp.Insert(); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 创建充值订单失败 user_id=%d trade_no=%s payment_method=%s amount=%d error=%q", id, tradeNo, req.PaymentMethod, req.Amount, err.Error()))
@@ -623,6 +636,9 @@ func PaymentAsiaNotify(c *gin.Context) {
 			logger.LogInfo(c.Request.Context(), fmt.Sprintf("paymentasia 回调标记失败忽略 order_status=%s %s", topUp.Status, logFields))
 		default:
 			logger.LogError(c.Request.Context(), fmt.Sprintf("paymentasia 回调标记失败错误 %s user_id=%d error=%q", logFields, topUp.UserId, err.Error()))
+			// 返回 500 让网关重试：200 会被视为已送达，失败状态可能永远不落库。
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
 		}
 	default:
 		logger.LogInfo(c.Request.Context(), "paymentasia 回调忽略状态 "+logFields)

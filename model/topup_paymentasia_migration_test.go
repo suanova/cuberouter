@@ -205,6 +205,11 @@ func runPaymentAsiaTopUpSnapshotFreshMigration(t *testing.T, db *gorm.DB) {
 	assert.Equal(t, snapshot.FeeFixed, readBack.FeeFixed)
 	assert.Equal(t, snapshot.NetAmount, readBack.NetAmount)
 	assert.Equal(t, snapshot.NetQuota, readBack.NetQuota)
+
+	duplicate := *snapshot
+	duplicate.Id = 0
+	require.Error(t, db.Create(&duplicate).Error,
+		"fresh schema must reject a duplicate trade_no")
 }
 
 // TestPaymentAsiaTopUpSnapshotMigrationSQLite 在临时 SQLite 文件库上验证
@@ -231,7 +236,8 @@ func TestPaymentAsiaTopUpSnapshotMigrationSQLite(t *testing.T) {
 
 // TestPaymentAsiaTopUpSnapshotMigrationOnExternalDatabases 在真实 MySQL /
 // PostgreSQL 上复验旧表升级与全新库两条路径。用例会删除并重建 top_ups 表，
-// 因此必须指向一次性库；未设置 PAYMENTASIA_TEST_ALLOW_DESTRUCTIVE=1 时跳过。
+// 因此必须指向一次性库：未设置对应 DSN 时跳过；DSN 已设置时必须同时设置
+// PAYMENTASIA_TEST_ALLOW_DESTRUCTIVE=1，否则用例失败以阻止误连生产库。
 func TestPaymentAsiaTopUpSnapshotMigrationOnExternalDatabases(t *testing.T) {
 	cases := []struct {
 		name string
