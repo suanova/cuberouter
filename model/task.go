@@ -315,9 +315,10 @@ func taskOriginModelNameExpr() string {
 	}
 }
 
-// applyTaskTextFilter 与日志表的文本筛选语义保持一致：不含 % 时精确匹配，
-// 含 % 时按 sanitizeLikePattern 的模式做 LIKE；非法模式退化为字面精确匹配
-// （接口层的 validateTaskLogTextFilters 已先行拒绝，这里只兜底直接调用方）。
+// applyTaskTextFilter 与日志表的模型名称筛选语义保持一致：不含 % 时精确匹配，
+// 含 % 时按 sanitizeLikePattern 的模式做 LIKE；非法模式退化为字面精确匹配。
+// 目前只用于模型名 JSON 表达式；用户名走 applyTaskUsernameFilter，其余文本字段
+// 按日志表语义精确匹配。model_name/username 的非法模式由控制器先行拒绝。
 func applyTaskTextFilter(db *gorm.DB, expression string, value string) *gorm.DB {
 	if value == "" {
 		return db
@@ -383,9 +384,15 @@ func applySyncTaskFilters(db *gorm.DB, params SyncTaskQueryParams) *gorm.DB {
 		db = db.Where("submit_time <= ?", params.EndTimestamp)
 	}
 	db = applyTaskTextFilter(db, taskOriginModelNameExpr(), params.ModelName)
-	db = applyTaskTextFilter(db, "token_name", params.TokenName)
-	db = applyTaskTextFilter(db, commonGroupCol, params.Group)
-	db = applyTaskTextFilter(db, "request_id", params.RequestID)
+	if params.TokenName != "" {
+		db = db.Where("token_name = ?", params.TokenName)
+	}
+	if params.Group != "" {
+		db = db.Where(commonGroupCol+" = ?", params.Group)
+	}
+	if params.RequestID != "" {
+		db = db.Where("request_id = ?", params.RequestID)
+	}
 	db = applyTaskUsernameFilter(db, params.Username)
 	return db
 }

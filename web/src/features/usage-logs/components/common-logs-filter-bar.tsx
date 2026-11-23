@@ -216,10 +216,13 @@ export function CommonLogsFilterBar<TData>(
   )
 
   const handleApply = useCallback(() => {
+    const appliedFilters: CommonLogFilters = isAdmin
+      ? { ...filters, billingAccountType: undefined }
+      : filters
     const filterParams = buildSearchParams(
-      !isAdmin && filters.billingAccountType !== 'organization'
-        ? { ...filters, organizationId: undefined }
-        : filters,
+      !isAdmin && appliedFilters.billingAccountType !== 'organization'
+        ? { ...appliedFilters, organizationId: undefined }
+        : appliedFilters,
       'common'
     )
     navigate({

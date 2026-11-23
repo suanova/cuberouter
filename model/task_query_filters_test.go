@@ -47,16 +47,19 @@ func setupTaskQueryFilterTestDB(t *testing.T) {
 }
 
 // createTaskQueryFilterFixture returns alice and a soft-deleted bob. Task t4 has
-// empty Properties so the JSON filter is exercised against NULL.
+// empty Properties so the JSON filter is exercised against NULL. carol's two
+// tasks carry literal-percent values so exact-match semantics can be pinned.
 func createTaskQueryFilterFixture(t *testing.T) (User, User) {
 	t.Helper()
-	DB.Unscoped().Where("username IN ?", []string{"tqf-alice", "tqf-bob"}).Delete(&User{})
+	DB.Unscoped().Where("username IN ?", []string{"tqf-alice", "tqf-bob", "tqf-carol"}).Delete(&User{})
 	DB.Where("task_id LIKE ?", "tqf-%").Delete(&Task{})
 
 	alice := User{Username: "tqf-alice", Password: "x", AffCode: "tqf-alice"}
 	bob := User{Username: "tqf-bob", Password: "x", AffCode: "tqf-bob"}
+	carol := User{Username: "tqf-carol", Password: "x", AffCode: "tqf-carol"}
 	require.NoError(t, DB.Create(&alice).Error)
 	require.NoError(t, DB.Create(&bob).Error)
+	require.NoError(t, DB.Create(&carol).Error)
 	require.NoError(t, DB.Delete(&bob).Error)
 
 	tasks := []Task{
@@ -64,6 +67,8 @@ func createTaskQueryFilterFixture(t *testing.T) (User, User) {
 		{TaskID: "tqf-2", UserId: alice.Id, Platform: "suno", TokenName: "key-b", Group: "vip", RequestId: "req-2", Properties: Properties{OriginModelName: "music-v2"}},
 		{TaskID: "tqf-3", UserId: bob.Id, Platform: "kling", TokenName: "key-c", Group: "default", RequestId: "req-3", Properties: Properties{OriginModelName: "wan3.0-video"}},
 		{TaskID: "tqf-4", UserId: alice.Id, Platform: "kling", TokenName: "key-a", Group: "default", RequestId: "req-4"},
+		{TaskID: "tqf-5", UserId: carol.Id, TokenName: "key%a", Group: "grp%a", RequestId: "req%a"},
+		{TaskID: "tqf-6", UserId: carol.Id, TokenName: "keyXa", Group: "grpXa", RequestId: "reqXa"},
 	}
 	require.NoError(t, DB.Create(&tasks).Error)
 	return alice, bob
@@ -83,8 +88,11 @@ func runTaskQueryFilterAssertions(t *testing.T) {
 		{"model excludes null properties", SyncTaskQueryParams{ModelName: "wan3.0-video"}, []string{"tqf-1", "tqf-3"}},
 		{"malformed wildcard falls back to literal", SyncTaskQueryParams{ModelName: "%%"}, nil},
 		{"token exact", SyncTaskQueryParams{TokenName: "key-b"}, []string{"tqf-2"}},
+		{"token name with percent is literal", SyncTaskQueryParams{TokenName: "key%a"}, []string{"tqf-5"}},
 		{"group exact", SyncTaskQueryParams{Group: "vip"}, []string{"tqf-2"}},
+		{"group with percent is literal", SyncTaskQueryParams{Group: "grp%a"}, []string{"tqf-5"}},
 		{"request id exact", SyncTaskQueryParams{RequestID: "req-1"}, []string{"tqf-1"}},
+		{"request id with percent is literal", SyncTaskQueryParams{RequestID: "req%a"}, []string{"tqf-5"}},
 		{"platform exact", SyncTaskQueryParams{Platform: "suno"}, []string{"tqf-2"}},
 		{"username exact", SyncTaskQueryParams{Username: "tqf-alice"}, []string{"tqf-1", "tqf-2", "tqf-4"}},
 		{"username wildcard", SyncTaskQueryParams{Username: "%alice%"}, []string{"tqf-1", "tqf-2", "tqf-4"}},
