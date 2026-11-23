@@ -24,12 +24,12 @@ export const meta = {
   name: "Bailian Wan 3.0 Video",
   icon: "Qwen.Color",
   description: {
-    en: "Wan 3.0 video generation on an Alibaba Cloud Bailian MaaS workspace (text-to-video, first/last-frame image-to-video, multimodal reference-to-video).",
-    zh: "阿里云百炼工作空间的万相 3.0 视频生成（文生视频、首尾帧图生视频、多模态参考生视频）。",
+    en: "Wan 3.0 video generation (standard and prime modes) on an Alibaba Cloud Bailian MaaS workspace (text-to-video, first/last-frame image-to-video, multimodal reference-to-video).",
+    zh: "阿里云百炼工作空间的万相 3.0 视频生成（标准版与 Prime 模式；文生视频、首尾帧图生视频、多模态参考生视频）。",
   },
-  version: "1.0.1",
+  version: "1.0.2",
   author: { name: "Wei Liu" },
-  models: ["wan3.0-video-a"],
+  models: ["wan3.0-video-A", "wan3.0-video-prime-A"],
   fetchMode: "per_task",
   usageSchema: {
     seconds: {
