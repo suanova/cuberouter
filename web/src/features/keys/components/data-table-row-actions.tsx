@@ -32,7 +32,7 @@ import {
 import { updateOrganizationToken } from '@/features/organization/api'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { updateApiKeyStatus } from '../api'
+import { updateAdminApiKeyStatus, updateApiKeyStatus } from '../api'
 import { API_KEY_STATUS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import { apiKeySchema } from '../types'
 import { useApiKeys } from './api-keys-provider'
@@ -75,7 +75,8 @@ export function DataTableRowActions<TData>({
   const { t } = useTranslation()
   const apiKey = apiKeySchema.parse(row.original)
   const currentUserId = useAuthStore((state) => state.auth.user?.id)
-  const { setOpen, setCurrentRow, triggerRefresh } = useApiKeys()
+  const { setOpen, setCurrentRow, triggerRefresh, viewScope } = useApiKeys()
+  const allUsers = viewScope === 'all'
   const isOrganizationKey = apiKey.scope_type === 'organization'
   const isEnabled = apiKey.status === API_KEY_STATUS.ENABLED
   const [isTogglingStatus, setIsTogglingStatus] = useState(false)
@@ -102,6 +103,21 @@ export function DataTableRowActions<TData>({
 
     setIsTogglingStatus(true)
     try {
+      if (allUsers && !isOrganizationKey) {
+        const result = await updateAdminApiKeyStatus(apiKey.id, newStatus)
+        if (result.success) {
+          toast.success(
+            newStatus === API_KEY_STATUS.ENABLED
+              ? t(SUCCESS_MESSAGES.API_KEY_ENABLED)
+              : t(SUCCESS_MESSAGES.API_KEY_DISABLED)
+          )
+          triggerRefresh()
+        } else {
+          toast.error(result.message || t(ERROR_MESSAGES.STATUS_UPDATE_FAILED))
+        }
+        return
+      }
+
       if (isOrganizationKey) {
         if (!apiKey.organization_id) {
           toast.error(t(ERROR_MESSAGES.UNEXPECTED))
@@ -204,15 +220,17 @@ export function DataTableRowActions<TData>({
       >
         {statusIcon}
       </ActionButton>
-      <ActionButton
-        label={t('Edit')}
-        onClick={() => {
-          setCurrentRow(apiKey)
-          setOpen('update')
-        }}
-      >
-        <Edit />
-      </ActionButton>
+      {!allUsers && (
+        <ActionButton
+          label={t('Edit')}
+          onClick={() => {
+            setCurrentRow(apiKey)
+            setOpen('update')
+          }}
+        >
+          <Edit />
+        </ActionButton>
+      )}
       <ActionButton label={t('View')} onClick={openView}>
         <Eye />
       </ActionButton>

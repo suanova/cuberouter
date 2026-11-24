@@ -20,15 +20,22 @@ For commercial licensing, please contact support@quantumnous.com
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { getSelfApiKeys } from '../../api'
+import {
+  deleteAdminApiKey,
+  fetchAdminTokenKey,
+  getAdminApiKeys,
+  getSelfApiKeys,
+  updateAdminApiKeyStatus,
+} from '../../api'
 import type { ApiKey } from '../../types'
 import { ApiKeysDialogs } from '../api-keys-dialogs'
-import { ApiKeysProvider } from '../api-keys-provider'
+import { ApiKeysProvider, useApiKeys } from '../api-keys-provider'
 import { ApiKeysTable } from '../api-keys-table'
 
 const search = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
@@ -56,9 +63,17 @@ vi.mock('@/lib/copy-to-clipboard', () => ({
 vi.mock('../../api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../api')>()),
   getSelfApiKeys: vi.fn(),
+  getAdminApiKeys: vi.fn(),
+  fetchAdminTokenKey: vi.fn(),
+  updateAdminApiKeyStatus: vi.fn(),
+  deleteAdminApiKey: vi.fn(),
 }))
 
 const getSelfApiKeysMock = vi.mocked(getSelfApiKeys)
+const getAdminApiKeysMock = vi.mocked(getAdminApiKeys)
+const fetchAdminTokenKeyMock = vi.mocked(fetchAdminTokenKey)
+const updateAdminApiKeyStatusMock = vi.mocked(updateAdminApiKeyStatus)
+const deleteAdminApiKeyMock = vi.mocked(deleteAdminApiKey)
 const copyToClipboardMock = vi.mocked(copyToClipboard)
 
 let mobileViewport = false
@@ -132,6 +147,13 @@ const organizationKey = apiKey({
   model_limits: 'gpt-5',
 })
 
+const adminPersonalKey = apiKey({
+  id: 11,
+  name: 'Alice key',
+  owner_username: 'alice',
+  owner_display_name: 'Alice Chen',
+})
+
 beforeEach(() => {
   mobileViewport = false
   updateOrganizationTokenMock.mockReset()
@@ -153,6 +175,10 @@ beforeEach(() => {
       page_size: 20,
     },
   })
+  getAdminApiKeysMock.mockReset()
+  fetchAdminTokenKeyMock.mockReset()
+  updateAdminApiKeyStatusMock.mockReset()
+  deleteAdminApiKeyMock.mockReset()
 })
 
 function renderTable(): void {
@@ -163,6 +189,28 @@ function renderTable(): void {
       }
     >
       <ApiKeysProvider>
+        <ApiKeysTable />
+        <ApiKeysDialogs />
+      </ApiKeysProvider>
+    </QueryClientProvider>
+  )
+}
+
+function AllScopeSwitcher() {
+  const { setViewScope } = useApiKeys()
+  useEffect(() => setViewScope('all'), [setViewScope])
+  return null
+}
+
+function renderAllTable(): void {
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ApiKeysProvider>
+        <AllScopeSwitcher />
         <ApiKeysTable />
         <ApiKeysDialogs />
       </ApiKeysProvider>
@@ -371,6 +419,95 @@ describe('ApiKeysTable', () => {
     expect(screen.getByText('Acme')).toBeInTheDocument()
     expect(screen.getByText('Personal')).toBeInTheDocument()
     expect(screen.getAllByText('Last Used')).toHaveLength(2)
+  })
+})
+
+describe('ApiKeysTable all-users scope', () => {
+  beforeEach(() => {
+    getAdminApiKeysMock.mockResolvedValue({
+      success: true,
+      data: {
+        items: [adminPersonalKey],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+    })
+  })
+
+  test('shows the owner and hides edit and billing account', async () => {
+    renderAllTable()
+
+    const row = await findRow('Alice key')
+    expect(
+      screen.getByRole('columnheader', { name: 'Owner' })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('columnheader', { name: 'Billing Account' })
+    ).not.toBeInTheDocument()
+    expect(within(row).getByText('alice')).toBeInTheDocument()
+    expect(
+      within(row).queryByRole('button', { name: 'Edit' })
+    ).not.toBeInTheDocument()
+    for (const name of ['Disable', 'View', 'Delete']) {
+      expect(within(row).getByRole('button', { name })).toBeInTheDocument()
+    }
+  })
+
+  test('sends the username filter to the admin endpoint', async () => {
+    search.value = {
+      page: 1,
+      pageSize: 20,
+      filter: '',
+      token: '',
+      status: [],
+      username: 'alice',
+    }
+    renderAllTable()
+
+    await waitFor(() => {
+      expect(getAdminApiKeysMock).toHaveBeenCalledWith({
+        p: 1,
+        size: 20,
+        keyword: undefined,
+        token: undefined,
+        status: undefined,
+        username: 'alice',
+      })
+    })
+  })
+
+  test('uses admin endpoints for status, delete and key reveal', async () => {
+    updateAdminApiKeyStatusMock.mockResolvedValue({ success: true })
+    deleteAdminApiKeyMock.mockResolvedValue({ success: true })
+    fetchAdminTokenKeyMock.mockResolvedValue({
+      success: true,
+      data: { key: 'alice-full-key' },
+    })
+    renderAllTable()
+
+    let row = await findRow('Alice key')
+    await userEvent.click(within(row).getByRole('button', { name: 'Disable' }))
+    await waitFor(() =>
+      expect(updateAdminApiKeyStatusMock).toHaveBeenCalledWith(11, 2)
+    )
+
+    row = await findRow('Alice key')
+    await userEvent.click(
+      within(row).getByRole('button', { name: 'Copy API key' })
+    )
+    await waitFor(() =>
+      expect(fetchAdminTokenKeyMock).toHaveBeenCalledWith(11)
+    )
+    await waitFor(() =>
+      expect(copyToClipboardMock).toHaveBeenCalledWith('sk-alice-full-key')
+    )
+
+    row = await findRow('Alice key')
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete' }))
+    const dialog = await screen.findByRole('alertdialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(deleteAdminApiKeyMock).toHaveBeenCalledWith(11))
   })
 })
 

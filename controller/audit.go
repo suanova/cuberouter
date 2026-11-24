@@ -32,6 +32,11 @@ var auditContentTemplates = map[string]string{
 	"user.reset_passkey":    "Reset the user passkey",
 	"option.update":         "Updated system setting ${key}",
 
+	"token.key_view":       "Viewed API key ${token_name} (ID: ${token_id}) of user ${target_username}",
+	"token.status_enable":  "Enabled API key ${token_name} (ID: ${token_id}) of user ${target_username}",
+	"token.status_disable": "Disabled API key ${token_name} (ID: ${token_id}) of user ${target_username}",
+	"token.delete":         "Deleted API key ${token_name} (ID: ${token_id}) of user ${target_username}",
+
 	"channel.create":             "Created channel ${name} (type ${type}, count ${count})",
 	"channel.update":             "Updated channel ${name} (ID: ${id})",
 	"channel.delete":             "Deleted channel ${name} (ID: ${id})",

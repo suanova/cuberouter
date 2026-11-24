@@ -39,7 +39,7 @@ func TestSearchRateLimitWhenQueryOnlyThrottlesSearchRequests(t *testing.T) {
 	previousRedis := common.RedisEnabled
 	common.RedisEnabled = false
 	common.SearchRateLimitEnable = true
-	common.SearchRateLimitNum = 1
+	common.SearchRateLimitNum = 2
 	common.SearchRateLimitDuration = 60
 	t.Cleanup(func() {
 		common.SearchRateLimitEnable = previousEnable
@@ -70,5 +70,6 @@ func TestSearchRateLimitWhenQueryOnlyThrottlesSearchRequests(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, request("/keys?p=2&size=20"))
 
 	assert.Equal(t, http.StatusNoContent, request("/keys?keyword=acme"))
+	assert.Equal(t, http.StatusNoContent, request("/keys?username=alice"))
 	assert.Equal(t, http.StatusTooManyRequests, request("/keys?token=sk-acme"))
 }

@@ -31,13 +31,13 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 
-import { deleteApiKey } from '../api'
+import { deleteAdminApiKey, deleteApiKey } from '../api'
 import { ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import { useApiKeys } from './api-keys-provider'
 
 export function ApiKeysDeleteDialog() {
   const { t } = useTranslation()
-  const { open, setOpen, currentRow, triggerRefresh } = useApiKeys()
+  const { open, setOpen, currentRow, triggerRefresh, viewScope } = useApiKeys()
   const [isDeleting, setIsDeleting] = useState(false)
 
   const handleDelete = async () => {
@@ -45,7 +45,10 @@ export function ApiKeysDeleteDialog() {
 
     setIsDeleting(true)
     try {
-      const result = await deleteApiKey(currentRow.id)
+      const result =
+        viewScope === 'all'
+          ? await deleteAdminApiKey(currentRow.id)
+          : await deleteApiKey(currentRow.id)
       if (result.success) {
         toast.success(t(SUCCESS_MESSAGES.API_KEY_DELETED))
         setOpen(null)
@@ -72,6 +75,20 @@ export function ApiKeysDeleteDialog() {
             {t('This will permanently delete API key')}{' '}
             <span className='font-semibold'>{currentRow?.name}</span>
             {t('. This action cannot be undone.')}
+            {viewScope === 'all' && (
+              <>
+                {' '}
+                {t(
+                  'This key belongs to {{user}}. Deleting it affects that user.',
+                  {
+                    user:
+                      currentRow?.owner_username ||
+                      currentRow?.owner_display_name ||
+                      '-',
+                  }
+                )}
+              </>
+            )}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

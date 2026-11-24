@@ -45,7 +45,7 @@ import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { toIntlLocale } from '@/i18n/languages'
 import { cn } from '@/lib/utils'
 
-import { getSelfApiKeys } from '../api'
+import { getAdminApiKeys, getSelfApiKeys } from '../api'
 import {
   API_KEY_STATUS,
   API_KEY_STATUS_OPTIONS,
@@ -97,10 +97,12 @@ function ApiKeysMobileList({
   table,
   isLoading,
   now,
+  allUsers,
 }: {
   table: TanstackTable<ApiKey>
   isLoading: boolean
   now: number
+  allUsers: boolean
 }) {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
@@ -133,6 +135,13 @@ function ApiKeysMobileList({
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
+        let accountLabel = t('Personal')
+        if (allUsers) {
+          accountLabel =
+            apiKey.owner_username || apiKey.owner_display_name || t('Personal')
+        } else if (apiKey.scope_type === 'organization') {
+          accountLabel = apiKey.organization_name || t('Organization')
+        }
 
         return (
           <div
@@ -148,9 +157,7 @@ function ApiKeysMobileList({
                   {apiKey.name}
                 </div>
                 <div className='text-muted-foreground text-[11px]'>
-                  {apiKey.scope_type === 'organization'
-                    ? apiKey.organization_name || t('Organization')
-                    : t('Personal')}
+                  {accountLabel}
                 </div>
               </div>
               {statusConfig && (
@@ -188,9 +195,10 @@ function ApiKeysMobileList({
 
 export function ApiKeysTable() {
   const { t } = useTranslation()
-  const { refreshTrigger } = useApiKeys()
+  const { refreshTrigger, viewScope } = useApiKeys()
+  const allUsers = viewScope === 'all'
   const [now, setNow] = useState(() => Date.now())
-  const columns = useApiKeysColumns(now)
+  const columns = useApiKeysColumns(now, { allUsers })
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -216,6 +224,7 @@ export function ApiKeysTable() {
     columnFilters: [
       { columnId: 'status', searchKey: 'status', type: 'array' },
       { columnId: '_tokenSearch', searchKey: 'token', type: 'string' },
+      { columnId: '_usernameSearch', searchKey: 'username', type: 'string' },
     ],
   })
 
@@ -226,6 +235,15 @@ export function ApiKeysTable() {
   } = useDebouncedColumnFilter({
     columnFilters,
     columnId: '_tokenSearch',
+    onColumnFiltersChange,
+  })
+  const {
+    value: usernameFilter,
+    inputValue: usernameFilterInput,
+    setInputValue: setUsernameFilterInput,
+  } = useDebouncedColumnFilter({
+    columnFilters,
+    columnId: '_usernameSearch',
     onColumnFiltersChange,
   })
   const statusFilter = columnFilters.find(
@@ -241,21 +259,29 @@ export function ApiKeysTable() {
   const { data, isLoading, isFetching } = useQuery({
     queryKey: [
       'keys',
+      viewScope,
       pagination.pageIndex + 1,
       pagination.pageSize,
       globalFilter,
       tokenFilter,
+      usernameFilter,
       status,
       refreshTrigger,
     ],
     queryFn: async () => {
-      const result = await getSelfApiKeys({
+      const params = {
         p: pagination.pageIndex + 1,
         size: pagination.pageSize,
         keyword: globalFilter?.trim() || undefined,
         token: tokenFilter.trim() || undefined,
         status,
-      })
+      }
+      const result = allUsers
+        ? await getAdminApiKeys({
+            ...params,
+            username: usernameFilter.trim() || undefined,
+          })
+        : await getSelfApiKeys(params)
 
       if (!result.success) {
         toast.error(result.message || t(ERROR_MESSAGES.LOAD_FAILED))
@@ -305,13 +331,24 @@ export function ApiKeysTable() {
         searchPlaceholder: t('Filter by name...'),
         searchDebounceMs: 500,
         additionalSearch: (
-          <Input
-            placeholder={t('Filter by API key...')}
-            aria-label={t('Filter by API key...')}
-            value={tokenFilterInput}
-            onChange={(e) => setTokenFilterInput(e.target.value)}
-            className='w-full sm:w-50 lg:w-60'
-          />
+          <div className='flex flex-wrap items-center gap-2'>
+            <Input
+              placeholder={t('Filter by API key...')}
+              aria-label={t('Filter by API key...')}
+              value={tokenFilterInput}
+              onChange={(e) => setTokenFilterInput(e.target.value)}
+              className='w-full sm:w-50 lg:w-60'
+            />
+            {allUsers && (
+              <Input
+                placeholder={t('Filter by username...')}
+                aria-label={t('Filter by username...')}
+                value={usernameFilterInput}
+                onChange={(e) => setUsernameFilterInput(e.target.value)}
+                className='w-full sm:w-50 lg:w-60'
+              />
+            )}
+          </div>
         ),
         filters: [
           {
@@ -323,7 +360,12 @@ export function ApiKeysTable() {
         ],
       }}
       mobile={
-        <ApiKeysMobileList table={table} isLoading={isLoading} now={now} />
+        <ApiKeysMobileList
+          table={table}
+          isLoading={isLoading}
+          now={now}
+          allUsers={allUsers}
+        />
       }
       getRowClassName={(row) =>
         isDisabledApiKeyRow(row.original) ? DISABLED_ROW_DESKTOP : undefined

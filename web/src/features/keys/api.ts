@@ -23,6 +23,7 @@ import type {
   ApiResponse,
   GetApiKeysParams,
   GetApiKeysResponse,
+  GetAdminApiKeysParams,
   GetSelfApiKeysParams,
   ApiKeyFormData,
   TokenAutoGroupsConfig,
@@ -48,6 +49,42 @@ export async function getSelfApiKeys(
   params: GetSelfApiKeysParams = {}
 ): Promise<GetApiKeysResponse> {
   const res = await api.get('/api/token/self/all', { params })
+  return res.data
+}
+
+// Get every user's personal keys for an administrator. The backend applies the
+// role hierarchy and returns only masked keys.
+export async function getAdminApiKeys(
+  params: GetAdminApiKeysParams = {}
+): Promise<GetApiKeysResponse> {
+  const { p = 1, size = 10 } = params
+  const res = await api.get('/api/admin/token/', {
+    params: { ...params, p, size },
+  })
+  return res.data
+}
+
+// Fetch the real (unmasked) key of another user's token as an administrator.
+// The backend records an audit log for each reveal.
+export async function fetchAdminTokenKey(
+  id: number
+): Promise<{ success: boolean; message?: string; data?: { key: string } }> {
+  const res = await api.post(`/api/admin/token/${id}/key`)
+  return res.data
+}
+
+// Enable or disable another user's personal key as an administrator.
+export async function updateAdminApiKeyStatus(
+  id: number,
+  status: number
+): Promise<ApiResponse<ApiKey>> {
+  const res = await api.put(`/api/admin/token/${id}/status`, { status })
+  return res.data
+}
+
+// Delete another user's personal key as an administrator.
+export async function deleteAdminApiKey(id: number): Promise<ApiResponse> {
+  const res = await api.delete(`/api/admin/token/${id}`)
   return res.data
 }
 

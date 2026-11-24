@@ -18,7 +18,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { render, screen } from '@testing-library/react'
-import { describe, expect, test, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { useAuthStore } from '@/stores/auth-store'
 
 import { ApiKeys } from '../index'
 
@@ -35,6 +38,10 @@ vi.mock('../components/api-keys-dialogs', () => ({
 }))
 
 describe('API keys page', () => {
+  afterEach(() => {
+    useAuthStore.getState().auth.reset()
+  })
+
   test('renders one key table with the create action', () => {
     render(<ApiKeys />)
 
@@ -42,6 +49,31 @@ describe('API keys page', () => {
     expect(
       screen.getByRole('button', { name: 'Create API Key' })
     ).toBeInTheDocument()
+    expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
+  })
+
+  test('shows the scope tabs to an admin and hides create in the all view', async () => {
+    useAuthStore
+      .getState()
+      .auth.setUser({ id: 2, username: 'admin', role: 10 })
+    render(<ApiKeys />)
+
+    expect(screen.getByRole('tablist')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Create API Key' })
+    ).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('tab', { name: 'All' }))
+
+    expect(
+      screen.queryByRole('button', { name: 'Create API Key' })
+    ).not.toBeInTheDocument()
+  })
+
+  test('keeps the tabs hidden for a non-admin', () => {
+    useAuthStore.getState().auth.setUser({ id: 3, username: 'user', role: 1 })
+    render(<ApiKeys />)
+
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
   })
 })

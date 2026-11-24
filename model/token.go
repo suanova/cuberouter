@@ -51,6 +51,8 @@ type Token struct {
 
 	CreatorUsername        string   `json:"creator_username,omitempty" gorm:"-"`
 	CreatorDisplayName     string   `json:"creator_display_name,omitempty" gorm:"-"`
+	OwnerUsername          string   `json:"owner_username,omitempty" gorm:"-"`
+	OwnerDisplayName       string   `json:"owner_display_name,omitempty" gorm:"-"`
 	ResponsibleUsername    string   `json:"responsible_username,omitempty" gorm:"-"`
 	ResponsibleDisplayName string   `json:"responsible_display_name,omitempty" gorm:"-"`
 	ResponsibleEmail       string   `json:"-" gorm:"-"`
@@ -214,6 +216,18 @@ func SelfTokensQuery(userId int) *gorm.DB {
 	personalIds := personalTokenScopeQuery(DB.Model(&Token{}).Where("user_id = ?", userId)).Select("id")
 	organizationIds := SelfOrganizationTokensQuery(userId).Select("id")
 	return DB.Model(&Token{}).Where("id IN (?) OR id IN (?)", personalIds, organizationIds)
+}
+
+// AdminPersonalTokensQuery returns personal tokens visible to an operator:
+// root sees every personal token; any other role sees tokens owned by a
+// lower-role user or by the operator themselves.
+func AdminPersonalTokensQuery(operatorId int, operatorRole int) *gorm.DB {
+	query := personalTokenScopeQuery(DB.Model(&Token{}))
+	if operatorRole == common.RoleRootUser {
+		return query
+	}
+	visibleUserIds := DB.Model(&User{}).Select("id").Where("role < ?", operatorRole)
+	return query.Where("user_id = ? OR user_id IN (?)", operatorId, visibleUserIds)
 }
 
 // TokenKeyColumn is the dialect-quoted `key` column, which is a reserved word

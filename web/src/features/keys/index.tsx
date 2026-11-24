@@ -19,27 +19,58 @@ For commercial licensing, please contact support@quantumnous.com
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { isAdmin } from '@/lib/role-guards'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { ApiKeysDialogs } from './components/api-keys-dialogs'
 import { ApiKeysPrimaryButtons } from './components/api-keys-primary-buttons'
-import { ApiKeysProvider } from './components/api-keys-provider'
+import {
+  ApiKeysProvider,
+  type ApiKeysViewScope,
+  useApiKeys,
+} from './components/api-keys-provider'
 import { ApiKeysTable } from './components/api-keys-table'
 
-export function ApiKeys() {
+function ApiKeysContent() {
   const { t } = useTranslation()
+  const { viewScope, setViewScope } = useApiKeys()
+  const role = useAuthStore((state) => state.auth.user?.role)
+  const canSwitchScope = isAdmin(role)
+
+  const handleScopeChange = (scope: string) => {
+    if (scope === 'all' || scope === 'self') {
+      setViewScope(scope as ApiKeysViewScope)
+    }
+  }
 
   return (
-    <ApiKeysProvider>
-      <SectionPageLayout fixedContent>
-        <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
-        <SectionPageLayout.Actions>
-          <ApiKeysPrimaryButtons />
-        </SectionPageLayout.Actions>
-        <SectionPageLayout.Content>
-          <ApiKeysTable />
-        </SectionPageLayout.Content>
-      </SectionPageLayout>
+    <SectionPageLayout fixedContent>
+      <SectionPageLayout.Title>{t('API Keys')}</SectionPageLayout.Title>
+      <SectionPageLayout.Actions>
+        <div className='flex items-center gap-2'>
+          {canSwitchScope && (
+            <Tabs value={viewScope} onValueChange={handleScopeChange}>
+              <TabsList>
+                <TabsTrigger value='all'>{t('All')}</TabsTrigger>
+                <TabsTrigger value='self'>{t('Only Mine')}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
+          {viewScope === 'self' && <ApiKeysPrimaryButtons />}
+        </div>
+      </SectionPageLayout.Actions>
+      <SectionPageLayout.Content>
+        <ApiKeysTable />
+      </SectionPageLayout.Content>
+    </SectionPageLayout>
+  )
+}
 
+export function ApiKeys() {
+  return (
+    <ApiKeysProvider>
+      <ApiKeysContent />
       <ApiKeysDialogs />
     </ApiKeysProvider>
   )
