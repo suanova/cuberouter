@@ -22,9 +22,15 @@ import { toast } from 'sonner'
 
 import useDialogState from '@/hooks/use-dialog'
 
-import { fetchTokenKey, fetchTokenKeysBatch } from '../api'
+import {
+  fetchAdminTokenKey,
+  fetchTokenKey,
+  fetchTokenKeysBatch,
+} from '../api'
 import { ERROR_MESSAGES } from '../constants'
 import type { ApiKey, ApiKeysDialogType } from '../types'
+
+export type ApiKeysViewScope = 'self' | 'all'
 
 type ApiKeysContextType = {
   open: ApiKeysDialogType | null
@@ -33,6 +39,8 @@ type ApiKeysContextType = {
   setCurrentRow: React.Dispatch<React.SetStateAction<ApiKey | null>>
   refreshTrigger: number
   triggerRefresh: () => void
+  viewScope: ApiKeysViewScope
+  setViewScope: (scope: ApiKeysViewScope) => void
   resolveRealKey: (id: number) => Promise<string | null>
   resolveRealKeysBatch: (ids: number[]) => Promise<Record<number, string>>
   resolvedKeys: Record<number, string>
@@ -48,6 +56,7 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useDialogState<ApiKeysDialogType>(null)
   const [currentRow, setCurrentRow] = useState<ApiKey | null>(null)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
+  const [viewScope, setViewScope] = useState<ApiKeysViewScope>('self')
 
   const [resolvedKeys, setResolvedKeys] = useState<Record<number, string>>({})
   const [loadingKeys, setLoadingKeys] = useState<Record<number, boolean>>({})
@@ -78,7 +87,10 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
       const request = (async () => {
         setLoadingKeys((prev) => ({ ...prev, [id]: true }))
         try {
-          const res = await fetchTokenKey(id)
+          const res =
+            viewScope === 'all'
+              ? await fetchAdminTokenKey(id)
+              : await fetchTokenKey(id)
           if (res.success && res.data?.key) {
             const fullKey = `sk-${res.data.key}`
             setResolvedKeys((prev) => ({ ...prev, [id]: fullKey }))
@@ -102,11 +114,22 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
       pendingRequests.current[id] = request
       return request
     },
-    [resolvedKeys, t]
+    [resolvedKeys, t, viewScope]
   )
 
   const resolveRealKeysBatch = useCallback(
     async (ids: number[]): Promise<Record<number, string>> => {
+      if (viewScope === 'all') {
+        // There is no bulk admin reveal endpoint; resolve row by row so a
+        // future bulk action cannot silently hit the owner-only endpoint.
+        const result: Record<number, string> = {}
+        for (const id of ids) {
+          const key = resolvedKeys[id] ?? (await resolveRealKey(id))
+          if (key) result[id] = key
+        }
+        return result
+      }
+
       const uncachedIds = ids.filter((id) => !resolvedKeys[id])
       if (uncachedIds.length === 0) {
         const result: Record<number, string> = {}
@@ -148,7 +171,7 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
         }
       }
     },
-    [resolvedKeys, t]
+    [resolvedKeys, t, viewScope, resolveRealKey]
   )
 
   return (
@@ -160,6 +183,8 @@ export function ApiKeysProvider({ children }: { children: React.ReactNode }) {
         setCurrentRow,
         refreshTrigger,
         triggerRefresh,
+        viewScope,
+        setViewScope,
         resolveRealKey,
         resolveRealKeysBatch,
         resolvedKeys,
