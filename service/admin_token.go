@@ -119,6 +119,9 @@ func ListAdminPersonalTokens(op AdminTokenOperator, req AdminPersonalTokenListRe
 	}
 	for _, token := range tokens {
 		model.NormalizeTokenScope(token)
+		// Match the owner and organization lists: a key whose stored status is
+		// still Enabled but whose ExpiredTime has passed is shown as Expired.
+		token.Status = organizationTokenEffectiveStatus(token)
 	}
 	if err := hydrateAdminPersonalTokenOwners(tokens); err != nil {
 		return nil, 0, err

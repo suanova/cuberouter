@@ -21,9 +21,13 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
@@ -34,6 +38,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func setupAdminTokenControllerTest(t *testing.T) {
@@ -63,6 +68,7 @@ func setupAdminTokenControllerTest(t *testing.T) {
 		{Id: 203, Username: "ops", DisplayName: "Ops", Role: common.RoleOpsUser, Status: common.UserStatusEnabled, AffCode: "ops"},
 		{Id: 204, Username: "alice", DisplayName: "Alice Chen", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "alice"},
 		{Id: 205, Username: "bob", DisplayName: "Bob", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "bob"},
+		{Id: 206, Username: "admin2", DisplayName: "Admin Two", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AffCode: "admin2"},
 	}).Error)
 	require.NoError(t, db.Create(&[]model.Token{
 		{Id: 301, UserId: 201, Name: "root-key", Key: "root-key", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled},
@@ -72,6 +78,7 @@ func setupAdminTokenControllerTest(t *testing.T) {
 		{Id: 305, UserId: 205, Name: "bob-key", Key: "bob-key", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled},
 		{Id: 306, UserId: 204, Name: "alice-expired", Key: "alice-expired", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusExpired, ExpiredTime: common.GetTimestamp() - 60},
 		{Id: 307, UserId: 204, Name: "org-key", Key: "org-key", ScopeType: model.TokenScopeOrganization, OrganizationId: 9, Status: common.TokenStatusEnabled},
+		{Id: 308, UserId: 206, Name: "admin2-key", Key: "admin2-key", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled},
 	}).Error)
 }
 
@@ -101,12 +108,12 @@ func performAdminTokenRequest(
 }
 
 type adminTokenItem struct {
-	Id           int    `json:"id"`
-	Key          string `json:"key"`
+	Id            int    `json:"id"`
+	Key           string `json:"key"`
 	OwnerUsername string `json:"owner_username"`
-	OwnerDisplay string `json:"owner_display_name"`
-	Status       int    `json:"status"`
-	ScopeType    string `json:"scope_type"`
+	OwnerDisplay  string `json:"owner_display_name"`
+	Status        int    `json:"status"`
+	ScopeType     string `json:"scope_type"`
 }
 
 type adminTokenResponse struct {
@@ -191,9 +198,31 @@ func TestAdminGetTokenKeyRejectsHigherRole(t *testing.T) {
 	assert.False(t, body.Success)
 	assert.Equal(t, i18n.MsgAuthInsufficientPrivilege, body.Message)
 
+	recorder = performAdminTokenRequest(AdminGetTokenKey, 202, common.RoleAdminUser, http.MethodPost,
+		"/api/admin/token/308/key", nil, "308")
+	body = decodeAdminTokenResponse(t, recorder)
+	assert.False(t, body.Success)
+	assert.Equal(t, i18n.MsgAuthInsufficientPrivilege, body.Message)
+
 	var count int64
 	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeManage).Count(&count).Error)
 	assert.Zero(t, count)
+}
+
+func TestAdminUpdateTokenStatusHonorsExhaustedGuard(t *testing.T) {
+	setupAdminTokenControllerTest(t)
+	require.NoError(t, model.DB.Model(&model.Token{}).Where("id = ?", 305).Updates(map[string]any{
+		"status":          common.TokenStatusExhausted,
+		"remain_quota":    0,
+		"unlimited_quota": false,
+	}).Error)
+
+	recorder := performAdminTokenRequest(AdminUpdateTokenStatus, 202, common.RoleAdminUser, http.MethodPut,
+		"/api/admin/token/305/status", []byte(`{"status":1}`), "305")
+	body := decodeAdminTokenResponse(t, recorder)
+
+	assert.False(t, body.Success)
+	assert.Equal(t, i18n.MsgTokenExhaustedCannotEable, body.Message)
 }
 
 func TestAdminUpdateTokenStatusWritesAuditAndHonorsExpiredGuard(t *testing.T) {
@@ -216,6 +245,51 @@ func TestAdminUpdateTokenStatusWritesAuditAndHonorsExpiredGuard(t *testing.T) {
 	body = decodeAdminTokenResponse(t, recorder)
 	assert.False(t, body.Success)
 	assert.Equal(t, i18n.MsgTokenExpiredCannotEnable, body.Message)
+}
+
+type sqlCaptureLogger struct {
+	logger.Interface
+	mu   sync.Mutex
+	sqls []string
+}
+
+func (l *sqlCaptureLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, _ := fc()
+	l.mu.Lock()
+	l.sqls = append(l.sqls, sql)
+	l.mu.Unlock()
+	l.Interface.Trace(ctx, begin, fc, err)
+}
+
+func (l *sqlCaptureLogger) lastUpdateOn(t *testing.T, table string) string {
+	t.Helper()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for i := len(l.sqls) - 1; i >= 0; i-- {
+		sql := strings.TrimSpace(l.sqls[i])
+		if strings.HasPrefix(strings.ToUpper(sql), "UPDATE") && strings.Contains(sql, table) {
+			return sql
+		}
+	}
+	return ""
+}
+
+func TestAdminUpdateTokenStatusOnlyWritesStatus(t *testing.T) {
+	setupAdminTokenControllerTest(t)
+	capture := &sqlCaptureLogger{Interface: logger.Discard}
+	model.DB = model.DB.Session(&gorm.Session{Logger: capture})
+
+	recorder := performAdminTokenRequest(AdminUpdateTokenStatus, 202, common.RoleAdminUser, http.MethodPut,
+		"/api/admin/token/304/status", []byte(`{"status":2}`), "304")
+	body := decodeAdminTokenResponse(t, recorder)
+	require.True(t, body.Success)
+
+	updateSQL := capture.lastUpdateOn(t, "tokens")
+	require.NotEmpty(t, updateSQL)
+	assert.Contains(t, updateSQL, "status")
+	assert.NotContains(t, updateSQL, "remain_quota")
+	assert.NotContains(t, updateSQL, "allow_ips")
+	assert.NotContains(t, updateSQL, "model_limits")
 }
 
 func TestAdminDeleteTokenWritesAudit(t *testing.T) {

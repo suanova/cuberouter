@@ -37,6 +37,7 @@ func seedAdminTokenService(t *testing.T) {
 		{Id: 203, Username: "ops", DisplayName: "Ops", Role: common.RoleOpsUser, Status: common.UserStatusEnabled, AffCode: "ops"},
 		{Id: 204, Username: "alice", DisplayName: "Alice Chen", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "alice"},
 		{Id: 205, Username: "bob", DisplayName: "Bob", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "bob"},
+		{Id: 206, Username: "admin2", DisplayName: "Admin Two", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, AffCode: "admin2"},
 	}).Error)
 	require.NoError(t, model.DB.Create(&[]model.Token{
 		{Id: 301, UserId: 201, Name: "root-key", Key: "root-key", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled},
@@ -46,6 +47,7 @@ func seedAdminTokenService(t *testing.T) {
 		{Id: 305, UserId: 205, Name: "bob-key", Key: "bob-key", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled},
 		{Id: 306, UserId: 204, Name: "alice-expired", Key: "alice-expired", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusExpired},
 		{Id: 307, UserId: 204, Name: "org-key", Key: "org-key", ScopeType: model.TokenScopeOrganization, OrganizationId: 9, Status: common.TokenStatusEnabled},
+		{Id: 308, UserId: 206, Name: "admin2-key", Key: "admin2-key", ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled},
 	}).Error)
 }
 
@@ -89,8 +91,8 @@ func TestListAdminPersonalTokensFiltersByRoleAndHydratesOwner(t *testing.T) {
 		AdminPersonalTokenListRequest{Limit: 20},
 	)
 	require.NoError(t, err)
-	require.Equal(t, int64(6), rootTotal)
-	require.Equal(t, []int{306, 305, 304, 303, 302, 301}, adminTokenIds(rootTokens))
+	require.Equal(t, int64(7), rootTotal)
+	require.Equal(t, []int{308, 306, 305, 304, 303, 302, 301}, adminTokenIds(rootTokens))
 }
 
 func TestListAdminPersonalTokensFilters(t *testing.T) {
@@ -130,6 +132,30 @@ func TestListAdminPersonalTokensFilters(t *testing.T) {
 	require.Equal(t, []int{304, 303}, adminTokenIds(tokens))
 }
 
+func TestListAdminPersonalTokensReportsExpiredByTime(t *testing.T) {
+	setupServiceTestDB(t)
+	seedAdminTokenService(t)
+	require.NoError(t, model.DB.Create(&model.Token{
+		Id: 309, UserId: 203, Name: "ops-time-expired", Key: "ops-time-expired",
+		ScopeType: model.TokenScopePersonal, Status: common.TokenStatusEnabled,
+		ExpiredTime: common.GetTimestamp() - 60,
+	}).Error)
+
+	adminOp := AdminTokenOperator{UserId: 202, Role: common.RoleAdminUser}
+	tokens, _, err := ListAdminPersonalTokens(adminOp, AdminPersonalTokenListRequest{Limit: 20})
+	require.NoError(t, err)
+	expiredByTime := findAdminTokenById(tokens, 309)
+	require.NotNil(t, expiredByTime)
+	assert.Equal(t, common.TokenStatusExpired, expiredByTime.Status)
+
+	expired, total, err := ListAdminPersonalTokens(adminOp, AdminPersonalTokenListRequest{
+		Limit: 20, Status: common.TokenStatusExpired,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	assert.Equal(t, []int{309, 306}, adminTokenIds(expired))
+}
+
 func TestGetAdminManagedPersonalTokenEnforcesRoleHierarchyAndScope(t *testing.T) {
 	setupServiceTestDB(t)
 	seedAdminTokenService(t)
@@ -147,6 +173,9 @@ func TestGetAdminManagedPersonalTokenEnforcesRoleHierarchyAndScope(t *testing.T)
 	require.NoError(t, err)
 
 	_, _, err = GetAdminManagedPersonalToken(adminOp, 301)
+	require.ErrorIs(t, err, ErrAdminTokenForbidden)
+
+	_, _, err = GetAdminManagedPersonalToken(adminOp, 308)
 	require.ErrorIs(t, err, ErrAdminTokenForbidden)
 
 	_, _, err = GetAdminManagedPersonalToken(adminOp, 307)

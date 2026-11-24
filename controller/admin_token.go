@@ -135,7 +135,9 @@ func AdminUpdateTokenStatus(c *gin.Context) {
 		}
 	}
 	token.Status = request.Status
-	if err := token.Update(); err != nil {
+	// Status-only write: never rewrite the rest of the row from this snapshot.
+	// A concurrent owner edit or quota decrement must not be reverted.
+	if err := token.SelectUpdate(); err != nil {
 		common.ApiError(c, err)
 		return
 	}

@@ -53,6 +53,7 @@ func TestAdminPersonalTokensQueryRespectsRoleHierarchyAndScope(t *testing.T) {
 	require.NoError(t, DB.Create(&[]User{
 		{Id: 1, Username: "root", Role: common.RoleRootUser, AffCode: "root"},
 		{Id: 2, Username: "admin", Role: common.RoleAdminUser, AffCode: "admin"},
+		{Id: 5, Username: "admin2", Role: common.RoleAdminUser, AffCode: "admin2"},
 		{Id: 3, Username: "ops", Role: common.RoleOpsUser, AffCode: "ops"},
 		{Id: 4, Username: "common", Role: common.RoleCommonUser, AffCode: "common"},
 	}).Error)
@@ -63,6 +64,7 @@ func TestAdminPersonalTokensQueryRespectsRoleHierarchyAndScope(t *testing.T) {
 		{Id: 14, UserId: 4, Name: "common-key", Key: "common-key", ScopeType: TokenScopePersonal},
 		{Id: 15, UserId: 4, Name: "legacy-key", Key: "legacy-key", ScopeType: ""},
 		{Id: 16, UserId: 4, Name: "org-key", Key: "org-key", ScopeType: TokenScopeOrganization, OrganizationId: 9},
+		{Id: 17, UserId: 5, Name: "admin2-key", Key: "admin2-key", ScopeType: TokenScopePersonal},
 	}).Error)
 
 	var adminVisible []Token
@@ -71,5 +73,5 @@ func TestAdminPersonalTokensQueryRespectsRoleHierarchyAndScope(t *testing.T) {
 
 	var rootVisible []Token
 	require.NoError(t, AdminPersonalTokensQuery(1, common.RoleRootUser).Order("id").Find(&rootVisible).Error)
-	require.Equal(t, []int{11, 12, 13, 14, 15}, tokenIds(rootVisible))
+	require.Equal(t, []int{11, 12, 13, 14, 15, 17}, tokenIds(rootVisible))
 }
