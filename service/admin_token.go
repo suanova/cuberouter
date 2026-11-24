@@ -101,7 +101,7 @@ func ListAdminPersonalTokens(op AdminTokenOperator, req AdminPersonalTokenListRe
 			return nil, 0, err
 		}
 		ownerIds := model.DB.Model(&model.User{}).Select("id").
-			Where("username LIKE ? ESCAPE '!' OR display_name LIKE ? ESCAPE '!'", pattern, pattern)
+			Where("LOWER(username) LIKE LOWER(?) ESCAPE '!' OR LOWER(display_name) LIKE LOWER(?) ESCAPE '!'", pattern, pattern)
 		query = query.Where("user_id IN (?)", ownerIds)
 	}
 	if req.Status > 0 {
