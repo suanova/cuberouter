@@ -333,6 +333,15 @@ func registerApiRoutes(apiRouter *gin.RouterGroup, documented bool) {
 			tokenRoute.POST("/batch/keys", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.GetTokenKeysBatch)
 		}
 
+		adminTokenRoute := apiRouter.Group("/admin/token")
+		adminTokenRoute.Use(middleware.AdminAuth())
+		{
+			adminTokenRoute.GET("/", middleware.SearchRateLimitWhenQuery(), controller.AdminListTokens)
+			adminTokenRoute.POST("/:id/key", middleware.CriticalRateLimit(), middleware.DisableCache(), controller.AdminGetTokenKey)
+			adminTokenRoute.PUT("/:id/status", controller.AdminUpdateTokenStatus)
+			adminTokenRoute.DELETE("/:id", controller.AdminDeleteToken)
+		}
+
 		usageRoute := apiRouter.Group("/usage")
 		usageRoute.Use(middleware.CORS(), middleware.CriticalRateLimit())
 		{
