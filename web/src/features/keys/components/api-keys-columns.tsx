@@ -29,12 +29,15 @@ import { ApiKeyTimestampCell } from './api-key-timestamp-cell'
 import { ApiKeyCell } from './api-keys-cells'
 import { DataTableRowActions } from './data-table-row-actions'
 
-export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
+export function useApiKeysColumns(
+  now: number,
+  options: { allUsers: boolean }
+): ColumnDef<ApiKey>[] {
   const { t, i18n } = useTranslation()
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const justNowLabel = t('Just now')
   const staleAccessThreshold = dayjs(now).subtract(3, 'month').valueOf()
-  return [
+  const columns: ColumnDef<ApiKey>[] = [
     {
       accessorKey: 'name',
       header: t('Name'),
@@ -128,4 +131,22 @@ export function useApiKeysColumns(now: number): ColumnDef<ApiKey>[] {
       meta: { pinned: 'right' as const },
     },
   ]
+
+  if (options.allUsers) {
+    const keyIndex = columns.findIndex((column) => column.id === 'key')
+    columns.splice(keyIndex + 1, 0, {
+      id: 'owner',
+      header: t('Owner'),
+      cell: ({ row }) => (
+        <span className='truncate font-medium'>
+          {row.original.owner_username || row.original.owner_display_name || '-'}
+        </span>
+      ),
+      enableSorting: false,
+      size: 140,
+    })
+    return columns.filter((column) => column.id !== 'billing_account')
+  }
+
+  return columns
 }
