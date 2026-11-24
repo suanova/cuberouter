@@ -53,6 +53,9 @@ export const apiKeySchema = z.object({
   visibility: z.string().optional(),
   creator_user_id: z.number().optional(),
   responsible_user_id: z.number().optional(),
+  /** The owner of a personal key; filled by the admin all-users list. */
+  owner_username: z.string().optional(),
+  owner_display_name: z.string().optional(),
   /** The masked form of an organization key; personal keys arrive already masked. */
   key_preview: z.string().optional(),
 })
@@ -78,6 +81,10 @@ export interface GetSelfApiKeysParams extends GetApiKeysParams {
   keyword?: string
   token?: string
   status?: number
+}
+
+export interface GetAdminApiKeysParams extends GetSelfApiKeysParams {
+  username?: string
 }
 
 export interface GetApiKeysResponse {
