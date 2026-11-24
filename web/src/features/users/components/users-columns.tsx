@@ -40,8 +40,8 @@ import {
 import type { User } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
 import { SubscriptionBalanceCell } from './subscription-balance-cell'
-import UsernameCell from './username-cell'
 import { UserQuotaCell } from './user-quota-cell'
+import UsernameCell from './username-cell'
 
 export function useUsersColumns(): ColumnDef<User>[] {
   const { t } = useTranslation()
@@ -210,6 +210,8 @@ export function useUsersColumns(): ColumnDef<User>[] {
     },
     {
       id: 'invite_info',
+      // 纯展示列：提供 accessor，「视图」菜单才能列出并切换该列。
+      accessorFn: (row) => row.aff_count ?? 0,
       header: t('Invite Info'),
       cell: ({ row }) => {
         const user = row.original
