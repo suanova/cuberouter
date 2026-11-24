@@ -524,6 +524,15 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   // Logs
   'log.clear': 'Cleared historical logs',
   'log.cleanup_start': 'Log cleanup task started.',
+  // Admin API key management
+  'token.key_view':
+    'Viewed API key {{token_name}} (ID: {{token_id}}) of user {{target_username}}',
+  'token.status_enable':
+    'Enabled API key {{token_name}} (ID: {{token_id}}) of user {{target_username}}',
+  'token.status_disable':
+    'Disabled API key {{token_name}} (ID: {{token_id}}) of user {{target_username}}',
+  'token.delete':
+    'Deleted API key {{token_name}} (ID: {{token_id}}) of user {{target_username}}',
   // Generic middleware fallback
   generic: '{{method}} {{route}}',
 }
