@@ -135,6 +135,13 @@ function ApiKeysMobileList({
       {rows.map((row) => {
         const apiKey = row.original
         const statusConfig = API_KEY_STATUSES[apiKey.status]
+        let accountLabel = t('Personal')
+        if (allUsers) {
+          accountLabel =
+            apiKey.owner_username || apiKey.owner_display_name || t('Personal')
+        } else if (apiKey.scope_type === 'organization') {
+          accountLabel = apiKey.organization_name || t('Organization')
+        }
 
         return (
           <div
@@ -150,13 +157,7 @@ function ApiKeysMobileList({
                   {apiKey.name}
                 </div>
                 <div className='text-muted-foreground text-[11px]'>
-                  {allUsers
-                    ? apiKey.owner_username ||
-                      apiKey.owner_display_name ||
-                      t('Personal')
-                    : apiKey.scope_type === 'organization'
-                      ? apiKey.organization_name || t('Organization')
-                      : t('Personal')}
+                  {accountLabel}
                 </div>
               </div>
               {statusConfig && (

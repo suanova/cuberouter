@@ -22,7 +22,7 @@ import { describe, expect, test } from 'vitest'
 import { renderAuditContent } from '../format'
 
 const t = (key: string, opts?: Record<string, unknown>) =>
-  key.replace(/\{\{(\w+)\}\}/g, (_, name) => String(opts?.[name] ?? ''))
+  key.replaceAll(/\{\{(\w+)\}\}/g, (_, name) => String(opts?.[name] ?? ''))
 
 describe('admin token audit actions', () => {
   test.each([
