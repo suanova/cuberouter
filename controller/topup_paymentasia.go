@@ -59,14 +59,18 @@ func paymentAsiaUnitPrice() float64 {
 	return unitPrice
 }
 
-// paymentAsiaOrderRateSnapshot returns the CNY exchange rate to snapshot on an
-// order; zero means "not CNY or no snapshot" and settlement falls back to the
-// current Price.
+// paymentAsiaOrderRateSnapshot returns the CNY/CUSTOM exchange rate to snapshot
+// on an order; zero means "USD/TOKENS or no snapshot" and settlement falls back
+// to the current rate.
 func paymentAsiaOrderRateSnapshot() float64 {
-	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeCNY {
+	switch operation_setting.GetQuotaDisplayType() {
+	case operation_setting.QuotaDisplayTypeCNY:
 		return operation_setting.Price
+	case operation_setting.QuotaDisplayTypeCustom:
+		return operation_setting.GetUsdToCurrencyRate(operation_setting.Price)
+	default:
+		return 0
 	}
-	return 0
 }
 
 // paymentAsiaStoredAmount converts a user-entered amount to the unit stored on
@@ -105,7 +109,8 @@ func paymentAsiaMinimumTopUp() int64 {
 
 // getPaymentAsiaPayMoney 计算网关实付金额:amount(展示单位)× PaymentAsiaUnitPrice
 // (网关币种单价)× 分组充值倍率 × 折扣。金额语义沿用 Epay:TOKENS 模式下 amount
-// 是 token 数,先 ÷ QuotaPerUnit 换成美元;CNY 模式的元金额不再换算,直接乘单价。
+// 是 token 数,先 ÷ QuotaPerUnit 换成美元;CNY/CUSTOM 模式的金额已是展示货币,
+// 不再除以汇率,直接乘单价(单价即网关币种/展示货币的换算率)。
 func getPaymentAsiaPayMoney(amount int64, group string) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
@@ -211,7 +216,7 @@ type paymentAsiaFeeBreakdown struct {
 // 手续费折回展示单位，从到账额度中扣除。requestAmount 是用户输入数量（用于
 // 计算实付），storedAmount 是落库的 Amount（TOKENS 模式已 ÷QuotaPerUnit）。
 // 报价与下单都调用本函数，保证展示与实际到账一致。
-func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string, currency string) (paymentAsiaFeeBreakdown, error) {
+func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, group string, methodType string, network string, currency string, rate float64) (paymentAsiaFeeBreakdown, error) {
 	charge := paymentAsiaServiceChargeRateForMethod(methodType)
 	_, baseGateway, err := formatPaymentAsiaAmount(getPaymentAsiaPayMoney(requestAmount, group), network)
 	if err != nil {
@@ -233,7 +238,6 @@ func calculatePaymentAsiaServiceFee(requestAmount int64, storedAmount int64, gro
 		return paymentAsiaFeeBreakdown{}, errPaymentAsiaServiceFeeExceedsAmount
 	}
 
-	rate := paymentAsiaOrderRateSnapshot()
 	grossQuota := model.TopupAmountToQuotaDecimal(decimal.NewFromInt(storedAmount), rate)
 	feeQuota := model.TopupAmountToQuotaDecimal(feeDisplay, rate)
 	netQuota, quotaErr := common.WalletQuotaFromDecimalStrict(grossQuota.Sub(feeQuota))
@@ -274,6 +278,7 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 	}
 	// 本请求只读取一次结算币种：通道校验、报价与手续费换算必须同源。
 	currency := paymentAsiaCurrency()
+	rate := paymentAsiaOrderRateSnapshot()
 	network := ""
 	if req.PaymentMethod != "" {
 		channel, ok := service.PaymentAsiaChannelByMethodType(req.PaymentMethod)
@@ -311,6 +316,7 @@ func RequestPaymentAsiaAmount(c *gin.Context) {
 			req.PaymentMethod,
 			network,
 			currency,
+			rate,
 		)
 		if feeErr != nil {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": feeErr.Error()})
@@ -396,7 +402,7 @@ func RequestPaymentAsiaPay(c *gin.Context) {
 	}
 	var feeBreakdown paymentAsiaFeeBreakdown
 	if setting.PaymentAsiaServiceChargeEnabled {
-		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network, currency)
+		feeBreakdown, err = calculatePaymentAsiaServiceFee(req.Amount, amount, user.Group, req.PaymentMethod, channel.Network, currency, topUpRate)
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{"message": "error", "data": err.Error()})
 			return

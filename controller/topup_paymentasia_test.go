@@ -1239,14 +1239,20 @@ func TestPaymentAsiaServiceChargeRateForMethod(t *testing.T) {
 func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 	pinPaymentAsiaControllerFixture(t)
 	origPrice := operation_setting.Price
-	t.Cleanup(func() { operation_setting.Price = origPrice })
+	origCustomRate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	t.Cleanup(func() {
+		operation_setting.Price = origPrice
+		operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = origCustomRate
+	})
 	operation_setting.Price = 7.3
+	operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = 7.3
 
 	testCases := []struct {
 		name           string
 		currency       string
 		unitPrice      float64
 		displayType    string
+		rate           float64
 		requestAmount  int64
 		storedAmount   int64
 		method         string
@@ -1294,6 +1300,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 			currency:       "HKD",
 			unitPrice:      1.08,
 			displayType:    operation_setting.QuotaDisplayTypeCNY,
+			rate:           7.3,
 			requestAmount:  100,
 			storedAmount:   100,
 			method:         "paymentasia_alipayhk",
@@ -1335,6 +1342,22 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 			wantNetDisplay: "1.9680",
 			wantNetQuota:   984_000,
 		},
+		{
+			name:           "custom hkd display converts via the passed rate",
+			currency:       "HKD",
+			unitPrice:      1,
+			displayType:    operation_setting.QuotaDisplayTypeCustom,
+			rate:           7.8,
+			requestAmount:  100,
+			storedAmount:   100,
+			method:         "paymentasia_alipayhk",
+			network:        "Alipay",
+			wantFee:        1.6,
+			wantFeeRate:    0.016,
+			wantFeeDisplay: "1.6000",
+			wantNetDisplay: "98.4000",
+			wantNetQuota:   6_307_692,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1353,6 +1376,7 @@ func TestCalculatePaymentAsiaServiceFee(t *testing.T) {
 				testCase.method,
 				testCase.network,
 				testCase.currency,
+				testCase.rate,
 			)
 			require.NoError(t, err)
 			assert.InDelta(t, testCase.wantFee, breakdown.Fee, 1e-9)
@@ -1375,7 +1399,7 @@ func TestCalculatePaymentAsiaServiceFeeRejectsFeeAtOrAboveAmount(t *testing.T) {
 	setting.PaymentAsiaUnitPrice = 1
 
 	// 信用卡固定费 HK$2 已超过 1 元实付。
-	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard", "HKD")
+	_, err := calculatePaymentAsiaServiceFee(1, 1, "default", "paymentasia_creditcard", "CreditCard", "HKD", 0)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "手续费")
 }
@@ -1463,6 +1487,55 @@ func TestRequestPaymentAsiaPaySnapshotsServiceFee(t *testing.T) {
 	assert.Zero(t, topUp.FeeFixed)
 	assert.Equal(t, 98.4, topUp.NetAmount)
 	assert.Equal(t, 49_200_000, topUp.NetQuota)
+}
+
+// TestRequestPaymentAsiaPayCustomDisplaySnapshotsCustomQuota 覆盖 CUSTOM 展示：
+// 100 HKD 按 custom_currency_exchange_rate 7.3 折算，而不是当成 USD。
+func TestRequestPaymentAsiaPayCustomDisplaySnapshotsCustomQuota(t *testing.T) {
+	pinPaymentAsiaControllerFixture(t)
+	origCustomRate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	t.Cleanup(func() {
+		operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = origCustomRate
+	})
+	operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = 7.3
+	operation_setting.SetQuotaDisplayTypeForTest(operation_setting.QuotaDisplayTypeCustom)
+	setting.PaymentAsiaServiceChargeEnabled = true
+	setting.PaymentAsiaUnitPrice = 1
+	operation_setting.GetPaymentSetting().AmountDiscount = nil
+
+	newPaymentAsiaCheckoutDB(t)
+	createPaymentAsiaPayer(t)
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("id", 42)
+	ctx.Request = httptest.NewRequest(
+		http.MethodPost,
+		"/api/user/paymentasia/pay",
+		strings.NewReader(`{"amount":100,"payment_method":"paymentasia_alipayhk"}`),
+	)
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	RequestPaymentAsiaPay(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var response struct {
+		Message string            `json:"message"`
+		Data    map[string]string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Equal(t, "success", response.Message)
+	assert.Equal(t, "100.00", response.Data["amount"])
+
+	topUp := model.GetTopUpByTradeNo(response.Data["merchant_reference"])
+	require.NotNil(t, topUp)
+	assert.Equal(t, 7.3, topUp.Rate)
+	assert.Equal(t, 100.0, topUp.Money)
+	assert.Equal(t, 1.6, topUp.Fee)
+	assert.Equal(t, 0.016, topUp.FeeRate)
+	assert.Equal(t, 98.4, topUp.NetAmount)
+	assert.Equal(t, 6_739_726, topUp.NetQuota)
 }
 
 // TestRequestPaymentAsiaPayWithoutServiceChargeSnapshotsGrossQuota 开关关闭时

@@ -229,7 +229,8 @@ func GetEpayClient() *epay.Client {
 // 金额语义跟随展示类型:
 // - TOKENS: amount 为 token 数,÷ QuotaPerUnit 换成 USD
 // - CNY: amount 为元,支付金额即为元(不乘汇率)
-// - USD/CUSTOM: amount 为美元,× 网关汇率转本地货币
+// - CUSTOM: amount 为自定义货币,× 网关汇率(自定义货币→网关币种;同币种填 1)
+// - USD: amount 为美元,× 网关汇率转本地货币
 func getPayMoney(amount int64, group string, rate float64) float64 {
 	dAmount := decimal.NewFromInt(amount)
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
@@ -282,7 +283,8 @@ func getMinTopup() int64 {
 
 // getTopUpQuota 充值金额 → 额度。金额语义跟随展示类型:
 // TOKENS 原样(下单时已换算);CNY 模式元 → ÷Price 换美元 × QuotaPerUnit;
-// USD/CUSTOM 模式美元直接 × QuotaPerUnit。
+// CUSTOM 模式自定义货币 → ÷custom rate 换美元 × QuotaPerUnit;
+// USD 模式美元直接 × QuotaPerUnit。
 func getTopUpQuota(amount int64) (int, error) {
 	quota := decimal.NewFromInt(amount)
 	switch operation_setting.GetQuotaDisplayType() {
@@ -291,10 +293,21 @@ func getTopUpQuota(amount int64) (int, error) {
 		quota = decimal.NewFromInt(quota.Div(quotaPerUnit).IntPart()).Mul(quotaPerUnit)
 	case operation_setting.QuotaDisplayTypeCNY:
 		quota = quota.Div(rmbRateDecimal()).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
+	case operation_setting.QuotaDisplayTypeCustom:
+		quota = quota.Div(customRateDecimal()).Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	default:
 		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
 	return common.WalletQuotaFromDecimalStrict(quota)
+}
+
+// customRateDecimal 返回 USD→自定义货币汇率;非法(<=0/NaN/Inf)时回退 1。
+func customRateDecimal() decimal.Decimal {
+	rate := operation_setting.GetUsdToCurrencyRate(operation_setting.Price)
+	if rate <= 0 || math.IsNaN(rate) || math.IsInf(rate, 0) {
+		rate = 1
+	}
+	return decimal.NewFromFloat(rate)
 }
 
 // rmbRateDecimal 返回 USD→CNY 汇率(Price);非法(<=0/NaN/Inf)回退 1。

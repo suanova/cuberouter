@@ -389,6 +389,36 @@ func TestRechargePaymentAsiaLegacyOrderCreditsFullAmount(t *testing.T) {
 	assert.Equal(t, 50_000_000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
+// TestRechargePaymentAsiaCustomDisplayLegacyOrder 覆盖 CUSTOM 展示的旧订单
+// (Rate=0)：结算回退当前自定义货币汇率，而不是把 Amount 当成美元。
+func TestRechargePaymentAsiaCustomDisplayLegacyOrder(t *testing.T) {
+	truncateTables(t)
+	pinPaymentAsiaTestDisplay(t, operation_setting.QuotaDisplayTypeCustom)
+	origCustomRate := operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate
+	t.Cleanup(func() {
+		operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = origCustomRate
+	})
+	operation_setting.GetGeneralSetting().CustomCurrencyExchangeRate = 7.8
+
+	user := insertUserForPaymentGuardTest(t, 609, 0)
+	order := &TopUp{
+		UserId:          user.Id,
+		Amount:          100,
+		Money:           100,
+		TradeNo:         "PACUSTOMLEGACY",
+		PaymentMethod:   "paymentasia_alipayhk",
+		PaymentProvider: PaymentProviderPaymentAsia,
+		CreateTime:      common.GetTimestamp(),
+		Status:          common.TopUpStatusPending,
+	}
+	require.NoError(t, DB.Create(order).Error)
+
+	alreadyDone, err := RechargePaymentAsia(order.TradeNo, paymentAsiaTestMeta(), "127.0.0.1")
+	require.NoError(t, err)
+	assert.False(t, alreadyDone)
+	assert.Equal(t, 6_410_256, getUserQuotaForPaymentGuardTest(t, user.Id))
+}
+
 // TestManualCompleteTopUpUsesPaymentAsiaNetQuota 管理员补单与回调结算口径一致：
 // PaymentAsia 订单有 NetQuota 快照时按快照入账，旧订单回退全额。
 func TestManualCompleteTopUpUsesPaymentAsiaNetQuota(t *testing.T) {
