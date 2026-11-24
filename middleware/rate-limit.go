@@ -267,7 +267,7 @@ func SearchRateLimit() func(c *gin.Context) {
 func SearchRateLimitWhenQuery() func(c *gin.Context) {
 	limit := SearchRateLimit()
 	return func(c *gin.Context) {
-		if c.Query("keyword") == "" && c.Query("token") == "" {
+		if c.Query("keyword") == "" && c.Query("token") == "" && c.Query("username") == "" {
 			c.Next()
 			return
 		}
