@@ -52,10 +52,11 @@ type CreateOrganizationRequest struct {
 }
 
 type UpdateOrganizationRequest struct {
-	Name        string
-	Description string
-	Group       *string
-	Reason      string
+	Name                    string
+	Description             string
+	Group                   *string
+	DefaultMemberTokenQuota *int
+	Reason                  string
 }
 
 type OrganizationQuotaAdjustmentRequest struct {
@@ -221,6 +222,11 @@ func UpdateOrganization(operatorUserId int, organizationId int, accessMode strin
 	if err != nil {
 		return nil, err
 	}
+	if req.DefaultMemberTokenQuota != nil {
+		if *req.DefaultMemberTokenQuota < 0 || *req.DefaultMemberTokenQuota > maxOrganizationTokenQuotaValue() {
+			return nil, errors.New("invalid default member token quota")
+		}
+	}
 	normalized := model.NormalizeOrganizationName(name)
 	var updated *model.Organization
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
@@ -243,6 +249,10 @@ func UpdateOrganization(operatorUserId int, organizationId int, accessMode strin
 		if requestedGroup != nil && (decision.Role == organizationAuditOperatorRolePlatformAdmin || decision.Role == organizationAuditOperatorRolePlatformRoot) {
 			organization.Group = *requestedGroup
 			selectFields = append(selectFields, "group")
+		}
+		if req.DefaultMemberTokenQuota != nil {
+			organization.DefaultMemberTokenQuota = *req.DefaultMemberTokenQuota
+			selectFields = append(selectFields, "default_member_token_quota")
 		}
 		organization.UpdatedAt = common.GetTimestamp()
 		if err := tx.Model(organization).Select(selectFields).Updates(organization).Error; err != nil {

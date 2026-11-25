@@ -39,10 +39,11 @@ type createOrganizationRequest struct {
 }
 
 type updateOrganizationRequest struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Group       *string `json:"group"`
-	Reason      string  `json:"reason"`
+	Name                    string  `json:"name"`
+	Description             string  `json:"description"`
+	Group                   *string `json:"group"`
+	DefaultMemberTokenQuota *int    `json:"default_member_token_quota"`
+	Reason                  string  `json:"reason"`
 }
 
 type updateOrganizationStatusRequest struct {
@@ -148,7 +149,7 @@ func UpdateOrganization(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	organization, err := service.UpdateOrganization(c.GetInt("id"), organizationId, organizationAccessMode(c), service.UpdateOrganizationRequest{Name: req.Name, Description: req.Description, Group: req.Group, Reason: req.Reason}, organizationAuditRequestMetadata(c))
+	organization, err := service.UpdateOrganization(c.GetInt("id"), organizationId, organizationAccessMode(c), service.UpdateOrganizationRequest{Name: req.Name, Description: req.Description, Group: req.Group, DefaultMemberTokenQuota: req.DefaultMemberTokenQuota, Reason: req.Reason}, organizationAuditRequestMetadata(c))
 	if err != nil {
 		writeOrganizationError(c, err)
 		return
