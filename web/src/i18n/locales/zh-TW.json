@@ -6454,6 +6454,12 @@
     "Fixed Fee": "固定手續費",
     "Net Amount": "淨額",
     "Net Amount (display units)": "到帳金額（展示單位）",
-    "Net Quota": "到帳額度"
+    "Net Quota": "到帳額度",
+    "Manage the organization profile and the default quota for keys created by ordinary members.": "管理組織資料，以及一般成員新建 Key 的預設額度。",
+    "Member key defaults": "成員 Key 預設額度",
+    "Default key quota": "預設 Key 額度",
+    "Leave empty for unlimited": "留空表示不限",
+    "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.": "僅對一般成員之後新建的組織 Key 生效；留空或填 0 表示不限。存量 Key 與管理員建立的 Key 不受影響。",
+    "Enter a non-negative amount.": "請輸入非負金額。"
   }
 }

@@ -6454,6 +6454,12 @@
     "Fixed Fee": "Fixed Fee",
     "Net Amount": "Net Amount",
     "Net Amount (display units)": "Net Amount (display units)",
-    "Net Quota": "Net Quota"
+    "Net Quota": "Net Quota",
+    "Manage the organization profile and the default quota for keys created by ordinary members.": "Manage the organization profile and the default quota for keys created by ordinary members.",
+    "Member key defaults": "Member key defaults",
+    "Default key quota": "Default key quota",
+    "Leave empty for unlimited": "Leave empty for unlimited",
+    "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.": "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.",
+    "Enter a non-negative amount.": "Enter a non-negative amount."
   }
 }

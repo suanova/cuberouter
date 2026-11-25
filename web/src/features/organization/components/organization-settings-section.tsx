@@ -47,12 +47,16 @@ import { updateOrganization } from '../api'
 import {
   organizationFormSchema,
   ORGANIZATION_NAME_MAX_LENGTH,
+  transformOrganizationFormToPayload,
   transformOrganizationToFormDefaults,
   type OrganizationFormValues,
 } from '../lib'
 import type { Organization } from '../types'
 import { useOrganizationSurface } from './organization-page-provider'
-import { OrganizationSection, OrganizationSectionEmpty } from './organization-section'
+import {
+  OrganizationSection,
+  OrganizationSectionEmpty,
+} from './organization-section'
 
 type OrganizationSettingsSectionProps = {
   organization: Organization
@@ -65,12 +69,12 @@ type OrganizationSettingsSectionProps = {
 }
 
 /**
- * The organization profile: its name and description.
+ * The organization profile and the default quota for member-created keys.
  *
  * Everything else about an organization is managed from where it belongs — the
  * group from the organization center's edit drawer, membership from the members
  * section, the status and the dissolution from the platform administration — so
- * this section stays a plain two-field form.
+ * this section stays a plain name, description and key-default form.
  */
 export function OrganizationSettingsSection(
   props: OrganizationSettingsSectionProps
@@ -106,10 +110,14 @@ export function OrganizationSettingsSection(
   const onSubmit = async (values: OrganizationFormValues) => {
     setIsSubmitting(true)
     try {
-      const result = await updateOrganization(surface, props.organization.id, {
-        name: values.name.trim(),
-        description: values.description?.trim() ?? '',
-      })
+      const result = await updateOrganization(
+        surface,
+        props.organization.id,
+        transformOrganizationFormToPayload(values, {
+          organizationId: props.organization.id,
+          includeDefaultMemberTokenQuota: true,
+        })
+      )
       if (!result.success) return
       toast.success(t('Organization updated'))
       await props.onUpdated()
@@ -123,25 +131,27 @@ export function OrganizationSettingsSection(
       icon='settings'
       title={t('Organization Settings')}
       description={t(
-        'Rename the organization or change how it is described. The name must be unique.'
+        'Manage the organization profile and the default quota for keys created by ordinary members.'
       )}
       scroll
     >
-      <Card className='max-w-2xl'>
-        <CardHeader>
-          <CardTitle>{t('Profile')}</CardTitle>
-          <CardDescription>
-            {props.readOnly
-              ? t('This organization is read-only, so the profile cannot be changed.')
-              : t('Changes are recorded in the organization audit log.')}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form
-              onSubmit={form.handleSubmit(onSubmit)}
-              className='flex flex-col gap-4'
-            >
+      <Form {...form}>
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className='flex flex-col gap-4'
+        >
+          <Card className='max-w-2xl'>
+            <CardHeader>
+              <CardTitle>{t('Profile')}</CardTitle>
+              <CardDescription>
+                {props.readOnly
+                  ? t(
+                      'This organization is read-only, so the profile cannot be changed.'
+                    )
+                  : t('Changes are recorded in the organization audit log.')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className='flex flex-col gap-4'>
               <FormField
                 control={form.control}
                 name='name'
@@ -182,16 +192,49 @@ export function OrganizationSettingsSection(
                   </FormItem>
                 )}
               />
+            </CardContent>
+          </Card>
 
-              <div className='flex justify-end'>
-                <Button type='submit' disabled={props.readOnly || isSubmitting}>
-                  {isSubmitting ? t('Saving...') : t('Save')}
-                </Button>
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+          <Card className='max-w-2xl'>
+            <CardHeader>
+              <CardTitle>{t('Member key defaults')}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FormField
+                control={form.control}
+                name='default_member_token_quota_dollars'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Default key quota')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        value={field.value ?? ''}
+                        type='text'
+                        inputMode='decimal'
+                        placeholder={t('Leave empty for unlimited')}
+                        disabled={props.readOnly || isSubmitting}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          <div className='flex max-w-2xl justify-end'>
+            <Button type='submit' disabled={props.readOnly || isSubmitting}>
+              {isSubmitting ? t('Saving...') : t('Save')}
+            </Button>
+          </div>
+        </form>
+      </Form>
     </OrganizationSection>
   )
 }

@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { describe, expect, test } from 'vitest'
 
+import { parseQuotaFromDollars } from '@/lib/format'
+
 import {
   isOrganizationSlugConfirmed,
   organizationFormSchema,
@@ -51,7 +53,9 @@ describe('organizationFormSchema', () => {
   test('trims the name and rejects a whitespace-only one', () => {
     const parsed = organizationFormSchema.parse({ name: '  Design Group  ' })
     expect(parsed.name).toBe('Design Group')
-    expect(organizationFormSchema.safeParse({ name: '   ' }).success).toBe(false)
+    expect(organizationFormSchema.safeParse({ name: '   ' }).success).toBe(
+      false
+    )
   })
 
   test('rejects a description longer than the column', () => {
@@ -114,6 +118,32 @@ describe('transformOrganizationFormToPayload', () => {
       { organizationId: 7, includeGroup: true }
     )
     expect(payload.group).toBe('default')
+  })
+
+  test('sends the default key quota only when the setting surface asks for it', () => {
+    const values = {
+      name: 'Design',
+      description: '',
+      default_member_token_quota_dollars: '10',
+    }
+    expect(
+      transformOrganizationFormToPayload(values, {
+        organizationId: 7,
+        includeDefaultMemberTokenQuota: true,
+      }).default_member_token_quota
+    ).toBe(parseQuotaFromDollars(10))
+    expect(
+      transformOrganizationFormToPayload(values, { organizationId: 7 })
+        .default_member_token_quota
+    ).toBeUndefined()
+  })
+
+  test('an empty default key quota becomes zero (unlimited)', () => {
+    const payload = transformOrganizationFormToPayload(
+      { name: 'Design', default_member_token_quota_dollars: '' },
+      { organizationId: 7, includeDefaultMemberTokenQuota: true }
+    )
+    expect(payload.default_member_token_quota).toBe(0)
   })
 })
 

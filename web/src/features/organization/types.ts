@@ -58,6 +58,8 @@ export const organizationSchema = z.object({
   slug: z.string(),
   description: z.string().optional(),
   group: z.string().optional(),
+  /** Quota granted to member-created keys; 0 = unlimited. */
+  default_member_token_quota: z.number().optional(),
   status: organizationStatusSchema,
   quota: z.number(),
   used_quota: z.number(),
