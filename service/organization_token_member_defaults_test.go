@@ -25,40 +25,38 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestOrganizationMemberTokenDefaultQuota(t *testing.T) {
+func TestOrganizationMemberTokenUsable(t *testing.T) {
 	tests := []struct {
 		name        string
 		orgQuota    int
 		orgUsed     int
 		memberLimit int
 		memberUsed  int
-		want        int
 		wantErr     error
 	}{
-		{name: "unconfigured member uses 1% of org quota", orgQuota: 10000, want: 100},
-		{name: "unconfigured member is capped by org remaining", orgQuota: 10000, orgUsed: 9950, want: 50},
-		{name: "unconfigured member gets at least one unit", orgQuota: 50, want: 1},
-		{name: "unconfigured member with zero org quota is rejected", orgQuota: 0, wantErr: ErrOrganizationQuotaUnavailable},
-		{name: "unconfigured member with exhausted org quota is rejected", orgQuota: 10000, orgUsed: 10000, wantErr: ErrOrganizationQuotaUnavailable},
-		{name: "unconfigured member with over-used org quota is rejected", orgQuota: 10000, orgUsed: 12000, wantErr: ErrOrganizationQuotaUnavailable},
-		{name: "configured member uses remaining member quota", orgQuota: 10000, memberLimit: 500, memberUsed: 200, want: 300},
-		{name: "configured member at limit is rejected", orgQuota: 10000, memberLimit: 500, memberUsed: 500, wantErr: ErrOrganizationMemberQuotaExhausted},
-		{name: "configured member over limit is rejected", orgQuota: 10000, memberLimit: 500, memberUsed: 600, wantErr: ErrOrganizationMemberQuotaExhausted},
+		{name: "organization quota is available", orgQuota: 10000},
+		{name: "organization quota is zero", orgQuota: 0, wantErr: ErrOrganizationQuotaUnavailable},
+		{name: "organization quota is exhausted", orgQuota: 10000, orgUsed: 10000, wantErr: ErrOrganizationQuotaUnavailable},
+		{name: "organization quota is over-used", orgQuota: 10000, orgUsed: 12000, wantErr: ErrOrganizationQuotaUnavailable},
+		{name: "configured member has remaining", orgQuota: 10000, memberLimit: 500, memberUsed: 200},
+		{name: "configured member at limit", orgQuota: 10000, memberLimit: 500, memberUsed: 500, wantErr: ErrOrganizationMemberQuotaExhausted},
+		{name: "configured member over limit", orgQuota: 10000, memberLimit: 500, memberUsed: 600, wantErr: ErrOrganizationMemberQuotaExhausted},
+		{name: "organization is checked before member", orgQuota: 10000, orgUsed: 10000, memberLimit: 500, memberUsed: 500, wantErr: ErrOrganizationQuotaUnavailable},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			organization := &model.Organization{Quota: tc.orgQuota, UsedQuota: tc.orgUsed}
 			member := &model.OrganizationMember{QuotaLimit: tc.memberLimit, UsedQuota: tc.memberUsed}
-			got, err := organizationMemberTokenDefaultQuota(organization, member)
+			err := ensureOrganizationMemberTokenUsable(organization, member)
 			if tc.wantErr != nil {
 				require.ErrorIs(t, err, tc.wantErr)
 				return
 			}
 			require.NoError(t, err)
-			require.Equal(t, tc.want, got)
 		})
 	}
 }
@@ -67,18 +65,18 @@ func ptrString(value string) *string {
 	return &value
 }
 
-func assertMemberDefaultToken(t *testing.T, token *model.Token, wantQuota int) {
+func assertMemberDefaultToken(t *testing.T, token *model.Token, wantUnlimited bool, wantQuota int) {
 	t.Helper()
-	require.False(t, token.UnlimitedQuota)
-	require.Equal(t, wantQuota, token.RemainQuota)
-	require.EqualValues(t, -1, token.ExpiredTime)
-	require.False(t, token.ModelLimitsEnabled)
-	require.Empty(t, token.ModelLimits)
+	assert.Equal(t, wantUnlimited, token.UnlimitedQuota)
+	assert.Equal(t, wantQuota, token.RemainQuota)
+	assert.EqualValues(t, -1, token.ExpiredTime)
+	assert.False(t, token.ModelLimitsEnabled)
+	assert.Empty(t, token.ModelLimits)
 	require.NotNil(t, token.AllowIps)
-	require.Empty(t, *token.AllowIps)
-	require.Empty(t, token.Group)
-	require.False(t, token.CrossGroupRetry)
-	require.Equal(t, model.TokenVisibilityPrivate, token.Visibility)
+	assert.Empty(t, *token.AllowIps)
+	assert.Empty(t, token.Group)
+	assert.False(t, token.CrossGroupRetry)
+	assert.Equal(t, model.TokenVisibilityPrivate, token.Visibility)
 }
 
 func TestOrganizationTokenMemberCreateAppliesDefaults(t *testing.T) {
@@ -89,7 +87,7 @@ func TestOrganizationTokenMemberCreateAppliesDefaults(t *testing.T) {
 		Group: "vip", CrossGroupRetry: true,
 	})
 	require.NoError(t, err)
-	assertMemberDefaultToken(t, token, 20) // min(2000, 2000/100)
+	assertMemberDefaultToken(t, token, true, 0)
 	require.Equal(t, member.Id, token.ResponsibleUserId)
 	require.Equal(t, member.Id, token.UserId)
 }
@@ -110,14 +108,56 @@ func TestOrganizationTokenMemberCreateRejectsExhaustedMemberQuota(t *testing.T) 
 	require.ErrorIs(t, err, ErrOrganizationMemberQuotaExhausted)
 }
 
-func TestOrganizationTokenMemberCreateUsesRemainingMemberQuota(t *testing.T) {
+func TestOrganizationTokenMemberCreateUsesOrganizationDefaultQuota(t *testing.T) {
 	_, member, organization := createOrganizationTokenTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("default_member_token_quota", 15).Error)
+	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{
+		Name: "member-default-quota", RemainQuota: 999, UnlimitedQuota: true,
+	})
+	require.NoError(t, err)
+	assertMemberDefaultToken(t, token, false, 15)
+}
+
+func TestOrganizationTokenMemberCreateChecksOrganizationBeforeMember(t *testing.T) {
+	_, member, organization := createOrganizationTokenTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("used_quota", 2000).Error)
+
+	// 成员还有剩余，但组织额度已耗尽：仍然拒绝。
 	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).
 		Where("organization_id = ? AND user_id = ?", organization.Id, member.Id).
-		Updates(map[string]any{"quota_limit": 500, "used_quota": 200}).Error)
-	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "member-remaining"})
+		Updates(map[string]any{"quota_limit": 500, "used_quota": 0}).Error)
+	_, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "org-exhausted"})
+	require.ErrorIs(t, err, ErrOrganizationQuotaUnavailable)
+
+	// 两边都耗尽：先报组织错误。
+	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).
+		Where("organization_id = ? AND user_id = ?", organization.Id, member.Id).
+		Updates(map[string]any{"quota_limit": 500, "used_quota": 500}).Error)
+	_, err = CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "both-exhausted"})
+	require.ErrorIs(t, err, ErrOrganizationQuotaUnavailable)
+}
+
+func TestOrganizationTokenDefaultChangeDoesNotAffectExistingKeys(t *testing.T) {
+	admin, member, organization := createOrganizationTokenTestOrg(t)
+	created, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "before-change"})
 	require.NoError(t, err)
-	assertMemberDefaultToken(t, token, 300)
+	assert.True(t, created.UnlimitedQuota)
+
+	value := 100
+	_, err = UpdateOrganization(admin.Id, organization.Id, OrganizationAccessModeManagement, UpdateOrganizationRequest{
+		Name: organization.Name, DefaultMemberTokenQuota: &value,
+	})
+	require.NoError(t, err)
+
+	var stored model.Token
+	require.NoError(t, model.DB.First(&stored, created.Id).Error)
+	assert.True(t, stored.UnlimitedQuota)
+	assert.Zero(t, stored.RemainQuota)
+
+	after, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "after-change"})
+	require.NoError(t, err)
+	assert.False(t, after.UnlimitedQuota)
+	assert.Equal(t, 100, after.RemainQuota)
 }
 
 func TestOrganizationTokenAdminCreateKeepsExplicitFields(t *testing.T) {
@@ -218,7 +258,7 @@ func TestOrganizationTokenMemberBatchCreateAppliesDefaultsForSingleKey(t *testin
 	})
 	require.NoError(t, err)
 	require.Len(t, result.Tokens, 1)
-	assertMemberDefaultToken(t, result.Tokens[0], 20)
+	assertMemberDefaultToken(t, result.Tokens[0], true, 0)
 }
 
 func TestOrganizationTokenMemberUpdatePreservesRestrictedFields(t *testing.T) {
@@ -276,14 +316,20 @@ func TestOrganizationTokenMemberDefaultsExternalDatabase(t *testing.T) {
 
 	token, err := CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "external-member-default"})
 	require.NoError(t, err)
-	require.False(t, token.UnlimitedQuota)
-	require.Equal(t, 100, token.RemainQuota)
+	assert.True(t, token.UnlimitedQuota)
+	assert.Zero(t, token.RemainQuota)
+
+	require.NoError(t, db.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("default_member_token_quota", 100).Error)
+	token, err = CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "external-member-configured"})
+	require.NoError(t, err)
+	assert.False(t, token.UnlimitedQuota)
+	assert.Equal(t, 100, token.RemainQuota)
 
 	require.NoError(t, db.Model(&model.OrganizationMember{}).
 		Where("organization_id = ? AND user_id = ?", organization.Id, member.Id).
 		Updates(map[string]any{"quota_limit": 500, "used_quota": 200}).Error)
-	token, err = CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "external-member-remaining"})
+	token, err = CreateOrganizationToken(member.Id, organization.Id, OrganizationAccessModeWorkspace, OrganizationTokenRequest{Name: "external-member-configured-member-quota"})
 	require.NoError(t, err)
-	require.False(t, token.UnlimitedQuota)
-	require.Equal(t, 300, token.RemainQuota)
+	assert.False(t, token.UnlimitedQuota)
+	assert.Equal(t, 100, token.RemainQuota)
 }
