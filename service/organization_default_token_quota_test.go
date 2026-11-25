@@ -24,6 +24,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,6 +52,10 @@ func TestUpdateOrganizationDefaultMemberTokenQuotaSetsKeepsAndClears(t *testing.
 	updated, err = UpdateOrganization(owner.Id, organization.Id, OrganizationAccessModeManagement, UpdateOrganizationRequest{Name: "Renamed", DefaultMemberTokenQuota: &zero})
 	require.NoError(t, err)
 	require.Zero(t, updated.DefaultMemberTokenQuota)
+
+	var stored model.Organization
+	require.NoError(t, model.DB.First(&stored, organization.Id).Error)
+	assert.Zero(t, stored.DefaultMemberTokenQuota)
 }
 
 func TestUpdateOrganizationDefaultMemberTokenQuotaRejectsOutOfRange(t *testing.T) {

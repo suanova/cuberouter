@@ -138,7 +138,7 @@ func GetOrganization(c *gin.Context) {
 	common.ApiSuccess(c, detail)
 }
 
-// UpdateOrganization 更新组织资料(名称/描述/分组)
+// UpdateOrganization 更新组织资料(名称/描述/分组/成员默认 Key 额度)
 func UpdateOrganization(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {

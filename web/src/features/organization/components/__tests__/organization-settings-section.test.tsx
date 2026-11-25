@@ -81,6 +81,11 @@ test('shows the stored default key quota in display currency', () => {
   )
 })
 
+test('explains that the default key quota is not a per-member cumulative limit', () => {
+  renderSection()
+  expect(screen.getByText(/not a per-member cumulative limit/)).toBeTruthy()
+})
+
 test('saves the default key quota with the organization profile', async () => {
   const user = userEvent.setup()
   const updateMock = vi.mocked(updateOrganization)
@@ -104,7 +109,11 @@ test('an empty default key quota saves zero (unlimited)', async () => {
   const updateMock = vi.mocked(updateOrganization)
   updateMock.mockResolvedValue({ success: true } as never)
 
-  renderSection()
+  renderSection({
+    ...ORGANIZATION,
+    default_member_token_quota: parseQuotaFromDollars(10),
+  })
+  await user.clear(screen.getByLabelText('Default key quota'))
   await user.click(screen.getByRole('button', { name: 'Save' }))
 
   await waitFor(() =>
@@ -114,6 +123,26 @@ test('an empty default key quota saves zero (unlimited)', async () => {
       default_member_token_quota: 0,
     })
   )
+})
+
+test('a rename-only save omits the default key quota', async () => {
+  const user = userEvent.setup()
+  const updateMock = vi.mocked(updateOrganization)
+  updateMock.mockResolvedValue({ success: true } as never)
+
+  renderSection({
+    ...ORGANIZATION,
+    default_member_token_quota: parseQuotaFromDollars(10),
+  })
+  const nameInput = screen.getByLabelText('Name')
+  await user.clear(nameInput)
+  await user.type(nameInput, 'Studio')
+  await user.click(screen.getByRole('button', { name: 'Save' }))
+
+  await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+  const payload = updateMock.mock.calls[0]?.[2]
+  expect(payload).toEqual({ name: 'Studio', description: '' })
+  expect(payload?.default_member_token_quota).toBeUndefined()
 })
 
 test('rejects a negative default key quota', async () => {

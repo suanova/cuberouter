@@ -371,6 +371,7 @@ flowchart TD
 | `status` | active/disabled/dissolved。 |
 | `quota` | 总额度，生产默认 0。 |
 | `used_quota` | 已占用额度，包含已结算消费和进行中预扣。 |
+| `default_member_token_quota` | 普通成员新建组织 Key 的默认额度；0 = 不限。 |
 | `request_count` | 已结算成功请求数。 |
 | `owner_user_id` | 当前 owner 主事实源。 |
 | `created_by` | 创建者。 |

@@ -115,7 +115,9 @@ export function OrganizationSettingsSection(
         props.organization.id,
         transformOrganizationFormToPayload(values, {
           organizationId: props.organization.id,
-          includeDefaultMemberTokenQuota: true,
+          includeDefaultMemberTokenQuota: Boolean(
+            form.formState.dirtyFields.default_member_token_quota_dollars
+          ),
         })
       )
       if (!result.success) return
@@ -219,6 +221,9 @@ export function OrganizationSettingsSection(
                     <FormDescription>
                       {t(
                         'Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.'
+                      )}{' '}
+                      {t(
+                        'Each key gets this amount independently; it is not a per-member cumulative limit. Use member quotas for that.'
                       )}
                     </FormDescription>
                     <FormMessage />
