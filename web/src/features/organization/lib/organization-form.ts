@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import { parseQuotaFromDollars, quotaUnitsToEditableAmount } from '@/lib/format'
+
 import type { Organization } from '../types'
 
 /** Enforced by the backend on update; applied to create as well so a name that
@@ -68,6 +70,18 @@ export const organizationFormSchema = z.object({
       }
     ),
   group: z.string().optional(),
+  default_member_token_quota_dollars: z
+    .string()
+    .trim()
+    .optional()
+    .refine(
+      (value) => {
+        if (!value) return true
+        const amount = Number(value)
+        return Number.isFinite(amount) && amount >= 0
+      },
+      { message: 'Enter a non-negative amount.' }
+    ),
   reason: z.string().trim().optional(),
 })
 
@@ -77,16 +91,25 @@ export const ORGANIZATION_FORM_DEFAULT_VALUES: OrganizationFormValues = {
   name: '',
   description: '',
   group: '',
+  default_member_token_quota_dollars: '',
   reason: '',
 }
 
 export function transformOrganizationToFormDefaults(
-  organization: Pick<Organization, 'name' | 'description' | 'group'>
+  organization: Pick<
+    Organization,
+    'name' | 'description' | 'group' | 'default_member_token_quota'
+  >
 ): OrganizationFormValues {
   return {
     name: organization.name,
     description: organization.description ?? '',
     group: organization.group ?? '',
+    default_member_token_quota_dollars: organization.default_member_token_quota
+      ? String(
+          quotaUnitsToEditableAmount(organization.default_member_token_quota)
+        )
+      : '',
     reason: '',
   }
 }
@@ -96,21 +119,31 @@ export function transformOrganizationToFormDefaults(
  * default group) and the update endpoint ignores it unless the caller may change
  * the organization group, so the field is only sent when it is actually
  * editable.
+ *
+ * The default key quota is the organization settings section's alone: the
+ * platform create and edit drawers share this schema but never ask for it, and
+ * sending it from there would overwrite a value they do not show.
  */
 export function transformOrganizationFormToPayload(
   values: OrganizationFormValues,
-  options: { organizationId?: number; includeGroup?: boolean } = {}
+  options: {
+    organizationId?: number
+    includeGroup?: boolean
+    includeDefaultMemberTokenQuota?: boolean
+  } = {}
 ): {
   name: string
   description: string
   group?: string
   reason?: string
+  default_member_token_quota?: number
 } {
   const payload: {
     name: string
     description: string
     group?: string
     reason?: string
+    default_member_token_quota?: number
   } = {
     name: values.name.trim(),
     description: values.description?.trim() ?? '',
@@ -120,6 +153,12 @@ export function transformOrganizationFormToPayload(
     if (options.includeGroup) payload.group = values.group?.trim() || 'default'
     const reason = values.reason?.trim()
     if (reason) payload.reason = reason
+  }
+
+  if (options.includeDefaultMemberTokenQuota) {
+    payload.default_member_token_quota = parseQuotaFromDollars(
+      Number(values.default_member_token_quota_dollars?.trim() || '0')
+    )
   }
 
   return payload

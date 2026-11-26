@@ -39,10 +39,11 @@ type createOrganizationRequest struct {
 }
 
 type updateOrganizationRequest struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Group       *string `json:"group"`
-	Reason      string  `json:"reason"`
+	Name                    string  `json:"name"`
+	Description             string  `json:"description"`
+	Group                   *string `json:"group"`
+	DefaultMemberTokenQuota *int    `json:"default_member_token_quota"`
+	Reason                  string  `json:"reason"`
 }
 
 type updateOrganizationStatusRequest struct {
@@ -137,7 +138,7 @@ func GetOrganization(c *gin.Context) {
 	common.ApiSuccess(c, detail)
 }
 
-// UpdateOrganization 更新组织资料(名称/描述/分组)
+// UpdateOrganization 更新组织资料(名称/描述/分组/成员默认 Key 额度)
 func UpdateOrganization(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)
 	if !ok {
@@ -148,7 +149,7 @@ func UpdateOrganization(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	organization, err := service.UpdateOrganization(c.GetInt("id"), organizationId, organizationAccessMode(c), service.UpdateOrganizationRequest{Name: req.Name, Description: req.Description, Group: req.Group, Reason: req.Reason}, organizationAuditRequestMetadata(c))
+	organization, err := service.UpdateOrganization(c.GetInt("id"), organizationId, organizationAccessMode(c), service.UpdateOrganizationRequest{Name: req.Name, Description: req.Description, Group: req.Group, DefaultMemberTokenQuota: req.DefaultMemberTokenQuota, Reason: req.Reason}, organizationAuditRequestMetadata(c))
 	if err != nil {
 		writeOrganizationError(c, err)
 		return

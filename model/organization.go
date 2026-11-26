@@ -56,21 +56,22 @@ const (
 )
 
 type Organization struct {
-	Id             int    `json:"id"`
-	Name           string `json:"name" gorm:"type:varchar(128);not null;index"`
-	NameNormalized string `json:"-" gorm:"type:varchar(128);not null;uniqueIndex:idx_organizations_name_normalized"`
-	Slug           string `json:"slug" gorm:"type:varchar(64);not null;uniqueIndex"`
-	Description    string `json:"description" gorm:"type:varchar(512);default:''"`
-	Group          string `json:"group" gorm:"type:varchar(64);default:'default'"`
-	Status         string `json:"status" gorm:"type:varchar(16);not null;index;default:'active'"`
-	Quota          int    `json:"quota" gorm:"not null;default:0"`
-	UsedQuota      int    `json:"used_quota" gorm:"not null;default:0"`
-	RequestCount   int    `json:"request_count" gorm:"not null;default:0"`
-	OwnerUserId    int    `json:"owner_user_id" gorm:"index;not null;default:0"`
-	CreatedBy      int    `json:"created_by" gorm:"index;not null"`
-	CreatedAt      int64  `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt      int64  `json:"updated_at" gorm:"bigint;index"`
-	DissolvedAt    int64  `json:"dissolved_at" gorm:"bigint;default:0"`
+	Id                      int    `json:"id"`
+	Name                    string `json:"name" gorm:"type:varchar(128);not null;index"`
+	NameNormalized          string `json:"-" gorm:"type:varchar(128);not null;uniqueIndex:idx_organizations_name_normalized"`
+	Slug                    string `json:"slug" gorm:"type:varchar(64);not null;uniqueIndex"`
+	Description             string `json:"description" gorm:"type:varchar(512);default:''"`
+	Group                   string `json:"group" gorm:"type:varchar(64);default:'default'"`
+	Status                  string `json:"status" gorm:"type:varchar(16);not null;index;default:'active'"`
+	Quota                   int    `json:"quota" gorm:"not null;default:0"`
+	UsedQuota               int    `json:"used_quota" gorm:"not null;default:0"`
+	DefaultMemberTokenQuota int    `json:"default_member_token_quota" gorm:"not null;default:0"`
+	RequestCount            int    `json:"request_count" gorm:"not null;default:0"`
+	OwnerUserId             int    `json:"owner_user_id" gorm:"index;not null;default:0"`
+	CreatedBy               int    `json:"created_by" gorm:"index;not null"`
+	CreatedAt               int64  `json:"created_at" gorm:"bigint;index"`
+	UpdatedAt               int64  `json:"updated_at" gorm:"bigint;index"`
+	DissolvedAt             int64  `json:"dissolved_at" gorm:"bigint;default:0"`
 }
 
 func (organization *Organization) BeforeSave(tx *gorm.DB) error {

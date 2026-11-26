@@ -90,26 +90,19 @@ func maxOrganizationTokenQuotaValue() int {
 	return int(1000000000 * common.QuotaPerUnit)
 }
 
-// organizationMemberTokenDefaultQuota 计算普通成员新建组织 Key 的初始额度：
-// 已配置成员额度时取剩余成员额度；未配置时取组织总配额的 1%，且不超过组织剩余额度。
-func organizationMemberTokenDefaultQuota(organization *model.Organization, member *model.OrganizationMember) (int, error) {
+// ensureOrganizationMemberTokenUsable 在创建前检查成员/组织余额，避免建出注定不可用的 Key。
+// 检查顺序与运行期预扣一致：先组织、后成员。
+func ensureOrganizationMemberTokenUsable(organization *model.Organization, member *model.OrganizationMember) error {
 	if organization == nil || member == nil {
-		return 0, errors.New("invalid organization token request")
+		return errors.New("invalid organization token request")
 	}
-	maxQuota := maxOrganizationTokenQuotaValue()
-	if member.QuotaLimit > 0 {
-		remaining := member.QuotaLimit - member.UsedQuota
-		if remaining <= 0 {
-			return 0, ErrOrganizationMemberQuotaExhausted
-		}
-		return min(remaining, maxQuota), nil
+	if organization.Quota <= 0 || organization.Quota-organization.UsedQuota <= 0 {
+		return ErrOrganizationQuotaUnavailable
 	}
-	orgRemaining := organization.Quota - organization.UsedQuota
-	if organization.Quota <= 0 || orgRemaining <= 0 {
-		return 0, ErrOrganizationQuotaUnavailable
+	if member.QuotaLimit > 0 && member.UsedQuota >= member.QuotaLimit {
+		return ErrOrganizationMemberQuotaExhausted
 	}
-	quota := max(1, min(orgRemaining, organization.Quota/100))
-	return min(quota, maxQuota), nil
+	return nil
 }
 
 type organizationTokenBatchCreateIdempotencyResult struct {
@@ -506,16 +499,15 @@ func isRestrictedOrganizationTokenActor(actor *OrganizationActorContext) bool {
 }
 
 // normalizeOrganizationMemberTokenRequest 把普通成员建 Key 的受控字段覆盖为安全默认值。
-// 调用方必须传入锁定的责任成员行：额度按写入时的 used_quota 计算。
+// 调用方必须传入锁定的责任成员行：额度取组织配置的默认值，0 表示不限额度。
 func normalizeOrganizationMemberTokenRequest(req *OrganizationTokenRequest, organization *model.Organization, member *model.OrganizationMember) error {
-	quota, err := organizationMemberTokenDefaultQuota(organization, member)
-	if err != nil {
+	if err := ensureOrganizationMemberTokenUsable(organization, member); err != nil {
 		return err
 	}
 	emptyAllowIps := ""
 	req.ExpiredTime = -1
-	req.RemainQuota = quota
-	req.UnlimitedQuota = false
+	req.RemainQuota = organization.DefaultMemberTokenQuota
+	req.UnlimitedQuota = organization.DefaultMemberTokenQuota == 0
 	req.ModelLimitsEnabled = false
 	req.ModelLimits = ""
 	req.AllowIps = &emptyAllowIps

@@ -649,7 +649,6 @@ export const STATIC_I18N_KEYS = [
   'Quota must be a whole number',
   'Reason is required',
   'Refunded',
-  'Rename the organization or change how it is described. The name must be unique.',
   'Requests made with this organization use the selected group.',
   'Retry a failed request on another group in the Auto pool.',
   'Revoked',

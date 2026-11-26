@@ -309,7 +309,6 @@
     "Relay requests charged to this organization.": "记到该组织的中继请求。",
     "Remove member": "移除成员",
     "Removing...": "移除中...",
-    "Rename the organization or change how it is described. The name must be unique.": "重命名组织或修改其描述。名称必须唯一。",
     "Reopened from {{status}}": "已从{{status}}重新打开",
     "Requests by Model": "按模型统计请求",
     "Requests in the last 60 seconds, whatever the range above.": "最近 60 秒的请求数，与上方时间范围无关。",
@@ -6246,7 +6245,6 @@
     "Remaining allocatable": "可分配余额",
     "Member quota limits exceed the organization quota. Lower a member's limit or raise the organization quota before setting another.": "成员配额上限总和已超过组织配额。请先调低成员上限或提高组织配额，再设置新的上限。",
     "Member quota is exhausted. Ask an organization administrator to raise it before creating new keys.": "成员额度已用尽。请联系组织管理员提高额度后再创建新的密钥。",
-    "Member-created keys use the remaining member quota, or 1% of the organization quota when no limit is set. A set member quota caps cumulative consumption across keys; the 1% default is a per-key cap.": "成员创建的密钥使用剩余的成员额度；未设置成员额度时，按组织额度的 1% 计算。已设置的成员额度限制该成员所有密钥的累计消费；1% 是单个密钥的默认上限。",
     "Server image job": "服务器图片任务",
     "Queued: {{count}} jobs ahead": "排队中：前面有 {{count}} 个任务",
     "Refreshing reconnects to this job without generating again. Images are released only after output review.": "刷新后会重新连接到此任务，不会重复生成。图片通过输出审核后才会提供。",
@@ -6454,6 +6452,13 @@
     "Fixed Fee": "固定手续费",
     "Net Amount": "净额",
     "Net Amount (display units)": "到账金额（展示单位）",
-    "Net Quota": "到账额度"
+    "Net Quota": "到账额度",
+    "Manage the organization profile and the default quota for keys created by ordinary members.": "管理组织资料，以及普通成员新建 Key 的默认额度。",
+    "Member key defaults": "成员 Key 默认额度",
+    "Default key quota": "默认 Key 额度",
+    "Leave empty for unlimited": "留空表示不限",
+    "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.": "仅对普通成员之后新建的组织 Key 生效；留空或填 0 表示不限。存量 Key 和管理员创建的 Key 不受影响。",
+    "Each key gets this amount independently; it is not a per-member cumulative limit. Use member quotas for that.": "每把 Key 独立按该额度计算，不是每人的累计上限；需要按人累计限制请使用成员配额。",
+    "Enter a non-negative amount.": "请输入非负金额。"
   }
 }

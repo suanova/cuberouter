@@ -118,6 +118,8 @@ export async function updateOrganization(
     description?: string
     group?: string
     reason?: string
+    /** Quota for member-created keys; 0 clears the default (unlimited). */
+    default_member_token_quota?: number
   }
 ): Promise<OrganizationResponse> {
   const res = await api.patch(
