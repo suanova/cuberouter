@@ -89,6 +89,46 @@ describe('UsageOverview', () => {
     )
   })
 
+  test('stacks the personal and organization cards instead of sharing a row', () => {
+    const data = usageData({})
+    data.overview.organization = {
+      id: 9,
+      name: 'Acme',
+      request_count: 0,
+      prompt_tokens: 0,
+      completion_tokens: 0,
+      cache_tokens: 0,
+      quota: 0,
+      remaining_quota: 0,
+      member_quota_limit: 0,
+      member_used_quota: 0,
+      organization_quota: 0,
+      organization_used_quota: 0,
+    }
+
+    render(
+      <UsageOverview
+        data={data}
+        loading={false}
+        organizations={[{ id: 9, name: 'Acme' }]}
+        selectedOrganizationId={9}
+        onSelectOrganization={() => undefined}
+      />
+    )
+
+    const personalCard = screen.getByText('Personal').closest('.rounded-lg')
+    const organizationCard = screen
+      .getByText('Organization')
+      .closest('.rounded-lg')
+    expect(personalCard).not.toBeNull()
+    expect(organizationCard).not.toBeNull()
+    // The content column is too narrow for two four-metric cards even at xl:
+    // sharing a row used to wrap amounts like "HKD 4,777.33" mid-number.
+    expect(personalCard?.parentElement).toBe(organizationCard?.parentElement)
+    expect(personalCard?.parentElement?.className).toContain('grid')
+    expect(personalCard?.parentElement?.className).not.toContain('grid-cols-2')
+  })
+
   test('shows one total token count for the organization row', () => {
     const data = usageData({})
     data.overview.organization = {

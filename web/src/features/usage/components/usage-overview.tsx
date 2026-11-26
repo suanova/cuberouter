@@ -40,7 +40,7 @@ export function UsageOverview(props: UsageOverviewProps) {
   const pending = props.loading && !props.data
 
   return (
-    <div className='grid gap-4 xl:grid-cols-2'>
+    <div className='grid gap-4'>
       <div className='rounded-lg border'>
         <div className='flex items-center gap-1.5 px-2.5 py-2.5 sm:gap-2.5 sm:px-5 sm:py-4'>
           <IconBadge tone='chart-1' size='stat'>
