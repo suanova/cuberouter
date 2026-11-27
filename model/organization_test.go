@@ -138,6 +138,9 @@ func TestOrganizationFoundationAutoMigrateCreatesRequiredColumns(t *testing.T) {
 	for _, column := range []string{"delivery_status", "delivery_attempts", "last_delivery_error", "delivered_at"} {
 		require.True(t, DB.Migrator().HasColumn(&OrganizationInvite{}, column), "missing invite column %s", column)
 	}
+	for _, column := range []string{"model_access", "quota_limit"} {
+		require.True(t, DB.Migrator().HasColumn(&OrganizationInvite{}, column), "missing invite column %s", column)
+	}
 
 	for _, column := range []string{"system_disabled_reason", "system_disabled_ref_id", "system_disabled_at", "previous_status"} {
 		require.True(t, DB.Migrator().HasColumn(&Token{}, column), "missing token column %s", column)
