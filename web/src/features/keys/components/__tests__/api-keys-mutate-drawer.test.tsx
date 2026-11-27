@@ -34,6 +34,9 @@ const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { QueryClient, QueryClientProvider } =
   await import('@tanstack/react-query')
 const { api } = await import('@/lib/api')
+const { DEFAULT_CURRENCY_CONFIG, useSystemConfigStore } = await import(
+  '@/stores/system-config-store'
+)
 const { useAuthStore } = await import('@/stores/auth-store')
 const { ApiKeysProvider } = await import('../api-keys-provider')
 const { ApiKeysMutateDrawer } = await import('../api-keys-mutate-drawer')
@@ -101,14 +104,42 @@ function setPersonalQuota(quota: number) {
   })
 }
 
+const CNY_STATUS = {
+  quota_display_type: 'CNY',
+  quota_per_unit: 500_000,
+  usd_exchange_rate: 7.3,
+  display_in_currency: true,
+}
+
+const limitedKeyFixture = {
+  id: 1,
+  name: 'limited',
+  status: 1,
+  remain_quota: 6_849_315,
+  used_quota: 0,
+  unlimited_quota: false,
+  expired_time: -1,
+  created_time: 0,
+  accessed_time: 0,
+  group: 'default',
+  auto_groups: [],
+  cross_group_retry: false,
+  model_limits_enabled: false,
+  model_limits: '',
+  allow_ips: '',
+}
+
 function installApiFixtures(options: {
   organizations?: OrganizationFixture[]
   apiKey?: Record<string, unknown>
+  status?: Record<string, unknown>
 } = {}) {
   apiClient.get = async (url) => {
     switch (url) {
       case '/api/status':
-        return { data: { data: { default_use_auto_group: true } } }
+        return {
+          data: { data: { default_use_auto_group: true, ...options.status } },
+        }
       case '/api/user/models':
         return { data: { success: true, data: [] } }
       case '/api/user/self/groups':
@@ -249,6 +280,9 @@ afterEach(() => {
   apiClient.post = originalPost
   apiClient.put = originalPut
   useAuthStore.getState().auth.setUser(null)
+  useSystemConfigStore.setState((state) => ({
+    config: { ...state.config, currency: { ...DEFAULT_CURRENCY_CONFIG } },
+  }))
   postedRequests = []
   putRequests = []
   localStorage.clear()
@@ -392,6 +426,92 @@ describe('API keys create drawer billing account', () => {
 
     await waitFor(() => expect(postedRequests).toHaveLength(1))
     expect(postedRequests[0].url).toBe('/api/token/')
+  })
+})
+
+describe('API keys quota currency input', () => {
+  test('shows a limited key quota as the site display currency amount', async () => {
+    installApiFixtures({
+      status: CNY_STATUS,
+      apiKey: { ...limitedKeyFixture },
+    })
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    const quotaInput = getControlByLabel('Quota (CNY)') as HTMLInputElement
+    expect(quotaInput.value).toBe('100')
+  })
+
+  test('keeps the stored quota when saving an edit without touching the quota field', async () => {
+    installApiFixtures({
+      status: CNY_STATUS,
+      apiKey: { ...limitedKeyFixture, remain_quota: 1_234_567 },
+    })
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    fireEvent.click(findButton('Save changes'))
+
+    await waitFor(() => expect(putRequests).toHaveLength(1))
+    expect(putRequests[0].data).toMatchObject({
+      id: 1,
+      remain_quota: 1_234_567,
+    })
+  })
+
+  test('converts an edited quota amount from the display currency', async () => {
+    installApiFixtures({
+      status: CNY_STATUS,
+      apiKey: { ...limitedKeyFixture, remain_quota: 1_234_567 },
+    })
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    changeInput(getControlByLabel('Quota (CNY)'), '100')
+    fireEvent.click(findButton('Save changes'))
+
+    await waitFor(() => expect(putRequests).toHaveLength(1))
+    expect(putRequests[0].data).toMatchObject({
+      id: 1,
+      remain_quota: 6_849_315,
+    })
+  })
+
+  test('sends zero quota when unlimited is enabled', async () => {
+    installApiFixtures({
+      status: CNY_STATUS,
+      apiKey: { ...limitedKeyFixture, remain_quota: 1_234_567 },
+    })
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    fireEvent.click(getControlByLabel('Unlimited Quota'))
+    fireEvent.click(findButton('Save changes'))
+
+    await waitFor(() => expect(putRequests).toHaveLength(1))
+    expect(putRequests[0].data).toMatchObject({
+      id: 1,
+      remain_quota: 0,
+      unlimited_quota: true,
+    })
+  })
+
+  test('saves zero when unlimited is turned off on a key that stored a quota', async () => {
+    installApiFixtures({
+      status: CNY_STATUS,
+      apiKey: {
+        ...limitedKeyFixture,
+        remain_quota: 5_000_000,
+        unlimited_quota: true,
+      },
+    })
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    fireEvent.click(getControlByLabel('Unlimited Quota'))
+    fireEvent.click(findButton('Save changes'))
+
+    await waitFor(() => expect(putRequests).toHaveLength(1))
+    expect(putRequests[0].data).toMatchObject({
+      id: 1,
+      remain_quota: 0,
+      unlimited_quota: false,
+    })
   })
 })
 

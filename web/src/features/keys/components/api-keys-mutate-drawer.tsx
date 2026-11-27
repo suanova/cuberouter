@@ -78,6 +78,8 @@ import {
 } from '@/features/organization/api'
 import { useStatus } from '@/hooks/use-status'
 import { getSelf, getUserModels, getUserGroups } from '@/lib/api'
+import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
+import { getEditableQuotaStep } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { getAccountContextCacheKey } from '@/stores/account-context-store'
 import { useAuthStore } from '@/stores/auth-store'
@@ -386,8 +388,20 @@ export function ApiKeysMutateDrawer({
     setIsSubmitting(true)
     try {
       if (isUpdate && currentRow) {
+        const basePayload = transformFormDataToPayload(data)
+        const quotaDirty = form.getFieldState(
+          'remain_quota_dollars'
+        ).isDirty
+        const storedRemainQuota =
+          apiKeyData?.data?.remain_quota ?? currentRow.remain_quota
+        const wasUnlimited =
+          apiKeyData?.data?.unlimited_quota ?? currentRow.unlimited_quota
         const result = await updateApiKey({
-          ...transformFormDataToPayload(data),
+          ...basePayload,
+          remain_quota:
+            !data.unlimited_quota && !quotaDirty && !wasUnlimited
+              ? storedRemainQuota
+              : basePayload.remain_quota,
           id: currentRow.id,
         })
         if (result.success) {
@@ -460,8 +474,14 @@ export function ApiKeysMutateDrawer({
     form.setValue('expired_time', now)
   }
 
-  const quotaLabel = t('Native Quota')
-  const quotaPlaceholder = t('Enter the native quota amount')
+  const { meta: currencyMeta } = getCurrencyDisplay()
+  const currencyLabel = getCurrencyLabel()
+  const tokensOnly = currencyMeta.kind === 'tokens'
+  const quotaStep = getEditableQuotaStep()
+  const quotaLabel = t('Quota ({{currency}})', { currency: currencyLabel })
+  const quotaPlaceholder = tokensOnly
+    ? t('Enter quota in tokens')
+    : t('Enter quota in {{currency}}', { currency: currencyLabel })
   const autoGroupsMode = form.watch('auto_groups_mode')
   const unlimitedQuota = form.watch('unlimited_quota')
   if (!isUpdate) {
@@ -833,7 +853,7 @@ export function ApiKeysMutateDrawer({
               {!unlimitedQuota && (
                 <FormField
                   control={form.control}
-                  name='remain_quota'
+                  name='remain_quota_dollars'
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>{quotaLabel}</FormLabel>
@@ -842,7 +862,7 @@ export function ApiKeysMutateDrawer({
                           {...field}
                           type='number'
                           min={0}
-                          step={1}
+                          step={quotaStep}
                           placeholder={quotaPlaceholder}
                           onChange={(e) =>
                             field.onChange(
@@ -852,7 +872,11 @@ export function ApiKeysMutateDrawer({
                         />
                       </FormControl>
                       <FormDescription>
-                        {t('The native quota amount this API key can consume')}
+                        {tokensOnly
+                          ? t('Enter the quota amount in tokens')
+                          : t('Enter the quota amount in {{currency}}', {
+                              currency: currencyLabel,
+                            })}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
