@@ -27,6 +27,7 @@ import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { formatQuota, parseQuotaFromDollars } from '@/lib/format'
 import { getAccountContextCacheKey } from '@/stores/account-context-store'
 
@@ -65,6 +66,12 @@ export function OrganizationMemberQuotaDialog(props: {
    */
   const [draftQuota, setDraftQuota] = useState<string | null>(null)
   /**
+   * The Unlimited switch as the operator last left it; null means "follow the
+   * stored record". A member with no limit starts with the switch on, and
+   * turning it on clears the ceiling instead of adding to it.
+   */
+  const [unlimitedDraft, setUnlimitedDraft] = useState<boolean | null>(null)
+  /**
    * The complaint about the amount currently in the field, if any. It is set
    * when a save is attempted with a value that cannot become a limit and
    * cleared as soon as the operator edits the field.
@@ -95,6 +102,7 @@ export function OrganizationMemberQuotaDialog(props: {
   // shown for the next member.
   useEffect(() => {
     setDraftQuota(null)
+    setUnlimitedDraft(null)
     setQuotaAmountError(null)
   }, [member])
 
@@ -120,9 +128,24 @@ export function OrganizationMemberQuotaDialog(props: {
   // A member with no limit (0) starts at the amount added; an existing ceiling
   // is raised by it.
   const limitAfterAdding = storedQuota.limit + addedUnits
+  // Only a read that actually landed can call the member unlimited; while the
+  // read is in flight or failed the footer keeps the Add label.
+  const unlimited =
+    unlimitedDraft ??
+    (quotaQuery.data !== undefined && storedQuota.limit === 0)
   const quotaReady =
     !quotaQuery.isLoading && !quotaQuery.isError && !quotaQuery.isFetching
-  const canSave = !isSaving && quotaReady && hasAmount
+  const canSave =
+    !isSaving &&
+    quotaReady &&
+    (unlimited ? storedQuota.limit !== 0 : hasAmount)
+  let saveLabel = t('Add')
+  if (unlimited) {
+    saveLabel = t('Save')
+  }
+  if (isSaving) {
+    saveLabel = t('Saving...')
+  }
 
   const renderQuota = () => {
     if (quotaQuery.isLoading) {
@@ -156,47 +179,97 @@ export function OrganizationMemberQuotaDialog(props: {
           </p>
         ) : null}
 
-        <div className='space-y-2'>
-          <Label htmlFor='organization-member-quota-limit'>
-            {t('Amount to add')}
-          </Label>
-          <Input
-            id='organization-member-quota-limit'
-            // A number input discards text it cannot represent (1e999 becomes
-            // an empty value), which this dialog would read as no change — the
-            // exact silent no-op the validation exists to prevent. Keeping the
-            // raw text lets save() reject it by name instead.
-            type='text'
-            inputMode='decimal'
-            autoComplete='off'
-            placeholder={t('Enter an amount')}
-            value={draftQuota ?? ''}
-            onChange={(event) => {
-              setDraftQuota(event.target.value)
+        <div className='flex items-start justify-between gap-4 rounded-lg border p-4'>
+          <div className='space-y-0.5'>
+            <div className='text-sm font-medium'>{t('Unlimited Quota')}</div>
+            <p className='text-muted-foreground text-xs'>
+              {t(
+                'Usage is still limited by what the organization has left.'
+              )}
+            </p>
+          </div>
+          <Switch
+            aria-label={t('Unlimited Quota')}
+            checked={unlimited}
+            onCheckedChange={(checked) => {
+              setUnlimitedDraft(checked)
               setQuotaAmountError(null)
             }}
-            aria-invalid={quotaAmountError !== null}
             disabled={isSaving}
           />
-          <div className='flex items-center justify-between text-sm'>
-            <span className='text-muted-foreground'>
-              {t('Limit after adding')}
-            </span>
-            <span className='font-medium'>
-              {formatQuota(limitAfterAdding)}
-            </span>
-          </div>
-          {quotaAmountError ? (
-            <p className='text-destructive text-sm' role='alert'>
-              {quotaAmountError}
-            </p>
-          ) : null}
         </div>
+
+        {unlimited ? null : (
+          <div className='space-y-2'>
+            <Label htmlFor='organization-member-quota-limit'>
+              {t('Amount to add')}
+            </Label>
+            <Input
+              id='organization-member-quota-limit'
+              // A number input discards text it cannot represent (1e999 becomes
+              // an empty value), which this dialog would read as no change — the
+              // exact silent no-op the validation exists to prevent. Keeping the
+              // raw text lets save() reject it by name instead.
+              type='text'
+              inputMode='decimal'
+              autoComplete='off'
+              placeholder={t('Enter an amount')}
+              value={draftQuota ?? ''}
+              onChange={(event) => {
+                setDraftQuota(event.target.value)
+                setQuotaAmountError(null)
+              }}
+              aria-invalid={quotaAmountError !== null}
+              disabled={isSaving}
+            />
+            <div className='flex items-center justify-between text-sm'>
+              <span className='text-muted-foreground'>
+                {t('Limit after adding')}
+              </span>
+              <span className='font-medium'>
+                {formatQuota(limitAfterAdding)}
+              </span>
+            </div>
+            {quotaAmountError ? (
+              <p className='text-destructive text-sm' role='alert'>
+                {quotaAmountError}
+              </p>
+            ) : null}
+          </div>
+        )}
       </>
     )
   }
 
   const save = async () => {
+    if (unlimited) {
+      if (storedQuota.limit === 0) {
+        return
+      }
+      setIsSaving(true)
+      try {
+        await updateOrganizationMemberQuota(
+          props.organizationId,
+          member.user_id,
+          0,
+          surface
+        )
+        queryClient.setQueryData(memberQuotaQueryKey, {
+          ...storedQuota,
+          limit: 0,
+          allocated: Math.max(0, storedQuota.allocated - storedQuota.limit),
+        })
+        void queryClient.invalidateQueries({ queryKey: memberQuotaQueryKey })
+        toast.success(t('Operation successful'))
+        props.onOpenChange(false)
+      } catch {
+        // The API client's interceptor already surfaces the failure as a toast,
+        // and the dialog stays open with the edit for the operator to retry.
+      } finally {
+        setIsSaving(false)
+      }
+      return
+    }
     const addedAmount = Number((draftQuota ?? '').trim())
     if (!Number.isFinite(addedAmount) || addedAmount <= 0) {
       setQuotaAmountError(t('Enter an amount greater than zero.'))
@@ -260,7 +333,7 @@ export function OrganizationMemberQuotaDialog(props: {
           </Button>
           <Button type='button' onClick={() => void save()} disabled={!canSave}>
             {isSaving ? <Loader2 className='animate-spin' /> : null}
-            {isSaving ? t('Saving...') : t('Add')}
+            {saveLabel}
           </Button>
         </>
       }

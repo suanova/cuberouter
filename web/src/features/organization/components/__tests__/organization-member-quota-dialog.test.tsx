@@ -104,7 +104,7 @@ async function renderDialog(): Promise<{ onOpenChange: ReturnType<typeof vi.fn> 
     </QueryClientProvider>
   )
   await screen.findByRole('heading', { name: 'Add quota' })
-  await screen.findByRole('textbox', { name: QUOTA_INPUT_NAME })
+  await screen.findByText(/Remaining allocatable/)
   return { onOpenChange }
 }
 
@@ -179,10 +179,44 @@ describe('organization member quota dialog', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  test('starts an unlimited member at the amount added', async () => {
+  test('shows unlimited on for a member with no limit and hides the amount input', async () => {
     getQuotaMock.mockResolvedValue({ ...STORED_QUOTA, limit: 0 })
     await renderDialog()
 
+    expect(
+      screen.getByRole('switch', { name: 'Unlimited Quota' })
+    ).toBeChecked()
+    expect(screen.queryByRole('textbox', { name: QUOTA_INPUT_NAME })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled()
+  })
+
+  test('clears the member limit when unlimited is saved', async () => {
+    const { onOpenChange } = await renderDialog()
+
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Unlimited Quota' })
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    await waitFor(() =>
+      expect(updateQuotaMock).toHaveBeenCalledWith(
+        ORGANIZATION_ID,
+        MEMBER_USER_ID,
+        0,
+        'member'
+      )
+    )
+    expect(toastSuccess).toHaveBeenCalledWith('Operation successful')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  test('starts an unlimited member at the amount added after unlimited is turned off', async () => {
+    getQuotaMock.mockResolvedValue({ ...STORED_QUOTA, limit: 0 })
+    await renderDialog()
+
+    await userEvent.click(
+      screen.getByRole('switch', { name: 'Unlimited Quota' })
+    )
     fireEvent.input(quotaInput(), { target: { value: '100' } })
     expect(
       screen.getByText(formatQuota(parseQuotaFromDollars(100)))
