@@ -274,8 +274,10 @@ func TestOrganizationRosterAndOverviewRoutesRequireFullMemberVisibility(t *testi
 	}{
 		{"member cannot read the roster", member, "/members", http.StatusForbidden},
 		{"member cannot read the organization overview data", member, "/quota-data", http.StatusForbidden},
+		{"member cannot read member restriction options", member, "/member-restriction-options", http.StatusForbidden},
 		{"owner can read the roster", owner, "/members", http.StatusOK},
 		{"owner can read the organization overview data", owner, "/quota-data", http.StatusOK},
+		{"owner can read member restriction options", owner, "/member-restriction-options", http.StatusOK},
 	}
 
 	for _, tc := range cases {

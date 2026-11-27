@@ -571,6 +571,38 @@ func GetOrganizationMemberModelAccess(operatorUserId, organizationId int, access
 	return model.ParseMemberModelAccess(member.ModelAccess), GetGroupsEnabledModels([]string{NormalizeOrganizationGroup(actor.Organization.Group)}), nil
 }
 
+type OrganizationMemberRestrictionOptions struct {
+	Models            []string `json:"models"`
+	OrganizationQuota int      `json:"organization_quota"`
+	Allocated         int      `json:"allocated"`
+	OverAllocated     bool     `json:"over_allocated"`
+}
+
+// GetOrganizationMemberRestrictionOptions 读取邀请弹窗需要的模型全集与成员配额预算。
+// 与成员名单同权限：只有能看到全组织数据的人读得到。
+func GetOrganizationMemberRestrictionOptions(operatorUserId, organizationId int, accessMode string) (*OrganizationMemberRestrictionOptions, error) {
+	if operatorUserId <= 0 || organizationId <= 0 {
+		return nil, errors.New("invalid organization member request")
+	}
+	actor, err := GetOrganizationActorContextForAccessMode(operatorUserId, organizationId, accessMode, true)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.Capabilities.CanViewOrganizationWideData {
+		return nil, errors.New("permission denied")
+	}
+	allocated, err := sumOrganizationMemberQuotaLimits(model.DB, actor.Organization)
+	if err != nil {
+		return nil, err
+	}
+	return &OrganizationMemberRestrictionOptions{
+		Models:            GetGroupsEnabledModels([]string{NormalizeOrganizationGroup(actor.Organization.Group)}),
+		OrganizationQuota: actor.Organization.Quota,
+		Allocated:         allocated,
+		OverAllocated:     allocated > actor.Organization.Quota,
+	}, nil
+}
+
 // UpdateOrganizationMemberModelAccess 全量替换组织成员个人的可用模型白名单（空列表即解除限制）。
 // 白名单跟随成员本人：写入后对该成员可见模型、自建 Key 与运行时调用一并生效。校验错误
 // 原样返回，由控制器的通用组织错误通道落成 400。
@@ -897,7 +929,7 @@ func organizationOperationBlockedError(message string, blockers ...string) error
 // ReactivateOrganizationMember 在调用方的事务里把成员行恢复为 active（不存在则新建）。
 // 白名单缓存不能在这里失效：事务内的删除会被并发读者用提交前的快照回填，调用方必须在
 // 事务提交后调用 invalidateUserModelAllowListCaches。
-func ReactivateOrganizationMember(tx *gorm.DB, organizationId, userId int, role string, invitedBy int) error {
+func ReactivateOrganizationMember(tx *gorm.DB, organizationId, userId int, role string, invitedBy int, modelAccess *string, quotaLimit *int) error {
 	if tx == nil || organizationId <= 0 || userId <= 0 {
 		return errors.New("invalid organization member request")
 	}
@@ -915,6 +947,9 @@ func ReactivateOrganizationMember(tx *gorm.DB, organizationId, userId int, role 
 		if member.Status == model.OrganizationMemberStatusDisabled {
 			return errors.New("organization member disabled")
 		}
+		if member.Status == model.OrganizationMemberStatusActive {
+			return nil
+		}
 		member.Role = role
 		member.Status = model.OrganizationMemberStatusActive
 		member.DisabledSource = ""
@@ -923,7 +958,16 @@ func ReactivateOrganizationMember(tx *gorm.DB, organizationId, userId int, role 
 		member.DisabledAt = 0
 		member.ExitedAt = 0
 		member.RemovedAt = 0
-		if err := tx.Model(&member).Select("role", "status", "disabled_source", "invited_by", "updated_at", "disabled_at", "exited_at", "removed_at").Updates(&member).Error; err != nil {
+		updateColumns := []string{"role", "status", "disabled_source", "invited_by", "updated_at", "disabled_at", "exited_at", "removed_at"}
+		if modelAccess != nil {
+			member.ModelAccess = *modelAccess
+			updateColumns = append(updateColumns, "model_access")
+		}
+		if quotaLimit != nil {
+			member.QuotaLimit = *quotaLimit
+			updateColumns = append(updateColumns, "quota_limit")
+		}
+		if err := tx.Model(&member).Select(updateColumns).Updates(&member).Error; err != nil {
 			return err
 		}
 		return nil
@@ -932,6 +976,12 @@ func ReactivateOrganizationMember(tx *gorm.DB, organizationId, userId int, role 
 		return err
 	}
 	member = model.OrganizationMember{OrganizationId: organizationId, UserId: userId, Role: role, Status: model.OrganizationMemberStatusActive, InvitedBy: invitedBy, CreatedAt: now, UpdatedAt: now}
+	if modelAccess != nil {
+		member.ModelAccess = *modelAccess
+	}
+	if quotaLimit != nil {
+		member.QuotaLimit = *quotaLimit
+	}
 	if err := tx.Create(&member).Error; err != nil {
 		return err
 	}

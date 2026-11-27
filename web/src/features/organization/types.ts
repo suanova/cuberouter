@@ -264,6 +264,22 @@ export interface MemberQuota {
   over_allocated: boolean
 }
 
+/**
+ * What the invite dialog needs to offer member restrictions: the organization
+ * group's model universe and the member quota budget, read without a member.
+ *
+ * `models` is the same candidate universe the member settings dialog shows;
+ * `organization_quota` and `allocated` describe the pool an initial quota draws
+ * from, and `over_allocated` is the backend's verdict that the members' limits
+ * together already exceed it.
+ */
+export interface MemberRestrictionOptions {
+  models: string[]
+  organization_quota: number
+  allocated: number
+  over_allocated: boolean
+}
+
 // ============================================================================
 // Invitations
 // ============================================================================
@@ -274,6 +290,17 @@ export interface OrganizationInviteRow {
   type?: string
   target_email: string
   role: OrganizationRole
+  /**
+   * The member allow-list stored on the invite, in the same JSON array string
+   * the member row uses. `null` means "not configured" (accept keeps the
+   * member's existing settings); `""` means "explicitly no restriction".
+   */
+  model_access?: string | null
+  /**
+   * Member quota ceiling in quota units. `null` means "not configured";
+   * `0` means "explicitly unlimited".
+   */
+  quota_limit?: number | null
   /** `pending` | `accepted` | `expired` | `revoked`. */
   status: string
   inviter_user_id?: number

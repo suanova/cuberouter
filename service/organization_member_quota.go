@@ -240,22 +240,22 @@ func sumOrganizationMemberQuotaLimits(tx *gorm.DB, organization *model.Organizat
 }
 
 // validateMemberQuotaBudget 校验一次配额修改是否突破预算约束（设计 I6）：
-//   - newSum = currentSum - currentLimit + newLimit；
 //   - 当前总和已超组织总额度时，只允许不增加总和的修改（降低/清除）；
 //   - 未超时要求新总和不超过组织总额度；
 //   - 清除（newLimit = 0）任何时候都允许。
+//
+// 比较式先与剩余预算对比，避免 currentSum + newLimit 在极端大额度下溢出。
 func validateMemberQuotaBudget(currentSum, currentLimit, newLimit, organizationQuota int) error {
 	if newLimit == 0 {
 		return nil
 	}
-	newSum := currentSum - currentLimit + newLimit
 	if currentSum > organizationQuota {
-		if newSum > currentSum {
+		if newLimit > currentLimit {
 			return errors.New("organization member quota budget exceeded")
 		}
 		return nil
 	}
-	if newSum > organizationQuota {
+	if newLimit > organizationQuota-(currentSum-currentLimit) {
 		return errors.New("organization member quota budget exceeded")
 	}
 	return nil

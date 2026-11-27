@@ -197,6 +197,20 @@ func GetOrganizationMemberModelAccess(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"access": access, "models": universe})
 }
 
+// GetOrganizationMemberRestrictionOptions 读取邀请弹窗可用的模型全集与成员配额预算
+func GetOrganizationMemberRestrictionOptions(c *gin.Context) {
+	organizationId, ok := parseOrganizationId(c)
+	if !ok {
+		return
+	}
+	options, err := service.GetOrganizationMemberRestrictionOptions(c.GetInt("id"), organizationId, organizationAccessMode(c))
+	if err != nil {
+		writeOrganizationError(c, err)
+		return
+	}
+	common.ApiSuccess(c, options)
+}
+
 // UpdateOrganizationMemberModelAccess 全量替换组织成员个人的可用模型白名单（空数组即解除限制）
 func UpdateOrganizationMemberModelAccess(c *gin.Context) {
 	organizationId, ok := parseOrganizationId(c)

@@ -50,6 +50,7 @@ import {
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationInviteRow } from '../types'
 import { OrganizationInviteDialog } from './organization-invite-dialog'
+import { OrganizationInviteRestrictionsCell } from './organization-invite-restrictions-cell'
 import {
   useOrganizationSectionRoute,
   useOrganizationSurface,
@@ -67,6 +68,10 @@ type OrganizationInvitesSectionProps = {
   canViewInvites: boolean
   canCreateInvites: boolean
   canRevokeInvites: boolean
+  /** The caller may set the model allow-list of the member they invite. */
+  canManageMemberModels: boolean
+  /** The caller may set the quota ceiling of the member they invite. */
+  canManageMemberQuotas: boolean
   /** The caller may not write to this organization. */
   readOnly: boolean
   /** Leaves the page when the backend refuses the read. */
@@ -249,6 +254,8 @@ export function OrganizationInvitesSection(
         open={isInviteOpen}
         onOpenChange={setIsInviteOpen}
         onCreated={() => invites.refetch()}
+        canManageMemberModels={props.canManageMemberModels}
+        canManageMemberQuotas={props.canManageMemberQuotas}
       />
 
       <ConfirmDialog
@@ -300,6 +307,15 @@ function buildInviteColumns(
       enableSorting: false,
       size: 120,
       cell: ({ row }) => <span>{t(organizationRoleLabelKey(row.original.role))}</span>,
+    },
+    {
+      id: 'restrictions',
+      header: t('Restrictions'),
+      enableSorting: false,
+      size: 220,
+      cell: ({ row }) => (
+        <OrganizationInviteRestrictionsCell invite={row.original} />
+      ),
     },
     {
       accessorKey: 'status',

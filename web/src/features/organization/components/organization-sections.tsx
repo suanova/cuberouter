@@ -118,6 +118,8 @@ export function OrganizationSections(props: OrganizationSectionsProps) {
           canViewInvites={capabilities.can_view_invites}
           canCreateInvites={capabilities.can_create_invites}
           canRevokeInvites={capabilities.can_revoke_invites}
+          canManageMemberModels={capabilities.can_manage_member_models}
+          canManageMemberQuotas={capabilities.can_manage_member_quotas}
           readOnly={props.readOnly}
           onForbidden={props.onForbidden}
         />

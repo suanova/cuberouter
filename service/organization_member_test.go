@@ -1507,7 +1507,7 @@ func TestOrganizationMemberReactivateReusesSameRecord(t *testing.T) {
 	require.NoError(t, model.DB.Create(&existing).Error)
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		return ReactivateOrganizationMember(tx, organization.Id, member.Id, model.OrganizationRoleAdmin, admin.Id)
+		return ReactivateOrganizationMember(tx, organization.Id, member.Id, model.OrganizationRoleAdmin, admin.Id, nil, nil)
 	})
 	require.NoError(t, err)
 

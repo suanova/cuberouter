@@ -46,6 +46,16 @@ type CreateInviteRequest struct {
 	Role           string
 	ForceRotate    bool
 	IdempotencyKey string
+	Models         *[]string
+	QuotaLimit     *int
+}
+
+type normalizedOrganizationInviteRequest struct {
+	TargetEmail    string
+	Role           string
+	IdempotencyKey string
+	Models         *[]string
+	QuotaLimit     *int
 }
 
 type OrganizationInviteListRequest struct {
@@ -161,13 +171,19 @@ type persistedOrganizationEmailInvite struct {
 	IdempotencyRecordId int
 }
 
-func organizationInviteForceRotateRequestHash(operatorUserId, organizationId int, targetEmail string, role string) (string, error) {
+func organizationInviteForceRotateRequestHash(operatorUserId, organizationId int, targetEmail string, role string, models *[]string, quotaLimit *int) (string, error) {
+	var normalizedModels any
+	if models != nil {
+		normalizedModels = model.MarshalMemberModelAccess(*models)
+	}
 	data, err := common.Marshal(map[string]any{
 		"operation_type":   organizationInviteForceRotateOperation,
 		"operator_user_id": operatorUserId,
 		"organization_id":  organizationId,
 		"target_email":     targetEmail,
 		"role":             role,
+		"models":           normalizedModels,
+		"quota_limit":      quotaLimit,
 	})
 	if err != nil {
 		return "", err
@@ -315,40 +331,55 @@ func CreateEmailInvite(operatorUserId, organizationId int, accessMode string, re
 	return &invite, nil
 }
 
-func normalizeOrganizationInviteRequest(req CreateInviteRequest) (string, string, string, error) {
+func normalizeOrganizationInviteRequest(req CreateInviteRequest) (normalizedOrganizationInviteRequest, error) {
 	targetEmail := NormalizeEmail(req.Email)
 	if targetEmail == "" || !strings.Contains(targetEmail, "@") {
-		return "", "", "", errors.New("invalid invite email")
+		return normalizedOrganizationInviteRequest{}, errors.New("invalid invite email")
 	}
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
 		role = model.OrganizationRoleMember
 	}
 	if role != model.OrganizationRoleAdmin && role != model.OrganizationRoleMember {
-		return "", "", "", errors.New("invalid organization member role")
+		return normalizedOrganizationInviteRequest{}, errors.New("invalid organization member role")
+	}
+	if req.Models != nil {
+		if err := model.ValidateMemberModelAccess(*req.Models); err != nil {
+			return normalizedOrganizationInviteRequest{}, err
+		}
+	}
+	if req.QuotaLimit != nil && *req.QuotaLimit < 0 {
+		return normalizedOrganizationInviteRequest{}, errors.New("organization member quota limit must not be negative")
 	}
 	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
 	if req.ForceRotate {
 		var err error
 		idempotencyKey, err = requireOrganizationIdempotencyKey(idempotencyKey)
 		if err != nil {
-			return "", "", "", err
+			return normalizedOrganizationInviteRequest{}, err
 		}
 	}
-	return targetEmail, role, idempotencyKey, nil
+	return normalizedOrganizationInviteRequest{
+		TargetEmail:    targetEmail,
+		Role:           role,
+		IdempotencyKey: idempotencyKey,
+		Models:         req.Models,
+		QuotaLimit:     req.QuotaLimit,
+	}, nil
 }
 
 func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMode string, req CreateInviteRequest, auditMetadata ...OrganizationAuditRequestMetadata) (*persistedOrganizationEmailInvite, error) {
 	if operatorUserId <= 0 || organizationId <= 0 {
 		return nil, errors.New("invalid organization invite request")
 	}
-	targetEmail, role, idempotencyKey, err := normalizeOrganizationInviteRequest(req)
+	normalized, err := normalizeOrganizationInviteRequest(req)
 	if err != nil {
 		return nil, err
 	}
+	targetEmail, role, idempotencyKey := normalized.TargetEmail, normalized.Role, normalized.IdempotencyKey
 	var requestHash string
 	if req.ForceRotate {
-		requestHash, err = organizationInviteForceRotateRequestHash(operatorUserId, organizationId, targetEmail, role)
+		requestHash, err = organizationInviteForceRotateRequestHash(operatorUserId, organizationId, targetEmail, role, normalized.Models, normalized.QuotaLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -361,6 +392,12 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 			return err
 		}
 		if decision.Role == OrganizationPolicyRolePlatformAdmin || decision.Role == OrganizationPolicyRolePlatformRoot {
+			return errors.New("permission denied")
+		}
+		if normalized.Models != nil && !decision.HasCapability(OrganizationCapabilityManageMemberModels) {
+			return errors.New("permission denied")
+		}
+		if normalized.QuotaLimit != nil && !decision.HasCapability(OrganizationCapabilityManageMemberQuotas) {
 			return errors.New("permission denied")
 		}
 		if _, err := repairStaleOrganizationInviteDeliveries(tx, organizationId, now); err != nil {
@@ -419,6 +456,21 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 				return errors.New("organization idempotency conflict")
 			}
 		}
+		if normalized.QuotaLimit != nil && *normalized.QuotaLimit > 0 {
+			needsBudgetCheck := true
+			if hasExistingInvite && auditAction == organizationAuditActionInviteResend && existingInvite.QuotaLimit != nil && *normalized.QuotaLimit <= *existingInvite.QuotaLimit {
+				needsBudgetCheck = false
+			}
+			if needsBudgetCheck {
+				allocated, err := sumOrganizationMemberQuotaLimits(tx, organization)
+				if err != nil {
+					return err
+				}
+				if err := validateMemberQuotaBudget(allocated, 0, *normalized.QuotaLimit, organization.Quota); err != nil {
+					return err
+				}
+			}
+		}
 		var existingUser model.User
 		if err := tx.Select("id").Where("LOWER(email) = ?", targetEmail).First(&existingUser).Error; err == nil {
 			var existingMember model.OrganizationMember
@@ -452,7 +504,17 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 			existingInvite.DeliveryAttempts++
 			existingInvite.LastDeliveryError = ""
 			existingInvite.DeliveredAt = 0
-			if err := tx.Model(&existingInvite).Select("type", "role", "token_hash", "status", "inviter_user_id", "accepted_user_id", "updated_at", "expired_at", "accepted_at", "revoked_at", "reason", "delivery_status", "delivery_attempts", "last_delivery_error", "delivered_at").Updates(&existingInvite).Error; err != nil {
+			updateColumns := []string{"type", "role", "token_hash", "status", "inviter_user_id", "accepted_user_id", "updated_at", "expired_at", "accepted_at", "revoked_at", "reason", "delivery_status", "delivery_attempts", "last_delivery_error", "delivered_at"}
+			if normalized.Models != nil {
+				raw := model.MarshalMemberModelAccess(*normalized.Models)
+				existingInvite.ModelAccess = &raw
+				updateColumns = append(updateColumns, "model_access")
+			}
+			if normalized.QuotaLimit != nil {
+				existingInvite.QuotaLimit = normalized.QuotaLimit
+				updateColumns = append(updateColumns, "quota_limit")
+			}
+			if err := tx.Model(&existingInvite).Select(updateColumns).Updates(&existingInvite).Error; err != nil {
 				return err
 			}
 			if err := recordOrganizationAudit(tx, organization, operatorUserId, decision.Role, auditAction, "invite", existingInvite.Id, before, existingInvite, auditReason, auditMetadata...); err != nil {
@@ -470,6 +532,13 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 			return nil
 		}
 		candidate := &model.OrganizationInvite{OrganizationId: organizationId, Type: model.OrganizationInviteTypeEmail, TargetEmail: targetEmail, Role: role, Token: token, TokenHash: model.HashOrganizationInviteToken(token), Status: model.OrganizationInviteStatusPending, InviterUserId: operatorUserId, CreatedAt: now, UpdatedAt: now, ExpiredAt: expiredAt, DeliveryStatus: model.OrganizationInviteDeliveryPending, DeliveryAttempts: 1}
+		if normalized.Models != nil {
+			raw := model.MarshalMemberModelAccess(*normalized.Models)
+			candidate.ModelAccess = &raw
+		}
+		if normalized.QuotaLimit != nil {
+			candidate.QuotaLimit = normalized.QuotaLimit
+		}
 		if err := tx.Create(candidate).Error; err != nil {
 			return err
 		}
@@ -769,7 +838,7 @@ func AcceptInvite(token string, userId int, auditMetadata ...OrganizationAuditRe
 		invite.AcceptedUserId = userId
 		invite.AcceptedAt = now
 		invite.UpdatedAt = now
-		if err := ReactivateOrganizationMember(tx, invite.OrganizationId, userId, invite.Role, invite.InviterUserId); err != nil {
+		if err := ReactivateOrganizationMember(tx, invite.OrganizationId, userId, invite.Role, invite.InviterUserId, invite.ModelAccess, invite.QuotaLimit); err != nil {
 			return err
 		}
 		actor, err := getOrganizationActorContextWithTxForAccessMode(tx, userId, organization.Id, OrganizationAccessModeWorkspace, true)

@@ -6459,6 +6459,19 @@
     "Leave empty for unlimited": "Leave empty for unlimited",
     "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.": "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.",
     "Each key gets this amount independently; it is not a per-member cumulative limit. Use member quotas for that.": "Each key gets this amount independently; it is not a per-member cumulative limit. Use member quotas for that.",
-    "Enter a non-negative amount.": "Enter a non-negative amount."
+    "Enter a non-negative amount.": "Enter a non-negative amount.",
+    "Model and quota restrictions": "Model and quota restrictions",
+    "These are the initial restrictions when the member joins. They can be changed later.": "These are the initial restrictions when the member joins. They can be changed later.",
+    "Quota limit": "Quota limit",
+    "Enter a quota limit; leave empty for no limit.": "Enter a quota limit; leave empty for no limit.",
+    "The quota limit exceeds the remaining allocatable quota.": "The quota limit exceeds the remaining allocatable quota.",
+    "The amount is too small to set. Enter a larger amount.": "The amount is too small to set. Enter a larger amount.",
+    "Enter a positive amount or leave it empty.": "Enter a positive amount or leave it empty.",
+    "Restrictions": "Restrictions",
+    "Not configured": "Not configured",
+    "Models unchanged": "Models unchanged",
+    "Quota unchanged": "Quota unchanged",
+    "All models": "All models",
+    "{{count}} model(s)": "{{count}} model(s)"
   }
 }
