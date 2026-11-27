@@ -34,6 +34,7 @@ import {
 import type {
   MemberModelAccess,
   MemberQuota,
+  MemberRestrictionOptions,
   OrganizationApiResponse,
   OrganizationAuditLogRow,
   OrganizationBillingMonthlySummaryResponse,
@@ -540,6 +541,33 @@ export async function getOrganizationMemberQuota(
 }
 
 /**
+ * The model universe and member quota budget an invite dialog needs.
+ *
+ * A refused read (no access to organization-wide data) is answered as HTTP 200
+ * with `success: false`, which must throw: defaulting it would present the
+ * dialog with an empty universe and a zero budget as if that were the truth.
+ */
+export async function getOrganizationMemberRestrictionOptions(
+  organizationId: number
+): Promise<MemberRestrictionOptions> {
+  const res = await api.get(
+    `/api/organizations/${organizationId}/member-restriction-options`
+  )
+  const payload = res.data as
+    | OrganizationApiResponse<MemberRestrictionOptions>
+    | undefined
+  if (payload?.success === false) {
+    throw new Error(payload.message || 'Request failed')
+  }
+  return {
+    models: Array.isArray(payload?.data?.models) ? payload.data.models : [],
+    organization_quota: payload?.data?.organization_quota ?? 0,
+    allocated: payload?.data?.allocated ?? 0,
+    over_allocated: payload?.data?.over_allocated ?? false,
+  }
+}
+
+/**
  * Sets a member's quota ceiling inside the organization.
  *
  * The value is in quota units, not dollars — the dialog converts what the
@@ -618,7 +646,13 @@ export async function listOrganizationInvites(
  */
 export async function createOrganizationInvite(
   organizationId: number,
-  data: { email: string; role?: string; force_rotate?: boolean }
+  data: {
+    email: string
+    role?: string
+    force_rotate?: boolean
+    models?: string[]
+    quota_limit?: number
+  }
 ): Promise<OrganizationApiResponse<OrganizationInviteRow>> {
   if (data.force_rotate !== true) {
     const res = await api.post(
