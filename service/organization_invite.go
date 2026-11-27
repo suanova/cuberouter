@@ -46,6 +46,16 @@ type CreateInviteRequest struct {
 	Role           string
 	ForceRotate    bool
 	IdempotencyKey string
+	Models         *[]string
+	QuotaLimit     *int
+}
+
+type normalizedOrganizationInviteRequest struct {
+	TargetEmail    string
+	Role           string
+	IdempotencyKey string
+	Models         *[]string
+	QuotaLimit     *int
 }
 
 type OrganizationInviteListRequest struct {
@@ -161,13 +171,19 @@ type persistedOrganizationEmailInvite struct {
 	IdempotencyRecordId int
 }
 
-func organizationInviteForceRotateRequestHash(operatorUserId, organizationId int, targetEmail string, role string) (string, error) {
+func organizationInviteForceRotateRequestHash(operatorUserId, organizationId int, targetEmail string, role string, models *[]string, quotaLimit *int) (string, error) {
+	var normalizedModels any
+	if models != nil {
+		normalizedModels = model.MarshalMemberModelAccess(*models)
+	}
 	data, err := common.Marshal(map[string]any{
 		"operation_type":   organizationInviteForceRotateOperation,
 		"operator_user_id": operatorUserId,
 		"organization_id":  organizationId,
 		"target_email":     targetEmail,
 		"role":             role,
+		"models":           normalizedModels,
+		"quota_limit":      quotaLimit,
 	})
 	if err != nil {
 		return "", err
@@ -315,40 +331,55 @@ func CreateEmailInvite(operatorUserId, organizationId int, accessMode string, re
 	return &invite, nil
 }
 
-func normalizeOrganizationInviteRequest(req CreateInviteRequest) (string, string, string, error) {
+func normalizeOrganizationInviteRequest(req CreateInviteRequest) (normalizedOrganizationInviteRequest, error) {
 	targetEmail := NormalizeEmail(req.Email)
 	if targetEmail == "" || !strings.Contains(targetEmail, "@") {
-		return "", "", "", errors.New("invalid invite email")
+		return normalizedOrganizationInviteRequest{}, errors.New("invalid invite email")
 	}
 	role := strings.TrimSpace(req.Role)
 	if role == "" {
 		role = model.OrganizationRoleMember
 	}
 	if role != model.OrganizationRoleAdmin && role != model.OrganizationRoleMember {
-		return "", "", "", errors.New("invalid organization member role")
+		return normalizedOrganizationInviteRequest{}, errors.New("invalid organization member role")
+	}
+	if req.Models != nil {
+		if err := model.ValidateMemberModelAccess(*req.Models); err != nil {
+			return normalizedOrganizationInviteRequest{}, err
+		}
+	}
+	if req.QuotaLimit != nil && *req.QuotaLimit < 0 {
+		return normalizedOrganizationInviteRequest{}, errors.New("organization member quota limit must not be negative")
 	}
 	idempotencyKey := strings.TrimSpace(req.IdempotencyKey)
 	if req.ForceRotate {
 		var err error
 		idempotencyKey, err = requireOrganizationIdempotencyKey(idempotencyKey)
 		if err != nil {
-			return "", "", "", err
+			return normalizedOrganizationInviteRequest{}, err
 		}
 	}
-	return targetEmail, role, idempotencyKey, nil
+	return normalizedOrganizationInviteRequest{
+		TargetEmail:    targetEmail,
+		Role:           role,
+		IdempotencyKey: idempotencyKey,
+		Models:         req.Models,
+		QuotaLimit:     req.QuotaLimit,
+	}, nil
 }
 
 func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMode string, req CreateInviteRequest, auditMetadata ...OrganizationAuditRequestMetadata) (*persistedOrganizationEmailInvite, error) {
 	if operatorUserId <= 0 || organizationId <= 0 {
 		return nil, errors.New("invalid organization invite request")
 	}
-	targetEmail, role, idempotencyKey, err := normalizeOrganizationInviteRequest(req)
+	normalized, err := normalizeOrganizationInviteRequest(req)
 	if err != nil {
 		return nil, err
 	}
+	targetEmail, role, idempotencyKey := normalized.TargetEmail, normalized.Role, normalized.IdempotencyKey
 	var requestHash string
 	if req.ForceRotate {
-		requestHash, err = organizationInviteForceRotateRequestHash(operatorUserId, organizationId, targetEmail, role)
+		requestHash, err = organizationInviteForceRotateRequestHash(operatorUserId, organizationId, targetEmail, role, normalized.Models, normalized.QuotaLimit)
 		if err != nil {
 			return nil, err
 		}

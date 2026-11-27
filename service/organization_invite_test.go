@@ -1413,3 +1413,49 @@ func TestCreateEmailInviteSendsDetailedBilingualEmail(t *testing.T) {
 	require.Contains(t, content, "/organization/invite/"+invite.Token)
 	require.Contains(t, content, "target@example.com")
 }
+
+func TestNormalizeOrganizationInviteRequestRejectsInvalidMemberRestrictions(t *testing.T) {
+	tooMany := make([]string, model.MaxMemberModelAccessEntries+1)
+	for i := range tooMany {
+		tooMany[i] = "m"
+	}
+	negative := -1
+	cases := []struct {
+		name    string
+		req     CreateInviteRequest
+		wantErr string
+	}{
+		{"negative quota", CreateInviteRequest{Email: "a@example.com", QuotaLimit: &negative}, "must not be negative"},
+		{"too many models", CreateInviteRequest{Email: "a@example.com", Models: &tooMany}, "too many member model access entries"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := normalizeOrganizationInviteRequest(tc.req)
+			require.ErrorContains(t, err, tc.wantErr)
+		})
+	}
+}
+
+func TestOrganizationInviteForceRotateRequestHashIncludesMemberRestrictions(t *testing.T) {
+	modelsA := []string{"a"}
+	modelsB := []string{"b"}
+	quota50, quota60 := 50, 60
+	base, err := organizationInviteForceRotateRequestHash(1, 2, "a@example.com", "member", &modelsA, &quota50)
+	require.NoError(t, err)
+	same, err := organizationInviteForceRotateRequestHash(1, 2, "a@example.com", "member", &modelsA, &quota50)
+	require.NoError(t, err)
+	require.Equal(t, base, same)
+	for _, changed := range []struct {
+		models *[]string
+		quota  *int
+	}{
+		{&modelsB, &quota50},
+		{&modelsA, &quota60},
+		{nil, &quota50},
+		{&modelsA, nil},
+	} {
+		h, err := organizationInviteForceRotateRequestHash(1, 2, "a@example.com", "member", changed.models, changed.quota)
+		require.NoError(t, err)
+		require.NotEqual(t, base, h)
+	}
+}

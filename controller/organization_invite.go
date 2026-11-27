@@ -34,10 +34,12 @@ import (
 )
 
 type createOrganizationInviteRequest struct {
-	Email       string `json:"email"`
-	TargetEmail string `json:"target_email"`
-	Role        string `json:"role"`
-	ForceRotate bool   `json:"force_rotate"`
+	Email       string    `json:"email"`
+	TargetEmail string    `json:"target_email"`
+	Role        string    `json:"role"`
+	ForceRotate bool      `json:"force_rotate"`
+	Models      *[]string `json:"models"`
+	QuotaLimit  *int      `json:"quota_limit"`
 }
 
 type acceptOrganizationInviteRequest struct {
@@ -80,7 +82,7 @@ func CreateOrganizationInvite(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
-	invite, err := service.CreateEmailInvite(c.GetInt("id"), organizationId, organizationAccessMode(c), service.CreateInviteRequest{Email: req.inviteEmail(), Role: req.Role, ForceRotate: req.ForceRotate, IdempotencyKey: c.GetHeader("Idempotency-Key")}, organizationAuditRequestMetadata(c))
+	invite, err := service.CreateEmailInvite(c.GetInt("id"), organizationId, organizationAccessMode(c), service.CreateInviteRequest{Email: req.inviteEmail(), Role: req.Role, ForceRotate: req.ForceRotate, IdempotencyKey: c.GetHeader("Idempotency-Key"), Models: req.Models, QuotaLimit: req.QuotaLimit}, organizationAuditRequestMetadata(c))
 	if err != nil {
 		writeOrganizationError(c, err)
 		return
