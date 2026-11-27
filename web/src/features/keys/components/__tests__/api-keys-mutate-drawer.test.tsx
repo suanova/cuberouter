@@ -34,9 +34,8 @@ const { I18nextProvider, initReactI18next } = await import('react-i18next')
 const { QueryClient, QueryClientProvider } =
   await import('@tanstack/react-query')
 const { api } = await import('@/lib/api')
-const { DEFAULT_CURRENCY_CONFIG, useSystemConfigStore } = await import(
-  '@/stores/system-config-store'
-)
+const { DEFAULT_CURRENCY_CONFIG, useSystemConfigStore } =
+  await import('@/stores/system-config-store')
 const { useAuthStore } = await import('@/stores/auth-store')
 const { ApiKeysProvider } = await import('../api-keys-provider')
 const { ApiKeysMutateDrawer } = await import('../api-keys-mutate-drawer')
@@ -129,11 +128,13 @@ const limitedKeyFixture = {
   allow_ips: '',
 }
 
-function installApiFixtures(options: {
-  organizations?: OrganizationFixture[]
-  apiKey?: Record<string, unknown>
-  status?: Record<string, unknown>
-} = {}) {
+function installApiFixtures(
+  options: {
+    organizations?: OrganizationFixture[]
+    apiKey?: Record<string, unknown>
+    status?: Record<string, unknown>
+  } = {}
+) {
   apiClient.get = async (url) => {
     switch (url) {
       case '/api/status':
@@ -218,7 +219,11 @@ async function renderDrawer(
     return
   }
 
-  await waitFor(() => expect(screen.getByText('Billing Account')).toBeTruthy())
+  await waitFor(() =>
+    expect(
+      screen.getByText(currentRow ? 'Update API Key' : 'Billing Account')
+    ).toBeTruthy()
+  )
 }
 
 function findButton(text: string): HTMLButtonElement {
@@ -512,6 +517,69 @@ describe('API keys quota currency input', () => {
       remain_quota: 0,
       unlimited_quota: false,
     })
+  })
+
+  test('uses the quota shown at initialization after a background refetch', async () => {
+    const fixtures = {
+      status: CNY_STATUS,
+      apiKey: {
+        ...limitedKeyFixture,
+        remain_quota: 5_000_000,
+        unlimited_quota: true,
+      },
+    }
+    installApiFixtures(fixtures)
+    await renderDrawer({ id: 1 } as unknown as ApiKey)
+
+    fixtures.apiKey = {
+      ...limitedKeyFixture,
+      remain_quota: 7_777_777,
+      unlimited_quota: false,
+    }
+    await renderedDrawer?.queryClient.invalidateQueries({
+      queryKey: ['api-key', 1],
+    })
+
+    fireEvent.click(getControlByLabel('Unlimited Quota'))
+    fireEvent.click(findButton('Save changes'))
+
+    await waitFor(() => expect(putRequests).toHaveLength(1))
+    expect(putRequests[0].data).toMatchObject({
+      id: 1,
+      remain_quota: 0,
+      unlimited_quota: false,
+    })
+  })
+
+  test('waits for the site currency before prefilling an existing key', async () => {
+    installApiFixtures({
+      status: CNY_STATUS,
+      apiKey: { ...limitedKeyFixture },
+    })
+    let resolveStatus!: (value: { data: unknown }) => void
+    const statusPromise = new Promise<{ data: unknown }>((resolve) => {
+      resolveStatus = resolve
+    })
+    const baseGet = apiClient.get
+    apiClient.get = async (url, data, config) => {
+      if (url === '/api/status') return statusPromise
+      return baseGet(url, data, config)
+    }
+
+    await renderDrawer({ id: 1 } as unknown as ApiKey, false)
+    await waitFor(() =>
+      expect(
+        renderedDrawer?.queryClient.getQueryState(['api-key', 1])?.status
+      ).toBe('success')
+    )
+
+    resolveStatus({
+      data: { data: { default_use_auto_group: true, ...CNY_STATUS } },
+    })
+    await waitFor(() => expect(findButton('Save changes')).toBeEnabled())
+
+    const quotaInput = getControlByLabel('Quota (CNY)') as HTMLInputElement
+    expect(quotaInput.value).toBe('100')
   })
 })
 

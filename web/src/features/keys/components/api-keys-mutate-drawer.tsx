@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, KeyRound, Settings2, WalletCards } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, type SubmitErrorHandler } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -133,6 +133,13 @@ export function ApiKeysMutateDrawer({
   const [initializedTarget, setInitializedTarget] = useState<string | null>(
     null
   )
+  // Submission must agree with what the form initialized with: a background
+  // refetch can change the key while the drawer is open, and the form is not
+  // reset for it.
+  const initializedQuotaRef = useRef<{
+    remainQuota: number
+    unlimited: boolean
+  } | null>(null)
   const defaultUseAutoGroup = status?.default_use_auto_group === true
   const user = useAuthStore((state) => state.auth.user)
   const [billingAccount, setBillingAccount] = useState<BillingAccount | null>(
@@ -303,6 +310,7 @@ export function ApiKeysMutateDrawer({
   useEffect(() => {
     if (!open) {
       setInitializedTarget(null)
+      initializedQuotaRef.current = null
       return
     }
     if (
@@ -314,7 +322,7 @@ export function ApiKeysMutateDrawer({
       return
     }
     if (isUpdate && (!apiKeyFetched || apiKeyFetching)) return
-    if (!isUpdate && statusLoading) return
+    if (statusLoading) return
     if (!isUpdate && !selfFetched && !selfFailed) return
     if (!isUpdate && !organizationsFetched && !organizationsFailed) return
 
@@ -329,6 +337,10 @@ export function ApiKeysMutateDrawer({
             maxAutoGroups
           )
         )
+        initializedQuotaRef.current = {
+          remainQuota: apiKeyData.data.remain_quota,
+          unlimited: apiKeyData.data.unlimited_quota,
+        }
         setInitializedTarget(target)
       }
     } else {
@@ -389,13 +401,11 @@ export function ApiKeysMutateDrawer({
     try {
       if (isUpdate && currentRow) {
         const basePayload = transformFormDataToPayload(data)
-        const quotaDirty = form.getFieldState(
-          'remain_quota_dollars'
-        ).isDirty
+        const quotaDirty = form.getFieldState('remain_quota_dollars').isDirty
         const storedRemainQuota =
-          apiKeyData?.data?.remain_quota ?? currentRow.remain_quota
+          initializedQuotaRef.current?.remainQuota ?? currentRow.remain_quota
         const wasUnlimited =
-          apiKeyData?.data?.unlimited_quota ?? currentRow.unlimited_quota
+          initializedQuotaRef.current?.unlimited ?? currentRow.unlimited_quota
         const result = await updateApiKey({
           ...basePayload,
           remain_quota:

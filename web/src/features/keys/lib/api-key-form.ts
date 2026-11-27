@@ -84,7 +84,10 @@ export function getApiKeyFormSchema(t: TFunction, maxAutoGroups = 5) {
         return
       }
 
-      if (data.remain_quota_dollars === undefined || data.remain_quota_dollars < 0) {
+      if (
+        data.remain_quota_dollars === undefined ||
+        data.remain_quota_dollars < 0
+      ) {
         ctx.addIssue({
           code: 'custom',
           path: ['remain_quota_dollars'],
