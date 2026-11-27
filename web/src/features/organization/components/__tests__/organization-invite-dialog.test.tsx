@@ -217,6 +217,22 @@ describe('organization invite dialog member restrictions', () => {
     expect(createInviteMock).not.toHaveBeenCalled()
   })
 
+  test('clears the quota error as soon as the amount changes', async () => {
+    renderDialog()
+    fillEmail()
+    await openRestrictions()
+    await screen.findByText(/Remaining allocatable/)
+
+    fireEvent.input(quotaInput(), { target: { value: '200' } })
+    await submitInvite()
+    expect(await screen.findByText(OVER_ALLOCATABLE_ERROR)).toBeInTheDocument()
+
+    fireEvent.input(quotaInput(), { target: { value: '10' } })
+
+    expect(screen.queryByText(OVER_ALLOCATABLE_ERROR)).toBeNull()
+    expect(quotaInput()).toHaveAttribute('aria-invalid', 'false')
+  })
+
   test('omits restriction fields for a caller without either capability', async () => {
     renderDialog({ models: false, quotas: false })
 

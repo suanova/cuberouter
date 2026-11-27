@@ -452,6 +452,10 @@ export function OrganizationInviteDialog(props: OrganizationInviteDialogProps) {
                                 'Enter a quota limit; leave empty for no limit.'
                               )}
                               {...field}
+                              onChange={(event) => {
+                                field.onChange(event)
+                                setQuotaAmountError(null)
+                              }}
                               aria-invalid={quotaAmountError !== null}
                             />
                           </FormControl>
