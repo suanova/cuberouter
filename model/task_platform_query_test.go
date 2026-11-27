@@ -33,7 +33,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func openUnfinishedSyncTaskQueryTestDB(t *testing.T, dialect string) *gorm.DB {
+func openConfiguredModelTestDB(t *testing.T, dialect string) *gorm.DB {
 	t.Helper()
 	if dialect == "sqlite" {
 		db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "unfinished-sync-tasks.db")), &gorm.Config{})
@@ -87,7 +87,7 @@ func TestUnfinishedSyncTaskQueriesConfiguredDatabases(t *testing.T) {
 
 	for _, dialect := range dialects {
 		t.Run(dialect, func(t *testing.T) {
-			db := openUnfinishedSyncTaskQueryTestDB(t, dialect)
+			db := openConfiguredModelTestDB(t, dialect)
 			originalDB := DB
 			DB = db
 			t.Cleanup(func() { DB = originalDB })
