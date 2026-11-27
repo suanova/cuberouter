@@ -1013,14 +1013,32 @@ func (channel *Channel) ValidateSettings() error {
 	return nil
 }
 
+// invalidChannelSettingsLogged suppresses repeated read-path errors for the
+// same channel. The accessors no longer clear invalid settings, so without
+// this every relay request on a misconfigured channel would log again.
+var invalidChannelSettingsLogged sync.Map
+
+func logInvalidChannelSettings(channelID int, kind string, err error) {
+	key := fmt.Sprintf("%d:%s", channelID, kind)
+	if _, loaded := invalidChannelSettingsLogged.LoadOrStore(key, struct{}{}); loaded {
+		return
+	}
+	common.SysLog(fmt.Sprintf("failed to unmarshal channel %s: channel_id=%d, error=%v (invalid settings ignored; update the channel to repair)", kind, channelID, err))
+}
+
 func (channel *Channel) GetSetting() dto.ChannelSettings {
 	setting := dto.ChannelSettings{}
-	if channel.Setting != nil && *channel.Setting != "" {
-		err := common.Unmarshal([]byte(*channel.Setting), &setting)
+	raw := channel.Setting
+	if raw != nil && *raw != "" {
+		err := common.Unmarshal([]byte(*raw), &setting)
 		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to unmarshal setting: channel_id=%d, error=%v", channel.Id, err))
-			channel.Setting = nil // 清空设置以避免后续错误
-			_ = channel.Save()    // 保存修改
+			// The channel may be a shared cached object. Do not clear or save
+			// it from this read path: concurrent relay and polling readers can
+			// hold the same pointer, and mutating Setting here both races and
+			// opens a nil-deref window for the next reader. Return the zero
+			// value and let an explicit channel update repair the stored JSON.
+			logInvalidChannelSettings(channel.Id, "setting", err)
+			setting = dto.ChannelSettings{}
 		}
 	}
 	return setting
@@ -1037,12 +1055,15 @@ func (channel *Channel) SetSetting(setting dto.ChannelSettings) {
 
 func (channel *Channel) GetOtherSettings() dto.ChannelOtherSettings {
 	setting := dto.ChannelOtherSettings{}
-	if channel.OtherSettings != "" {
-		err := common.UnmarshalJsonStr(channel.OtherSettings, &setting)
+	raw := channel.OtherSettings
+	if raw != "" {
+		err := common.UnmarshalJsonStr(raw, &setting)
 		if err != nil {
-			common.SysLog(fmt.Sprintf("failed to unmarshal setting: channel_id=%d, error=%v", channel.Id, err))
-			channel.OtherSettings = "{}" // 清空设置以避免后续错误
-			_ = channel.Save()           // 保存修改
+			// Same shared-cache rule as GetSetting: a read must not rewrite
+			// the channel object. Leave the invalid value for an explicit
+			// channel update to repair.
+			logInvalidChannelSettings(channel.Id, "other_settings", err)
+			setting = dto.ChannelOtherSettings{}
 		}
 	}
 	return setting
