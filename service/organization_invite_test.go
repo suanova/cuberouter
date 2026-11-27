@@ -1827,3 +1827,60 @@ func TestOrganizationInviteAcceptAllowsOverAllocationAfterQuotaShrink(t *testing
 	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
 	require.Equal(t, 100, member.QuotaLimit)
 }
+
+// TestOrganizationInviteMemberRestrictionsExternalDatabase 在真实 MySQL / PostgreSQL
+// 上盖一遍邀请限制的写路径：可空列、接受时写入成员行。
+// 需要 TEST_MYSQL_DSN 或 TEST_POSTGRES_DSN 且 ORGANIZATION_TEST_ALLOW_DESTRUCTIVE=1。
+func TestOrganizationInviteMemberRestrictionsExternalDatabase(t *testing.T) {
+	db, _ := setupOrganizationExternalConcurrencyDB(t)
+	require.NoError(t, db.AutoMigrate(
+		&model.User{},
+		&model.Organization{},
+		&model.OrganizationMember{},
+		&model.OrganizationDisableRecord{},
+		&model.OrganizationAuditLog{},
+		&model.OrganizationInvite{},
+	))
+
+	suffix := strings.ReplaceAll(common.GetUUID(), "-", "")[:8]
+	targetEmail := "external-invite-" + suffix + "@example.com"
+	owner := model.User{Username: "external-invite-owner-" + suffix, Password: "password", DisplayName: "external-invite-owner", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "eir-o-" + suffix}
+	require.NoError(t, db.Create(&owner).Error)
+	target := model.User{Username: "external-invite-target-" + suffix, Password: "password", DisplayName: "external-invite-target", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AffCode: "eir-t-" + suffix}
+	require.NoError(t, db.Create(&target).Error)
+	require.NoError(t, db.Model(&target).Update("email", targetEmail).Error)
+	organization, err := CreateOrganization(owner.Id, CreateOrganizationRequest{Name: "External Invite Restrictions " + suffix})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 1000).Error)
+	t.Cleanup(func() {
+		require.NoError(t, db.Where("organization_id = ?", organization.Id).Delete(&model.OrganizationAuditLog{}).Error)
+		require.NoError(t, db.Where("organization_id = ?", organization.Id).Delete(&model.OrganizationInvite{}).Error)
+		require.NoError(t, db.Where("organization_id = ?", organization.Id).Delete(&model.OrganizationMember{}).Error)
+		require.NoError(t, db.Where("id = ?", organization.Id).Delete(&model.Organization{}).Error)
+		require.NoError(t, db.Unscoped().Delete(&model.User{}, []int{owner.Id, target.Id}).Error)
+	})
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+
+	models := []string{"ext-model-a", "ext-model-b"}
+	quota := 300
+	invite, err := CreateEmailInvite(owner.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:      targetEmail,
+		Role:       model.OrganizationRoleMember,
+		Models:     &models,
+		QuotaLimit: &quota,
+	})
+	require.NoError(t, err)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, db.First(&stored, invite.Id).Error)
+	require.NotNil(t, stored.ModelAccess)
+	require.ElementsMatch(t, models, model.ParseMemberModelAccess(*stored.ModelAccess))
+	require.NotNil(t, stored.QuotaLimit)
+	require.Equal(t, 300, *stored.QuotaLimit)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+	var member model.OrganizationMember
+	require.NoError(t, db.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.ElementsMatch(t, models, model.ParseMemberModelAccess(member.ModelAccess))
+	require.Equal(t, 300, member.QuotaLimit)
+}
