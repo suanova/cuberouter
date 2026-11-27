@@ -67,6 +67,10 @@ type OrganizationInvitesSectionProps = {
   canViewInvites: boolean
   canCreateInvites: boolean
   canRevokeInvites: boolean
+  /** The caller may set the model allow-list of the member they invite. */
+  canManageMemberModels: boolean
+  /** The caller may set the quota ceiling of the member they invite. */
+  canManageMemberQuotas: boolean
   /** The caller may not write to this organization. */
   readOnly: boolean
   /** Leaves the page when the backend refuses the read. */
@@ -249,6 +253,8 @@ export function OrganizationInvitesSection(
         open={isInviteOpen}
         onOpenChange={setIsInviteOpen}
         onCreated={() => invites.refetch()}
+        canManageMemberModels={props.canManageMemberModels}
+        canManageMemberQuotas={props.canManageMemberQuotas}
       />
 
       <ConfirmDialog
