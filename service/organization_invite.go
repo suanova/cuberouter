@@ -394,6 +394,12 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 		if decision.Role == OrganizationPolicyRolePlatformAdmin || decision.Role == OrganizationPolicyRolePlatformRoot {
 			return errors.New("permission denied")
 		}
+		if normalized.Models != nil && !decision.HasCapability(OrganizationCapabilityManageMemberModels) {
+			return errors.New("permission denied")
+		}
+		if normalized.QuotaLimit != nil && !decision.HasCapability(OrganizationCapabilityManageMemberQuotas) {
+			return errors.New("permission denied")
+		}
 		if _, err := repairStaleOrganizationInviteDeliveries(tx, organizationId, now); err != nil {
 			return err
 		}
@@ -450,6 +456,21 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 				return errors.New("organization idempotency conflict")
 			}
 		}
+		if normalized.QuotaLimit != nil && *normalized.QuotaLimit > 0 {
+			needsBudgetCheck := true
+			if hasExistingInvite && existingInvite.QuotaLimit != nil && *normalized.QuotaLimit <= *existingInvite.QuotaLimit {
+				needsBudgetCheck = false
+			}
+			if needsBudgetCheck {
+				allocated, err := sumOrganizationMemberQuotaLimits(tx, organization)
+				if err != nil {
+					return err
+				}
+				if err := validateMemberQuotaBudget(allocated, 0, *normalized.QuotaLimit, organization.Quota); err != nil {
+					return err
+				}
+			}
+		}
 		var existingUser model.User
 		if err := tx.Select("id").Where("LOWER(email) = ?", targetEmail).First(&existingUser).Error; err == nil {
 			var existingMember model.OrganizationMember
@@ -483,7 +504,17 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 			existingInvite.DeliveryAttempts++
 			existingInvite.LastDeliveryError = ""
 			existingInvite.DeliveredAt = 0
-			if err := tx.Model(&existingInvite).Select("type", "role", "token_hash", "status", "inviter_user_id", "accepted_user_id", "updated_at", "expired_at", "accepted_at", "revoked_at", "reason", "delivery_status", "delivery_attempts", "last_delivery_error", "delivered_at").Updates(&existingInvite).Error; err != nil {
+			updateColumns := []string{"type", "role", "token_hash", "status", "inviter_user_id", "accepted_user_id", "updated_at", "expired_at", "accepted_at", "revoked_at", "reason", "delivery_status", "delivery_attempts", "last_delivery_error", "delivered_at"}
+			if normalized.Models != nil {
+				raw := model.MarshalMemberModelAccess(*normalized.Models)
+				existingInvite.ModelAccess = &raw
+				updateColumns = append(updateColumns, "model_access")
+			}
+			if normalized.QuotaLimit != nil {
+				existingInvite.QuotaLimit = normalized.QuotaLimit
+				updateColumns = append(updateColumns, "quota_limit")
+			}
+			if err := tx.Model(&existingInvite).Select(updateColumns).Updates(&existingInvite).Error; err != nil {
 				return err
 			}
 			if err := recordOrganizationAudit(tx, organization, operatorUserId, decision.Role, auditAction, "invite", existingInvite.Id, before, existingInvite, auditReason, auditMetadata...); err != nil {
@@ -501,6 +532,13 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 			return nil
 		}
 		candidate := &model.OrganizationInvite{OrganizationId: organizationId, Type: model.OrganizationInviteTypeEmail, TargetEmail: targetEmail, Role: role, Token: token, TokenHash: model.HashOrganizationInviteToken(token), Status: model.OrganizationInviteStatusPending, InviterUserId: operatorUserId, CreatedAt: now, UpdatedAt: now, ExpiredAt: expiredAt, DeliveryStatus: model.OrganizationInviteDeliveryPending, DeliveryAttempts: 1}
+		if normalized.Models != nil {
+			raw := model.MarshalMemberModelAccess(*normalized.Models)
+			candidate.ModelAccess = &raw
+		}
+		if normalized.QuotaLimit != nil {
+			candidate.QuotaLimit = normalized.QuotaLimit
+		}
 		if err := tx.Create(candidate).Error; err != nil {
 			return err
 		}

@@ -1459,3 +1459,270 @@ func TestOrganizationInviteForceRotateRequestHashIncludesMemberRestrictions(t *t
 		require.NotEqual(t, base, h)
 	}
 }
+
+func createOrganizationInviteRestrictionFixture(t *testing.T, organizationId, inviterUserId int, email string, deliveryStatus string, models []string, quota *int) model.OrganizationInvite {
+	t.Helper()
+	now := common.GetTimestamp()
+	invite := model.OrganizationInvite{
+		OrganizationId:   organizationId,
+		Type:             model.OrganizationInviteTypeEmail,
+		TargetEmail:      email,
+		Role:             model.OrganizationRoleMember,
+		Token:            "restriction-fixture-" + common.GetUUID(),
+		Status:           model.OrganizationInviteStatusPending,
+		InviterUserId:    inviterUserId,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+		ExpiredAt:        now + 3600,
+		DeliveryStatus:   deliveryStatus,
+		DeliveryAttempts: 1,
+	}
+	if models != nil {
+		raw := model.MarshalMemberModelAccess(models)
+		invite.ModelAccess = &raw
+	}
+	invite.QuotaLimit = quota
+	require.NoError(t, model.DB.Create(&invite).Error)
+	return invite
+}
+
+func TestOrganizationInviteCreateStoresMemberRestrictions(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 1000).Error)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+	models := []string{"gpt-b", "gpt-a"}
+	quota := 500
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:      "restricted@example.com",
+		Role:       model.OrganizationRoleMember,
+		Models:     &models,
+		QuotaLimit: &quota,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, invite.ModelAccess)
+	require.ElementsMatch(t, []string{"gpt-a", "gpt-b"}, model.ParseMemberModelAccess(*invite.ModelAccess))
+	require.NotNil(t, invite.QuotaLimit)
+	require.Equal(t, 500, *invite.QuotaLimit)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, invite.Id).Error)
+	require.NotNil(t, stored.ModelAccess)
+	require.ElementsMatch(t, []string{"gpt-a", "gpt-b"}, model.ParseMemberModelAccess(*stored.ModelAccess))
+	require.NotNil(t, stored.QuotaLimit)
+	require.Equal(t, 500, *stored.QuotaLimit)
+
+	var audit model.OrganizationAuditLog
+	require.NoError(t, model.DB.Where("organization_id = ? AND action_type = ?", organization.Id, organizationAuditActionInviteCreate).Order("id desc").First(&audit).Error)
+	require.Contains(t, audit.AfterData, `"model_access"`)
+	require.Contains(t, audit.AfterData, `"quota_limit"`)
+}
+
+func TestOrganizationInviteCreateWithoutRestrictionsStoresNullColumns(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email: "unset@example.com",
+		Role:  model.OrganizationRoleMember,
+	})
+	require.NoError(t, err)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, invite.Id).Error)
+	require.Nil(t, stored.ModelAccess)
+	require.Nil(t, stored.QuotaLimit)
+}
+
+func TestOrganizationInviteCreateStoresExplicitEmptyRestrictions(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+	models := []string{}
+	quota := 0
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:      "explicit-empty@example.com",
+		Role:       model.OrganizationRoleMember,
+		Models:     &models,
+		QuotaLimit: &quota,
+	})
+	require.NoError(t, err)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, invite.Id).Error)
+	require.NotNil(t, stored.ModelAccess)
+	require.Empty(t, *stored.ModelAccess)
+	require.NotNil(t, stored.QuotaLimit)
+	require.Zero(t, *stored.QuotaLimit)
+}
+
+func TestOrganizationInviteCreateRejectsQuotaOverBudget(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 100).Error)
+	filler := createServiceTestUser(t, "invite-budget-filler", common.RoleCommonUser)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: filler.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive, QuotaLimit: 100}).Error)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+	quota := 1
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:      "over-budget@example.com",
+		Role:       model.OrganizationRoleMember,
+		QuotaLimit: &quota,
+	})
+	require.ErrorContains(t, err, "organization member quota budget exceeded")
+	require.Nil(t, invite)
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.OrganizationInvite{}).Where("organization_id = ? AND target_email = ?", organization.Id, "over-budget@example.com").Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestOrganizationInviteResendPreservesRestrictionsWhenOmitted(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	quota := 50
+	existing := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "resend-restricted@example.com", model.OrganizationInviteDeliveryFailed, []string{"old-model"}, &quota)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email: existing.TargetEmail,
+		Role:  model.OrganizationRoleMember,
+	})
+	require.NoError(t, err)
+	require.Equal(t, existing.Id, invite.Id)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, existing.Id).Error)
+	require.NotNil(t, stored.ModelAccess)
+	require.ElementsMatch(t, []string{"old-model"}, model.ParseMemberModelAccess(*stored.ModelAccess))
+	require.NotNil(t, stored.QuotaLimit)
+	require.Equal(t, 50, *stored.QuotaLimit)
+}
+
+func TestOrganizationInviteForceRotateUpdatesRestrictions(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 1000).Error)
+	quota := 50
+	existing := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "force-update@example.com", model.OrganizationInviteDeliverySent, []string{"old-model"}, &quota)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+	models := []string{"new-a", "new-b"}
+	newQuota := 100
+
+	invite, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          existing.TargetEmail,
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: testOrganizationIdempotencyKey(t, "force-restrictions"),
+		Models:         &models,
+		QuotaLimit:     &newQuota,
+	})
+	require.NoError(t, err)
+	require.Equal(t, existing.Id, invite.Id)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, existing.Id).Error)
+	require.NotNil(t, stored.ModelAccess)
+	require.ElementsMatch(t, []string{"new-a", "new-b"}, model.ParseMemberModelAccess(*stored.ModelAccess))
+	require.NotNil(t, stored.QuotaLimit)
+	require.Equal(t, 100, *stored.QuotaLimit)
+}
+
+func TestOrganizationInviteQuotaUpdateOnlyChecksIncreases(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 100).Error)
+	filler := createServiceTestUser(t, "invite-quota-filler", common.RoleCommonUser)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: filler.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive, QuotaLimit: 100}).Error)
+	quota := 50
+	existing := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "quota-update@example.com", model.OrganizationInviteDeliverySent, nil, &quota)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+
+	unchanged := 50
+	_, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          existing.TargetEmail,
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: testOrganizationIdempotencyKey(t, "quota-unchanged"),
+		QuotaLimit:     &unchanged,
+	})
+	require.NoError(t, err)
+
+	raised := 60
+	_, err = CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          existing.TargetEmail,
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: testOrganizationIdempotencyKey(t, "quota-raised"),
+		QuotaLimit:     &raised,
+	})
+	require.ErrorContains(t, err, "organization member quota budget exceeded")
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, existing.Id).Error)
+	require.NotNil(t, stored.QuotaLimit)
+	require.Equal(t, 50, *stored.QuotaLimit)
+
+	lowered := 40
+	_, err = CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          existing.TargetEmail,
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: testOrganizationIdempotencyKey(t, "quota-lowered"),
+		QuotaLimit:     &lowered,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, model.DB.First(&stored, existing.Id).Error)
+	require.NotNil(t, stored.QuotaLimit)
+	require.Equal(t, 40, *stored.QuotaLimit)
+}
+
+func TestOrganizationInviteForceRotateIdempotencyConflictsOnRestrictions(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 1000).Error)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+	modelsA := []string{"model-a"}
+	modelsB := []string{"model-b"}
+	quota50, quota60 := 50, 60
+	key := testOrganizationIdempotencyKey(t, "restriction-replay")
+
+	first, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          "replay-restrictions@example.com",
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: key,
+		Models:         &modelsA,
+		QuotaLimit:     &quota50,
+	})
+	require.NoError(t, err)
+
+	replayed, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          "replay-restrictions@example.com",
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: key,
+		Models:         &modelsA,
+		QuotaLimit:     &quota50,
+	})
+	require.NoError(t, err)
+	require.Equal(t, first.Id, replayed.Id)
+	require.Empty(t, replayed.Token)
+
+	_, err = CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          "replay-restrictions@example.com",
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: key,
+		Models:         &modelsB,
+		QuotaLimit:     &quota50,
+	})
+	require.ErrorContains(t, err, "organization idempotency conflict")
+
+	_, err = CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:          "replay-restrictions@example.com",
+		Role:           model.OrganizationRoleMember,
+		ForceRotate:    true,
+		IdempotencyKey: key,
+		Models:         &modelsA,
+		QuotaLimit:     &quota60,
+	})
+	require.ErrorContains(t, err, "organization idempotency conflict")
+}
