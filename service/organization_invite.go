@@ -458,7 +458,7 @@ func persistOrganizationEmailInvite(operatorUserId, organizationId int, accessMo
 		}
 		if normalized.QuotaLimit != nil && *normalized.QuotaLimit > 0 {
 			needsBudgetCheck := true
-			if hasExistingInvite && existingInvite.QuotaLimit != nil && *normalized.QuotaLimit <= *existingInvite.QuotaLimit {
+			if hasExistingInvite && auditAction == organizationAuditActionInviteResend && existingInvite.QuotaLimit != nil && *normalized.QuotaLimit <= *existingInvite.QuotaLimit {
 				needsBudgetCheck = false
 			}
 			if needsBudgetCheck {

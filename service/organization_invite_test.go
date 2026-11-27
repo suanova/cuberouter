@@ -1884,3 +1884,39 @@ func TestOrganizationInviteMemberRestrictionsExternalDatabase(t *testing.T) {
 	require.ElementsMatch(t, models, model.ParseMemberModelAccess(member.ModelAccess))
 	require.Equal(t, 300, member.QuotaLimit)
 }
+
+func TestOrganizationInviteReopenOfAcceptedInviteChecksQuotaBudget(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 100).Error)
+	filler := createServiceTestUser(t, "invite-reopen-filler", common.RoleCommonUser)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: filler.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive, QuotaLimit: 100}).Error)
+	quota := 50
+	existing := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "reopen-budget@example.com", model.OrganizationInviteDeliverySent, nil, &quota)
+	require.NoError(t, model.DB.Model(&model.OrganizationInvite{}).Where("id = ?", existing.Id).Update("status", model.OrganizationInviteStatusAccepted).Error)
+	withInviteEmailSender(t, func(string, string, string) error { return nil })
+
+	reopenedQuota := 50
+	_, err := CreateEmailInvite(admin.Id, organization.Id, OrganizationAccessModeWorkspace, CreateInviteRequest{
+		Email:      existing.TargetEmail,
+		Role:       model.OrganizationRoleMember,
+		QuotaLimit: &reopenedQuota,
+	})
+	require.ErrorContains(t, err, "organization member quota budget exceeded")
+}
+
+func TestOrganizationInviteAcceptClearsReturningMemberRestrictionsWithExplicitEmpty(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	target := createServiceTestUser(t, "invite-accept-clear", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "accept-clear@example.com").Error)
+	createOrganizationMemberRestrictionFixture(t, organization.Id, target.Id, model.OrganizationRoleMember, model.OrganizationMemberStatusRemoved, []string{"old"}, 50)
+	zero := 0
+	invite := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "accept-clear@example.com", model.OrganizationInviteDeliverySent, []string{}, &zero)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.Equal(t, model.OrganizationMemberStatusActive, member.Status)
+	require.Empty(t, member.ModelAccess)
+	require.Zero(t, member.QuotaLimit)
+}
