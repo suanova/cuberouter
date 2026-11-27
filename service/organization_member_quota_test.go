@@ -175,6 +175,7 @@ func TestOrganizationMemberQuotaValidateBudget(t *testing.T) {
 		{name: "zero organization quota blocks first allocation", currentSum: 0, currentLimit: 0, newLimit: 1, organizationQuota: 0, wantErr: true},
 		{name: "zero organization quota clear allowed", currentSum: 0, currentLimit: 0, newLimit: 0, organizationQuota: 0},
 		{name: "zero-limit members are not exempt from the budget", currentSum: 300, currentLimit: 0, newLimit: 1, organizationQuota: 300, wantErr: true},
+		{name: "huge limit does not overflow past the budget", currentSum: 1, currentLimit: 0, newLimit: int(^uint(0) >> 1), organizationQuota: 1000, wantErr: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

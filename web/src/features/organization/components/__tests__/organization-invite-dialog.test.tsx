@@ -28,7 +28,6 @@ import {
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-import { parseQuotaFromDollars } from '@/lib/format'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
@@ -67,7 +66,7 @@ const OVER_ALLOCATABLE_ERROR =
 function restrictionOptions(): MemberRestrictionOptions {
   return {
     models: ['m1', 'm2', 'm3'],
-    organization_quota: parseQuotaFromDollars(100),
+    organization_quota: 50_000_000,
     allocated: 0,
     over_allocated: false,
   }
@@ -199,7 +198,7 @@ describe('organization invite dialog member restrictions', () => {
         role: 'member',
         force_rotate: false,
         models: ['m2'],
-        quota_limit: parseQuotaFromDollars(10),
+        quota_limit: 5_000_000,
       })
     )
   })
@@ -231,6 +230,42 @@ describe('organization invite dialog member restrictions', () => {
 
     expect(screen.queryByText(OVER_ALLOCATABLE_ERROR)).toBeNull()
     expect(quotaInput()).toHaveAttribute('aria-invalid', 'false')
+  })
+
+  test('resets the form when the parent reopens the dialog', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const onOpenChange = vi.fn()
+    const renderTree = (open: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <OrganizationInviteDialog
+          organizationId={ORGANIZATION_ID}
+          open={open}
+          onOpenChange={onOpenChange}
+          onCreated={() => undefined}
+          canManageMemberModels
+          canManageMemberQuotas
+        />
+      </QueryClientProvider>
+    )
+    const { rerender } = render(renderTree(true))
+    fillEmail()
+    await openRestrictions()
+    await selectModel('m2')
+    await waitFor(() => expect(selectedModels()).toEqual(['m2']))
+    fireEvent.input(quotaInput(), { target: { value: '10' } })
+
+    rerender(renderTree(false))
+    rerender(renderTree(true))
+
+    const email = await screen.findByRole('textbox', { name: 'Email' })
+    expect(email).toHaveValue('')
+    if (!screen.queryByRole('textbox', { name: 'Quota limit' })) {
+      await openRestrictions()
+    }
+    expect(quotaInput()).toHaveValue('')
+    expect(selectedModels()).toEqual([])
   })
 
   test('omits restriction fields for a caller without either capability', async () => {
@@ -277,7 +312,7 @@ describe('organization invite dialog member restrictions', () => {
         role: 'member',
         force_rotate: true,
         models: ['m2'],
-        quota_limit: parseQuotaFromDollars(10),
+        quota_limit: 5_000_000,
       })
     )
   })

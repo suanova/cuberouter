@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -126,6 +126,17 @@ export function OrganizationInviteDialog(props: OrganizationInviteDialogProps) {
     resolver: zodResolver(inviteSchema),
     defaultValues: { email: '', role: 'member', models: [], quota_amount: '' },
   })
+
+  // The parent opens the dialog by flipping `open`, not by calling
+  // onOpenChange, so the reset cannot live in that callback: a reopened dialog
+  // would otherwise keep the previous invitation's email, role and
+  // restrictions.
+  useEffect(() => {
+    if (!props.open) return
+    form.reset({ email: '', role: 'member', models: [], quota_amount: '' })
+    setQuotaAmountError(null)
+    setPendingResend(null)
+  }, [props.open, form])
 
   const restrictionOptionsQuery = useQuery({
     queryKey: ['organization-member-restriction-options', props.organizationId],
@@ -299,16 +310,6 @@ export function OrganizationInviteDialog(props: OrganizationInviteDialogProps) {
       <Dialog
         open={props.open}
         onOpenChange={(open) => {
-          if (open) {
-            form.reset({
-              email: '',
-              role: 'member',
-              models: [],
-              quota_amount: '',
-            })
-            setQuotaAmountError(null)
-            setPendingResend(null)
-          }
           props.onOpenChange(open)
         }}
         title={t('Invite member')}
