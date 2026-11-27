@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -467,13 +468,52 @@ func GetTimedOutUnfinishedTasks(cutoffUnix int64, limit int) []*Task {
 
 func GetAllUnFinishSyncTasks(limit int) []*Task {
 	var tasks []*Task
-	var err error
-	// get all tasks progress is not 100%
-	err = DB.Where("progress != ?", "100%").Where("status != ?", TaskStatusFailure).Where("status != ?", TaskStatusSuccess).Limit(limit).Order("id").Find(&tasks).Error
-	if err != nil {
+	if err := unfinishedSyncTasksQuery().Limit(limit).Order("id").Find(&tasks).Error; err != nil {
 		return nil
 	}
 	return tasks
+}
+
+// unfinishedSyncTasksQuery is the shared predicate for async tasks that still
+// need polling. Keeping it in one place prevents the per-platform query path
+// from drifting away from the legacy global query.
+func unfinishedSyncTasksQuery() *gorm.DB {
+	return DB.Model(&Task{}).
+		Where("progress != ?", "100%").
+		Where("status NOT IN ?", []TaskStatus{TaskStatusFailure, TaskStatusSuccess})
+}
+
+// GetUnFinishSyncTaskPlatforms returns every platform that currently has an
+// unfinished async task. The poller queries each platform separately so one
+// platform's backlog can never push another platform's tasks out of a global
+// LIMIT window.
+func GetUnFinishSyncTaskPlatforms() ([]constant.TaskPlatform, error) {
+	var platforms []string
+	if err := unfinishedSyncTasksQuery().Distinct("platform").Pluck("platform", &platforms).Error; err != nil {
+		return nil, err
+	}
+	result := make([]constant.TaskPlatform, 0, len(platforms))
+	for _, platform := range platforms {
+		result = append(result, constant.TaskPlatform(platform))
+	}
+	return result, nil
+}
+
+// GetUnFinishSyncTasksByPlatform returns up to limit unfinished tasks for one
+// platform, oldest first. The limit is per platform; a single busy platform
+// can still defer its own newest tasks, but it can no longer defer another
+// platform's tasks.
+func GetUnFinishSyncTasksByPlatform(platform constant.TaskPlatform, limit int) ([]*Task, error) {
+	var tasks []*Task
+	err := unfinishedSyncTasksQuery().
+		Where("platform = ?", platform).
+		Order("id").
+		Limit(limit).
+		Find(&tasks).Error
+	if err != nil {
+		return nil, err
+	}
+	return tasks, nil
 }
 
 // HasUnfinishedSyncTasks reports whether at least one async (Suno/video) task is

@@ -122,6 +122,8 @@ func failAndRefundTasks(ctx context.Context, tasks []*model.Task, reason string,
 // TaskPollSummary is the result recorded on an async_task_poll system task row,
 // summarizing one polling pass.
 type TaskPollSummary struct {
+	// UnfinishedTasks counts the tasks selected for this pass. TaskQueryLimit
+	// caps each platform independently, so the total can exceed that value.
 	UnfinishedTasks  int `json:"unfinished_tasks"`
 	PlatformsScanned int `json:"platforms_scanned"`
 	NullTasksFailed  int `json:"null_tasks_failed"`
@@ -143,56 +145,97 @@ func RunTaskPollingOnce(ctx context.Context, report func(processed, total int)) 
 
 	common.SysLog("任务进度轮询开始")
 	sweepTimedOutTasks(ctx)
-	allTasks := model.GetAllUnFinishSyncTasks(constant.TaskQueryLimit)
-	summary.UnfinishedTasks = len(allTasks)
-	platformTask := make(map[constant.TaskPlatform][]*model.Task)
-	for _, t := range allTasks {
-		platformTask[t.Platform] = append(platformTask[t.Platform], t)
+	platforms, err := model.GetUnFinishSyncTaskPlatforms()
+	if err != nil {
+		logger.LogError(ctx, fmt.Sprintf("async task polling: list unfinished platforms failed: %v", err))
+		common.SysLog("任务进度轮询完成")
+		return summary
+	}
+	platformTask := make(map[constant.TaskPlatform][]*model.Task, len(platforms))
+	for _, platform := range platforms {
+		tasks, err := model.GetUnFinishSyncTasksByPlatform(platform, constant.TaskQueryLimit)
+		if err != nil {
+			logger.LogError(ctx, fmt.Sprintf("async task polling: query platform %q failed: %v", platform, err))
+			continue
+		}
+		if len(tasks) == 0 {
+			continue
+		}
+		platformTask[platform] = tasks
+		summary.UnfinishedTasks += len(tasks)
 	}
 
 	totalPlatforms := len(platformTask)
-	processedPlatforms := 0
+	summary.PlatformsScanned = totalPlatforms
+	var (
+		wg        sync.WaitGroup
+		reportMu  sync.Mutex
+		summaryMu sync.Mutex
+		processed int
+	)
+	reportStart := func() {
+		if report == nil {
+			return
+		}
+		reportMu.Lock()
+		defer reportMu.Unlock()
+		report(processed, totalPlatforms)
+	}
+	reportDone := func() {
+		if report == nil {
+			return
+		}
+		reportMu.Lock()
+		defer reportMu.Unlock()
+		processed++
+		report(processed, totalPlatforms)
+	}
+	reportStart()
 	for platform, tasks := range platformTask {
 		if ctx.Err() != nil {
 			break
 		}
-		if report != nil {
-			report(processedPlatforms, totalPlatforms)
-		}
-		processedPlatforms++
-		if len(tasks) == 0 {
-			continue
-		}
-		summary.PlatformsScanned++
-		taskChannelM := make(map[int][]string)
-		taskM := make(map[string]*model.Task)
-		nullUpstreamTasks := make([]*model.Task, 0)
-		for _, task := range tasks {
-			upstreamID := task.GetUpstreamTaskID()
-			if upstreamID == "" {
-				// 没有上游任务 ID 的任务永远无法轮询，只能按失败终结；
-				// 交给 failAndRefundTasks 补上 fail_reason/finish_time 并退款。
-				nullUpstreamTasks = append(nullUpstreamTasks, task)
-				continue
+		platform, tasks := platform, tasks
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if ctx.Err() != nil {
+				return
 			}
-			taskM[upstreamID] = task
-			taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], upstreamID)
-		}
-		if len(nullUpstreamTasks) > 0 {
-			summary.NullTasksFailed += len(nullUpstreamTasks)
-			reason := "任务缺少上游任务ID，无法继续查询任务状态，请联系管理员"
-			legacyReason := "任务缺少上游任务ID（旧系统遗留任务，不进行退款，请联系管理员）"
-			failedCount := failAndRefundTasks(ctx, nullUpstreamTasks, reason, legacyReason)
-			logger.LogInfo(ctx, fmt.Sprintf("Fix null task_id task: failed %d of %d", failedCount, len(nullUpstreamTasks)))
-		}
-		if len(taskChannelM) == 0 {
-			continue
-		}
-
-		DispatchPlatformUpdate(ctx, platform, taskChannelM, taskM)
+			taskChannelM := make(map[int][]string)
+			taskM := make(map[string]*model.Task)
+			nullUpstreamTasks := make([]*model.Task, 0)
+			for _, task := range tasks {
+				upstreamID := task.GetUpstreamTaskID()
+				if upstreamID == "" {
+					// 没有上游任务 ID 的任务永远无法轮询，只能按失败终结；
+					// 交给 failAndRefundTasks 补上 fail_reason/finish_time 并退款。
+					nullUpstreamTasks = append(nullUpstreamTasks, task)
+					continue
+				}
+				taskM[upstreamID] = task
+				taskChannelM[task.ChannelId] = append(taskChannelM[task.ChannelId], upstreamID)
+			}
+			if len(nullUpstreamTasks) > 0 {
+				summaryMu.Lock()
+				summary.NullTasksFailed += len(nullUpstreamTasks)
+				summaryMu.Unlock()
+				reason := "任务缺少上游任务ID，无法继续查询任务状态，请联系管理员"
+				legacyReason := "任务缺少上游任务ID（旧系统遗留任务，不进行退款，请联系管理员）"
+				failedCount := failAndRefundTasks(ctx, nullUpstreamTasks, reason, legacyReason)
+				logger.LogInfo(ctx, fmt.Sprintf("Fix null task_id task: failed %d of %d", failedCount, len(nullUpstreamTasks)))
+			}
+			if len(taskChannelM) > 0 {
+				DispatchPlatformUpdate(ctx, platform, taskChannelM, taskM)
+			}
+			reportDone()
+		}()
 	}
+	wg.Wait()
 	if report != nil && ctx.Err() == nil {
+		reportMu.Lock()
 		report(totalPlatforms, totalPlatforms)
+		reportMu.Unlock()
 	}
 	common.SysLog("任务进度轮询完成")
 	return summary
