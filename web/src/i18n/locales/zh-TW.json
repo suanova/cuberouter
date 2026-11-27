@@ -6459,6 +6459,19 @@
     "Leave empty for unlimited": "留空表示不限",
     "Applies to organization keys created by ordinary members from now on. Leave empty or enter 0 for unlimited. Existing keys and keys created by administrators are not affected.": "僅對一般成員之後新建的組織 Key 生效；留空或填 0 表示不限。存量 Key 與管理員建立的 Key 不受影響。",
     "Each key gets this amount independently; it is not a per-member cumulative limit. Use member quotas for that.": "每把 Key 獨立按該額度計算，不是每人的累計上限；需要按人累計限制請使用成員配額。",
-    "Enter a non-negative amount.": "請輸入非負金額。"
+    "Enter a non-negative amount.": "請輸入非負金額。",
+    "Model and quota restrictions": "模型與額度限制",
+    "These are the initial restrictions when the member joins. They can be changed later.": "這是成員加入時的初始限制，加入後仍可調整。",
+    "Quota limit": "額度上限",
+    "Enter a quota limit; leave empty for no limit.": "輸入額度上限；留空表示不限。",
+    "The quota limit exceeds the remaining allocatable quota.": "額度上限超過剩餘可分配額度。",
+    "The amount is too small to set. Enter a larger amount.": "金額過小，無法設定。請輸入更大的金額。",
+    "Enter a positive amount or leave it empty.": "請輸入正數金額，或留空。",
+    "Restrictions": "限制",
+    "Not configured": "未配置",
+    "Models unchanged": "模型設定保持不變",
+    "Quota unchanged": "額度保持不變",
+    "All models": "全部模型",
+    "{{count}} model(s)": "{{count}} 個模型"
   }
 }
