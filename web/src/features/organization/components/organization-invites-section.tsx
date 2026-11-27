@@ -50,6 +50,7 @@ import {
 import { ORGANIZATION_DEFAULT_PAGE_SIZE } from '../lib/organization-pagination'
 import type { OrganizationInviteRow } from '../types'
 import { OrganizationInviteDialog } from './organization-invite-dialog'
+import { OrganizationInviteRestrictionsCell } from './organization-invite-restrictions-cell'
 import {
   useOrganizationSectionRoute,
   useOrganizationSurface,
@@ -306,6 +307,15 @@ function buildInviteColumns(
       enableSorting: false,
       size: 120,
       cell: ({ row }) => <span>{t(organizationRoleLabelKey(row.original.role))}</span>,
+    },
+    {
+      id: 'restrictions',
+      header: t('Restrictions'),
+      enableSorting: false,
+      size: 220,
+      cell: ({ row }) => (
+        <OrganizationInviteRestrictionsCell invite={row.original} />
+      ),
     },
     {
       accessorKey: 'status',
