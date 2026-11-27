@@ -1726,3 +1726,104 @@ func TestOrganizationInviteForceRotateIdempotencyConflictsOnRestrictions(t *test
 	})
 	require.ErrorContains(t, err, "organization idempotency conflict")
 }
+
+func createOrganizationMemberRestrictionFixture(t *testing.T, organizationId, userId int, role, status string, models []string, quota int) model.OrganizationMember {
+	t.Helper()
+	member := model.OrganizationMember{
+		OrganizationId: organizationId,
+		UserId:         userId,
+		Role:           role,
+		Status:         status,
+		ModelAccess:    model.MarshalMemberModelAccess(models),
+		QuotaLimit:     quota,
+	}
+	require.NoError(t, model.DB.Create(&member).Error)
+	return member
+}
+
+func TestOrganizationInviteAcceptAppliesMemberRestrictions(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	target := createServiceTestUser(t, "invite-accept-restrictions", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "accept-restricted@example.com").Error)
+	quota := 100
+	invite := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "accept-restricted@example.com", model.OrganizationInviteDeliverySent, []string{"gpt-a"}, &quota)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.ElementsMatch(t, []string{"gpt-a"}, model.ParseMemberModelAccess(member.ModelAccess))
+	require.Equal(t, 100, member.QuotaLimit)
+}
+
+func TestOrganizationInviteAcceptOverwritesReturningMemberRestrictions(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	target := createServiceTestUser(t, "invite-accept-overwrite", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "accept-overwrite@example.com").Error)
+	createOrganizationMemberRestrictionFixture(t, organization.Id, target.Id, model.OrganizationRoleMember, model.OrganizationMemberStatusRemoved, []string{"old"}, 50)
+	quota := 100
+	invite := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "accept-overwrite@example.com", model.OrganizationInviteDeliverySent, []string{"new"}, &quota)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.Equal(t, model.OrganizationMemberStatusActive, member.Status)
+	require.ElementsMatch(t, []string{"new"}, model.ParseMemberModelAccess(member.ModelAccess))
+	require.Equal(t, 100, member.QuotaLimit)
+}
+
+func TestOrganizationInviteAcceptPreservesReturningMemberRestrictionsWhenInviteUnset(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	target := createServiceTestUser(t, "invite-accept-preserve", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "accept-preserve@example.com").Error)
+	createOrganizationMemberRestrictionFixture(t, organization.Id, target.Id, model.OrganizationRoleMember, model.OrganizationMemberStatusRemoved, []string{"old"}, 50)
+	invite := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "accept-preserve@example.com", model.OrganizationInviteDeliverySent, nil, nil)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.Equal(t, model.OrganizationMemberStatusActive, member.Status)
+	require.ElementsMatch(t, []string{"old"}, model.ParseMemberModelAccess(member.ModelAccess))
+	require.Equal(t, 50, member.QuotaLimit)
+}
+
+func TestOrganizationInviteAcceptLeavesActiveMemberUntouched(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	target := createServiceTestUser(t, "invite-accept-active", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "accept-active@example.com").Error)
+	createOrganizationMemberRestrictionFixture(t, organization.Id, target.Id, model.OrganizationRoleAdmin, model.OrganizationMemberStatusActive, []string{"old"}, 50)
+	quota := 100
+	invite := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "accept-active@example.com", model.OrganizationInviteDeliverySent, []string{"new"}, &quota)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.Equal(t, model.OrganizationRoleAdmin, member.Role)
+	require.Equal(t, model.OrganizationMemberStatusActive, member.Status)
+	require.ElementsMatch(t, []string{"old"}, model.ParseMemberModelAccess(member.ModelAccess))
+	require.Equal(t, 50, member.QuotaLimit)
+
+	var stored model.OrganizationInvite
+	require.NoError(t, model.DB.First(&stored, invite.Id).Error)
+	require.Equal(t, model.OrganizationInviteStatusAccepted, stored.Status)
+}
+
+func TestOrganizationInviteAcceptAllowsOverAllocationAfterQuotaShrink(t *testing.T) {
+	admin, organization := createOrganizationInviteTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 100).Error)
+	filler := createServiceTestUser(t, "invite-accept-filler", common.RoleCommonUser)
+	require.NoError(t, model.DB.Create(&model.OrganizationMember{OrganizationId: organization.Id, UserId: filler.Id, Role: model.OrganizationRoleMember, Status: model.OrganizationMemberStatusActive, QuotaLimit: 100}).Error)
+	target := createServiceTestUser(t, "invite-accept-overallocate", common.RoleCommonUser)
+	require.NoError(t, model.DB.Model(&target).Update("email", "accept-overallocate@example.com").Error)
+	quota := 100
+	invite := createOrganizationInviteRestrictionFixture(t, organization.Id, admin.Id, "accept-overallocate@example.com", model.OrganizationInviteDeliverySent, nil, &quota)
+
+	require.NoError(t, AcceptInvite(invite.Token, target.Id))
+
+	var member model.OrganizationMember
+	require.NoError(t, model.DB.Where("organization_id = ? AND user_id = ?", organization.Id, target.Id).First(&member).Error)
+	require.Equal(t, 100, member.QuotaLimit)
+}

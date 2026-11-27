@@ -838,7 +838,7 @@ func AcceptInvite(token string, userId int, auditMetadata ...OrganizationAuditRe
 		invite.AcceptedUserId = userId
 		invite.AcceptedAt = now
 		invite.UpdatedAt = now
-		if err := ReactivateOrganizationMember(tx, invite.OrganizationId, userId, invite.Role, invite.InviterUserId); err != nil {
+		if err := ReactivateOrganizationMember(tx, invite.OrganizationId, userId, invite.Role, invite.InviterUserId, invite.ModelAccess, invite.QuotaLimit); err != nil {
 			return err
 		}
 		actor, err := getOrganizationActorContextWithTxForAccessMode(tx, userId, organization.Id, OrganizationAccessModeWorkspace, true)
