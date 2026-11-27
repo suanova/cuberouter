@@ -571,6 +571,38 @@ func GetOrganizationMemberModelAccess(operatorUserId, organizationId int, access
 	return model.ParseMemberModelAccess(member.ModelAccess), GetGroupsEnabledModels([]string{NormalizeOrganizationGroup(actor.Organization.Group)}), nil
 }
 
+type OrganizationMemberRestrictionOptions struct {
+	Models            []string `json:"models"`
+	OrganizationQuota int      `json:"organization_quota"`
+	Allocated         int      `json:"allocated"`
+	OverAllocated     bool     `json:"over_allocated"`
+}
+
+// GetOrganizationMemberRestrictionOptions 读取邀请弹窗需要的模型全集与成员配额预算。
+// 与成员名单同权限：只有能看到全组织数据的人读得到。
+func GetOrganizationMemberRestrictionOptions(operatorUserId, organizationId int, accessMode string) (*OrganizationMemberRestrictionOptions, error) {
+	if operatorUserId <= 0 || organizationId <= 0 {
+		return nil, errors.New("invalid organization member request")
+	}
+	actor, err := GetOrganizationActorContextForAccessMode(operatorUserId, organizationId, accessMode, true)
+	if err != nil {
+		return nil, err
+	}
+	if !actor.Capabilities.CanViewOrganizationWideData {
+		return nil, errors.New("permission denied")
+	}
+	allocated, err := sumOrganizationMemberQuotaLimits(model.DB, actor.Organization)
+	if err != nil {
+		return nil, err
+	}
+	return &OrganizationMemberRestrictionOptions{
+		Models:            GetGroupsEnabledModels([]string{NormalizeOrganizationGroup(actor.Organization.Group)}),
+		OrganizationQuota: actor.Organization.Quota,
+		Allocated:         allocated,
+		OverAllocated:     allocated > actor.Organization.Quota,
+	}, nil
+}
+
 // UpdateOrganizationMemberModelAccess 全量替换组织成员个人的可用模型白名单（空列表即解除限制）。
 // 白名单跟随成员本人：写入后对该成员可见模型、自建 Key 与运行时调用一并生效。校验错误
 // 原样返回，由控制器的通用组织错误通道落成 400。

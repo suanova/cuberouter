@@ -583,3 +583,25 @@ func TestOrganizationMemberQuotaExternalDatabase(t *testing.T) {
 	require.Equal(t, `{"limit":100,"used":0}`, audit.BeforeData)
 	require.Equal(t, `{"limit":0,"used":0}`, audit.AfterData)
 }
+
+func TestGetOrganizationMemberRestrictionOptions(t *testing.T) {
+	owner, _, member, organization := createMemberModelAccessTestOrg(t)
+	require.NoError(t, model.DB.Model(&model.OrganizationMember{}).Where("organization_id = ? AND user_id = ?", organization.Id, member.Id).Update("quota_limit", 100).Error)
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 200).Error)
+	seedMemberModelAccessGroupAbilities(t, "gpt-a", "gpt-b")
+
+	options, err := GetOrganizationMemberRestrictionOptions(owner.Id, organization.Id, OrganizationAccessModeManagement)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"gpt-a", "gpt-b"}, options.Models)
+	require.Equal(t, 200, options.OrganizationQuota)
+	require.Equal(t, 100, options.Allocated)
+	require.False(t, options.OverAllocated)
+
+	require.NoError(t, model.DB.Model(&model.Organization{}).Where("id = ?", organization.Id).Update("quota", 50).Error)
+	options, err = GetOrganizationMemberRestrictionOptions(owner.Id, organization.Id, OrganizationAccessModeManagement)
+	require.NoError(t, err)
+	require.True(t, options.OverAllocated)
+
+	_, err = GetOrganizationMemberRestrictionOptions(member.Id, organization.Id, OrganizationAccessModeWorkspace)
+	require.ErrorContains(t, err, "permission denied")
+}

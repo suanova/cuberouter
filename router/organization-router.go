@@ -56,6 +56,8 @@ func setOrganizationApiRoutes(apiRouter *gin.RouterGroup) {
 		// manage_member_quotas（owner/admin），不并入 manage_members。
 		organizationRoute.GET("/:id/members/:userId/quota", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.GetOrganizationMemberQuota)
 		organizationRoute.PUT("/:id/members/:userId/quota", middleware.OrganizationManagementAuth(service.OrganizationCapabilityManageMemberQuotas), controller.UpdateOrganizationMemberQuota)
+		// 邀请弹窗的限制选项（组织组模型全集 + 成员配额预算）：只读，与成员名单同权限。
+		organizationRoute.GET("/:id/member-restriction-options", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewMembersFull), controller.GetOrganizationMemberRestrictionOptions)
 		organizationRoute.GET("/:id/invitations", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewInvitations), controller.ListOrganizationInvites)
 		organizationRoute.GET("/:id/tokens", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.ListOrganizationTokens)
 		organizationRoute.GET("/:id/tokens/:tokenId", middleware.OrganizationReadAccessAuth(service.OrganizationCapabilityViewOrganizationTokens), controller.GetOrganizationToken)
